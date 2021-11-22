@@ -1,0 +1,12 @@
+---
+core:
+  network:
+    rpc:
+      max_timestamp_behind:
+      max_timestamp_ahead:
+      timeout: 86400000000
+    dht:
+      resolve_node_timeout:
+      get_value_timeout:
+      set_value_timeout:
+    address_filter: false

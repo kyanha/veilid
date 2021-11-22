@@ -1,0 +1,1 @@
+exports.keytar = require("keytar");

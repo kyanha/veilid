@@ -1,0 +1,267 @@
+use super::crypto::*;
+use super::key::*;
+use crate::xx::*;
+use core::convert::TryInto;
+
+// #[repr(C, packed)]
+// struct EnvelopeHeader {
+//     // Size is at least 8 bytes. Depending on the version specified, the size may vary and should be case to the appropriate struct
+//     magic: [u8; 4],              // 0x00: 0x56 0x4C 0x49 0x44 ("VLID")
+//     version: u8,                 // 0x04: 0 = EnvelopeV0
+//     min_version: u8,             // 0x05: 0 = EnvelopeV0
+//     max_version: u8,             // 0x06: 0 = EnvelopeV0
+//     reserved: u8,                // 0x07: Reserved for future use
+// }
+
+// #[repr(C, packed)]
+// struct EnvelopeV0 {
+//     // Size is 106 bytes.
+//     magic: [u8; 4],              // 0x00: 0x56 0x4C 0x49 0x44 ("VLID")
+//     version: u8,                 // 0x04: 0 = EnvelopeV0
+//     min_version: u8,             // 0x05: 0 = EnvelopeV0
+//     max_version: u8,             // 0x06: 0 = EnvelopeV0
+//     reserved: u8,                // 0x07: Reserved for future use
+//     size: u16,                   // 0x08: Total size of the envelope including the encrypted operations message. Maximum size is 65,507 bytes, which is the data size limit for a single UDP message on IPv4.
+//     timestamp: u64,              // 0x0A: Duration since UNIX_EPOCH in microseconds when this message is sent. Messages older than 10 seconds are dropped.
+//     nonce: [u8; 24],             // 0x12: Random nonce for replay protection and for x25519
+//     sender_id: [u8; 32],         // 0x2A: Node ID of the message source, which is the Ed25519 public key of the sender (must be verified with find_node if this is a new node_id/address combination)
+//     recipient_id: [u8; 32],      // 0x4A: Node ID of the intended recipient, which is the Ed25519 public key of the recipient (must be the receiving node, or a relay lease holder)
+//                                  // 0x6A: message is appended (operations)
+//                                  //       encrypted by XChaCha20Poly1305(nonce,x25519(recipient_id, sender_secret_key))
+//                                  //       decryptable by XChaCha20Poly1305(nonce,x25519(sender_id, recipient_secret_key))
+//                                  //       entire header needs to be included in message digest, relays are not allowed to modify the envelope without invalidating the signature.
+// }
+
+pub const MAX_ENVELOPE_SIZE: usize = 65507;
+pub const MIN_ENVELOPE_SIZE: usize = 106;
+pub const AEAD_ADDITIONAL_SIZE: usize = 16;
+pub const ENVELOPE_MAGIC: &[u8; 4] = b"VLID";
+pub const MIN_VERSION: u8 = 0u8;
+pub const MAX_VERSION: u8 = 0u8;
+pub type EnvelopeNonce = [u8; 24];
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Envelope {
+    version: u8,
+    min_version: u8,
+    max_version: u8,
+    timestamp: u64,
+    nonce: EnvelopeNonce,
+    sender_id: DHTKey,
+    recipient_id: DHTKey,
+}
+
+impl Envelope {
+    pub fn new(
+        version: u8,
+        timestamp: u64,
+        nonce: EnvelopeNonce,
+        sender_id: DHTKey,
+        recipient_id: DHTKey,
+    ) -> Self {
+        assert!(sender_id.valid);
+        assert!(recipient_id.valid);
+
+        assert!(version >= MIN_VERSION);
+        assert!(version <= MAX_VERSION);
+        Self {
+            version: version,
+            min_version: MIN_VERSION,
+            max_version: MAX_VERSION,
+            timestamp: timestamp,
+            nonce: nonce,
+            sender_id: sender_id,
+            recipient_id: recipient_id,
+        }
+    }
+
+    pub fn from_data(data: &[u8]) -> Result<Envelope, ()> {
+        // Ensure we are at least the length of the envelope
+        if data.len() < MIN_ENVELOPE_SIZE {
+            trace!("envelope too small: len={}", data.len());
+            return Err(());
+        }
+
+        // Verify magic number
+        let magic: [u8; 4] = data[0x00..0x04].try_into().map_err(drop)?;
+        if magic != *ENVELOPE_MAGIC {
+            trace!("bad magic number: len={:?}", magic);
+            return Err(());
+        }
+
+        // Check version
+        let version = data[0x04];
+        if version > MAX_VERSION || version < MIN_VERSION {
+            trace!("unsupported protocol version: version={}", version);
+            return Err(());
+        }
+
+        // Get min version
+        let min_version = data[0x05];
+        if min_version > version {
+            trace!(
+                "invalid version information in envelope: min_version={}, version={}",
+                min_version,
+                version,
+            );
+            return Err(());
+        }
+
+        // Get max version
+        let max_version = data[0x06];
+        if version > max_version || min_version > max_version {
+            trace!(
+                "invalid version information in envelope: min_version={}, version={}, max_version={}",
+                min_version,
+                version,
+                max_version
+            );
+            return Err(());
+        }
+
+        // Get size and ensure it matches the size of the envelope and is less than the maximum message size
+        let size: u16 = u16::from_le_bytes(data[0x08..0x0A].try_into().map_err(drop)?);
+        if (size as usize) > MAX_ENVELOPE_SIZE {
+            trace!("envelope size is too large: size={}", size);
+            return Err(());
+        }
+        if (size as usize) != data.len() {
+            trace!(
+                "size doesn't match envelope size: size={} data.len()={}",
+                size,
+                data.len()
+            );
+            return Err(());
+        }
+
+        // Get the timestamp
+        let timestamp: u64 = u64::from_le_bytes(data[0x0A..0x12].try_into().map_err(drop)?);
+
+        // Get nonce and sender node id
+        let nonce: EnvelopeNonce = data[0x12..0x2A].try_into().map_err(drop)?;
+        let sender_id: [u8; 32] = data[0x2A..0x4A].try_into().map_err(drop)?;
+        let recipient_id: [u8; 32] = data[0x4A..0x6A].try_into().map_err(drop)?;
+        let sender_id_dhtkey = DHTKey::new(sender_id);
+        let recipient_id_dhtkey = DHTKey::new(recipient_id);
+
+        // Ensure sender_id and recipient_id are not the same
+        if sender_id_dhtkey == recipient_id_dhtkey {
+            trace!(
+                "sender_id should not be same as recipient_id: {}",
+                recipient_id_dhtkey.encode()
+            );
+            return Err(());
+        }
+
+        // Return envelope
+        Ok(Self {
+            version: version,
+            min_version: min_version,
+            max_version: max_version,
+            timestamp: timestamp,
+            nonce: nonce,
+            sender_id: sender_id_dhtkey,
+            recipient_id: recipient_id_dhtkey,
+        })
+    }
+
+    pub fn decrypt_body(
+        &self,
+        crypto: Crypto,
+        data: &[u8],
+        node_id_secret: &DHTKeySecret,
+    ) -> Result<Vec<u8>, ()> {
+        // Get DH secret
+        let dh_secret = crypto.cached_dh(&self.sender_id, node_id_secret)?;
+
+        // Decrypt message and authenticate, including the envelope header as associated data to authenticate
+        let body = Crypto::decrypt(
+            &data[0x6A..],
+            &self.nonce,
+            &dh_secret,
+            Some(&data[0..MIN_ENVELOPE_SIZE]),
+        )?;
+
+        Ok(body)
+    }
+
+    pub fn to_encrypted_data(
+        &self,
+        crypto: Crypto,
+        body: &[u8],
+        node_id_secret: &DHTKeySecret,
+    ) -> Result<Vec<u8>, ()> {
+        // Ensure sender node id is valid
+        if !self.sender_id.valid {
+            return Err(());
+        }
+        // Ensure recipient node id is valid
+        if !self.recipient_id.valid {
+            return Err(());
+        }
+
+        // Ensure body isn't too long
+        let envelope_size: usize = body.len() + MIN_ENVELOPE_SIZE + AEAD_ADDITIONAL_SIZE;
+        if envelope_size > MAX_ENVELOPE_SIZE {
+            return Err(());
+        }
+        let mut data: Vec<u8> = Vec::with_capacity(envelope_size);
+        data.resize(envelope_size, 0u8);
+
+        // Write magic
+        data[0x00..0x04].copy_from_slice(ENVELOPE_MAGIC);
+        // Write version
+        data[0x04] = self.version;
+        // Write min version
+        data[0x05] = self.min_version;
+        // Write max version
+        data[0x06] = self.max_version;
+        // Write size
+        data[0x08..0x0A].copy_from_slice(&(envelope_size as u16).to_le_bytes());
+        // Write timestamp
+        data[0x0A..0x12].copy_from_slice(&self.timestamp.to_le_bytes());
+        // Write nonce
+        data[0x12..0x2A].copy_from_slice(&self.nonce);
+        // Write sender node id
+        data[0x2A..0x4A].copy_from_slice(&self.sender_id.bytes);
+        // Write recipient node id
+        data[0x4A..0x6A].copy_from_slice(&self.recipient_id.bytes);
+
+        // Generate dh secret
+        let dh_secret = crypto
+            .cached_dh(&self.recipient_id, node_id_secret)
+            .map_err(drop)?;
+
+        // Encrypt and authenticate message
+        let encrypted_body =
+            Crypto::encrypt(body, &self.nonce, &dh_secret, Some(&data[0..0x6A])).map_err(drop)?;
+
+        // Write body
+        data[0x6A..].copy_from_slice(encrypted_body.as_slice());
+
+        Ok(data)
+    }
+
+    pub fn get_version(&self) -> u8 {
+        self.version
+    }
+
+    pub fn get_min_max_version(&self) -> (u8, u8) {
+        (self.min_version, self.max_version)
+    }
+
+    pub fn get_timestamp(&self) -> u64 {
+        self.timestamp
+    }
+
+    pub fn get_nonce(&self) -> EnvelopeNonce {
+        self.nonce
+    }
+
+    pub fn get_sender_id(&self) -> DHTKey {
+        self.sender_id
+    }
+    pub fn get_recipient_id(&self) -> DHTKey {
+        self.recipient_id
+    }
+}

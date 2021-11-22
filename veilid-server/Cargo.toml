@@ -1,0 +1,48 @@
+[package]
+name = "veilid-server"
+version = "0.1.0"
+authors = ["John Smith <jsmith@example.com>"]
+edition = "2018"
+build = "build.rs"
+license = "LGPL-2.0-or-later OR MPL-2.0 OR (MIT AND BSD-3-Clause)"
+
+[[bin]]
+name = "veilid-server"
+path = "src/main.rs"
+
+[dependencies]
+log = "^0"
+simplelog = { version = "^0", features = ["test"] }
+clap = "^2"
+async-std = { version = "^1", features = ["unstable"] }
+async-tungstenite = { version = "^0", features = ["async-std-runtime", "async-tls"] }
+veilid-core = { path = "../veilid-core" }
+directories = "^3"
+capnp = "^0"
+parking_lot = "^0"
+capnp-rpc = "^0"
+config = { version = "^0", features = ["yaml"] }
+failure = "^0"
+cfg-if = "^0"
+serde = "^1"
+serde_derive = "^1"
+futures = "^0"
+url = "^2"
+ctrlc = "^3"
+lazy_static = "^1"
+bugsalot = "^0"
+
+[target.'cfg(windows)'.dependencies]
+windows-service = "^0"
+
+[target.'cfg(unix)'.dependencies]
+daemonize = "^0"
+
+[dev-dependencies]
+serial_test = "^0"
+
+[build-dependencies]
+capnpc = "^0"
+
+[profile.release]
+lto = true
