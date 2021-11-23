@@ -9,7 +9,10 @@ fi
 # install android targets
 rustup target add aarch64-apple-darwin aarch64-apple-ios x86_64-apple-darwin x86_64-apple-ios
 
-# xxx: install +ios-arm64-nightly-2021-06-12 toolchain for bitcode from https://github.com/getditto/rust-bitcode
+echo Manual Step:
+echo   install +ios-arm64-nightly-YYYY-MM-DD toolchain for bitcode from https://github.com/getditto/rust-bitcode/releases/latest and unzip
+echo   xattr -d -r com.apple.quarantine .
+echo   ./install.sh
 
 # Ensure brew is installed
 if command -v brew &> /dev/null; then 

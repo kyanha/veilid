@@ -11,7 +11,7 @@ class ViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        run_veilidcore_tests()
+        run_veilid_core_tests()
     }
 
 
