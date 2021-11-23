@@ -1,18 +1,18 @@
 [submodule "external/cursive"]
 	path = external/cursive
-	url = git@gitlab.hackers.town:veilid/cursive.git
+	url = ../cursive.git
 [submodule "external/cursive_buffered_backend"]
 	path = external/cursive_buffered_backend
-	url = git@gitlab.hackers.town:veilid/cursive_buffered_backend.git
+	url = ../cursive_buffered_backend.git
 [submodule "external/cursive-flexi-logger-view"]
 	path = external/cursive-flexi-logger-view
-	url = git@gitlab.hackers.town:veilid/cursive-flexi-logger-view.git
+	url = ../cursive-flexi-logger-view.git
 [submodule "external/if-addrs"]
 	path = external/if-addrs
-	url = git@gitlab.hackers.town:veilid/if-addrs.git
+	url = ../if-addrs.git
 [submodule "external/keyring-rs"]
 	path = external/keyring-rs
-	url = git@gitlab.hackers.town:veilid/keyring-rs.git
+	url = ../keyring-rs.git
 [submodule "external/keyvaluedb"]
 	path = external/keyvaluedb
-	url = git@gitlab.hackers.town:veilid/keyvaluedb.git
+	url = ../keyvaluedb.git
