@@ -10,10 +10,6 @@ license = "LGPL-2.0-or-later OR MPL-2.0 OR (MIT AND BSD-3-Clause)"
 name = "veilid-cli"
 path = "src/main.rs"
 
-[patch.crates-io]
-cursive = { path = "../external/cursive/cursive", default-features = false, features = ["crossterm-backend", "toml"]}
-cursive_core = { path = "../external/cursive/cursive-core" }
-
 [dependencies]
 async-std = { version = "^1.9", features = ["unstable", "attributes"] }
 async-tungstenite = { version = "^0.8", features = ["async-std-runtime"] }
@@ -47,6 +43,3 @@ serial_test = "^0.4"
 
 [build-dependencies]
 capnpc = "^0.14"
-
-[profile.release]
-lto = true

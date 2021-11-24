@@ -1,0 +1,17 @@
+[workspace]
+
+members = [
+    "veilid-core",
+    "veilid-server",
+    "veilid-cli"
+]
+
+exclude = [ "./external/cursive" ]
+
+[patch.crates-io]
+cursive = { path = "./external/cursive/cursive" }
+cursive_core = { path = "./external/cursive/cursive-core" }
+
+[profile.release]
+opt-level = "s"
+lto = true

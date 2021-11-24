@@ -135,9 +135,5 @@ wasm-bindgen-test = "^0"
 [build-dependencies]
 capnpc = "^0"
 
-[profile.release]
-opt-level = "s"
-lto = true
-
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = ["-O", "--enable-mutable-globals"]
