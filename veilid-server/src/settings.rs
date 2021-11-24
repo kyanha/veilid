@@ -63,6 +63,7 @@ core:
         upnp: false
         natpmp: false
         address_filter: true
+        restricted_nat_retries: 3
         tls:
             certificate_path: "/etc/veilid/server.crt"
             private_key_path: "/etc/veilid/private/server.key"
@@ -391,6 +392,7 @@ pub struct Network {
     pub upnp: bool,
     pub natpmp: bool,
     pub address_filter: bool,
+    pub restricted_nat_retries: u32,
     pub tls: TLS,
     pub application: Application,
     pub protocol: Protocol,
@@ -638,6 +640,9 @@ impl Settings {
                 "network.upnp" => Ok(Box::new(inner.core.network.upnp)),
                 "network.natpmp" => Ok(Box::new(inner.core.network.natpmp)),
                 "network.address_filter" => Ok(Box::new(inner.core.network.address_filter)),
+                "network.restricted_nat_retries" => {
+                    Ok(Box::new(inner.core.network.restricted_nat_retries))
+                }
                 "network.tls.certificate_path" => Ok(Box::new(
                     inner
                         .core
@@ -869,6 +874,7 @@ mod tests {
         assert_eq!(s.core.network.upnp, false);
         assert_eq!(s.core.network.natpmp, false);
         assert_eq!(s.core.network.address_filter, true);
+        assert_eq!(s.core.network.restricted_nat_retries, 3u32);
         //
         assert_eq!(
             s.core.network.tls.certificate_path,

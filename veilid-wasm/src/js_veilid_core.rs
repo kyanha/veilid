@@ -120,6 +120,7 @@ impl JsVeilidCore {
             "network.upnp" => Self::value_to_bool(val),
             "network.natpmp" => Self::value_to_bool(val),
             "network.address_filter" => Self::value_to_bool(val),
+            "network.restricted_nat_retries" => Self::value_to_u32(val),
             "network.tls.certificate_path" => Self::value_to_string(val),
             "network.tls.private_key_path" => Self::value_to_string(val),
             "network.application.path" => Self::value_to_string(val),

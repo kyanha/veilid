@@ -128,6 +128,7 @@ pub struct VeilidConfigNetwork {
     pub upnp: bool,
     pub natpmp: bool,
     pub address_filter: bool,
+    pub restricted_nat_retries: u32,
     pub tls: VeilidConfigTLS,
     pub application: VeilidConfigApplication,
     pub protocol: VeilidConfigProtocol,
@@ -222,6 +223,7 @@ impl VeilidConfig {
             get_config!(inner.network.upnp);
             get_config!(inner.network.natpmp);
             get_config!(inner.network.address_filter);
+            get_config!(inner.network.restricted_nat_retries);
             get_config!(inner.network.tls.certificate_path);
             get_config!(inner.network.tls.private_key_path);
             get_config!(inner.network.tls.connection_initial_timeout);

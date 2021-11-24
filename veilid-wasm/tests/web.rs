@@ -63,6 +63,7 @@ fn init_callbacks() {
             case "network.upnp": return false;
             case "network.natpmp": return false;
             case "network.address_filter": return true;
+            case "network.restricted_nat_retries": return 3;
             case "network.tls.certificate_path": return "";
             case "network.tls.private_key_path": return "";
             case "network.application.path": return "/app";

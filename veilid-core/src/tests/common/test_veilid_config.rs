@@ -183,6 +183,7 @@ pub fn config_callback(key: String) -> Result<Box<dyn core::any::Any>, String> {
         "network.upnp" => Ok(Box::new(false)),
         "network.natpmp" => Ok(Box::new(false)),
         "network.address_filter" => Ok(Box::new(true)),
+        "network.restricted_nat_retries" => Ok(Box::new(3u32)),
         "network.tls.certificate_path" => Ok(Box::new(get_certfile_path())),
         "network.tls.private_key_path" => Ok(Box::new(get_keyfile_path())),
         "network.tls.connection_initial_timeout" => Ok(Box::new(2_000_000u64)),
@@ -270,6 +271,7 @@ pub async fn test_config() {
     assert_eq!(inner.network.upnp, false);
     assert_eq!(inner.network.natpmp, false);
     assert_eq!(inner.network.address_filter, true);
+    assert_eq!(inner.network.restricted_nat_retries, 3u32);
     assert_eq!(inner.network.tls.certificate_path, get_certfile_path());
     assert_eq!(inner.network.tls.private_key_path, get_keyfile_path());
     assert_eq!(inner.network.tls.connection_initial_timeout, 2_000_000u64);

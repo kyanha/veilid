@@ -105,108 +105,143 @@ impl Network {
         None
     }
 
-    pub async fn update_udpv4_dialinfo_task_routine(self, l: u64, t: u64) -> Result<(), String> {
+    pub async fn update_udpv4_dialinfo_task_routine(self, _l: u64, _t: u64) -> Result<(), String> {
         trace!("looking for udpv4 public dial info");
         let routing_table = self.routing_table();
 
+        let mut retry_count = {
+            let c = self.config.get();
+            c.network.restricted_nat_retries
+        };
+
         // Get our local address
         let local1 = self.discover_local_address(ProtocolAddressType::UDPv4)?;
-        // Get our external address from some fast node, call it node B
-        let (external1, node_b) = self
-            .discover_external_address(ProtocolAddressType::UDPv4, None)
-            .await?;
-        let external1_dial_info = DialInfo::udp_from_socketaddr(external1);
 
-        // If local1 == external1 then there is no NAT in place
-        if local1 == external1 {
-            // No NAT
-            // Do a validate_dial_info on the external address from a routed node
-            if self
-                .validate_dial_info(node_b.clone(), external1_dial_info.clone(), true, false)
-                .await
-            {
-                // Add public dial info with Server network class
-                routing_table.register_public_dial_info(
-                    external1_dial_info,
-                    Some(NetworkClass::Server),
-                    DialInfoOrigin::Discovered,
-                );
-            } else {
-                // UDP firewall?
-                warn!("UDP static public dial info not reachable. UDP firewall may be blocking inbound to {:?} for {:?}",external1_dial_info, node_b);
-            }
-        } else {
-            // There is -some NAT-
-            // Attempt a UDP port mapping via all available and enabled mechanisms
-            if let Some(external_mapped) = self
-                .try_port_mapping(local1.clone(), ProtocolAddressType::UDPv4)
-                .await
-            {
-                // Got a port mapping, let's use it
-                let external_mapped_dial_info = DialInfo::udp_from_socketaddr(external_mapped);
-                routing_table.register_public_dial_info(
-                    external_mapped_dial_info,
-                    Some(NetworkClass::Mapped),
-                    DialInfoOrigin::Mapped,
-                );
-            } else {
-                // Port mapping was not possible, let's see what kind of NAT we have
+        // Loop for restricted NAT retries
+        loop {
+            // Get our external address from some fast node, call it node B
+            let (external1, node_b) = self
+                .discover_external_address(ProtocolAddressType::UDPv4, None)
+                .await?;
+            let external1_dial_info = DialInfo::udp_from_socketaddr(external1);
 
-                // Does a redirected dial info validation find us?
+            // If local1 == external1 then there is no NAT in place
+            if local1 == external1 {
+                // No NAT
+                // Do a validate_dial_info on the external address from a routed node
                 if self
                     .validate_dial_info(node_b.clone(), external1_dial_info.clone(), true, false)
                     .await
                 {
-                    // Yes, another machine can use the dial info directly, so Full Cone
-                    // Add public dial info with full cone NAT network class
+                    // Add public dial info with Server network class
                     routing_table.register_public_dial_info(
                         external1_dial_info,
-                        Some(NetworkClass::FullNAT),
+                        Some(NetworkClass::Server),
                         DialInfoOrigin::Discovered,
                     );
-                } else {
-                    // No, we are restricted, determine what kind of restriction
 
-                    // Get our external address from some fast node, that is not node B, call it node D
-                    let (external2, node_d) = self
-                        .discover_external_address(
-                            ProtocolAddressType::UDPv4,
-                            Some(node_b.node_id()),
+                    // No more retries
+                    break;
+                } else {
+                    // UDP firewall?
+                    warn!("UDP static public dial info not reachable. UDP firewall may be blocking inbound to {:?} for {:?}",external1_dial_info, node_b);
+                }
+            } else {
+                // There is -some NAT-
+                // Attempt a UDP port mapping via all available and enabled mechanisms
+                if let Some(external_mapped) = self
+                    .try_port_mapping(local1.clone(), ProtocolAddressType::UDPv4)
+                    .await
+                {
+                    // Got a port mapping, let's use it
+                    let external_mapped_dial_info = DialInfo::udp_from_socketaddr(external_mapped);
+                    routing_table.register_public_dial_info(
+                        external_mapped_dial_info,
+                        Some(NetworkClass::Mapped),
+                        DialInfoOrigin::Mapped,
+                    );
+
+                    // No more retries
+                    break;
+                } else {
+                    // Port mapping was not possible, let's see what kind of NAT we have
+
+                    // Does a redirected dial info validation find us?
+                    if self
+                        .validate_dial_info(
+                            node_b.clone(),
+                            external1_dial_info.clone(),
+                            true,
+                            false,
                         )
-                        .await?;
-                    // If we have two different external addresses, then this is a symmetric NAT
-                    if external2 != external1 {
-                        // Symmetric NAT is outbound only, no public dial info will work
-                        self.inner.lock().network_class = Some(NetworkClass::OutboundOnly);
+                        .await
+                    {
+                        // Yes, another machine can use the dial info directly, so Full Cone
+                        // Add public dial info with full cone NAT network class
+                        routing_table.register_public_dial_info(
+                            external1_dial_info,
+                            Some(NetworkClass::FullNAT),
+                            DialInfoOrigin::Discovered,
+                        );
+
+                        // No more retries
+                        break;
                     } else {
-                        // Address is the same, so it's address or port restricted
-                        let external2_dial_info = DialInfo::udp_from_socketaddr(external2);
-                        // Do a validate_dial_info on the external address from a routed node
-                        if self
-                            .validate_dial_info(
-                                node_d.clone(),
-                                external2_dial_info.clone(),
-                                false,
-                                true,
+                        // No, we are restricted, determine what kind of restriction
+
+                        // Get our external address from some fast node, that is not node B, call it node D
+                        let (external2, node_d) = self
+                            .discover_external_address(
+                                ProtocolAddressType::UDPv4,
+                                Some(node_b.node_id()),
                             )
-                            .await
-                        {
-                            // Got a reply from a non-default port, which means we're only address restricted
-                            routing_table.register_public_dial_info(
-                                external1_dial_info,
-                                Some(NetworkClass::AddressRestrictedNAT),
-                                DialInfoOrigin::Discovered,
-                            );
+                            .await?;
+                        // If we have two different external addresses, then this is a symmetric NAT
+                        if external2 != external1 {
+                            // Symmetric NAT is outbound only, no public dial info will work
+                            self.inner.lock().network_class = Some(NetworkClass::OutboundOnly);
+
+                            // No more retries
+                            break;
                         } else {
-                            // Didn't get a reply from a non-default port, which means we are also port restricted
-                            routing_table.register_public_dial_info(
-                                external1_dial_info,
-                                Some(NetworkClass::PortRestrictedNAT),
-                                DialInfoOrigin::Discovered,
-                            );
+                            // If we're going to end up as a restricted NAT of some sort
+                            // we should go through our retries before we assign a dial info
+                            if retry_count == 0 {
+                                // Address is the same, so it's address or port restricted
+                                let external2_dial_info = DialInfo::udp_from_socketaddr(external2);
+                                // Do a validate_dial_info on the external address from a routed node
+                                if self
+                                    .validate_dial_info(
+                                        node_d.clone(),
+                                        external2_dial_info.clone(),
+                                        false,
+                                        true,
+                                    )
+                                    .await
+                                {
+                                    // Got a reply from a non-default port, which means we're only address restricted
+                                    routing_table.register_public_dial_info(
+                                        external1_dial_info,
+                                        Some(NetworkClass::AddressRestrictedNAT),
+                                        DialInfoOrigin::Discovered,
+                                    );
+                                } else {
+                                    // Didn't get a reply from a non-default port, which means we are also port restricted
+                                    routing_table.register_public_dial_info(
+                                        external1_dial_info,
+                                        Some(NetworkClass::PortRestrictedNAT),
+                                        DialInfoOrigin::Discovered,
+                                    );
+                                }
+                            }
                         }
                     }
                 }
+
+                if retry_count == 0 {
+                    break;
+                }
+                retry_count -= 1;
             }
         }
 
