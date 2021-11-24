@@ -1,0 +1,27 @@
+stages:
+  - clippy
+  - test
+
+############# Clippy Lint
+clippy:
+  stage: clippy
+  image: rust:latest
+  tags:
+    - linux
+    - amd64
+  before_script:
+    - rustup component add clippy
+  script:
+    #    - RUSTFLAGS="-D warnings" RUST_BACKTRACE=1 cargo clippy
+    - RUST_BACKTRACE=1 cargo clippy
+
+############# Unit Testing
+test_linux_amd64:
+  stage: test
+  image: rust:latest
+  tags:
+    - linux
+    - amd64
+  script:
+    #    - RUSTFLAGS="-D warnings" RUST_BACKTRACE=1 cargo test -- --nocapture
+    - RUST_BACKTRACE=1 cargo test -- --nocapture
