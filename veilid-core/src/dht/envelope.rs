@@ -1,3 +1,4 @@
+#![allow(clippy::absurd_extreme_comparisons)]
 use super::crypto::*;
 use super::key::*;
 use crate::xx::*;
@@ -65,13 +66,13 @@ impl Envelope {
         assert!(version >= MIN_VERSION);
         assert!(version <= MAX_VERSION);
         Self {
-            version: version,
+            version,
             min_version: MIN_VERSION,
             max_version: MAX_VERSION,
-            timestamp: timestamp,
-            nonce: nonce,
-            sender_id: sender_id,
-            recipient_id: recipient_id,
+            timestamp,
+            nonce,
+            sender_id,
+            recipient_id,
         }
     }
 
@@ -139,29 +140,29 @@ impl Envelope {
 
         // Get nonce and sender node id
         let nonce: EnvelopeNonce = data[0x12..0x2A].try_into().map_err(drop)?;
-        let sender_id: [u8; 32] = data[0x2A..0x4A].try_into().map_err(drop)?;
-        let recipient_id: [u8; 32] = data[0x4A..0x6A].try_into().map_err(drop)?;
-        let sender_id_dhtkey = DHTKey::new(sender_id);
-        let recipient_id_dhtkey = DHTKey::new(recipient_id);
+        let sender_id_slice: [u8; 32] = data[0x2A..0x4A].try_into().map_err(drop)?;
+        let recipient_id_slice: [u8; 32] = data[0x4A..0x6A].try_into().map_err(drop)?;
+        let sender_id = DHTKey::new(sender_id_slice);
+        let recipient_id = DHTKey::new(recipient_id_slice);
 
         // Ensure sender_id and recipient_id are not the same
-        if sender_id_dhtkey == recipient_id_dhtkey {
+        if sender_id == recipient_id {
             trace!(
                 "sender_id should not be same as recipient_id: {}",
-                recipient_id_dhtkey.encode()
+                recipient_id.encode()
             );
             return Err(());
         }
 
         // Return envelope
         Ok(Self {
-            version: version,
-            min_version: min_version,
-            max_version: max_version,
-            timestamp: timestamp,
-            nonce: nonce,
-            sender_id: sender_id_dhtkey,
-            recipient_id: recipient_id_dhtkey,
+            version,
+            min_version,
+            max_version,
+            timestamp,
+            nonce,
+            sender_id,
+            recipient_id,
         })
     }
 
@@ -205,8 +206,7 @@ impl Envelope {
         if envelope_size > MAX_ENVELOPE_SIZE {
             return Err(());
         }
-        let mut data: Vec<u8> = Vec::with_capacity(envelope_size);
-        data.resize(envelope_size, 0u8);
+        let mut data = vec![0u8; envelope_size];
 
         // Write magic
         data[0x00..0x04].copy_from_slice(ENVELOPE_MAGIC);

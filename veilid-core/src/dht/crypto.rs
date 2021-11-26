@@ -75,7 +75,7 @@ pub struct Crypto {
 impl Crypto {
     fn new_inner(table_store: TableStore) -> CryptoInner {
         CryptoInner {
-            table_store: table_store,
+            table_store,
             node_id: Default::default(),
             node_id_secret: Default::default(),
             dh_cache: DHCache::default(),
@@ -85,7 +85,7 @@ impl Crypto {
 
     pub fn new(config: VeilidConfig, table_store: TableStore) -> Self {
         Self {
-            config: config,
+            config,
             inner: Arc::new(Mutex::new(Self::new_inner(table_store))),
         }
     }
@@ -106,12 +106,9 @@ impl Crypto {
             None => false,
         };
         if caches_valid {
-            match db.load(0, b"dh_cache").await? {
-                Some(b) => {
-                    bytes_to_cache(&b, &mut inner.dh_cache);
-                }
-                None => (),
-            };
+            if let Some(b) = db.load(0, b"dh_cache").await? {
+                bytes_to_cache(&b, &mut inner.dh_cache);
+            }
         } else {
             drop(db);
             inner.table_store.delete("crypto_caches").await?;
@@ -157,11 +154,9 @@ impl Crypto {
         match self.flush().await {
             Ok(_) => {
                 trace!("finished termination flush");
-                ()
             }
             Err(e) => {
                 error!("failed termination flush: {}", e);
-                ()
             }
         };
     }
@@ -190,13 +185,13 @@ impl Crypto {
             return Ok(c.shared_secret);
         }
 
-        let ss = Self::compute_dh(key, secret)?;
+        let shared_secret = Self::compute_dh(key, secret)?;
         self.inner.lock().dh_cache.insert(DHCacheEntry {
-            key: key.clone(),
-            secret: secret.clone(),
-            shared_secret: ss.clone(),
+            key: *key,
+            secret: *secret,
+            shared_secret,
         });
-        Ok(ss)
+        Ok(shared_secret)
     }
 
     ///////////
@@ -242,8 +237,8 @@ impl Crypto {
         shared_secret: &SharedSecret,
         associated_data: Option<&[u8]>,
     ) -> Result<(), ()> {
-        let key = ch::Key::from(shared_secret.clone());
-        let xnonce = ch::XNonce::from(nonce.clone());
+        let key = ch::Key::from(*shared_secret);
+        let xnonce = ch::XNonce::from(*nonce);
         let aead = ch::XChaCha20Poly1305::new(&key);
         aead.decrypt_in_place(&xnonce, associated_data.unwrap_or(b""), body)
             .map_err(|e| trace!("decryption failure: {}", e))
@@ -266,8 +261,8 @@ impl Crypto {
         shared_secret: &SharedSecret,
         associated_data: Option<&[u8]>,
     ) -> Result<(), ()> {
-        let key = ch::Key::from(shared_secret.clone());
-        let xnonce = ch::XNonce::from(nonce.clone());
+        let key = ch::Key::from(*shared_secret);
+        let xnonce = ch::XNonce::from(*nonce);
         let aead = ch::XChaCha20Poly1305::new(&key);
 
         aead.encrypt_in_place(&xnonce, associated_data.unwrap_or(b""), body)

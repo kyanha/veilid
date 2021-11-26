@@ -62,16 +62,13 @@ macro_rules! byte_array_type {
                 if s == "" {
                     return Ok($name::default());
                 }
-                $name::try_decode(s.as_str()).map_err(|e| serde::de::Error::custom(e))
+                $name::try_decode(s.as_str()).map_err(serde::de::Error::custom)
             }
         }
 
         impl $name {
             pub fn new(bytes: [u8; $size]) -> Self {
-                Self {
-                    bytes: bytes,
-                    valid: true,
-                }
+                Self { bytes, valid: true }
             }
 
             pub fn try_from_vec(v: Vec<u8>) -> Result<Self, String> {
@@ -377,7 +374,7 @@ pub fn sign(
         .sign_prehashed(dig, None)
         .map_err(|_| "Signature failed".to_owned())?;
 
-    let dht_sig = DHTSignature::new(sig.to_bytes().clone());
+    let dht_sig = DHTSignature::new(sig.to_bytes());
     Ok(dht_sig)
 }
 
@@ -410,13 +407,13 @@ pub fn validate_hash(data: &[u8], dht_key: &DHTKey) -> bool {
 
 pub fn validate_key(dht_key: &DHTKey, dht_key_secret: &DHTKeySecret) -> bool {
     let data = vec![0u8; 512];
-    let sig = match sign(&dht_key, &dht_key_secret, &data) {
+    let sig = match sign(dht_key, dht_key_secret, &data) {
         Ok(s) => s,
         Err(_) => {
             return false;
         }
     };
-    verify(&dht_key, &data, &sig).is_ok()
+    verify(dht_key, &data, &sig).is_ok()
 }
 
 pub fn distance(key1: &DHTKey, key2: &DHTKey) -> DHTKeyDistance {
@@ -424,8 +421,8 @@ pub fn distance(key1: &DHTKey, key2: &DHTKey) -> DHTKeyDistance {
     assert!(key2.valid);
     let mut bytes = [0u8; DHT_KEY_LENGTH];
 
-    for n in 0..DHT_KEY_LENGTH {
-        bytes[n] = key1.bytes[n] ^ key2.bytes[n];
+    for (n, byte) in bytes.iter_mut().enumerate() {
+        *byte = key1.bytes[n] ^ key2.bytes[n];
     }
 
     DHTKeyDistance::new(bytes)

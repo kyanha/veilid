@@ -1,3 +1,4 @@
+#![allow(clippy::absurd_extreme_comparisons)]
 use super::envelope::{MAX_VERSION, MIN_VERSION};
 use super::key::*;
 use crate::xx::*;
@@ -50,9 +51,9 @@ impl Receipt {
             return Err("extra data too large for receipt".to_owned());
         }
         Ok(Self {
-            version: version,
-            nonce: nonce,
-            sender_id: sender_id,
+            version,
+            nonce,
+            sender_id,
             extra_data: Vec::from(extra_data.as_ref()),
         })
     }
@@ -94,12 +95,13 @@ impl Receipt {
         }
 
         // Get sender id
-        let sender_id_dhtkey = DHTKey::new(data[0x20..0x40].try_into().map_err(drop)?);
+        let sender_id = DHTKey::new(data[0x20..0x40].try_into().map_err(drop)?);
+
         // Get signature
         let signature = DHTSignature::new(data[(data.len() - 64)..].try_into().map_err(drop)?);
 
         // Validate signature
-        verify(&sender_id_dhtkey, &data[0..(data.len() - 64)], &signature).map_err(drop)?;
+        verify(&sender_id, &data[0..(data.len() - 64)], &signature).map_err(drop)?;
 
         // Get nonce
         let nonce: ReceiptNonce = data[0x08..0x20].try_into().map_err(drop)?;
@@ -109,10 +111,10 @@ impl Receipt {
 
         // Return receipt
         Ok(Self {
-            version: version,
-            nonce: nonce,
-            sender_id: sender_id_dhtkey,
-            extra_data: extra_data,
+            version,
+            nonce,
+            sender_id,
+            extra_data,
         })
     }
 
@@ -127,8 +129,7 @@ impl Receipt {
         if receipt_size > MAX_RECEIPT_SIZE {
             return Err(());
         }
-        let mut data: Vec<u8> = Vec::with_capacity(receipt_size);
-        data.resize(receipt_size, 0u8);
+        let mut data: Vec<u8> = vec![0u8; receipt_size];
 
         // Write magic
         data[0x00..0x04].copy_from_slice(RECEIPT_MAGIC);
@@ -141,7 +142,7 @@ impl Receipt {
         // Write sender node id
         data[0x20..0x40].copy_from_slice(&self.sender_id.bytes);
         // Write extra data
-        if self.extra_data.len() > 0 {
+        if !self.extra_data.is_empty() {
             data[0x40..(receipt_size - 64)].copy_from_slice(self.extra_data.as_slice());
         }
         // Sign the receipt
