@@ -73,9 +73,9 @@ where
 {
     pub fn new(tls: bool, ws_stream: WebSocketStream<T>) -> Self {
         Self {
-            tls: tls,
+            tls,
             inner: Arc::new(AsyncMutex::new(WebSocketNetworkConnectionInner {
-                ws_stream: ws_stream,
+                ws_stream,
             })),
         }
     }
@@ -153,11 +153,11 @@ impl WebsocketProtocolHandler {
         };
 
         let inner = WebsocketProtocolHandlerInner {
-            tls: tls,
-            network_manager: network_manager,
-            local_address: local_address,
+            tls,
+            network_manager,
+            local_address,
             request_path: path.as_bytes().to_vec(),
-            connection_initial_timeout: connection_initial_timeout,
+            connection_initial_timeout,
         };
         Self {
             inner: Arc::new(inner),
@@ -170,8 +170,7 @@ impl WebsocketProtocolHandler {
         socket_addr: SocketAddr,
     ) -> Result<bool, ()> {
         let request_path_len = self.inner.request_path.len() + 2;
-        let mut peekbuf: Vec<u8> = Vec::with_capacity(request_path_len);
-        peekbuf.resize(request_path_len, 0u8);
+        let mut peekbuf: Vec<u8> = vec![0u8; request_path_len];
         match io::timeout(
             Duration::from_micros(self.inner.connection_initial_timeout),
             ps.peek_exact(&mut peekbuf),
@@ -217,7 +216,7 @@ impl WebsocketProtocolHandler {
             protocol_type,
         );
 
-        let conn = NetworkConnection::WSAccepted(WebsocketNetworkConnection::new(
+        let conn = NetworkConnection::WsAccepted(WebsocketNetworkConnection::new(
             self.inner.tls,
             ws_stream,
         ));
@@ -225,7 +224,7 @@ impl WebsocketProtocolHandler {
             .network_manager
             .clone()
             .on_new_connection(
-                ConnectionDescriptor::new(peer_addr, self.inner.local_address.clone()),
+                ConnectionDescriptor::new(peer_addr, self.inner.local_address),
                 conn,
             )
             .await?;
@@ -269,7 +268,7 @@ impl WebsocketProtocolHandler {
             let connector = TlsConnector::default();
             let tls_stream = connector.connect(domain, tcp_stream).await.map_err(drop)?;
             let (ws_stream, _response) = client_async(request, tls_stream).await.map_err(drop)?;
-            let conn = NetworkConnection::WSS(WebsocketNetworkConnection::new(tls, ws_stream));
+            let conn = NetworkConnection::Wss(WebsocketNetworkConnection::new(tls, ws_stream));
             network_manager
                 .on_new_connection(
                     ConnectionDescriptor::new(peer_addr, local_addr),
@@ -279,7 +278,7 @@ impl WebsocketProtocolHandler {
             Ok(conn)
         } else {
             let (ws_stream, _response) = client_async(request, tcp_stream).await.map_err(drop)?;
-            let conn = NetworkConnection::WS(WebsocketNetworkConnection::new(tls, ws_stream));
+            let conn = NetworkConnection::Ws(WebsocketNetworkConnection::new(tls, ws_stream));
             network_manager
                 .on_new_connection(
                     ConnectionDescriptor::new(peer_addr, local_addr),

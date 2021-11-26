@@ -26,9 +26,9 @@ impl DummyNetworkConnection {
 pub enum NetworkConnection {
     Dummy(DummyNetworkConnection),
     RawTcp(tcp::RawTcpNetworkConnection),
-    WSAccepted(ws::WebSocketNetworkConnectionAccepted),
-    WS(ws::WebsocketNetworkConnectionWS),
-    WSS(ws::WebsocketNetworkConnectionWSS),
+    WsAccepted(ws::WebSocketNetworkConnectionAccepted),
+    Ws(ws::WebsocketNetworkConnectionWS),
+    Wss(ws::WebsocketNetworkConnectionWSS),
     //WebRTC(wrtc::WebRTCNetworkConnection),
 }
 
@@ -37,27 +37,27 @@ impl NetworkConnection {
         match self {
             Self::Dummy(d) => d.protocol_type(),
             Self::RawTcp(t) => t.protocol_type(),
-            Self::WSAccepted(w) => w.protocol_type(),
-            Self::WS(w) => w.protocol_type(),
-            Self::WSS(w) => w.protocol_type(),
+            Self::WsAccepted(w) => w.protocol_type(),
+            Self::Ws(w) => w.protocol_type(),
+            Self::Wss(w) => w.protocol_type(),
         }
     }
     pub fn send(&self, message: Vec<u8>) -> SystemPinBoxFuture<Result<(), ()>> {
         match self {
             Self::Dummy(d) => d.send(message),
             Self::RawTcp(t) => t.send(message),
-            Self::WSAccepted(w) => w.send(message),
-            Self::WS(w) => w.send(message),
-            Self::WSS(w) => w.send(message),
+            Self::WsAccepted(w) => w.send(message),
+            Self::Ws(w) => w.send(message),
+            Self::Wss(w) => w.send(message),
         }
     }
     pub fn recv(&self) -> SystemPinBoxFuture<Result<Vec<u8>, ()>> {
         match self {
             Self::Dummy(d) => d.recv(),
             Self::RawTcp(t) => t.recv(),
-            Self::WSAccepted(w) => w.recv(),
-            Self::WS(w) => w.recv(),
-            Self::WSS(w) => w.recv(),
+            Self::WsAccepted(w) => w.recv(),
+            Self::Ws(w) => w.recv(),
+            Self::Wss(w) => w.recv(),
         }
     }
 }
