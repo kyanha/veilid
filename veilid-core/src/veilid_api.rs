@@ -672,6 +672,12 @@ pub struct LatencyStats {
 }
 
 #[derive(Clone, Debug, Default)]
+pub struct TransferStatsDownUp {
+    pub down: TransferStats,
+    pub up: TransferStats,
+}
+
+#[derive(Clone, Debug, Default)]
 pub struct TransferStats {
     pub total: u64,   // total amount transferred ever
     pub maximum: u64, // maximum rate over the ROLLING_TRANSFERS_SIZE last amounts
@@ -696,8 +702,8 @@ pub struct PeerStats {
     pub last_seen: Option<u64>,        // when the peer was last seen for any reason
     pub ping_stats: PingStats,         // information about pings
     pub latency: Option<LatencyStats>, // latencies for communications with the peer
-    pub transfer: (TransferStats, TransferStats), // (download, upload) stats for communications with the peer
-    pub node_info: Option<NodeInfo>,              // last known node info
+    pub transfer: TransferStatsDownUp, // Stats for communications with the peer
+    pub node_info: Option<NodeInfo>,   // Last known node info
 }
 
 cfg_if! {

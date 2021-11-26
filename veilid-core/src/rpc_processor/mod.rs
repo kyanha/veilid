@@ -575,24 +575,32 @@ impl RPCProcessor {
         match &out {
             Err(_) => {
                 self.cancel_op_id_waiter(waitable_reply.op_id);
-                waitable_reply.node_ref.operate(|e| {
-                    if waitable_reply.is_ping {
-                        e.ping_lost(waitable_reply.send_ts);
-                    } else {
-                        e.question_lost(waitable_reply.send_ts);
-                    }
-                });
+                if waitable_reply.is_ping {
+                    self.routing_table()
+                        .ping_lost(waitable_reply.node_ref.clone(), waitable_reply.send_ts);
+                } else {
+                    self.routing_table()
+                        .question_lost(waitable_reply.node_ref.clone(), waitable_reply.send_ts);
+                }
             }
             Ok((rpcreader, _)) => {
                 // Reply received
                 let recv_ts = get_timestamp();
-                waitable_reply.node_ref.operate(|e| {
-                    if waitable_reply.is_ping {
-                        e.pong_rcvd(waitable_reply.send_ts, recv_ts, rpcreader.header.body_len);
-                    } else {
-                        e.answer_rcvd(waitable_reply.send_ts, recv_ts, rpcreader.header.body_len);
-                    }
-                });
+                if waitable_reply.is_ping {
+                    self.routing_table().pong_rcvd(
+                        waitable_reply.node_ref,
+                        waitable_reply.send_ts,
+                        recv_ts,
+                        rpcreader.header.body_len,
+                    )
+                } else {
+                    self.routing_table().answer_rcvd(
+                        waitable_reply.node_ref,
+                        waitable_reply.send_ts,
+                        recv_ts,
+                        rpcreader.header.body_len,
+                    )
+                }
             }
         };
 
@@ -749,13 +757,13 @@ impl RPCProcessor {
 
         // Successfully sent
         let send_ts = get_timestamp();
-        node_ref.operate(|e| {
-            if is_ping {
-                e.ping_sent(send_ts, bytes);
-            } else {
-                e.question_sent(send_ts, bytes);
-            }
-        });
+        if is_ping {
+            self.routing_table()
+                .ping_sent(node_ref.clone(), send_ts, bytes);
+        } else {
+            self.routing_table()
+                .question_sent(node_ref.clone(), send_ts, bytes);
+        }
 
         // Pass back waitable reply completion
         match eventual {
@@ -763,13 +771,13 @@ impl RPCProcessor {
                 // if we don't want an answer, don't wait for one
                 Ok(None)
             }
-            Some(e) => Ok(Some(WaitableReply {
-                op_id: op_id,
-                eventual: e,
-                timeout: timeout,
-                node_ref: node_ref,
-                send_ts: send_ts,
-                is_ping: is_ping,
+            Some(eventual) => Ok(Some(WaitableReply {
+                op_id,
+                eventual,
+                timeout,
+                node_ref,
+                send_ts,
+                is_ping,
             })),
         }
     }
@@ -916,13 +924,11 @@ impl RPCProcessor {
         // Reply successfully sent
         let send_ts = get_timestamp();
 
-        node_ref.operate(|e| {
-            if is_pong {
-                e.pong_sent(send_ts, bytes);
-            } else {
-                e.answer_sent(send_ts, bytes);
-            }
-        });
+        if is_pong {
+            self.routing_table().pong_sent(node_ref, send_ts, bytes);
+        } else {
+            self.routing_table().answer_sent(node_ref, send_ts, bytes);
+        }
 
         Ok(())
     }
@@ -985,16 +991,16 @@ impl RPCProcessor {
         let will_validate_dial_info = self.will_validate_dial_info();
 
         NodeInfo {
-            can_route: can_route,
-            will_route: will_route,
-            can_tunnel: can_tunnel,
-            will_tunnel: will_tunnel,
-            can_signal_lease: can_signal_lease,
-            will_signal_lease: will_signal_lease,
-            can_relay_lease: can_relay_lease,
-            will_relay_lease: will_relay_lease,
-            can_validate_dial_info: can_validate_dial_info,
-            will_validate_dial_info: will_validate_dial_info,
+            can_route,
+            will_route,
+            can_tunnel,
+            will_tunnel,
+            can_signal_lease,
+            will_signal_lease,
+            can_relay_lease,
+            will_relay_lease,
+            can_validate_dial_info,
+            will_validate_dial_info,
         }
     }
 
@@ -1007,9 +1013,7 @@ impl RPCProcessor {
                     None => None,
                     Some(c) => c.remote.to_socket_addr().ok(),
                 });
-        SenderInfo {
-            socket_address: socket_address,
-        }
+        SenderInfo { socket_address }
     }
 
     async fn process_info_q(&self, rpcreader: RPCMessageReader) -> Result<(), RPCError> {
@@ -1329,7 +1333,7 @@ impl RPCProcessor {
         let reader = capnp::message::Reader::new(msg.data, Default::default());
         let rpcreader = RPCMessageReader {
             header: msg.header,
-            reader: reader,
+            reader,
         };
 
         let (which, is_q) = {
@@ -1379,13 +1383,17 @@ impl RPCProcessor {
                 .lookup_node_ref(rpcreader.header.envelope.get_sender_id())
             {
                 if which == 0u32 {
-                    sender_nr.operate(|e| {
-                        e.ping_rcvd(rpcreader.header.timestamp, rpcreader.header.body_len);
-                    });
+                    self.routing_table().ping_rcvd(
+                        sender_nr,
+                        rpcreader.header.timestamp,
+                        rpcreader.header.body_len,
+                    );
                 } else {
-                    sender_nr.operate(|e| {
-                        e.question_rcvd(rpcreader.header.timestamp, rpcreader.header.body_len);
-                    });
+                    self.routing_table().question_rcvd(
+                        sender_nr,
+                        rpcreader.header.timestamp,
+                        rpcreader.header.body_len,
+                    );
                 }
             }
         };
@@ -1508,9 +1516,9 @@ impl RPCProcessor {
         let msg = RPCMessage {
             header: RPCMessageHeader {
                 timestamp: get_timestamp(),
-                envelope: envelope,
+                envelope,
                 body_len: body.len() as u64,
-                peer_noderef: peer_noderef,
+                peer_noderef,
             },
             data: RPCMessageData { contents: body },
         };
@@ -1586,9 +1594,9 @@ impl RPCProcessor {
 
         // Return the answer for anyone who may care
         let out = InfoAnswer {
-            latency: latency,
-            node_info: node_info,
-            sender_info: sender_info,
+            latency,
+            node_info,
+            sender_info,
         };
 
         Ok(out)
@@ -1713,7 +1721,7 @@ impl RPCProcessor {
         let peers_reader = find_node_a
             .get_peers()
             .map_err(map_error_internal!("Missing peers"))?;
-        let mut peers_vec = Vec::<PeerInfo>::with_capacity(
+        let mut peers = Vec::<PeerInfo>::with_capacity(
             peers_reader
                 .len()
                 .try_into()
@@ -1732,13 +1740,10 @@ impl RPCProcessor {
                 }
             }
 
-            peers_vec.push(peer_info);
+            peers.push(peer_info);
         }
 
-        let out = FindNodeAnswer {
-            latency: latency,
-            peers: peers_vec,
-        };
+        let out = FindNodeAnswer { latency, peers };
 
         Ok(out)
     }

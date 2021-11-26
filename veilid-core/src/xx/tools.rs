@@ -99,3 +99,24 @@ where
     }
     None
 }
+
+pub trait CmpAssign {
+    fn min_assign(&mut self, other: Self);
+    fn max_assign(&mut self, other: Self);
+}
+
+impl<T> CmpAssign for T
+where
+    T: core::cmp::Ord,
+{
+    fn min_assign(&mut self, other: Self) {
+        if &other < self {
+            *self = other;
+        }
+    }
+    fn max_assign(&mut self, other: Self) {
+        if &other > self {
+            *self = other;
+        }
+    }
+}

@@ -12,7 +12,6 @@ use xx::*;
 
 ////////////////////////////////////////////////////////////////////////////////////////
 
-const BANDWIDTH_TABLE_SIZE: usize = 10usize;
 const CONNECTION_PROCESSOR_CHANNEL_SIZE: usize = 128usize;
 
 pub const MAX_MESSAGE_SIZE: usize = MAX_ENVELOPE_SIZE;
@@ -32,14 +31,14 @@ pub enum NetworkClass {
 
 impl NetworkClass {
     pub fn inbound_capable(&self) -> bool {
-        match self {
+        matches!(
+            self,
             Self::Server
-            | Self::Mapped
-            | Self::FullNAT
-            | Self::AddressRestrictedNAT
-            | Self::PortRestrictedNAT => true,
-            _ => false,
-        }
+                | Self::Mapped
+                | Self::FullNAT
+                | Self::AddressRestrictedNAT
+                | Self::PortRestrictedNAT
+        )
     }
 }
 
@@ -59,12 +58,6 @@ pub struct NetworkManagerInner {
     routing_table: Option<RoutingTable>,
     components: Option<NetworkComponents>,
     network_class: Option<NetworkClass>,
-    incoming_avg_bandwidth: f32,
-    incoming_max_bandwidth: f32,
-    incoming_bandwidth_table: Vec<f32>,
-    outgoing_avg_bandwidth: f32,
-    outgoing_max_bandwidth: f32,
-    outgoing_bandwidth_table: Vec<f32>,
     connection_processor_jh: Option<JoinHandle<()>>,
     connection_add_channel_tx: Option<utils::channel::Sender<SystemPinBoxFuture<()>>>,
 }
@@ -79,33 +72,20 @@ pub struct NetworkManager {
 
 impl NetworkManager {
     fn new_inner() -> NetworkManagerInner {
-        let mut inner = NetworkManagerInner {
+        NetworkManagerInner {
             routing_table: None,
             components: None,
             network_class: None,
-            incoming_avg_bandwidth: 0.0f32,
-            incoming_max_bandwidth: 0.0f32,
-            incoming_bandwidth_table: Vec::new(),
-            outgoing_avg_bandwidth: 0.0f32,
-            outgoing_max_bandwidth: 0.0f32,
-            outgoing_bandwidth_table: Vec::new(),
             connection_processor_jh: None,
             connection_add_channel_tx: None,
-        };
-        inner
-            .incoming_bandwidth_table
-            .resize(BANDWIDTH_TABLE_SIZE, 0.0f32);
-        inner
-            .outgoing_bandwidth_table
-            .resize(BANDWIDTH_TABLE_SIZE, 0.0f32);
-        inner
+        }
     }
 
     pub fn new(config: VeilidConfig, table_store: TableStore, crypto: Crypto) -> Self {
         Self {
             config: config.clone(),
-            table_store: table_store,
-            crypto: crypto,
+            table_store,
+            crypto,
             inner: Arc::new(Mutex::new(Self::new_inner())),
         }
     }

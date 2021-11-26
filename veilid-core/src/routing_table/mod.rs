@@ -3,12 +3,7 @@ mod bucket_entry;
 mod dial_info_entry;
 mod find_nodes;
 mod node_ref;
-
-use bucket::*;
-pub use bucket_entry::*;
-pub use dial_info_entry::*;
-pub use find_nodes::*;
-pub use node_ref::*;
+mod stats_accounting;
 
 use crate::dht::*;
 use crate::intf::*;
@@ -18,7 +13,13 @@ use crate::xx::*;
 use crate::*;
 use alloc::collections::VecDeque;
 use alloc::str::FromStr;
+use bucket::*;
+pub use bucket_entry::*;
+pub use dial_info_entry::*;
+pub use find_nodes::*;
 use futures_util::stream::{FuturesUnordered, StreamExt};
+pub use node_ref::*;
+pub use stats_accounting::*;
 
 //////////////////////////////////////////////////////////////////////////
 
@@ -42,16 +43,15 @@ struct RoutingTableInner {
     node_id: DHTKey,
     node_id_secret: DHTKeySecret,
     buckets: Vec<Bucket>,
-    //recent_nodes: VecDeque<DHTKey>,
-    //closest_reliable_nodes: Vec<DHTKey>,
-    //fastest_reliable_nodes: Vec<DHTKey>,
-    //closest_nodes: Vec<DHTKey>,
-    //fastest_nodes: Vec<DHTKey>,
     local_dial_info: Vec<DialInfoDetail>,
     public_dial_info: Vec<DialInfoDetail>,
     bucket_entry_count: usize,
     // Waiters
     eventual_changed_dial_info: Eventual,
+    // Transfer stats for this node
+    stats_accounting: StatsAccounting,
+    // latency: Option<LatencyStats>,
+    transfer_stats: TransferStatsDownUp,
 }
 
 struct RoutingTableUnlockedInner {
@@ -72,25 +72,22 @@ pub struct RoutingTable {
 impl RoutingTable {
     fn new_inner(network_manager: NetworkManager) -> RoutingTableInner {
         RoutingTableInner {
-            network_manager: network_manager,
+            network_manager,
             node_id: DHTKey::default(),
             node_id_secret: DHTKeySecret::default(),
             buckets: Vec::new(),
-            //recent_nodes: VecDeque::new(),
-            //closest_reliable_nodes: Vec::new(),
-            //fastest_reliable_nodes: Vec::new(),
-            //closest_nodes: Vec::new(),
-            //fastest_nodes: Vec::new(),
             local_dial_info: Vec::new(),
             public_dial_info: Vec::new(),
             bucket_entry_count: 0,
             eventual_changed_dial_info: Eventual::new(),
+            stats_accounting: StatsAccounting::new(),
+            transfer_stats: TransferStatsDownUp::default(),
         }
     }
     fn new_unlocked_inner(config: VeilidConfig) -> RoutingTableUnlockedInner {
         let c = config.get();
         RoutingTableUnlockedInner {
-            rolling_transfers_task: TickTask::new(bucket_entry::ROLLING_TRANSFERS_INTERVAL_SECS),
+            rolling_transfers_task: TickTask::new(ROLLING_TRANSFERS_INTERVAL_SECS),
             bootstrap_task: TickTask::new(1),
             peer_minimum_refresh_task: TickTask::new_us(c.network.dht.min_peer_refresh_time),
             ping_validator_task: TickTask::new(1),
@@ -155,7 +152,7 @@ impl RoutingTable {
 
     pub fn has_local_dial_info(&self) -> bool {
         let inner = self.inner.lock();
-        inner.local_dial_info.len() > 0
+        !inner.local_dial_info.is_empty()
     }
 
     pub fn local_dial_info(&self) -> Vec<DialInfoDetail> {
@@ -197,14 +194,14 @@ impl RoutingTable {
     }
 
     pub fn register_local_dial_info(&self, dial_info: DialInfo, origin: DialInfoOrigin) {
-        let ts = get_timestamp();
+        let timestamp = get_timestamp();
         let mut inner = self.inner.lock();
 
         inner.local_dial_info.push(DialInfoDetail {
             dial_info: dial_info.clone(),
-            origin: origin,
+            origin,
             network_class: None,
-            timestamp: ts,
+            timestamp,
         });
 
         info!(
@@ -224,7 +221,7 @@ impl RoutingTable {
 
     pub fn has_public_dial_info(&self) -> bool {
         let inner = self.inner.lock();
-        inner.public_dial_info.len() > 0
+        !inner.public_dial_info.is_empty()
     }
 
     pub fn public_dial_info(&self) -> Vec<DialInfoDetail> {
@@ -278,8 +275,8 @@ impl RoutingTable {
 
         inner.public_dial_info.push(DialInfoDetail {
             dial_info: dial_info.clone(),
-            origin: origin,
-            network_class: network_class,
+            origin,
+            network_class,
             timestamp: ts,
         });
 
@@ -466,10 +463,9 @@ impl RoutingTable {
         let mut inner = self.inner.lock();
         let idx = Self::find_bucket_index(&*inner, node_id);
         let bucket = &mut inner.buckets[idx];
-        match bucket.entry_mut(&node_id) {
-            None => None,
-            Some(e) => Some(NodeRef::new(self.clone(), node_id, e)),
-        }
+        bucket
+            .entry_mut(&node_id)
+            .map(|e| NodeRef::new(self.clone(), node_id, e))
     }
 
     // Shortcut function to add a node to our routing table if it doesn't exist
@@ -629,7 +625,7 @@ impl RoutingTable {
             let node_id = ndis.node_id.key;
             bsmap
                 .entry(node_id)
-                .or_insert(Vec::new())
+                .or_insert_with(Vec::new)
                 .push(ndis.dial_info);
         }
 
@@ -697,7 +693,14 @@ impl RoutingTable {
 
     // Compute transfer statistics to determine how 'fast' a node is
     async fn rolling_transfers_task_routine(self, last_ts: u64, cur_ts: u64) -> Result<(), String> {
-        let mut inner = self.inner.lock();
+        let inner = &mut *self.inner.lock();
+
+        // Roll our own node's transfers
+        inner
+            .stats_accounting
+            .roll_transfers(last_ts, cur_ts, &mut inner.transfer_stats);
+
+        // Roll all bucket entry transfers
         for b in &mut inner.buckets {
             b.roll_transfers(last_ts, cur_ts);
         }
@@ -727,5 +730,67 @@ impl RoutingTable {
         self.unlocked_inner.ping_validator_task.tick().await?;
 
         Ok(())
+    }
+
+    //////////////////////////////////////////////////////////////////////
+    // Stats Accounting
+
+    pub fn ping_sent(&self, node_ref: NodeRef, ts: u64, bytes: u64) {
+        self.inner.lock().stats_accounting.add_up(bytes);
+        node_ref.operate(|e| {
+            e.ping_sent(ts, bytes);
+        })
+    }
+    pub fn ping_rcvd(&self, node_ref: NodeRef, ts: u64, bytes: u64) {
+        self.inner.lock().stats_accounting.add_down(bytes);
+        node_ref.operate(|e| {
+            e.ping_rcvd(ts, bytes);
+        })
+    }
+    pub fn pong_sent(&self, node_ref: NodeRef, ts: u64, bytes: u64) {
+        self.inner.lock().stats_accounting.add_up(bytes);
+        node_ref.operate(|e| {
+            e.pong_sent(ts, bytes);
+        })
+    }
+    pub fn pong_rcvd(&self, node_ref: NodeRef, send_ts: u64, recv_ts: u64, bytes: u64) {
+        self.inner.lock().stats_accounting.add_down(bytes);
+        node_ref.operate(|e| {
+            e.pong_rcvd(send_ts, recv_ts, bytes);
+        })
+    }
+    pub fn ping_lost(&self, node_ref: NodeRef, ts: u64) {
+        node_ref.operate(|e| {
+            e.ping_lost(ts);
+        })
+    }
+    pub fn question_sent(&self, node_ref: NodeRef, ts: u64, bytes: u64) {
+        self.inner.lock().stats_accounting.add_up(bytes);
+        node_ref.operate(|e| {
+            e.question_sent(ts, bytes);
+        })
+    }
+    pub fn question_rcvd(&self, node_ref: NodeRef, ts: u64, bytes: u64) {
+        self.inner.lock().stats_accounting.add_down(bytes);
+        node_ref.operate(|e| {
+            e.question_rcvd(ts, bytes);
+        })
+    }
+    pub fn answer_sent(&self, node_ref: NodeRef, ts: u64, bytes: u64) {
+        self.inner.lock().stats_accounting.add_up(bytes);
+        node_ref.operate(|e| {
+            e.answer_sent(ts, bytes);
+        })
+    }
+    pub fn answer_rcvd(&self, node_ref: NodeRef, send_ts: u64, recv_ts: u64, bytes: u64) {
+        self.inner.lock().stats_accounting.add_down(bytes);
+        node_ref.operate(|e| {
+            e.answer_rcvd(send_ts, recv_ts, bytes);
+        })
+    }
+    pub fn question_lost(&self, node_ref: NodeRef, ts: u64) {
+        node_ref.operate(|e| {
+            e.question_lost(ts);
+        })
     }
 }

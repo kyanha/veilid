@@ -1,15 +1,5 @@
 use super::*;
 
-// Latency entry is per round-trip packet (ping or data)
-// - Size is number of entries
-const ROLLING_LATENCIES_SIZE: usize = 10;
-
-// Transfers entries are in bytes total for the interval
-// - Size is number of entries
-// - Interval is number of seconds in each entry
-const ROLLING_TRANSFERS_SIZE: usize = 10;
-pub const ROLLING_TRANSFERS_INTERVAL_SECS: u32 = 10;
-
 // Reliable pings are done with increased spacing between pings
 // - Start secs is the number of seconds between the first two pings
 // - Max secs is the maximum number of seconds between consecutive pings
@@ -42,9 +32,7 @@ pub struct BucketEntry {
     min_max_version: Option<(u8, u8)>,
     last_connection: Option<(ConnectionDescriptor, u64)>,
     dial_info_entries: VecDeque<DialInfoEntry>,
-    rolling_latencies: VecDeque<u64>,
-    rolling_transfers: VecDeque<(u64, u64)>,
-    current_transfer: (u64, u64),
+    stats_accounting: StatsAccounting,
     peer_stats: PeerStats,
 }
 
@@ -55,15 +43,13 @@ impl BucketEntry {
             min_max_version: None,
             last_connection: None,
             dial_info_entries: VecDeque::new(),
-            rolling_latencies: VecDeque::new(),
-            rolling_transfers: VecDeque::new(),
-            current_transfer: (0, 0),
+            stats_accounting: StatsAccounting::new(),
             peer_stats: PeerStats {
                 time_added: get_timestamp(),
                 last_seen: None,
                 ping_stats: PingStats::default(),
                 latency: None,
-                transfer: (TransferStats::default(), TransferStats::default()),
+                transfer: TransferStatsDownUp::default(),
                 node_info: None,
             },
         }
@@ -213,10 +199,7 @@ impl BucketEntry {
     }
 
     pub fn last_connection(&self) -> Option<ConnectionDescriptor> {
-        match self.last_connection.as_ref() {
-            Some(x) => Some(x.0.clone()),
-            None => None,
-        }
+        self.last_connection.as_ref().map(|x| x.0.clone())
     }
 
     pub fn set_min_max_version(&mut self, min_max_version: (u8, u8)) {
@@ -248,71 +231,13 @@ impl BucketEntry {
     ///// stats methods
     // called every ROLLING_TRANSFERS_INTERVAL_SECS seconds
     pub(super) fn roll_transfers(&mut self, last_ts: u64, cur_ts: u64) {
-        let dur_ms = (cur_ts - last_ts) / 1000u64;
-        while self.rolling_transfers.len() >= ROLLING_TRANSFERS_SIZE {
-            self.rolling_transfers.pop_front();
-        }
-        self.rolling_transfers.push_back(self.current_transfer);
-        self.current_transfer = (0, 0);
-
-        let xd = &mut self.peer_stats.transfer.0;
-        let xu = &mut self.peer_stats.transfer.1;
-
-        xd.maximum = 0;
-        xu.maximum = 0;
-        xd.minimum = u64::MAX;
-        xu.minimum = u64::MAX;
-        xd.average = 0;
-        xu.average = 0;
-        for (rtd, rtu) in &self.rolling_transfers {
-            let bpsd = rtd * 1000u64 / dur_ms;
-            let bpsu = rtu * 1000u64 / dur_ms;
-            if bpsd > xd.maximum {
-                xd.maximum = bpsd;
-            }
-            if bpsu > xu.maximum {
-                xu.maximum = bpsu;
-            }
-            if bpsd < xd.minimum {
-                xd.minimum = bpsd;
-            }
-            if bpsu < xu.minimum {
-                xu.minimum = bpsu;
-            }
-            xd.average += bpsd;
-            xu.average += bpsu;
-        }
-        let len = self.rolling_transfers.len() as u64;
-        xd.average /= len;
-        xu.average /= len;
-        // total remains unchanged
+        self.stats_accounting
+            .roll_transfers(last_ts, cur_ts, &mut self.peer_stats.transfer);
     }
 
     // Called for every round trip packet we receive
     fn record_latency(&mut self, latency: u64) {
-        while self.rolling_latencies.len() >= ROLLING_LATENCIES_SIZE {
-            self.rolling_latencies.pop_front();
-        }
-        self.rolling_latencies.push_back(latency);
-
-        let mut ls = LatencyStats {
-            fastest: 0,
-            average: 0,
-            slowest: 0,
-        };
-        for rl in &self.rolling_latencies {
-            if *rl < ls.fastest {
-                ls.fastest = *rl;
-            }
-            if *rl > ls.slowest {
-                ls.slowest = *rl;
-            }
-            ls.average += *rl;
-        }
-        let len = self.rolling_latencies.len() as u64;
-        ls.average /= len;
-
-        self.peer_stats.latency = Some(ls);
+        self.peer_stats.latency = Some(self.stats_accounting.record_latency(latency));
     }
 
     ///// state machine handling
@@ -381,23 +306,23 @@ impl BucketEntry {
     }
 
     ////////////////////////////////////////////////////////////////
-    /// Called by RPC processor as events happen
+    /// Called when rpc processor things happen
 
-    pub fn ping_sent(&mut self, ts: u64, bytes: u64) {
+    pub(super) fn ping_sent(&mut self, ts: u64, bytes: u64) {
         self.peer_stats.ping_stats.total_sent += 1;
-        self.current_transfer.1 += bytes;
+        self.stats_accounting.add_up(bytes);
         self.peer_stats.ping_stats.in_flight += 1;
         self.peer_stats.ping_stats.last_pinged = Some(ts);
     }
-    pub fn ping_rcvd(&mut self, ts: u64, bytes: u64) {
-        self.current_transfer.0 += bytes;
+    pub(super) fn ping_rcvd(&mut self, ts: u64, bytes: u64) {
+        self.stats_accounting.add_down(bytes);
         self.touch_last_seen(ts);
     }
-    pub fn pong_sent(&mut self, _ts: u64, bytes: u64) {
-        self.current_transfer.1 += bytes;
+    pub(super) fn pong_sent(&mut self, _ts: u64, bytes: u64) {
+        self.stats_accounting.add_up(bytes);
     }
-    pub fn pong_rcvd(&mut self, send_ts: u64, recv_ts: u64, bytes: u64) {
-        self.current_transfer.0 += bytes;
+    pub(super) fn pong_rcvd(&mut self, send_ts: u64, recv_ts: u64, bytes: u64) {
+        self.stats_accounting.add_down(bytes);
         self.peer_stats.ping_stats.in_flight -= 1;
         self.peer_stats.ping_stats.total_returned += 1;
         self.peer_stats.ping_stats.consecutive_pongs += 1;
@@ -412,28 +337,28 @@ impl BucketEntry {
         self.record_latency(recv_ts - send_ts);
         self.touch_last_seen(recv_ts);
     }
-    pub fn ping_lost(&mut self, _ts: u64) {
+    pub(super) fn ping_lost(&mut self, _ts: u64) {
         self.peer_stats.ping_stats.in_flight -= 1;
         self.peer_stats.ping_stats.recent_lost_pings += 1;
         self.peer_stats.ping_stats.consecutive_pongs = 0;
         self.peer_stats.ping_stats.first_consecutive_pong_time = None;
     }
-    pub fn question_sent(&mut self, _ts: u64, bytes: u64) {
-        self.current_transfer.1 += bytes;
+    pub(super) fn question_sent(&mut self, _ts: u64, bytes: u64) {
+        self.stats_accounting.add_up(bytes);
     }
-    pub fn question_rcvd(&mut self, ts: u64, bytes: u64) {
-        self.current_transfer.0 += bytes;
+    pub(super) fn question_rcvd(&mut self, ts: u64, bytes: u64) {
+        self.stats_accounting.add_down(bytes);
         self.touch_last_seen(ts);
     }
-    pub fn answer_sent(&mut self, _ts: u64, bytes: u64) {
-        self.current_transfer.1 += bytes;
+    pub(super) fn answer_sent(&mut self, _ts: u64, bytes: u64) {
+        self.stats_accounting.add_up(bytes);
     }
-    pub fn answer_rcvd(&mut self, send_ts: u64, recv_ts: u64, bytes: u64) {
-        self.current_transfer.0 += bytes;
+    pub(super) fn answer_rcvd(&mut self, send_ts: u64, recv_ts: u64, bytes: u64) {
+        self.stats_accounting.add_down(bytes);
         self.record_latency(recv_ts - send_ts);
         self.touch_last_seen(recv_ts);
     }
-    pub fn question_lost(&mut self, _ts: u64) {
+    pub(super) fn question_lost(&mut self, _ts: u64) {
         self.peer_stats.ping_stats.consecutive_pongs = 0;
         self.peer_stats.ping_stats.first_consecutive_pong_time = None;
     }
