@@ -186,8 +186,6 @@ impl BucketEntry {
                 die.dial_info(),
                 &self.last_connection.as_ref().unwrap().0.remote,
             ) {
-                drop(die);
-
                 // push the most recent dialinfo to the front
                 let dies = &mut self.dial_info_entries;
                 let die = dies.remove(i).unwrap();

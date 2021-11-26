@@ -12,7 +12,7 @@ impl NodeRef {
     pub fn new(routing_table: RoutingTable, key: DHTKey, entry: &mut BucketEntry) -> Self {
         entry.ref_count += 1;
         Self {
-            routing_table: routing_table,
+            routing_table,
             node_id: key,
             protocol_address_type: None,
         }
@@ -25,7 +25,7 @@ impl NodeRef {
     ) -> Self {
         entry.ref_count += 1;
         Self {
-            routing_table: routing_table,
+            routing_table,
             node_id: key,
             protocol_address_type: Some(protocol_address_type),
         }
@@ -86,7 +86,7 @@ impl Clone for NodeRef {
         });
         Self {
             routing_table: self.routing_table.clone(),
-            node_id: self.node_id.clone(),
+            node_id: self.node_id,
             protocol_address_type: self.protocol_address_type,
         }
     }

@@ -8,7 +8,7 @@ pub struct Bucket {
 }
 pub(super) type EntriesIterMut<'a> =
     alloc::collections::btree_map::IterMut<'a, DHTKey, BucketEntry>;
-pub(super) type EntriesIter<'a> = alloc::collections::btree_map::Iter<'a, DHTKey, BucketEntry>;
+//pub(super) type EntriesIter<'a> = alloc::collections::btree_map::Iter<'a, DHTKey, BucketEntry>;
 
 fn state_ordering(state: BucketEntryState) -> usize {
     match state {
@@ -21,7 +21,7 @@ fn state_ordering(state: BucketEntryState) -> usize {
 impl Bucket {
     pub fn new(routing_table: RoutingTable) -> Self {
         Self {
-            routing_table: routing_table,
+            routing_table,
             entries: BTreeMap::new(),
             newest_entry: None,
         }
@@ -61,9 +61,9 @@ impl Bucket {
         self.entries.get_mut(key)
     }
 
-    pub(super) fn entries(&self) -> EntriesIter {
-        self.entries.iter()
-    }
+    // pub(super) fn entries(&self) -> EntriesIter {
+    //     self.entries.iter()
+    // }
 
     pub(super) fn entries_mut(&mut self) -> EntriesIterMut {
         self.entries.iter_mut()
@@ -103,28 +103,28 @@ impl Bucket {
         );
 
         self.newest_entry = None;
-        for i in 0..sorted_entries.len() {
+        for entry in sorted_entries {
             // If we're not evicting more entries, exit, noting this may be the newest entry
             if extra_entries == 0 {
                 // The first 'live' entry we find is our newest entry
                 if self.newest_entry.is_none() {
-                    self.newest_entry = Some(sorted_entries[i].0.clone());
+                    self.newest_entry = Some(*entry.0);
                 }
                 break;
             }
             extra_entries -= 1;
 
             // if this entry has references we can't drop it yet
-            if sorted_entries[i].1.ref_count > 0 {
+            if entry.1.ref_count > 0 {
                 // The first 'live' entry we fine is our newest entry
                 if self.newest_entry.is_none() {
-                    self.newest_entry = Some(sorted_entries[i].0.clone());
+                    self.newest_entry = Some(*entry.0);
                 }
                 continue;
             }
 
             // if no references, lets evict it
-            dead_node_ids.insert(sorted_entries[i].0.clone());
+            dead_node_ids.insert(*entry.0);
         }
 
         // Now purge the dead node ids
@@ -133,7 +133,7 @@ impl Bucket {
             self.remove_entry(id);
         }
 
-        if dead_node_ids.len() > 0 {
+        if !dead_node_ids.is_empty() {
             Some(dead_node_ids)
         } else {
             None

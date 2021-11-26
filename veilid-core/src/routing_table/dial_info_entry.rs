@@ -8,12 +8,11 @@ pub struct DialInfoEntry {
 
 impl DialInfoEntry {
     pub fn try_new(dial_info: DialInfo) -> Result<Self, String> {
-        let addr = match dial_info.resolve() {
-            Ok(a) => a,
-            Err(_) => return Err("failed to resolve address".to_owned()),
-        };
+        let addr = dial_info
+            .resolve()
+            .map_err(|e| format!("failed to resolve address: {:?}", e))?;
         Ok(Self {
-            dial_info: dial_info,
+            dial_info,
             resolved_address: addr,
         })
     }

@@ -1,7 +1,6 @@
 use crate::intf::*;
 use crate::xx::*;
 use serde::{Deserialize, Serialize};
-use serde_cbor;
 
 cfg_if! {
     if #[cfg(target_arch = "wasm32")] {
@@ -32,20 +31,17 @@ impl TableDB {
     pub fn new(table: String, table_store: TableStore, database: Database) -> Self {
         Self {
             inner: Arc::new(Mutex::new(TableDBInner {
-                table: table,
+                table,
                 table_store: table_store.clone(),
-                database: database,
+                database,
             })),
         }
     }
 
     pub fn try_new_from_weak_inner(weak_inner: Weak<Mutex<TableDBInner>>) -> Option<Self> {
-        match weak_inner.upgrade() {
-            Some(table_db_inner) => Some(Self {
-                inner: table_db_inner,
-            }),
-            None => None,
-        }
+        weak_inner.upgrade().map(|table_db_inner| Self {
+            inner: table_db_inner,
+        })
     }
 
     pub fn weak_inner(&self) -> Weak<Mutex<TableDBInner>> {

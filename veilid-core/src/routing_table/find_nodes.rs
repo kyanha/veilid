@@ -5,6 +5,8 @@ use crate::intf::*;
 use crate::xx::*;
 use crate::*;
 
+pub type FilterType = Box<dyn Fn(&(&DHTKey, Option<&mut BucketEntry>)) -> bool>;
+
 impl RoutingTable {
     // Retrieve the fastest nodes in the routing table with a particular kind of protocol address type
     // Returns noderefs are are scoped to that address type only
@@ -109,7 +111,7 @@ impl RoutingTable {
         let mut nodes =
             Vec::<(&DHTKey, Option<&mut BucketEntry>)>::with_capacity(inner.bucket_entry_count + 1);
         // add our own node (only one of there with the None entry)
-        let self_node_id = inner.node_id.clone();
+        let self_node_id = inner.node_id;
         let selfkv = (&self_node_id, None);
         if filter(&selfkv) {
             nodes.push(selfkv);
@@ -134,19 +136,15 @@ impl RoutingTable {
         // return transformed vector for filtered+sorted nodes
         let cnt = usize::min(node_count, nodes.len());
         let mut out = Vec::<O>::with_capacity(cnt);
-        for i in 0..cnt {
-            let val = transform(&mut nodes[i]);
+        for mut node in nodes {
+            let val = transform(&mut node);
             out.push(val);
         }
 
         out
     }
 
-    pub fn find_fastest_nodes<T, O>(
-        &self,
-        filter: Option<Box<dyn Fn(&(&DHTKey, Option<&mut BucketEntry>)) -> bool>>,
-        transform: T,
-    ) -> Vec<O>
+    pub fn find_fastest_nodes<T, O>(&self, filter: Option<FilterType>, transform: T) -> Vec<O>
     where
         T: Fn(&mut (&DHTKey, Option<&mut BucketEntry>)) -> O,
     {
@@ -162,12 +160,12 @@ impl RoutingTable {
             |kv| {
                 if kv.1.is_none() {
                     // filter out self peer, as it is irrelevant to the 'fastest nodes' search
-                    false
-                } else if filter.is_some() && !filter.as_ref().unwrap()(kv) {
-                    false
-                } else {
-                    true
+                    return false;
                 }
+                if filter.is_some() && !filter.as_ref().unwrap()(kv) {
+                    return false;
+                }
+                true
             },
             // sort
             |(a_key, a_entry), (b_key, b_entry)| {
@@ -224,7 +222,7 @@ impl RoutingTable {
     pub fn find_closest_nodes<T, O>(
         &self,
         node_id: DHTKey,
-        filter: Option<Box<dyn Fn(&(&DHTKey, Option<&mut BucketEntry>)) -> bool>>,
+        filter: Option<FilterType>,
         transform: T,
     ) -> Vec<O>
     where
@@ -242,12 +240,12 @@ impl RoutingTable {
             |kv| {
                 if kv.1.is_none() {
                     // include self peer, as it is relevant to the 'closest nodes' search
-                    true
-                } else if filter.is_some() && !filter.as_ref().unwrap()(kv) {
-                    false
-                } else {
-                    true
+                    return true;
                 }
+                if filter.is_some() && !filter.as_ref().unwrap()(kv) {
+                    return false;
+                }
+                true
             },
             // sort
             |(a_key, a_entry), (b_key, b_entry)| {
