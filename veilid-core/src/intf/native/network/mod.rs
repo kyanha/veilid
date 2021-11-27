@@ -71,7 +71,7 @@ impl Network {
     fn new_inner(network_manager: NetworkManager) -> NetworkInner {
         NetworkInner {
             routing_table: network_manager.routing_table(),
-            network_manager: network_manager,
+            network_manager,
             network_needs_restart: false,
             udp_listen: false,
             udp_static_public_dialinfo: false,
@@ -131,28 +131,22 @@ impl Network {
     fn load_certs(path: &Path) -> io::Result<Vec<Certificate>> {
         let cvec = certs(&mut BufReader::new(File::open(path)?))
             .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "invalid TLS certificate"))?;
-        Ok(cvec.into_iter().map(|c| Certificate(c)).collect())
+        Ok(cvec.into_iter().map(Certificate).collect())
     }
 
     fn load_keys(path: &Path) -> io::Result<Vec<PrivateKey>> {
         {
-            match rsa_private_keys(&mut BufReader::new(File::open(path)?)) {
-                Ok(v) => {
-                    if v.len() > 0 {
-                        return Ok(v.into_iter().map(|x| PrivateKey(x)).collect());
-                    }
+            if let Ok(v) = rsa_private_keys(&mut BufReader::new(File::open(path)?)) {
+                if !v.is_empty() {
+                    return Ok(v.into_iter().map(PrivateKey).collect());
                 }
-                Err(_) => (),
             }
         }
         {
-            match pkcs8_private_keys(&mut BufReader::new(File::open(path)?)) {
-                Ok(v) => {
-                    if v.len() > 0 {
-                        return Ok(v.into_iter().map(|x| PrivateKey(x)).collect());
-                    }
+            if let Ok(v) = pkcs8_private_keys(&mut BufReader::new(File::open(path)?)) {
+                if !v.is_empty() {
+                    return Ok(v.into_iter().map(PrivateKey).collect());
                 }
-                Err(_) => (),
             }
         }
 
@@ -171,7 +165,7 @@ impl Network {
         );
         let certs = Self::load_certs(&PathBuf::from(&c.network.tls.certificate_path))?;
         trace!("loaded {} certificates", certs.len());
-        if certs.len() == 0 {
+        if certs.is_empty() {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, format!("Certificates at {} could not be loaded.\nEnsure it is in PEM format, beginning with '-----BEGIN CERTIFICATE-----'",c.network.tls.certificate_path)));
         }
         //
@@ -181,7 +175,7 @@ impl Network {
         );
         let mut keys = Self::load_keys(&PathBuf::from(&c.network.tls.private_key_path))?;
         trace!("loaded {} keys", keys.len());
-        if keys.len() == 0 {
+        if keys.is_empty() {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, format!("Private key at {} could not be loaded.\nEnsure it is unencrypted and in RSA or PKCS8 format, beginning with '-----BEGIN RSA PRIVATE KEY-----' or '-----BEGIN PRIVATE KEY-----'",c.network.tls.private_key_path)));
         }
 
@@ -222,7 +216,7 @@ impl Network {
         tls_acceptor: &TlsAcceptor,
         stream: AsyncPeekStream,
         addr: SocketAddr,
-        protocol_handlers: &Vec<Box<dyn TcpProtocolHandler>>,
+        protocol_handlers: &[Box<dyn TcpProtocolHandler>],
         tls_connection_initial_timeout: u64,
     ) {
         match tls_acceptor.accept(stream).await {
@@ -243,9 +237,7 @@ impl Network {
                     Ok(()) => (),
                     Err(_) => return,
                 }
-                self.clone()
-                    .try_handlers(ps, addr, &protocol_handlers)
-                    .await;
+                self.clone().try_handlers(ps, addr, protocol_handlers).await;
             }
             Err(e) => {
                 debug!("TLS stream failed handshake: {}", e);
@@ -257,7 +249,7 @@ impl Network {
         &self,
         stream: AsyncPeekStream,
         addr: SocketAddr,
-        protocol_handlers: &Vec<Box<dyn TcpProtocolHandler>>,
+        protocol_handlers: &[Box<dyn TcpProtocolHandler>],
     ) {
         for ah in protocol_handlers.iter() {
             if ah.on_accept(stream.clone(), addr).await == Ok(true) {
@@ -359,11 +351,12 @@ impl Network {
 
                     // read a chunk of the stream
                     trace!("reading chunk");
-                    if let Err(_) = io::timeout(
+                    if io::timeout(
                         Duration::from_micros(connection_initial_timeout),
                         ps.peek_exact(&mut first_packet),
                     )
                     .await
+                    .is_err()
                     {
                         // If we fail to get a packet within the connection initial timeout
                         // then we punt this connection
@@ -380,7 +373,7 @@ impl Network {
                             .try_tls_handlers(
                                 ls.tls_acceptor.as_ref().unwrap(),
                                 ps,
-                                addr.clone(),
+                                addr,
                                 &ls.tls_protocol_handlers,
                                 tls_connection_initial_timeout,
                             )
@@ -388,7 +381,7 @@ impl Network {
                     } else {
                         trace!("not TLS");
                         this.clone()
-                            .try_handlers(ps, addr.clone(), &ls.protocol_handlers)
+                            .try_handlers(ps, addr, &ls.protocol_handlers)
                             .await;
                     }
                 })
@@ -424,13 +417,13 @@ impl Network {
             .to_socket_addrs()
             .await
             .map_err(|e| format!("Unable to resolve address: {}\n{}", address, e))?;
-        while let Some(addr) = sockaddrs.next() {
+        for addr in &mut sockaddrs {
             let ldi_addrs = Self::translate_unspecified_address(&*(self.inner.lock()), &addr);
 
             // see if we've already bound to this already
             // if not, spawn a listener
             if !self.inner.lock().listener_states.contains_key(&addr) {
-                self.clone().spawn_socket_listener(addr.clone()).await?;
+                self.clone().spawn_socket_listener(addr).await?;
             }
 
             let ls = if let Some(ls) = self.inner.lock().listener_states.get_mut(&addr) {
@@ -448,13 +441,13 @@ impl Network {
                     .push(new_tcp_protocol_handler(
                         self.inner.lock().network_manager.clone(),
                         true,
-                        addr.clone(),
+                        addr,
                     ));
             } else {
                 ls.write().protocol_handlers.push(new_tcp_protocol_handler(
                     self.inner.lock().network_manager.clone(),
                     false,
-                    addr.clone(),
+                    addr,
                 ));
             }
 
@@ -540,7 +533,7 @@ impl Network {
 
                     let _processed = protocol_handler
                         .clone()
-                        .on_message(&data[..size], socket_addr.clone())
+                        .on_message(&data[..size], socket_addr)
                         .await;
                 }
                 trace!("UDP listener task stopped");
@@ -558,7 +551,7 @@ impl Network {
 
     fn translate_unspecified_address(inner: &NetworkInner, from: &SocketAddr) -> Vec<SocketAddr> {
         if !from.ip().is_unspecified() {
-            vec![from.clone()]
+            vec![*from]
         } else {
             let mut out = Vec::<SocketAddr>::with_capacity(inner.interfaces.len());
             for (_, intf) in inner.interfaces.iter() {
@@ -583,7 +576,7 @@ impl Network {
             .to_socket_addrs()
             .await
             .map_err(|e| format!("Unable to resolve address: {}\n{}", address, e))?;
-        while let Some(addr) = sockaddrs.next() {
+        for addr in &mut sockaddrs {
             // see if we've already bound to this already
             // if not, spawn a listener
             if !self.inner.lock().udp_protocol_handlers.contains_key(&addr) {
@@ -610,7 +603,7 @@ impl Network {
         listen_socket_addr: &SocketAddr,
         peer_socket_addr: &SocketAddr,
     ) -> bool {
-        let ldi_addrs = Self::translate_unspecified_address(inner, &listen_socket_addr);
+        let ldi_addrs = Self::translate_unspecified_address(inner, listen_socket_addr);
         // xxx POSSIBLE CONCERN (verify this?)
         // xxx will need to be reworked to search routing table information if we
         // xxx allow systems to be dual homed with multiple interfaces eventually
@@ -633,7 +626,7 @@ impl Network {
     ) -> Option<RawUdpProtocolHandler> {
         // if our last communication with this peer came from a particular udp protocol handler, use it
         if let Some(sa) = local_socket_addr {
-            if let Some(ph) = self.inner.lock().udp_protocol_handlers.get(&sa) {
+            if let Some(ph) = self.inner.lock().udp_protocol_handlers.get(sa) {
                 return Some(ph.clone());
             }
         }
@@ -690,7 +683,7 @@ impl Network {
                 let network_manager = self.inner.lock().network_manager.clone();
                 if let Some(entry) = network_manager
                     .connection_table()
-                    .get_connection(&descriptor)
+                    .get_connection(descriptor)
                 {
                     // connection exists, send over it
                     entry
@@ -839,7 +832,7 @@ impl Network {
                 .map_err(|e| format!("Unable to resolve address: {}\n{}", public_address, e))?;
 
             // Add all resolved addresses as public dialinfo
-            while let Some(pdi_addr) = public_sockaddrs.next() {
+            for pdi_addr in &mut public_sockaddrs {
                 routing_table.register_public_dial_info(
                     DialInfo::udp_from_socketaddr(pdi_addr),
                     Some(NetworkClass::Server),
@@ -896,7 +889,7 @@ impl Network {
 
         // Add static public dialinfo if it's configured
         if let Some(public_address) = public_address.as_ref() {
-            let (public_fqdn, public_port) = split_port(&public_address).map_err(|_| {
+            let (public_fqdn, public_port) = split_port(public_address).map_err(|_| {
                 "invalid WS public address, port not specified correctly".to_owned()
             })?;
 
@@ -948,7 +941,7 @@ impl Network {
 
         // Add static public dialinfo if it's configured
         if let Some(public_address) = public_address.as_ref() {
-            let (public_fqdn, public_port) = split_port(&public_address).map_err(|_| {
+            let (public_fqdn, public_port) = split_port(public_address).map_err(|_| {
                 "invalid WSS public address, port not specified correctly".to_owned()
             })?;
 
@@ -1005,7 +998,7 @@ impl Network {
                 .map_err(|e| format!("Unable to resolve address: {}\n{}", public_address, e))?;
 
             // Add all resolved addresses as public dialinfo
-            while let Some(pdi_addr) = public_sockaddrs.next() {
+            for pdi_addr in &mut public_sockaddrs {
                 routing_table.register_public_dial_info(
                     DialInfo::tcp_from_socketaddr(pdi_addr),
                     None,
@@ -1144,8 +1137,7 @@ impl Network {
         {
             let need_udpv4_dialinfo = routing_table
                 .public_dial_info_for_protocol_address_type(ProtocolAddressType::UDPv4)
-                .len()
-                == 0;
+                .is_empty();
             if need_udpv4_dialinfo {
                 // If we have no public UDPv4 dialinfo, then we need to run a NAT check
                 // ensure the singlefuture is running for this
@@ -1163,9 +1155,7 @@ impl Network {
         {
             let need_tcpv4_dialinfo = routing_table
                 .public_dial_info_for_protocol_address_type(ProtocolAddressType::TCPv4)
-                .len()
-                == 0;
-
+                .is_empty();
             if need_tcpv4_dialinfo {
                 // If we have no public TCPv4 dialinfo, then we need to run a NAT check
                 // ensure the singlefuture is running for this

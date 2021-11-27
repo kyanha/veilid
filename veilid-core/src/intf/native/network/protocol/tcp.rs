@@ -34,7 +34,7 @@ impl Eq for RawTcpNetworkConnection {}
 
 impl RawTcpNetworkConnection {
     fn new_inner(stream: AsyncPeekStream) -> RawTcpNetworkConnectionInner {
-        RawTcpNetworkConnectionInner { stream: stream }
+        RawTcpNetworkConnectionInner { stream }
     }
 
     pub fn new(stream: AsyncPeekStream) -> Self {
@@ -81,8 +81,7 @@ impl RawTcpNetworkConnection {
                 return Err(());
             }
 
-            let mut out: Vec<u8> = Vec::with_capacity(len);
-            out.resize(len, 0u8);
+            let mut out: Vec<u8> = vec![0u8; len];
             inner.stream.read_exact(&mut out).await.map_err(drop)?;
             Ok(out)
         })
@@ -111,8 +110,8 @@ impl RawTcpProtocolHandler {
         local_address: SocketAddr,
     ) -> RawTcpProtocolHandlerInner {
         RawTcpProtocolHandlerInner {
-            network_manager: network_manager,
-            local_address: local_address,
+            network_manager,
+            local_address,
         }
     }
 
@@ -139,7 +138,7 @@ impl RawTcpProtocolHandler {
         );
         let (network_manager, local_address) = {
             let inner = self.inner.lock();
-            (inner.network_manager.clone(), inner.local_address.clone())
+            (inner.network_manager.clone(), inner.local_address)
         };
         network_manager
             .on_new_connection(ConnectionDescriptor::new(peer_addr, local_address), conn)
@@ -189,7 +188,7 @@ impl RawTcpProtocolHandler {
         let ts = TcpStream::from(std_stream);
 
         // See what local address we ended up with and turn this into a stream
-        let local_address = ts.local_addr().map_err(drop)?.clone();
+        let local_address = ts.local_addr().map_err(drop)?;
         let ps = AsyncPeekStream::new(ts);
         let peer_addr = PeerAddress::new(
             Address::from_socket_addr(remote_socket_addr),

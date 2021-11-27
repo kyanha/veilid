@@ -2,7 +2,7 @@ use cfg_if::*;
 use keyring::{Keyring, KeyringError};
 
 fn keyring_name(namespace: &str) -> String {
-    if namespace.len() == 0 {
+    if namespace.is_empty() {
         "veilid".to_owned()
     } else {
         format!("veilid_{}", namespace)

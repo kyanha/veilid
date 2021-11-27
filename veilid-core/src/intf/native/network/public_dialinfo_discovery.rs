@@ -30,7 +30,7 @@ impl Network {
     ) -> Result<(SocketAddr, NodeRef), String> {
         let routing_table = self.routing_table();
         let peers = routing_table.get_fast_nodes_of_type(protocol_address_type);
-        if peers.len() == 0 {
+        if peers.is_empty() {
             return Err(format!("no peers of type '{:?}'", protocol_address_type));
         }
         for peer in peers {
@@ -98,8 +98,8 @@ impl Network {
 
     async fn try_port_mapping(
         &self,
-        local_addr: SocketAddr,
-        protocol_address_type: ProtocolAddressType,
+        _local_addr: SocketAddr,
+        _protocol_address_type: ProtocolAddressType,
     ) -> Option<SocketAddr> {
         //xxx
         None
@@ -150,7 +150,7 @@ impl Network {
                 // There is -some NAT-
                 // Attempt a UDP port mapping via all available and enabled mechanisms
                 if let Some(external_mapped) = self
-                    .try_port_mapping(local1.clone(), ProtocolAddressType::UDPv4)
+                    .try_port_mapping(local1, ProtocolAddressType::UDPv4)
                     .await
                 {
                     // Got a port mapping, let's use it
@@ -248,7 +248,7 @@ impl Network {
         Ok(())
     }
 
-    pub async fn update_tcpv4_dialinfo_task_routine(self, l: u64, t: u64) -> Result<(), String> {
+    pub async fn update_tcpv4_dialinfo_task_routine(self, _l: u64, _t: u64) -> Result<(), String> {
         trace!("looking for tcpv4 public dial info");
         // xxx
         //Err("unimplemented".to_owned())

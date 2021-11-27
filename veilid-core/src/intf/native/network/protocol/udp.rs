@@ -19,8 +19,8 @@ impl RawUdpProtocolHandler {
         socket: Arc<UdpSocket>,
     ) -> RawUdpProtocolHandlerInner {
         RawUdpProtocolHandlerInner {
-            network_manager: network_manager,
-            socket: socket,
+            network_manager,
+            socket,
         }
     }
 

@@ -17,7 +17,7 @@ pub struct TableStore {
 impl TableStore {
     fn new_inner(config: VeilidConfig) -> TableStoreInner {
         TableStoreInner {
-            config: config,
+            config,
             opened: BTreeMap::new(),
         }
     }
@@ -33,18 +33,15 @@ impl TableStore {
 
     pub async fn terminate(&self) {
         assert!(
-            self.inner.lock().opened.len() == 0,
+            self.inner.lock().opened.is_empty(),
             "all open databases should have been closed"
         );
     }
 
     pub fn on_table_db_drop(&self, table: String) {
         let mut inner = self.inner.lock();
-        match inner.opened.remove(&table) {
-            Some(_) => (),
-            None => {
-                assert!(false, "should have removed an item");
-            }
+        if inner.opened.remove(&table).is_none() {
+            unreachable!("should have removed an item");
         }
     }
 
@@ -73,8 +70,8 @@ impl TableStore {
         }
         let c = inner.config.get();
         let namespace = c.namespace.clone();
-        Ok(if namespace.len() == 0 {
-            format!("{}", table)
+        Ok(if namespace.is_empty() {
+            table.to_string()
         } else {
             format!("_ns_{}_{}", namespace, table)
         })

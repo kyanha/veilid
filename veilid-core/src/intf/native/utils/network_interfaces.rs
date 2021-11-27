@@ -15,8 +15,8 @@ pub struct NetworkInterface {
 impl NetworkInterface {
     pub fn new(name: String, is_loopback: bool) -> Self {
         Self {
-            name: name,
-            is_loopback: is_loopback,
+            name,
+            is_loopback,
             addrs: Vec::new(),
         }
     }
@@ -28,19 +28,17 @@ impl NetworkInterface {
     }
     pub fn primary_ipv4(&self) -> Option<Ipv4Addr> {
         for x in self.addrs.iter() {
-            match x {
-                IfAddr::V4(a) => return Some(a.ip.clone()),
-                _ => (),
-            };
+            if let IfAddr::V4(a) = x {
+                return Some(a.ip);
+            }
         }
         None
     }
     pub fn primary_ipv6(&self) -> Option<Ipv6Addr> {
         for x in self.addrs.iter() {
-            match x {
-                IfAddr::V6(a) => return Some(a.ip.clone()),
-                _ => (),
-            };
+            if let IfAddr::V6(a) = x {
+                return Some(a.ip);
+            }
         }
         None
     }
