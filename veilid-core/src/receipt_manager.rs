@@ -7,9 +7,9 @@ use xx::*;
 
 #[derive(Clone, Debug, Copy, PartialEq, Eq)]
 pub enum ReceiptEvent {
-    RETURNED,
-    EXPIRED,
-    CANCELLED,
+    Returned,
+    Expired,
+    Cancelled,
 }
 
 cfg_if! {
@@ -114,9 +114,9 @@ impl ReceiptRecord {
         receipt_callback: impl ReceiptCallback,
     ) -> Self {
         Self {
-            expiration_ts: expiration_ts,
+            expiration_ts,
             nonce: receipt.get_nonce(),
-            expected_returns: expected_returns,
+            expected_returns,
             returns_so_far: 0u32,
             receipt_callback: ReceiptRecordCallbackType::Normal(Box::new(receipt_callback)),
         }
@@ -128,7 +128,7 @@ impl ReceiptRecord {
         eventual: ReceiptSingleShotType,
     ) -> Self {
         Self {
-            expiration_ts: expiration_ts,
+            expiration_ts,
             nonce: receipt.get_nonce(),
             returns_so_far: 0u32,
             expected_returns: 1u32,
@@ -179,7 +179,7 @@ pub struct ReceiptManager {
 impl ReceiptManager {
     fn new_inner(network_manager: NetworkManager) -> ReceiptManagerInner {
         ReceiptManagerInner {
-            network_manager: network_manager,
+            network_manager,
             receipts_by_nonce: BTreeMap::new(),
             next_oldest_ts: None,
             timeout_task: SingleFuture::new(),
@@ -246,7 +246,7 @@ impl ReceiptManager {
                 let receipt_inner = v.lock();
                 if receipt_inner.expiration_ts <= now {
                     // Expire this receipt
-                    expired_nonces.push(k.clone());
+                    expired_nonces.push(*k);
                 } else if new_next_oldest_ts.is_none()
                     || receipt_inner.expiration_ts < new_next_oldest_ts.unwrap()
                 {
@@ -254,7 +254,7 @@ impl ReceiptManager {
                     new_next_oldest_ts = Some(receipt_inner.expiration_ts);
                 }
             }
-            if expired_nonces.len() == 0 {
+            if expired_nonces.is_empty() {
                 return;
             }
             // Now remove the expired receipts
@@ -272,7 +272,7 @@ impl ReceiptManager {
         for expired_record in expired_records {
             let mut expired_record_mut = expired_record.lock();
             if let Some(callback) =
-                Self::perform_callback(ReceiptEvent::EXPIRED, &mut expired_record_mut)
+                Self::perform_callback(ReceiptEvent::Expired, &mut expired_record_mut)
             {
                 callbacks.push(callback)
             }
@@ -342,7 +342,7 @@ impl ReceiptManager {
     fn update_next_oldest_timestamp(inner: &mut ReceiptManagerInner) {
         // Update the next oldest timestamp
         let mut new_next_oldest_ts: Option<u64> = None;
-        for (_, v) in &inner.receipts_by_nonce {
+        for v in inner.receipts_by_nonce.values() {
             let receipt_inner = v.lock();
             if new_next_oldest_ts.is_none()
                 || receipt_inner.expiration_ts < new_next_oldest_ts.unwrap()
@@ -372,7 +372,7 @@ impl ReceiptManager {
         // Generate a cancelled callback
         let callback_future = {
             let mut record_mut = record.lock();
-            Self::perform_callback(ReceiptEvent::CANCELLED, &mut record_mut)
+            Self::perform_callback(ReceiptEvent::Cancelled, &mut record_mut)
         };
 
         // Issue the callback
@@ -397,7 +397,7 @@ impl ReceiptManager {
             // Generate the callback future
             let mut record_mut = record.lock();
             record_mut.returns_so_far += 1;
-            let callback_future = Self::perform_callback(ReceiptEvent::RETURNED, &mut record_mut);
+            let callback_future = Self::perform_callback(ReceiptEvent::Returned, &mut record_mut);
 
             // Remove the record if we're done
             if record_mut.returns_so_far == record_mut.expected_returns {

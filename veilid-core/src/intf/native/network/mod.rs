@@ -871,7 +871,7 @@ impl Network {
         trace!("WS: starting listener at {:?}", listen_address);
         let (fqdn, port) = split_port(&listen_address)
             .map_err(|_| "invalid WS listen address, port not specified correctly".to_owned())?;
-
+        let port = port.ok_or_else(|| "port must be specified for WS address".to_owned())?;
         let _ = self
             .start_tcp_listener(
                 listen_address.clone(),
@@ -892,6 +892,8 @@ impl Network {
             let (public_fqdn, public_port) = split_port(public_address).map_err(|_| {
                 "invalid WS public address, port not specified correctly".to_owned()
             })?;
+            let public_port = public_port
+                .ok_or_else(|| "port must be specified for public WS address".to_owned())?;
 
             routing_table.register_public_dial_info(
                 DialInfo::ws(fqdn, public_port, public_fqdn),
@@ -923,6 +925,7 @@ impl Network {
         trace!("WSS: starting listener at {}", listen_address);
         let (fqdn, port) = split_port(&listen_address)
             .map_err(|_| "invalid WSS listen address, port not specified correctly".to_owned())?;
+        let port = port.ok_or_else(|| "port must be specified for WSS address".to_owned())?;
 
         let _ = self
             .start_tcp_listener(
@@ -944,6 +947,8 @@ impl Network {
             let (public_fqdn, public_port) = split_port(public_address).map_err(|_| {
                 "invalid WSS public address, port not specified correctly".to_owned()
             })?;
+            let public_port = public_port
+                .ok_or_else(|| "port must be specified for public WSS address".to_owned())?;
 
             routing_table.register_public_dial_info(
                 DialInfo::wss(fqdn, public_port, public_fqdn),

@@ -1,3 +1,5 @@
+#![allow(clippy::bool_assert_comparison)]
+
 use crate::xx::*;
 use crate::*;
 cfg_if! {
@@ -227,7 +229,7 @@ pub async fn test_config() {
         Ok(()) => (),
         Err(e) => {
             error!("Error: {}", e);
-            assert!(false);
+            unreachable!();
         }
     }
     let inner = vc.get();

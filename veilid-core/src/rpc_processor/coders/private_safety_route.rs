@@ -67,7 +67,7 @@ pub fn encode_route_hop(
     )?;
     if let Some(rhd) = &route_hop.next_hop {
         let mut rhd_builder = builder.reborrow().init_next_hop();
-        encode_route_hop_data(&rhd, &mut rhd_builder)?;
+        encode_route_hop_data(rhd, &mut rhd_builder)?;
     }
     Ok(())
 }
@@ -83,7 +83,7 @@ pub fn encode_private_route(
     builder.set_hop_count(private_route.hop_count);
     if let Some(rh) = &private_route.hops {
         let mut rh_builder = builder.reborrow().init_first_hop();
-        encode_route_hop(&rh, &mut rh_builder)?;
+        encode_route_hop(rh, &mut rh_builder)?;
     };
 
     Ok(())
@@ -102,11 +102,11 @@ pub fn encode_safety_route(
     match &safety_route.hops {
         SafetyRouteHops::Data(rhd) => {
             let mut rhd_builder = h_builder.init_data();
-            encode_route_hop_data(&rhd, &mut rhd_builder)?;
+            encode_route_hop_data(rhd, &mut rhd_builder)?;
         }
         SafetyRouteHops::Private(pr) => {
             let mut pr_builder = h_builder.init_private();
-            encode_private_route(&pr, &mut pr_builder)?;
+            encode_private_route(pr, &mut pr_builder)?;
         }
     };
 
@@ -129,10 +129,7 @@ pub fn decode_route_hop_data(
         .map_err(map_error_internal!("invalid blob in route hop data"))?
         .to_vec();
 
-    Ok(RouteHopData {
-        nonce: nonce,
-        blob: blob,
-    })
+    Ok(RouteHopData { nonce, blob })
 }
 
 pub fn decode_route_hop(reader: &veilid_capnp::route_hop::Reader) -> Result<RouteHop, RPCError> {
@@ -153,8 +150,8 @@ pub fn decode_route_hop(reader: &veilid_capnp::route_hop::Reader) -> Result<Rout
     };
 
     Ok(RouteHop {
-        dial_info: dial_info,
-        next_hop: next_hop,
+        dial_info,
+        next_hop,
     })
 }
 
@@ -177,9 +174,9 @@ pub fn decode_private_route(
     };
 
     Ok(PrivateRoute {
-        public_key: public_key,
-        hop_count: hop_count,
-        hops: hops,
+        public_key,
+        hop_count,
+        hops,
     })
 }
 
@@ -205,8 +202,8 @@ pub fn decode_safety_route(
     };
 
     Ok(SafetyRoute {
-        public_key: public_key,
-        hop_count: hop_count,
-        hops: hops,
+        public_key,
+        hop_count,
+        hops,
     })
 }

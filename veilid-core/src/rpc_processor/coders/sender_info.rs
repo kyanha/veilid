@@ -28,7 +28,5 @@ pub fn decode_sender_info(
     } else {
         None
     };
-    Ok(SenderInfo {
-        socket_address: socket_address,
-    })
+    Ok(SenderInfo { socket_address })
 }

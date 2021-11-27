@@ -45,6 +45,6 @@ pub fn decode_peer_info(reader: &veilid_capnp::peer_info::Reader) -> Result<Peer
     }
     Ok(PeerInfo {
         node_id: NodeId::new(decode_public_key(&nid_reader)),
-        dial_infos: dial_infos,
+        dial_infos,
     })
 }

@@ -152,8 +152,7 @@ pub async fn test_cbor(ts: TableStore) {
     let d = match db.load_cbor::<key::DHTKey>(0, b"asdf").await {
         Ok(x) => x,
         Err(e) => {
-            assert!(false, "couldn't decode cbor: {}", e);
-            return;
+            panic!("couldn't decode cbor: {}", e);
         }
     };
     assert_eq!(d, Some(dht_key), "keys should be equal");

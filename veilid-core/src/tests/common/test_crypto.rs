@@ -136,5 +136,5 @@ pub async fn test_all() {
     test_enc_dec().await;
     test_dh(crypto).await;
     shutdown(api.clone()).await;
-    assert_eq!(api.is_shutdown(), true);
+    assert!(api.is_shutdown());
 }

@@ -414,7 +414,7 @@ impl NetworkManager {
 
         // Record the receipt for later
         let exp_ts = intf::get_timestamp() + expiration_us;
-        let eventual = SingleShotEventual::new(ReceiptEvent::CANCELLED);
+        let eventual = SingleShotEventual::new(ReceiptEvent::Cancelled);
         let instance = eventual.instance();
         receipt_manager.record_single_shot_receipt(receipt, exp_ts, eventual);
 
@@ -462,6 +462,7 @@ impl NetworkManager {
         // and if so, get the max version we can use
         let version = if let Some((node_min, node_max)) = node_ref.operate(|e| e.min_max_version())
         {
+            #[allow(clippy::absurd_extreme_comparisons)]
             if node_min > MAX_VERSION || node_max < MIN_VERSION {
                 return Err(format!(
                     "can't talk to this node {} because version is unsupported: ({},{})",

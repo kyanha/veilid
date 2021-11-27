@@ -25,7 +25,7 @@ impl PartialEq for ConnectionTableEntry {
         if self.last_message_recv_time != other.last_message_recv_time {
             return false;
         }
-        return true;
+        true
     }
 }
 
@@ -46,6 +46,11 @@ impl core::fmt::Debug for ConnectionTable {
     }
 }
 
+impl Default for ConnectionTable {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 impl ConnectionTable {
     pub fn new() -> Self {
         Self {
@@ -74,7 +79,7 @@ impl ConnectionTable {
         let timestamp = get_timestamp();
 
         let entry = ConnectionTableEntry {
-            conn: conn,
+            conn,
             established_time: timestamp,
             last_message_sent_time: None,
             last_message_recv_time: None,
@@ -90,10 +95,7 @@ impl ConnectionTable {
         descriptor: &ConnectionDescriptor,
     ) -> Option<ConnectionTableEntry> {
         let inner = self.inner.lock();
-        match inner.conn_by_addr.get(&descriptor) {
-            Some(v) => Some(v.clone()),
-            None => None,
-        }
+        inner.conn_by_addr.get(descriptor).cloned()
     }
 
     pub fn connection_count(&self) -> usize {
@@ -107,7 +109,7 @@ impl ConnectionTable {
     ) -> Result<ConnectionTableEntry, ()> {
         let mut inner = self.inner.lock();
 
-        let res = inner.conn_by_addr.remove(&descriptor);
+        let res = inner.conn_by_addr.remove(descriptor);
         match res {
             Some(v) => Ok(v.clone()),
             None => Err(()),

@@ -8,10 +8,7 @@ pub struct IpAddrPort {
 
 impl IpAddrPort {
     pub fn new(addr: IpAddr, port: u16) -> Self {
-        Self {
-            addr: addr,
-            port: port,
-        }
+        Self { addr, port }
     }
     pub fn addr(&self) -> &IpAddr {
         &self.addr

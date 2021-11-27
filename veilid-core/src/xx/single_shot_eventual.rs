@@ -24,7 +24,7 @@ where
     pub fn new(drop_value: T) -> Self {
         Self {
             eventual: EventualValueClone::new(),
-            drop_value: drop_value,
+            drop_value,
         }
     }
 

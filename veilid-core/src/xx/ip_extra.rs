@@ -63,17 +63,14 @@ pub fn ipv4addr_is_loopback(addr: &Ipv4Addr) -> bool {
 pub fn ipv4addr_is_private(addr: &Ipv4Addr) -> bool {
     match addr.octets() {
         [10, ..] => true,
-        [172, b, ..] if b >= 16 && b <= 31 => true,
+        [172, b, ..] if (16..=31).contains(&b) => true,
         [192, 168, ..] => true,
         _ => false,
     }
 }
 
 pub fn ipv4addr_is_link_local(addr: &Ipv4Addr) -> bool {
-    match addr.octets() {
-        [169, 254, ..] => true,
-        _ => false,
-    }
+    matches!(addr.octets(), [169, 254, ..])
 }
 
 pub fn ipv4addr_is_global(addr: &Ipv4Addr) -> bool {
@@ -120,12 +117,10 @@ pub fn ipv4addr_is_broadcast(addr: &Ipv4Addr) -> bool {
 }
 
 pub fn ipv4addr_is_documentation(addr: &Ipv4Addr) -> bool {
-    match addr.octets() {
-        [192, 0, 2, _] => true,
-        [198, 51, 100, _] => true,
-        [203, 0, 113, _] => true,
-        _ => false,
-    }
+    matches!(
+        addr.octets(),
+        [192, 0, 2, _] | [198, 51, 100, _] | [203, 0, 113, _]
+    )
 }
 
 pub fn ipv6addr_is_unspecified(addr: &Ipv6Addr) -> bool {
@@ -149,10 +144,10 @@ pub fn ipv6addr_is_unique_local(addr: &Ipv6Addr) -> bool {
 }
 
 pub fn ipv6addr_is_unicast_link_local_strict(addr: &Ipv6Addr) -> bool {
-    (addr.segments()[0] & 0xffff) == 0xfe80
-        && (addr.segments()[1] & 0xffff) == 0
-        && (addr.segments()[2] & 0xffff) == 0
-        && (addr.segments()[3] & 0xffff) == 0
+    addr.segments()[0] == 0xfe80
+        && addr.segments()[1] == 0
+        && addr.segments()[2] == 0
+        && addr.segments()[3] == 0
 }
 
 pub fn ipv6addr_is_unicast_link_local(addr: &Ipv6Addr) -> bool {

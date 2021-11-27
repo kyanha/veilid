@@ -35,7 +35,7 @@ pub struct LeaseManager {
 impl LeaseManager {
     fn new_inner(network_manager: NetworkManager) -> LeaseManagerInner {
         LeaseManagerInner {
-            network_manager: network_manager,
+            network_manager,
             max_server_signal_leases: 1,
             max_server_relay_leases: 1,
             max_client_signal_leases: 1,
@@ -111,7 +111,7 @@ impl LeaseManager {
             return false;
         }
         let network_class = inner.network_manager.get_network_class();
-        let out = match network_class {
+        match network_class {
             NetworkClass::Server => true,
             NetworkClass::Mapped => true,
             NetworkClass::FullNAT => true,
@@ -121,8 +121,7 @@ impl LeaseManager {
             NetworkClass::WebApp => false,
             NetworkClass::TorWebApp => false,
             NetworkClass::Invalid => false,
-        };
-        return out;
+        }
     }
     pub fn server_will_provide_signal_lease(&self) -> bool {
         if !self.server_can_provide_signal_lease() {
@@ -140,7 +139,7 @@ impl LeaseManager {
             return false;
         }
 
-        return true;
+        true
     }
 
     // Relay leases
@@ -154,7 +153,7 @@ impl LeaseManager {
             return false;
         }
         let network_class = inner.network_manager.get_network_class();
-        let out = match network_class {
+        match network_class {
             NetworkClass::Server => true,
             NetworkClass::Mapped => true,
             NetworkClass::FullNAT => true,
@@ -164,9 +163,8 @@ impl LeaseManager {
             NetworkClass::WebApp => false,
             NetworkClass::TorWebApp => false,
             NetworkClass::Invalid => false,
-        };
+        }
         // xxx: also depends on network strength / bandwidth availability?
-        return out;
     }
     pub fn server_will_provide_relay_lease(&self) -> bool {
         if !self.server_can_provide_relay_lease() {
@@ -183,6 +181,6 @@ impl LeaseManager {
         if !routing_table.has_public_dial_info() {
             return false;
         }
-        return true;
+        true
     }
 }

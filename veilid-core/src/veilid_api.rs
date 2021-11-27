@@ -21,7 +21,7 @@ pub struct NodeId {
 }
 impl NodeId {
     pub fn new(key: DHTKey) -> Self {
-        Self { key: key }
+        Self { key }
     }
 }
 
@@ -32,14 +32,11 @@ pub struct ValueKey {
 }
 impl ValueKey {
     pub fn new(key: DHTKey) -> Self {
-        Self {
-            key: key,
-            subkey: None,
-        }
+        Self { key, subkey: None }
     }
     pub fn new_subkey(key: DHTKey, subkey: String) -> Self {
         Self {
-            key: key,
+            key,
             subkey: if subkey.len() == 0 {
                 None
             } else {
@@ -55,7 +52,7 @@ pub struct BlockId {
 }
 impl BlockId {
     pub fn new(key: DHTKey) -> Self {
-        Self { key: key }
+        Self { key }
     }
 }
 
@@ -220,33 +217,19 @@ impl DialInfo {
         if let Address::Hostname(_) = address {
             panic!("invalid address type for protocol")
         }
-        Self::UDP(DialInfoUDP {
-            address: address,
-            port: port,
-        })
+        Self::UDP(DialInfoUDP { address, port })
     }
     pub fn tcp(address: Address, port: u16) -> Self {
         if let Address::Hostname(_) = address {
             panic!("invalid address type for protocol")
         }
-        Self::TCP(DialInfoTCP {
-            address: address,
-            port: port,
-        })
+        Self::TCP(DialInfoTCP { address, port })
     }
     pub fn ws(fqdn: String, port: u16, path: String) -> Self {
-        Self::WS(DialInfoWS {
-            fqdn: fqdn,
-            port: port,
-            path: path,
-        })
+        Self::WS(DialInfoWS { fqdn, port, path })
     }
     pub fn wss(fqdn: String, port: u16, path: String) -> Self {
-        Self::WSS(DialInfoWSS {
-            fqdn: fqdn,
-            port: port,
-            path: path,
-        })
+        Self::WSS(DialInfoWSS { fqdn, port, path })
     }
     pub fn protocol_type(&self) -> ProtocolType {
         match self {
@@ -518,9 +501,9 @@ pub struct PeerAddress {
 impl PeerAddress {
     pub fn new(address: Address, port: u16, protocol_type: ProtocolType) -> Self {
         Self {
-            address: address,
-            port: port,
-            protocol_type: protocol_type,
+            address,
+            port,
+            protocol_type,
         }
     }
 
@@ -554,13 +537,13 @@ pub struct ConnectionDescriptor {
 impl ConnectionDescriptor {
     pub fn new(remote: PeerAddress, local: SocketAddr) -> Self {
         Self {
-            remote: remote,
+            remote,
             local: Some(local),
         }
     }
     pub fn new_no_local(remote: PeerAddress) -> Self {
         Self {
-            remote: remote,
+            remote,
             local: None,
         }
     }
@@ -642,7 +625,7 @@ impl core::str::FromStr for NodeDialInfoSingle {
 
         // build NodeDialInfoSingle
         Ok(NodeDialInfoSingle {
-            node_id: node_id,
+            node_id,
             dial_info: match proto {
                 ProtocolType::UDP => DialInfo::udp(address, port),
                 ProtocolType::TCP => DialInfo::tcp(address, port),
@@ -853,10 +836,7 @@ pub struct RoutingContext {
 impl RoutingContext {
     fn new(api: VeilidAPI, options: RoutingContextOptions) -> Self {
         Self {
-            inner: Arc::new(Mutex::new(RoutingContextInner {
-                api: api,
-                options: options,
-            })),
+            inner: Arc::new(Mutex::new(RoutingContextInner { api, options })),
         }
     }
 
@@ -933,7 +913,7 @@ impl VeilidAPI {
             inner: Arc::new(Mutex::new(VeilidAPIInner {
                 config: attachment_manager.config(),
                 attachment_manager: attachment_manager.clone(),
-                core: core,
+                core,
                 network_manager: attachment_manager.network_manager(),
                 is_shutdown: false,
             })),
@@ -948,9 +928,9 @@ impl VeilidAPI {
         self.inner.lock().attachment_manager.clone()
     }
 
-    fn network_manager(&self) -> NetworkManager {
-        self.inner.lock().network_manager.clone()
-    }
+    // fn network_manager(&self) -> NetworkManager {
+    //     self.inner.lock().network_manager.clone()
+    // }
 
     fn rpc_processor(&self) -> RPCProcessor {
         self.inner.lock().network_manager.rpc_processor()

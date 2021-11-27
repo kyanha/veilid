@@ -24,6 +24,6 @@ pub fn decode_node_dial_info_single(
 
     Ok(NodeDialInfoSingle {
         node_id: NodeId::new(node_id),
-        dial_info: dial_info,
+        dial_info,
     })
 }

@@ -119,7 +119,7 @@ cfg_if! {
 
         static SETUP_ONCE: Once = Once::new();
 
-        pub fn setup() -> () {
+        pub fn setup() {
             SETUP_ONCE.call_once(|| {
                 let mut cb = ConfigBuilder::new();
                 cb.add_filter_ignore_str("async_std");

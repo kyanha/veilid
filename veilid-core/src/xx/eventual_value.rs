@@ -26,6 +26,12 @@ impl<T: Unpin> EventualBase for EventualValue<T> {
     }
 }
 
+impl<T: Unpin> Default for EventualValue<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<T: Unpin> EventualValue<T> {
     pub fn new() -> Self {
         Self {

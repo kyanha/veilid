@@ -26,6 +26,12 @@ impl EventualBase for Eventual {
     }
 }
 
+impl Default for Eventual {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Eventual {
     pub fn new() -> Self {
         Self {
@@ -39,7 +45,7 @@ impl Eventual {
     {
         EventualFutureClone {
             id: None,
-            value: value,
+            value,
             eventual: self.clone(),
         }
     }

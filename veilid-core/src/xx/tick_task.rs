@@ -24,7 +24,7 @@ impl TickTask {
     pub fn new_us(tick_period_us: u64) -> Self {
         Self {
             last_timestamp_us: AtomicU64::new(0),
-            tick_period_us: tick_period_us,
+            tick_period_us,
             routine: OnceCell::new(),
             single_future: SingleFuture::new(),
         }

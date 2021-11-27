@@ -1,20 +1,22 @@
 use crate::xx::*;
 use alloc::string::ToString;
 
-pub fn split_port(name: &str) -> Result<(String, u16), ()> {
+pub fn split_port(name: &str) -> Result<(String, Option<u16>), String> {
     if let Some(split) = name.rfind(':') {
         let hoststr = &name[0..split];
         let portstr = &name[split + 1..];
-        let port: u16 = portstr.parse::<u16>().map_err(drop)?;
+        let port: u16 = portstr
+            .parse::<u16>()
+            .map_err(|e| format!("Invalid port: {}", e))?;
 
-        Ok((hoststr.to_string(), port))
+        Ok((hoststr.to_string(), Some(port)))
     } else {
-        Err(())
+        Ok((name.to_string(), None))
     }
 }
 
 pub fn prepend_slash(s: String) -> String {
-    if s.starts_with("/") {
+    if s.starts_with('/') {
         return s;
     }
     let mut out = "/".to_owned();

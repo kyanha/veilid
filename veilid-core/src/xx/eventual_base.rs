@@ -34,7 +34,7 @@ impl<T> EventualBaseInner<T> {
         self.wakers.remove(&id);
         // See if we should complete the EventualResolvedFutures
         let mut resolved_waker_list = Vec::new();
-        if self.wakers.len() == 0 && self.resolved.is_some() {
+        if self.wakers.is_empty() && self.resolved.is_some() {
             for w in &self.resolved_wakers {
                 resolved_waker_list.push(w.1.clone());
             }
@@ -92,26 +92,25 @@ impl<T> EventualBaseInner<T> {
         self.resolved_freelist.clear();
     }
 
-    pub(super) fn try_reset(&mut self) -> Result<(), ()> {
-        if self.wakers.len() != 0 {
-            return Err(());
+    pub(super) fn try_reset(&mut self) -> Result<(), String> {
+        if !self.wakers.is_empty() {
+            return Err("Wakers not empty during reset".to_owned());
         }
-        if self.resolved_wakers.len() != 0 {
-            return Err(());
+        if !self.resolved_wakers.is_empty() {
+            return Err("Resolved wakers not empty during reset".to_owned());
         }
         self.reset();
         Ok(())
     }
 
     // Resolved future helpers
-    #[must_use]
     pub(super) fn resolved_poll(
         &mut self,
         id: &mut Option<usize>,
         cx: &mut task::Context<'_>,
     ) -> task::Poll<()> {
         // If there are any instance futures still waiting, we resolution isn't finished
-        if self.wakers.len() != 0 {
+        if !self.wakers.is_empty() {
             if id.is_none() {
                 *id = Some(self.insert_resolved_waker(cx.waker().clone()));
             }
@@ -137,12 +136,10 @@ impl<T> EventualBaseInner<T> {
                 *id = Some(self.insert_waker(cx.waker().clone()));
             }
             None
+        } else if let Some(id) = id.take() {
+            Some(self.remove_waker(id))
         } else {
-            if let Some(id) = id.take() {
-                Some(self.remove_waker(id))
-            } else {
-                Some(Vec::new())
-            }
+            Some(Vec::new())
         }
     }
 }
@@ -202,7 +199,7 @@ pub trait EventualCommon: EventualBase {
         self.base_inner().reset()
     }
 
-    fn try_reset(&self) -> Result<(), ()> {
+    fn try_reset(&self) -> Result<(), String> {
         self.base_inner().try_reset()
     }
 }

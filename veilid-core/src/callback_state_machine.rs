@@ -89,7 +89,7 @@ where
     pub async fn consume(&self, input: &T::Input) -> Result<Option<T::Output>, ()> {
         let current_state = self.inner.lock().state;
 
-        if let Some(new_state) = T::transition(&current_state, &input) {
+        if let Some(new_state) = T::transition(&current_state, input) {
             let output = T::output(&current_state, input);
             let old_state = current_state;
             let (callback, eventual) = {

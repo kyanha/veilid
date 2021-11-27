@@ -164,6 +164,11 @@ pub struct VeilidConfig {
     inner: Arc<RwLock<VeilidConfigInner>>,
 }
 
+impl Default for VeilidConfig {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 impl VeilidConfig {
     fn new_inner() -> VeilidConfigInner {
         VeilidConfigInner::default()

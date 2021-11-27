@@ -43,6 +43,12 @@ pub struct VeilidCore {
     inner: Arc<Mutex<VeilidCoreInner>>,
 }
 
+impl Default for VeilidCore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl VeilidCore {
     fn new_inner() -> VeilidCoreInner {
         VeilidCoreInner {
@@ -58,18 +64,18 @@ impl VeilidCore {
         }
     }
 
-    pub(crate) fn config(&self) -> VeilidConfig {
-        self.inner.lock().config.as_ref().unwrap().clone()
-    }
+    // pub(crate) fn config(&self) -> VeilidConfig {
+    //     self.inner.lock().config.as_ref().unwrap().clone()
+    // }
 
-    pub(crate) fn attachment_manager(&self) -> AttachmentManager {
-        self.inner
-            .lock()
-            .attachment_manager
-            .as_ref()
-            .unwrap()
-            .clone()
-    }
+    // pub(crate) fn attachment_manager(&self) -> AttachmentManager {
+    //     self.inner
+    //         .lock()
+    //         .attachment_manager
+    //         .as_ref()
+    //         .unwrap()
+    //         .clone()
+    // }
 
     pub(crate) fn table_store(&self) -> TableStore {
         self.inner.lock().table_store.as_ref().unwrap().clone()
@@ -119,8 +125,8 @@ impl VeilidCore {
             .init(Arc::new(
                 move |old_state: AttachmentState, new_state: AttachmentState| {
                     cb(VeilidStateChange::Attachment {
-                        old_state: old_state,
-                        new_state: new_state,
+                        old_state,
+                        new_state,
                     })
                 },
             ))

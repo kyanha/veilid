@@ -1,3 +1,5 @@
+#![allow(clippy::bool_assert_comparison)]
+
 use crate::dht::key;
 use crate::xx::*;
 use core::convert::TryFrom;
@@ -104,9 +106,9 @@ pub async fn test_key_conversions() {
     // Test default key
     let (dht_key, dht_key_secret) = (key::DHTKey::default(), key::DHTKeySecret::default());
     assert_eq!(dht_key.bytes, EMPTY_KEY);
-    assert_eq!(dht_key.valid, false);
+    assert!(!dht_key.valid);
     assert_eq!(dht_key_secret.bytes, EMPTY_KEY_SECRET);
-    assert_eq!(dht_key_secret.valid, false);
+    assert!(!dht_key_secret.valid);
     let dht_key_string = String::from(&dht_key);
     trace!("dht_key_string: {:?}", dht_key_string);
     let dht_key_string2 = String::from(&dht_key);

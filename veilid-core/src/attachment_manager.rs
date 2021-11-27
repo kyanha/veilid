@@ -161,22 +161,11 @@ impl AttachmentManager {
 
     pub fn is_attached(&self) -> bool {
         let s = self.inner.lock().attachment_machine.state();
-        match s {
-            AttachmentState::Attaching => true,
-            AttachmentState::AttachedWeak => true,
-            AttachmentState::AttachedGood => true,
-            AttachmentState::AttachedStrong => true,
-            AttachmentState::FullyAttached => true,
-            AttachmentState::OverAttached => true,
-            _ => false,
-        }
+        !matches!(s, AttachmentState::Detached | AttachmentState::Detaching)
     }
     pub fn is_detached(&self) -> bool {
         let s = self.inner.lock().attachment_machine.state();
-        match s {
-            AttachmentState::Detached => true,
-            _ => false,
-        }
+        matches!(s, AttachmentState::Detached)
     }
 
     pub fn get_attach_timestamp(&self) -> Option<u64> {

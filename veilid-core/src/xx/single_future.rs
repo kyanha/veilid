@@ -56,8 +56,8 @@ where
 
     fn unlock(&self, jh: Option<JoinHandle<T>>) {
         let mut inner = self.inner.lock();
-        assert_eq!(inner.locked, true);
-        assert_eq!(inner.join_handle.is_none(), true);
+        assert!(inner.locked);
+        assert!(inner.join_handle.is_none());
         inner.locked = false;
         inner.join_handle = jh;
     }

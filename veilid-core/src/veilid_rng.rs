@@ -23,6 +23,6 @@ impl RngCore for VeilidRng {
     }
 
     fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), Error> {
-        intf::random_bytes(dest).map_err(|err| Error::new(err))
+        intf::random_bytes(dest).map_err(Error::new)
     }
 }
