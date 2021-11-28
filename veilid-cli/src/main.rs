@@ -1,3 +1,5 @@
+#![warn(clippy::all)]
+
 use anyhow::*;
 use async_std::prelude::*;
 use clap::{App, Arg};

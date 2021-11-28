@@ -1,4 +1,5 @@
 #![forbid(unsafe_code)]
+#![warn(clippy::all)]
 
 mod client_api;
 mod settings;
@@ -6,8 +7,6 @@ mod settings;
 pub mod veilid_client_capnp {
     include!(concat!(env!("OUT_DIR"), "/proto/veilid_client_capnp.rs"));
 }
-
-
 
 cfg_if::cfg_if! {
     if #[cfg(windows)] {
