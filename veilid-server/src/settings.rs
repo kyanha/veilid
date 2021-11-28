@@ -1,3 +1,4 @@
+#![allow(clippy::bool_assert_comparison)]
 
 use directories::*;
 use log::*;
@@ -709,7 +710,14 @@ impl Settings {
                     inner.core.network.protocol.udp.listen_address.name.clone(),
                 )),
                 "network.protocol.udp.public_address" => Ok(Box::new(
-                    inner.core.network.protocol.udp.public_address.as_ref().map(|a| a.name.clone()),
+                    inner
+                        .core
+                        .network
+                        .protocol
+                        .udp
+                        .public_address
+                        .as_ref()
+                        .map(|a| a.name.clone()),
                 )),
                 "network.protocol.tcp.connect" => {
                     Ok(Box::new(inner.core.network.protocol.tcp.connect))
@@ -724,7 +732,14 @@ impl Settings {
                     inner.core.network.protocol.tcp.listen_address.name.clone(),
                 )),
                 "network.protocol.tcp.public_address" => Ok(Box::new(
-                    inner.core.network.protocol.tcp.public_address.as_ref().map(|a| a.name.clone()),
+                    inner
+                        .core
+                        .network
+                        .protocol
+                        .tcp
+                        .public_address
+                        .as_ref()
+                        .map(|a| a.name.clone()),
                 )),
                 "network.protocol.ws.connect" => {
                     Ok(Box::new(inner.core.network.protocol.ws.connect))
@@ -740,7 +755,14 @@ impl Settings {
                     Ok(Box::new(inner.core.network.protocol.ws.path.clone()))
                 }
                 "network.protocol.ws.public_address" => Ok(Box::new(
-                    inner.core.network.protocol.ws.public_address.as_ref().map(|a| a.name.clone()),
+                    inner
+                        .core
+                        .network
+                        .protocol
+                        .ws
+                        .public_address
+                        .as_ref()
+                        .map(|a| a.name.clone()),
                 )),
                 "network.protocol.wss.connect" => {
                     Ok(Box::new(inner.core.network.protocol.wss.connect))
@@ -758,7 +780,14 @@ impl Settings {
                     Ok(Box::new(inner.core.network.protocol.wss.path.clone()))
                 }
                 "network.protocol.wss.public_address" => Ok(Box::new(
-                    inner.core.network.protocol.wss.public_address.as_ref().map(|a| a.name.clone()),
+                    inner
+                        .core
+                        .network
+                        .protocol
+                        .wss
+                        .public_address
+                        .as_ref()
+                        .map(|a| a.name.clone()),
                 )),
                 "network.leases.max_server_signal_leases" => {
                     Ok(Box::new(inner.core.network.leases.max_server_signal_leases))
