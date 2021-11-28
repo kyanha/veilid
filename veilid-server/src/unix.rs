@@ -168,7 +168,7 @@ pub async fn main() -> Result<(), String> {
             Some(x) => {
                 println!("Overriding bootstrap with: ");
                 let mut out: Vec<settings::ParsedURL> = Vec::new();
-                for x in x.split(",") {
+                for x in x.split(',') {
                     println!("    {}", x);
                     out.push(
                         settings::ParsedURL::from_str(x)
@@ -251,7 +251,7 @@ pub async fn main() -> Result<(), String> {
             move |change: veilid_core::VeilidStateChange| -> veilid_core::SystemPinBoxFuture<()> {
                 let sender = sender.clone();
                 Box::pin(async move {
-                    if let Err(_) = sender.send(change).await {
+                    if sender.send(change).await.is_err() {
                         error!("error sending state change callback");
                     }
                 })
@@ -308,11 +308,7 @@ pub async fn main() -> Result<(), String> {
     // Idle while waiting to exit
     let shutdown_switch = {
         let shutdown_switch_locked = SHUTDOWN_SWITCH.lock();
-        if let Some(ss) = &*shutdown_switch_locked {
-            Some(ss.instance())
-        } else {
-            None
-        }
+        (*shutdown_switch_locked).as_ref().map(|ss| ss.instance())
     };
     if let Some(shutdown_switch) = shutdown_switch {
         shutdown_switch.await;

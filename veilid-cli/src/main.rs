@@ -70,7 +70,7 @@ async fn main() -> Result<()> {
         matches.occurrences_of("config-file") == 0,
         matches.value_of_os("config-file").unwrap(),
     )
-    .map_err(|x| Box::new(x))?;
+    .map_err(Box::new)?;
 
     // Set config from command line
     if matches.occurrences_of("debug") != 0 {

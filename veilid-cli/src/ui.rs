@@ -26,7 +26,7 @@ struct Dirty<T> {
 impl<T> Dirty<T> {
     pub fn new(value: T) -> Self {
         Self {
-            value: value,
+            value,
             dirty: true,
         }
     }
@@ -122,7 +122,7 @@ impl UI {
                 cmd_history_position: 0,
                 cmd_history_max_size: settings.interface.command_line.history_size,
                 connection_dialog_state: None,
-                cb_sink: cb_sink,
+                cb_sink,
             })),
         };
 
@@ -203,7 +203,7 @@ impl UI {
 
         siv.add_fullscreen_layer(mainlayout);
 
-        UI::setup_colors(&mut siv, &mut inner, &settings);
+        UI::setup_colors(&mut siv, &mut inner, settings);
         UI::setup_quit_handler(&mut siv);
 
         drop(inner);
@@ -347,7 +347,7 @@ impl UI {
     }
     pub fn add_node_event(&mut self, event: &str) {
         let inner = self.inner.borrow_mut();
-        let color = inner.log_colors.get(&Level::Info).unwrap().clone();
+        let color = *inner.log_colors.get(&Level::Info).unwrap();
         for line in event.lines() {
             cursive_flexi_logger_view::push_to_log(StyledString::styled(line, color));
         }
@@ -470,11 +470,10 @@ impl UI {
         match Self::run_command(s, text) {
             Ok(_) => {}
             Err(e) => {
-                let color = Self::inner_mut(s)
+                let color = *Self::inner_mut(s)
                     .log_colors
                     .get(&Level::Error)
-                    .unwrap()
-                    .clone();
+                    .unwrap();
 
                 cursive_flexi_logger_view::push_to_log(StyledString::styled(
                     format!("> {}", text),
@@ -668,7 +667,7 @@ impl UI {
             return true;
         }
 
-        return false;
+        false
     }
 
     fn refresh_connection_dialog(s: &mut Cursive) {
@@ -686,13 +685,13 @@ impl UI {
                 };
                 debug!("address is {}", addr);
                 let mut edit = s.find_name::<EditView>("connection-address").unwrap();
-                edit.set_content(addr.to_string());
+                edit.set_content(addr);
                 edit.set_enabled(true);
                 let mut dlg = s.find_name::<Dialog>("connection-dialog").unwrap();
                 dlg.add_button("Connect", Self::submit_connection_address);
             }
             ConnectionState::Connected(_, _) => {
-                return;
+                
             }
             ConnectionState::Retrying(addr, _) => {
                 //
@@ -717,7 +716,7 @@ impl UI {
 
         match inner.ui_state.connection_state.get() {
             ConnectionState::Disconnected => {
-                status.append_styled(format!("Disconnected "), ColorStyle::highlight_inactive());
+                status.append_styled("Disconnected ".to_string(), ColorStyle::highlight_inactive());
                 status.append_styled("|", ColorStyle::highlight_inactive());
             }
             ConnectionState::Retrying(addr, _) => {

@@ -1,8 +1,8 @@
-use config;
+
 use directories::*;
 use log::*;
 use parking_lot::*;
-use serde;
+
 use serde_derive::*;
 use std::ffi::OsStr;
 use std::net::{SocketAddr, ToSocketAddrs};
@@ -184,7 +184,7 @@ impl FromStr for ParsedURL {
 
         Ok(Self {
             urlstring: s.to_string(),
-            url: url,
+            url,
         })
     }
 }
@@ -195,7 +195,7 @@ impl<'de> serde::Deserialize<'de> for ParsedURL {
         D: serde::Deserializer<'de>,
     {
         let s = String::deserialize(deserializer)?;
-        Ok(ParsedURL::from_str(s.as_str()).map_err(|x| serde::de::Error::custom(x))?)
+        ParsedURL::from_str(s.as_str()).map_err(serde::de::Error::custom)
     }
 }
 
@@ -222,7 +222,7 @@ impl<'de> serde::Deserialize<'de> for NamedSocketAddrs {
         D: serde::Deserializer<'de>,
     {
         let s = String::deserialize(deserializer)?;
-        Ok(NamedSocketAddrs::from_str(s.as_str()).map_err(|x| serde::de::Error::custom(x))?)
+        NamedSocketAddrs::from_str(s.as_str()).map_err(serde::de::Error::custom)
     }
 }
 
@@ -709,11 +709,7 @@ impl Settings {
                     inner.core.network.protocol.udp.listen_address.name.clone(),
                 )),
                 "network.protocol.udp.public_address" => Ok(Box::new(
-                    if let Some(a) = &inner.core.network.protocol.udp.public_address {
-                        Some(a.name.clone())
-                    } else {
-                        None
-                    },
+                    inner.core.network.protocol.udp.public_address.as_ref().map(|a| a.name.clone()),
                 )),
                 "network.protocol.tcp.connect" => {
                     Ok(Box::new(inner.core.network.protocol.tcp.connect))
@@ -728,11 +724,7 @@ impl Settings {
                     inner.core.network.protocol.tcp.listen_address.name.clone(),
                 )),
                 "network.protocol.tcp.public_address" => Ok(Box::new(
-                    if let Some(a) = &inner.core.network.protocol.tcp.public_address {
-                        Some(a.name.clone())
-                    } else {
-                        None
-                    },
+                    inner.core.network.protocol.tcp.public_address.as_ref().map(|a| a.name.clone()),
                 )),
                 "network.protocol.ws.connect" => {
                     Ok(Box::new(inner.core.network.protocol.ws.connect))
@@ -748,11 +740,7 @@ impl Settings {
                     Ok(Box::new(inner.core.network.protocol.ws.path.clone()))
                 }
                 "network.protocol.ws.public_address" => Ok(Box::new(
-                    if let Some(a) = &inner.core.network.protocol.ws.public_address {
-                        Some(a.name.clone())
-                    } else {
-                        None
-                    },
+                    inner.core.network.protocol.ws.public_address.as_ref().map(|a| a.name.clone()),
                 )),
                 "network.protocol.wss.connect" => {
                     Ok(Box::new(inner.core.network.protocol.wss.connect))
@@ -770,11 +758,7 @@ impl Settings {
                     Ok(Box::new(inner.core.network.protocol.wss.path.clone()))
                 }
                 "network.protocol.wss.public_address" => Ok(Box::new(
-                    if let Some(a) = &inner.core.network.protocol.wss.public_address {
-                        Some(a.name.clone())
-                    } else {
-                        None
-                    },
+                    inner.core.network.protocol.wss.public_address.as_ref().map(|a| a.name.clone()),
                 )),
                 "network.leases.max_server_signal_leases" => {
                     Ok(Box::new(inner.core.network.leases.max_server_signal_leases))
@@ -845,7 +829,7 @@ mod tests {
             veilid_core::DHTKeySecret::default()
         );
         //
-        assert!(s.core.network.bootstrap.len() == 0);
+        assert!(s.core.network.bootstrap.is_empty());
         //
         assert_eq!(s.core.network.rpc.concurrency, 0);
         assert_eq!(s.core.network.rpc.queue_size, 1024);

@@ -59,7 +59,7 @@ impl CommandProcessor {
     pub fn new(ui: UI, settings: &Settings) -> Self {
         Self {
             inner: Rc::new(RefCell::new(CommandProcessorInner {
-                ui: ui,
+                ui,
                 capi: None,
                 reconnect: settings.autoreconnect,
                 finished: false,
@@ -205,7 +205,7 @@ detach              - detach the server from the Veilid network
             // Loop while we want to keep the connection
             let mut first = true;
             while self.inner().reconnect {
-                let server_addr_opt = self.inner_mut().server_addr.clone();
+                let server_addr_opt = self.inner_mut().server_addr;
                 let server_addr = match server_addr_opt {
                     None => break,
                     Some(addr) => addr,
@@ -213,15 +213,15 @@ detach              - detach the server from the Veilid network
                 if first {
                     info!("Connecting to server at {}", server_addr);
                     self.set_connection_state(ConnectionState::Retrying(
-                        server_addr.clone(),
+                        server_addr,
                         SystemTime::now(),
                     ));
                 } else {
                     debug!("Retrying connection to {}", server_addr);
                 }
                 let mut capi = self.capi();
-                let res = capi.connect(server_addr.clone()).await;
-                if let Ok(_) = res {
+                let res = capi.connect(server_addr).await;
+                if res.is_ok() {
                     info!(
                         "Connection to server at {} terminated normally",
                         server_addr
@@ -234,7 +234,7 @@ detach              - detach the server from the Veilid network
                 }
 
                 self.set_connection_state(ConnectionState::Retrying(
-                    server_addr.clone(),
+                    server_addr,
                     SystemTime::now(),
                 ));
 
@@ -260,7 +260,7 @@ detach              - detach the server from the Veilid network
         self.inner_mut().server_addr = server_addr;
     }
     pub fn get_server_address(&self) -> Option<SocketAddr> {
-        self.inner().server_addr.clone()
+        self.inner().server_addr
     }
     // called by client_api_connection
     // calls into ui

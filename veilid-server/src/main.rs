@@ -7,7 +7,7 @@ pub mod veilid_client_capnp {
     include!(concat!(env!("OUT_DIR"), "/proto/veilid_client_capnp.rs"));
 }
 
-use cfg_if;
+
 
 cfg_if::cfg_if! {
     if #[cfg(windows)] {

@@ -1,7 +1,7 @@
-use config;
+
 use directories::*;
-use log;
-use serde;
+
+
 use serde_derive::*;
 use std::ffi::OsStr;
 use std::net::{SocketAddr, ToSocketAddrs};
@@ -118,7 +118,7 @@ impl<'de> serde::Deserialize<'de> for NamedSocketAddrs {
         let s = String::deserialize(deserializer)?;
         let addr_iter = s
             .to_socket_addrs()
-            .map_err(|x| serde::de::Error::custom(x))?;
+            .map_err(serde::de::Error::custom)?;
         Ok(NamedSocketAddrs {
             name: s,
             addrs: addr_iter.collect(),

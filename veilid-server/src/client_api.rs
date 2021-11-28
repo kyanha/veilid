@@ -44,7 +44,7 @@ struct RegistrationImpl {
 impl RegistrationImpl {
     fn new(id: u64, registrations: Rc<RefCell<RegistrationMap>>) -> Self {
         Self {
-            id: id,
+            id,
             registration_map: registrations,
         }
     }
@@ -75,7 +75,7 @@ impl VeilidServerImpl {
         Self {
             next_id: 0,
             registration_map: Rc::new(RefCell::new(RegistrationMap::new())),
-            veilid_api: veilid_api,
+            veilid_api,
         }
     }
 }
@@ -175,7 +175,7 @@ impl ClientApi {
     pub fn new(veilid_api: veilid_core::VeilidAPI) -> Rc<Self> {
         Rc::new(Self {
             inner: RefCell::new(ClientApiInner {
-                veilid_api: veilid_api,
+                veilid_api,
                 registration_map: Rc::new(RefCell::new(RegistrationMap::new())),
                 stop: Eventual::new(),
                 join_handle: None,
@@ -283,13 +283,10 @@ impl ClientApi {
             let registration_map2 = registration_map1.clone();
             async_std::task::spawn_local(request.send().promise.map(move |r| match r {
                 Ok(_) => {
-                    registration_map2
+                    if let Some(ref mut s) = registration_map2
                         .borrow_mut()
                         .registrations
-                        .get_mut(&id)
-                        .map(|ref mut s| {
-                            s.requests_in_flight -= 1;
-                        });
+                        .get_mut(&id) { s.requests_in_flight -= 1; }
                 }
                 Err(e) => {
                     debug!("Got error: {:?}. Dropping registation.", e);
@@ -309,7 +306,7 @@ impl ClientApi {
 
         let bind_futures = bind_addrs
             .iter()
-            .map(|addr| self.clone().handle_incoming(addr.clone(), client.clone()));
+            .map(|addr| self.clone().handle_incoming(*addr, client.clone()));
         let bind_futures_join = futures::future::try_join_all(bind_futures);
         self.inner.borrow_mut().join_handle = Some(async_std::task::spawn_local(bind_futures_join));
     }

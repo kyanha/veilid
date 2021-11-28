@@ -16,7 +16,7 @@ struct VeilidClientImpl {
 
 impl VeilidClientImpl {
     pub fn new(comproc: CommandProcessor) -> Self {
-        Self { comproc: comproc }
+        Self { comproc }
     }
 }
 
@@ -64,7 +64,7 @@ impl ClientApiConnection {
     pub fn new(comproc: CommandProcessor) -> Self {
         Self {
             inner: Rc::new(RefCell::new(ClientApiConnectionInner {
-                comproc: comproc,
+                comproc,
                 connect_addr: None,
                 disconnector: None,
                 server: None,
@@ -75,9 +75,9 @@ impl ClientApiConnection {
 
     async fn handle_connection(&mut self) -> Result<()> {
         trace!("ClientApiConnection::handle_connection");
-        let connect_addr = self.inner.borrow().connect_addr.unwrap().clone();
+        let connect_addr = self.inner.borrow().connect_addr.unwrap();
         // Connect the TCP socket
-        let stream = async_std::net::TcpStream::connect(connect_addr.clone()).await?;
+        let stream = async_std::net::TcpStream::connect(connect_addr).await?;
         // If it succeed, disable nagle algorithm
         stream.set_nodelay(true)?;
 
