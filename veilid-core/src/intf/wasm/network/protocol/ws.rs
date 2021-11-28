@@ -7,7 +7,6 @@ use web_sys::WebSocket;
 use ws_stream_wasm::*;
 
 struct WebsocketNetworkConnectionInner {
-    _ws_meta: WsMeta,
     ws_stream: WsStream,
     ws: WebSocket,
 }
@@ -36,11 +35,10 @@ impl WebsocketNetworkConnection {
     pub fn new(tls: bool, ws_meta: WsMeta, ws_stream: WsStream) -> Self {
         let ws = ws_stream.wrapped().clone();
         Self {
-            tls: tls,
+            tls,
             inner: Arc::new(Mutex::new(WebsocketNetworkConnectionInner {
-                _ws_meta: ws_meta,
-                ws_stream: ws_stream,
-                ws: ws,
+                ws_stream,
+                ws,
             })),
         }
     }
@@ -91,19 +89,19 @@ impl WebsocketProtocolHandler {
     pub async fn connect(
         network_manager: NetworkManager,
         dial_info: &DialInfo,
-    ) -> Result<NetworkConnection, ()> {
+    ) -> Result<NetworkConnection, String> {
         let url = dial_info.to_url_string(None);
         let (tls, host, port, protocol_type) = match dial_info {
             DialInfo::WS(ws) => (false, ws.fqdn.clone(), ws.port, ProtocolType::WS),
             DialInfo::WSS(wss) => (true, wss.fqdn.clone(), wss.port, ProtocolType::WSS),
-            _ => return Err(()),
+            _ => return Err("wrong protocol for WebsocketProtocolHandler".to_owned()),
         };
 
         let peer_addr = PeerAddress::new(Address::from_str(&host)?, port, protocol_type);
 
         let (ws, wsio) = match WsMeta::connect(url, None).await {
             Ok(conn) => conn,
-            Err(_) => return Err(()),
+            Err(e) => return Err(format!("couldn't connect to WS url: {}", e)),
         };
 
         let conn = NetworkConnection::WS(WebsocketNetworkConnection::new(tls, ws, wsio));

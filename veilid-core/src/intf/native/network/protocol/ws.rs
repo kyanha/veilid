@@ -168,7 +168,7 @@ impl WebsocketProtocolHandler {
         self,
         ps: AsyncPeekStream,
         socket_addr: SocketAddr,
-    ) -> Result<bool, ()> {
+    ) -> Result<bool, String> {
         let request_path_len = self.inner.request_path.len() + 2;
         let mut peekbuf: Vec<u8> = vec![0u8; request_path_len];
         match io::timeout(
@@ -179,8 +179,7 @@ impl WebsocketProtocolHandler {
         {
             Ok(_) => (),
             Err(e) => {
-                trace!("failed to peek stream: {:?}", e);
-                return Err(());
+                return Err(format!("failed to peek stream: {:?}", e));
             }
         }
         // Check for websocket path
@@ -198,8 +197,7 @@ impl WebsocketProtocolHandler {
         let ws_stream = match accept_async(ps).await {
             Ok(s) => s,
             Err(e) => {
-                trace!("failed websockets handshake: {:?}", e);
-                return Err(());
+                return Err(format!("failed websockets handshake: {:?}", e));
             }
         };
 
@@ -234,7 +232,7 @@ impl WebsocketProtocolHandler {
     pub async fn connect(
         network_manager: NetworkManager,
         dial_info: &DialInfo,
-    ) -> Result<NetworkConnection, ()> {
+    ) -> Result<NetworkConnection, String> {
         let (tls, request, domain, port, protocol_type) = match &dial_info {
             DialInfo::WS(di) => (
                 false,
@@ -255,9 +253,13 @@ impl WebsocketProtocolHandler {
 
         let tcp_stream = TcpStream::connect(format!("{}:{}", &domain, &port))
             .await
-            .map_err(drop)?;
-        let local_addr = tcp_stream.local_addr().map_err(drop)?;
-        let peer_socket_addr = tcp_stream.peer_addr().map_err(drop)?;
+            .map_err(|e| format!("failed to connect tcp stream: {}", e))?;
+        let local_addr = tcp_stream
+            .local_addr()
+            .map_err(|e| format!("can't get local address for tcp stream: {}", e))?;
+        let peer_socket_addr = tcp_stream
+            .peer_addr()
+            .map_err(|e| format!("can't get peer address for tcp stream: {}", e))?;
         let peer_addr = PeerAddress::new(
             Address::from_socket_addr(peer_socket_addr),
             peer_socket_addr.port(),
@@ -266,8 +268,13 @@ impl WebsocketProtocolHandler {
 
         if tls {
             let connector = TlsConnector::default();
-            let tls_stream = connector.connect(domain, tcp_stream).await.map_err(drop)?;
-            let (ws_stream, _response) = client_async(request, tls_stream).await.map_err(drop)?;
+            let tls_stream = connector
+                .connect(domain, tcp_stream)
+                .await
+                .map_err(|e| format!("can't connect tls: {}", e))?;
+            let (ws_stream, _response) = client_async(request, tls_stream)
+                .await
+                .map_err(|e| format!("wss negotation failed: {}", e))?;
             let conn = NetworkConnection::Wss(WebsocketNetworkConnection::new(tls, ws_stream));
             network_manager
                 .on_new_connection(
@@ -277,7 +284,9 @@ impl WebsocketProtocolHandler {
                 .await?;
             Ok(conn)
         } else {
-            let (ws_stream, _response) = client_async(request, tcp_stream).await.map_err(drop)?;
+            let (ws_stream, _response) = client_async(request, tcp_stream)
+                .await
+                .map_err(|e| format!("ws negotiate failed: {}", e))?;
             let conn = NetworkConnection::Ws(WebsocketNetworkConnection::new(tls, ws_stream));
             network_manager
                 .on_new_connection(
@@ -295,7 +304,7 @@ impl TcpProtocolHandler for WebsocketProtocolHandler {
         &self,
         stream: AsyncPeekStream,
         peer_addr: SocketAddr,
-    ) -> SystemPinBoxFuture<Result<bool, ()>> {
+    ) -> SystemPinBoxFuture<Result<bool, String>> {
         Box::pin(self.clone().on_accept_async(stream, peer_addr))
     }
 }

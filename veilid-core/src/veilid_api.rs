@@ -37,7 +37,7 @@ impl ValueKey {
     pub fn new_subkey(key: DHTKey, subkey: String) -> Self {
         Self {
             key,
-            subkey: if subkey.len() == 0 {
+            subkey: if subkey.is_empty() {
                 None
             } else {
                 Some(subkey)
@@ -131,37 +131,39 @@ impl Address {
             Address::Hostname(h) => format!("{}:{}", h.clone(), port),
         }
     }
-    pub fn resolve(&self) -> Result<IpAddr, ()> {
+    pub fn resolve(&self) -> Result<IpAddr, String> {
         match self {
-            Self::IPV4(a) => Ok(IpAddr::V4(a.clone())),
-            Self::IPV6(a) => Ok(IpAddr::V6(a.clone())),
-            Self::Hostname(h) => h.parse().map_err(drop),
+            Self::IPV4(a) => Ok(IpAddr::V4(*a)),
+            Self::IPV6(a) => Ok(IpAddr::V6(*a)),
+            Self::Hostname(h) => h
+                .parse()
+                .map_err(|e| format!("Failed to parse hostname: {}", e)),
         }
     }
-    pub fn address(&self) -> Result<IpAddr, ()> {
+    pub fn address(&self) -> Result<IpAddr, String> {
         match self {
-            Self::IPV4(a) => Ok(IpAddr::V4(a.clone())),
-            Self::IPV6(a) => Ok(IpAddr::V6(a.clone())),
-            Self::Hostname(_) => Err(()),
+            Self::IPV4(a) => Ok(IpAddr::V4(*a)),
+            Self::IPV6(a) => Ok(IpAddr::V6(*a)),
+            Self::Hostname(h) => Err(format!("Address not available for hostname: {}", h)),
         }
     }
-    pub fn to_socket_addr(&self, port: u16) -> Result<SocketAddr, ()> {
+    pub fn to_socket_addr(&self, port: u16) -> Result<SocketAddr, String> {
         let addr = self.address()?;
         Ok(SocketAddr::new(addr, port))
     }
 }
 
 impl core::str::FromStr for Address {
-    type Err = ();
-    fn from_str(host: &str) -> Result<Address, ()> {
-        if let Some(addr) = Ipv4Addr::from_str(host).ok() {
+    type Err = String;
+    fn from_str(host: &str) -> Result<Address, String> {
+        if let Ok(addr) = Ipv4Addr::from_str(host) {
             Ok(Address::IPV4(addr))
-        } else if let Some(addr) = Ipv6Addr::from_str(host).ok() {
+        } else if let Ok(addr) = Ipv6Addr::from_str(host) {
             Ok(Address::IPV6(addr))
         } else if !host.is_empty() {
             Ok(Address::Hostname(host.to_string()))
         } else {
-            Err(())
+            Err("unable to convert address to string".to_owned())
         }
     }
 }
@@ -260,11 +262,8 @@ impl DialInfo {
     pub fn try_udp_v4(&self) -> Option<SocketAddrV4> {
         match self {
             Self::UDP(v) => match v.address.to_socket_addr(v.port).ok() {
-                Some(x) => match x {
-                    SocketAddr::V4(v4) => Some(v4),
-                    _ => None,
-                },
-                None => None,
+                Some(SocketAddr::V4(v4)) => Some(v4),
+                _ => None,
             },
             _ => None,
         }
@@ -273,11 +272,8 @@ impl DialInfo {
     pub fn try_udp_v6(&self) -> Option<SocketAddrV6> {
         match self {
             Self::UDP(v) => match v.address.to_socket_addr(v.port).ok() {
-                Some(x) => match x {
-                    SocketAddr::V6(v6) => Some(v6),
-                    _ => None,
-                },
-                None => None,
+                Some(SocketAddr::V6(v6)) => Some(v6),
+                _ => None,
             },
             _ => None,
         }
@@ -286,11 +282,8 @@ impl DialInfo {
     pub fn try_tcp_v4(&self) -> Option<SocketAddrV4> {
         match self {
             Self::TCP(v) => match v.address.to_socket_addr(v.port).ok() {
-                Some(x) => match x {
-                    SocketAddr::V4(v4) => Some(v4),
-                    _ => None,
-                },
-                None => None,
+                Some(SocketAddr::V4(v4)) => Some(v4),
+                _ => None,
             },
             _ => None,
         }
@@ -299,11 +292,8 @@ impl DialInfo {
     pub fn try_tcp_v6(&self) -> Option<SocketAddrV6> {
         match self {
             Self::TCP(v) => match v.address.to_socket_addr(v.port).ok() {
-                Some(x) => match x {
-                    SocketAddr::V6(v6) => Some(v6),
-                    _ => None,
-                },
-                None => None,
+                Some(SocketAddr::V6(v6)) => Some(v6),
+                _ => None,
             },
             _ => None,
         }
@@ -381,32 +371,38 @@ impl DialInfo {
         }
     }
 
-    pub fn resolve(&self) -> Result<IpAddr, ()> {
+    pub fn resolve(&self) -> Result<IpAddr, String> {
         match self {
             Self::UDP(di) => {
                 let addr = di.address.resolve()?;
-                return Ok(addr);
+                Ok(addr)
             }
             Self::TCP(di) => {
                 let addr = di.address.resolve()?;
-                return Ok(addr);
+                Ok(addr)
             }
             Self::WS(di) => {
-                let addr: IpAddr = di.fqdn.parse().map_err(drop)?;
-                return Ok(addr);
+                let addr: IpAddr = di
+                    .fqdn
+                    .parse()
+                    .map_err(|e| format!("Failed to parse WS fqdn: {}", e))?;
+                Ok(addr)
             }
             Self::WSS(di) => {
-                let addr: IpAddr = di.fqdn.parse().map_err(drop)?;
-                return Ok(addr);
+                let addr: IpAddr = di
+                    .fqdn
+                    .parse()
+                    .map_err(|e| format!("Failed to parse WS fqdn: {}", e))?;
+                Ok(addr)
             }
         }
     }
-    pub fn address(&self) -> Result<IpAddr, ()> {
+    pub fn address(&self) -> Result<IpAddr, String> {
         match self {
             Self::UDP(di) => di.address.address(),
             Self::TCP(di) => di.address.address(),
-            Self::WS(_) => Err(()),
-            Self::WSS(_) => Err(()),
+            Self::WS(_) => Err("Address not available for WS protocol".to_owned()),
+            Self::WSS(_) => Err("Address not available for WSS protocol".to_owned()),
         }
     }
     pub fn port(&self) -> u16 {
@@ -417,20 +413,20 @@ impl DialInfo {
             Self::WSS(di) => di.port,
         }
     }
-    pub fn path(&self) -> Result<String, ()> {
+    pub fn path(&self) -> Result<String, String> {
         match self {
-            Self::UDP(_) => Err(()),
-            Self::TCP(_) => Err(()),
+            Self::UDP(_) => Err("path not available for udp protocol".to_owned()),
+            Self::TCP(_) => Err("path not available for tcp protocol".to_owned()),
             Self::WS(di) => Ok(di.path.clone()),
             Self::WSS(di) => Ok(di.path.clone()),
         }
     }
-    pub fn to_socket_addr(&self) -> Result<SocketAddr, ()> {
+    pub fn to_socket_addr(&self) -> Result<SocketAddr, String> {
         match self {
             Self::UDP(di) => Ok(SocketAddr::new(di.address.address()?, di.port)),
             Self::TCP(di) => Ok(SocketAddr::new(di.address.address()?, di.port)),
-            Self::WS(_) => Err(()),
-            Self::WSS(_) => Err(()),
+            Self::WS(_) => Err("Can not directly convert WS hostname to socket addr".to_owned()),
+            Self::WSS(_) => Err("Can not directly convert WSS hostname to socket addr".to_owned()),
         }
     }
 
@@ -507,7 +503,7 @@ impl PeerAddress {
         }
     }
 
-    pub fn to_socket_addr(&self) -> Result<SocketAddr, ()> {
+    pub fn to_socket_addr(&self) -> Result<SocketAddr, String> {
         self.address.to_socket_addr(self.port)
     }
     pub fn protocol_address_type(&self) -> ProtocolAddressType {
@@ -564,8 +560,8 @@ pub struct NodeDialInfoSingle {
 }
 
 impl core::str::FromStr for NodeDialInfoSingle {
-    type Err = ();
-    fn from_str(url: &str) -> Result<NodeDialInfoSingle, ()> {
+    type Err = String;
+    fn from_str(url: &str) -> Result<NodeDialInfoSingle, String> {
         let mut cur_url = url;
         let proto;
         if url.starts_with("udp://") {
@@ -581,18 +577,18 @@ impl core::str::FromStr for NodeDialInfoSingle {
             cur_url = &cur_url[6..];
             proto = ProtocolType::WSS;
         } else {
-            return Err(());
+            return Err("unknown protocol".to_owned());
         }
 
         // parse out node id if we have one
         let node_id = match cur_url.find('@') {
             Some(x) => {
-                let n = NodeId::new(DHTKey::try_decode(&cur_url[0..x]).map_err(drop)?);
+                let n = NodeId::new(DHTKey::try_decode(&cur_url[0..x])?);
                 cur_url = &cur_url[x + 1..];
                 n
             }
             None => {
-                return Err(());
+                return Err("NodeDialInfoSingle is missing the node id".to_owned());
             }
         };
 
@@ -614,13 +610,14 @@ impl core::str::FromStr for NodeDialInfoSingle {
                 }
             }
             None => {
-                return Err(());
+                return Err("NodeDialInfoSingle is missing the port".to_owned());
             }
         };
 
         // parse out port
         let pathstart = cur_url.find('/').unwrap_or(cur_url.len());
-        let port = u16::from_str(&cur_url[0..pathstart]).map_err(drop)?;
+        let port =
+            u16::from_str(&cur_url[0..pathstart]).map_err(|e| format!("port is invalid: {}", e))?;
         cur_url = &cur_url[pathstart..];
 
         // build NodeDialInfoSingle

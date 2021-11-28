@@ -37,7 +37,7 @@ impl<T> Clone for Receiver<T> {
 pub fn channel<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
     let imp = Channel {
         items: VecDeque::with_capacity(cap),
-        cap: cap,
+        cap,
         eventual: Eventual::new(),
     };
 

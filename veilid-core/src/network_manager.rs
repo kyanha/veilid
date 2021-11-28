@@ -263,17 +263,20 @@ impl NetworkManager {
         &self,
         descriptor: ConnectionDescriptor,
         conn: NetworkConnection,
-    ) -> Result<(), ()> {
+    ) -> Result<(), String> {
         let tx = self
             .inner
             .lock()
             .connection_add_channel_tx
             .as_ref()
-            .ok_or(())?
+            .ok_or("connection channel isn't open yet".to_owned())?
             .clone();
         let this = self.clone();
         let receiver_loop_future = Self::process_connection(this, descriptor, conn);
-        Ok(tx.try_send(receiver_loop_future).await.map_err(drop)?)
+        Ok(tx
+            .try_send(receiver_loop_future)
+            .await
+            .map_err(|_| "connection loop stopped".to_owned())?)
     }
 
     // Connection receiver loop

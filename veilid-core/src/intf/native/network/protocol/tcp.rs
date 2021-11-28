@@ -125,9 +125,12 @@ impl RawTcpProtocolHandler {
         self,
         stream: AsyncPeekStream,
         socket_addr: SocketAddr,
-    ) -> Result<bool, ()> {
+    ) -> Result<bool, String> {
         let mut peekbuf: [u8; PEEK_DETECT_LEN] = [0u8; PEEK_DETECT_LEN];
-        let peeklen = stream.peek(&mut peekbuf).await.map_err(drop)?;
+        let peeklen = stream
+            .peek(&mut peekbuf)
+            .await
+            .map_err(|e| format!("could not peek tcp stream: {}", e))?;
         assert_eq!(peeklen, PEEK_DETECT_LEN);
 
         let conn = NetworkConnection::RawTcp(RawTcpNetworkConnection::new(stream));
@@ -150,12 +153,13 @@ impl RawTcpProtocolHandler {
         network_manager: NetworkManager,
         preferred_local_address: Option<SocketAddr>,
         remote_socket_addr: SocketAddr,
-    ) -> Result<NetworkConnection, ()> {
+    ) -> Result<NetworkConnection, String> {
         // Make a low level socket that can connect to the remote socket address
         // and attempt to reuse the local address that our listening socket uses
         // for hole-punch compatibility
         let domain = Domain::for_address(remote_socket_addr);
-        let socket = Socket::new(domain, Type::STREAM, Some(Protocol::TCP)).map_err(drop)?;
+        let socket = Socket::new(domain, Type::STREAM, Some(Protocol::TCP))
+            .map_err(|e| format!("could not create tcp socket: {}", e))?;
         if let Err(e) = socket.set_linger(None) {
             warn!("Couldn't set TCP linger: {}", e);
         }
@@ -183,12 +187,16 @@ impl RawTcpProtocolHandler {
 
         // Connect to the remote address
         let remote_socket2_addr = socket2::SockAddr::from(remote_socket_addr);
-        socket.connect(&remote_socket2_addr).map_err(drop)?;
+        socket
+            .connect(&remote_socket2_addr)
+            .map_err(|e| format!("couln't connect tcp: {}", e))?;
         let std_stream: std::net::TcpStream = socket.into();
         let ts = TcpStream::from(std_stream);
 
         // See what local address we ended up with and turn this into a stream
-        let local_address = ts.local_addr().map_err(drop)?;
+        let local_address = ts
+            .local_addr()
+            .map_err(|e| format!("couldn't get local address for tcp socket: {}", e))?;
         let ps = AsyncPeekStream::new(ts);
         let peer_addr = PeerAddress::new(
             Address::from_socket_addr(remote_socket_addr),
@@ -227,7 +235,7 @@ impl TcpProtocolHandler for RawTcpProtocolHandler {
         &self,
         stream: AsyncPeekStream,
         peer_addr: SocketAddr,
-    ) -> SendPinBoxFuture<Result<bool, ()>> {
+    ) -> SendPinBoxFuture<Result<bool, String>> {
         Box::pin(self.clone().on_accept_async(stream, peer_addr))
     }
 }

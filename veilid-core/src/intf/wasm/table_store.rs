@@ -16,7 +16,7 @@ pub struct TableStore {
 impl TableStore {
     fn new_inner(config: VeilidConfig) -> TableStoreInner {
         TableStoreInner {
-            config: config,
+            config,
             opened: BTreeMap::new(),
         }
     }

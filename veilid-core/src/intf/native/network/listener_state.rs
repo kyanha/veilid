@@ -10,7 +10,7 @@ pub trait TcpProtocolHandler: TcpProtocolHandlerClone + Send + Sync {
         &self,
         stream: AsyncPeekStream,
         peer_addr: SocketAddr,
-    ) -> SendPinBoxFuture<Result<bool, ()>>;
+    ) -> SendPinBoxFuture<Result<bool, String>>;
 }
 
 pub trait TcpProtocolHandlerClone {

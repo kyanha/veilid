@@ -24,7 +24,7 @@ pub struct Network {
 impl Network {
     fn new_inner(network_manager: NetworkManager) -> NetworkInner {
         NetworkInner {
-            network_manager: network_manager,
+            network_manager,
             stop_network: Eventual::new(),
             network_needs_restart: false,
             //join_handle: None,
