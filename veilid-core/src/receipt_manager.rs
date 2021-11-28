@@ -321,7 +321,7 @@ impl ReceiptManager {
         let mut inner = self.inner.lock();
         inner
             .receipts_by_nonce
-            .insert(receipt.get_nonce(), record.clone());
+            .insert(receipt.get_nonce(), record);
     }
 
     pub fn record_single_shot_receipt(
@@ -336,7 +336,7 @@ impl ReceiptManager {
         let mut inner = self.inner.lock();
         inner
             .receipts_by_nonce
-            .insert(receipt.get_nonce(), record.clone());
+            .insert(receipt.get_nonce(), record);
     }
 
     fn update_next_oldest_timestamp(inner: &mut ReceiptManagerInner) {

@@ -33,7 +33,7 @@ pub async fn save_user_secret_string(
     let existed = kr.get_password().is_ok();
     let _ = kr
         .set_password(value)
-        .map_err(|e| format!("Failed to save user secret: {}", e).to_owned())?;
+        .map_err(|e| format!("Failed to save user secret: {}", e))?;
     Ok(existed)
 }
 
@@ -43,7 +43,7 @@ pub async fn load_user_secret_string(namespace: &str, key: &str) -> Result<Optio
     match kr.get_password() {
         Ok(v) => Ok(Some(v)),
         Err(KeyringError::NoPasswordFound) => Ok(None),
-        Err(e) => Err(format!("Failed to load user secret: {}", e).to_owned()),
+        Err(e) => Err(format!("Failed to load user secret: {}", e)),
     }
 }
 
@@ -53,6 +53,6 @@ pub async fn remove_user_secret_string(namespace: &str, key: &str) -> Result<boo
     match kr.delete_password() {
         Ok(_) => Ok(true),
         Err(KeyringError::NoPasswordFound) => Ok(false),
-        Err(e) => Err(format!("Failed to remove user secret: {}", e).to_owned()),
+        Err(e) => Err(format!("Failed to remove user secret: {}", e)),
     }
 }

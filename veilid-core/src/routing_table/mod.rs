@@ -208,7 +208,7 @@ impl RoutingTable {
             "Local Dial Info: {} ({:?})",
             NodeDialInfoSingle {
                 node_id: NodeId::new(inner.node_id),
-                dial_info: dial_info.clone()
+                dial_info
             }
             .to_string(),
             origin,
@@ -284,7 +284,7 @@ impl RoutingTable {
             "Public Dial Info: {} ({:?}#{:?})",
             NodeDialInfoSingle {
                 node_id: NodeId::new(inner.node_id),
-                dial_info: dial_info.clone()
+                dial_info
             }
             .to_string(),
             origin,

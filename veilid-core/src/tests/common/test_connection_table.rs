@@ -81,21 +81,21 @@ pub async fn test_add_get_remove() {
     assert_eq!(table.get_connection(&a1), Some(entry1.clone()));
     assert_eq!(table.get_connection(&a1), Some(entry1.clone()));
     assert_eq!(table.connection_count(), 1);
-    assert_eq!(table.remove_connection(&a2), Ok(entry1.clone()));
+    assert_eq!(table.remove_connection(&a2), Ok(entry1));
     assert_eq!(table.connection_count(), 0);
     assert_eq!(table.remove_connection(&a2), Err(()));
     assert_eq!(table.connection_count(), 0);
     assert_eq!(table.get_connection(&a2), None);
     assert_eq!(table.get_connection(&a1), None);
     assert_eq!(table.connection_count(), 0);
-    let entry2 = table.add_connection(a1.clone(), c1.clone()).unwrap();
+    let entry2 = table.add_connection(a1, c1.clone()).unwrap();
     assert_eq!(table.add_connection(a2.clone(), c1), Err(()));
-    let entry3 = table.add_connection(a3.clone(), c2.clone()).unwrap();
-    let entry4 = table.add_connection(a4.clone(), c3.clone()).unwrap();
+    let entry3 = table.add_connection(a3.clone(), c2).unwrap();
+    let entry4 = table.add_connection(a4.clone(), c3).unwrap();
     assert_eq!(table.connection_count(), 3);
-    assert_eq!(table.remove_connection(&a2), Ok(entry2.clone()));
-    assert_eq!(table.remove_connection(&a3), Ok(entry3.clone()));
-    assert_eq!(table.remove_connection(&a4), Ok(entry4.clone()));
+    assert_eq!(table.remove_connection(&a2), Ok(entry2));
+    assert_eq!(table.remove_connection(&a3), Ok(entry3));
+    assert_eq!(table.remove_connection(&a4), Ok(entry4));
     assert_eq!(table.connection_count(), 0);
 }
 

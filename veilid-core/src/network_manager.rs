@@ -83,7 +83,7 @@ impl NetworkManager {
 
     pub fn new(config: VeilidConfig, table_store: TableStore, crypto: Crypto) -> Self {
         Self {
-            config: config.clone(),
+            config,
             table_store,
             crypto,
             inner: Arc::new(Mutex::new(Self::new_inner())),
@@ -269,7 +269,7 @@ impl NetworkManager {
             .lock()
             .connection_add_channel_tx
             .as_ref()
-            .ok_or("connection channel isn't open yet".to_owned())?
+            .ok_or_else(|| "connection channel isn't open yet".to_owned())?
             .clone();
         let this = self.clone();
         let receiver_loop_future = Self::process_connection(this, descriptor, conn);

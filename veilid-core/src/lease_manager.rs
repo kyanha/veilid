@@ -88,7 +88,7 @@ impl LeaseManager {
         self.inner.lock().client_relay_mode
     }
 
-    pub fn client_is_relay_peer_addr(&self, peer_addr: PeerAddress) -> bool {
+    pub fn client_is_relay_peer_addr(&self, _peer_addr: PeerAddress) -> bool {
         error!("unimplemented");
         false
     }
@@ -101,7 +101,7 @@ impl LeaseManager {
     // Server-side
 
     // Signal leases
-    pub fn server_has_valid_signal_lease(&self, recipient_id: &DHTKey) -> bool {
+    pub fn server_has_valid_signal_lease(&self, _recipient_id: &DHTKey) -> bool {
         error!("unimplemented");
         false
     }
@@ -143,7 +143,7 @@ impl LeaseManager {
     }
 
     // Relay leases
-    pub fn server_has_valid_relay_lease(&self, recipient_id: &DHTKey) -> bool {
+    pub fn server_has_valid_relay_lease(&self, _recipient_id: &DHTKey) -> bool {
         error!("unimplemented");
         false
     }

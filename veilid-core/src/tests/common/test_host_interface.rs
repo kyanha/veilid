@@ -111,8 +111,8 @@ pub async fn test_eventual_value() {
             e1_c1.resolve(3u32);
         });
 
-        assert_eq!(i1.await, ());
-        assert_eq!(i4.await, ());
+        i1.await;
+        i4.await;
         jh.await;
         assert_eq!(e1.take_value(), Some(3u32));
     }
@@ -126,15 +126,15 @@ pub async fn test_eventual_value() {
         let jh = intf::spawn(async move {
             let i5 = e1.instance();
             let i6 = e1.instance();
-            assert_eq!(i1.await, ());
-            assert_eq!(i5.await, ());
-            assert_eq!(i6.await, ());
+            i1.await;
+            i5.await;
+            i6.await;
         });
         intf::sleep(1000).await;
         let resolved = e1_c1.resolve(4u16);
         drop(i2);
         drop(i3);
-        assert_eq!(i4.await, ());
+        i4.await;
         resolved.await;
         jh.await;
         assert_eq!(e1_c1.take_value(), Some(4u16));
@@ -146,8 +146,8 @@ pub async fn test_eventual_value() {
         let i2 = e1.instance();
         let e1_c1 = e1.clone();
         let jh = intf::spawn(async move {
-            assert_eq!(i1.await, ());
-            assert_eq!(i2.await, ());
+            i1.await;
+            i2.await;
         });
         intf::sleep(1000).await;
         e1_c1.resolve(5u32).await;
@@ -159,8 +159,8 @@ pub async fn test_eventual_value() {
         let j1 = e1.instance();
         let j2 = e1.instance();
         let jh = intf::spawn(async move {
-            assert_eq!(j1.await, ());
-            assert_eq!(j2.await, ());
+            j1.await;
+            j2.await;
         });
         intf::sleep(1000).await;
         e1_c1.resolve(6u32).await;

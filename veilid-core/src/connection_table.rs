@@ -111,7 +111,7 @@ impl ConnectionTable {
 
         let res = inner.conn_by_addr.remove(descriptor);
         match res {
-            Some(v) => Ok(v.clone()),
+            Some(v) => Ok(v),
             None => Err(()),
         }
     }

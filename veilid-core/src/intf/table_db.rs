@@ -32,7 +32,7 @@ impl TableDB {
         Self {
             inner: Arc::new(Mutex::new(TableDBInner {
                 table,
-                table_store: table_store.clone(),
+                table_store,
                 database,
             })),
         }
