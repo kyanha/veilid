@@ -1,5 +1,6 @@
 variables:
   GIT_SUBMODULE_STRATEGY: recursive
+  BUILD_IMAGE_LINUX_AMD64: $CI_REGISTRY/veilid/ci-cd/veilid-build-linux-amd64:latest
 
 stages:
   - clippy
@@ -8,7 +9,7 @@ stages:
 ############# Clippy Lint
 clippy:
   stage: clippy
-  image: rust:latest
+  image: ${BUILD_IMAGE_LINUX_AMD64}
   tags:
     - linux
     - amd64
@@ -21,7 +22,7 @@ clippy:
 ############# Unit Testing
 test_linux_amd64:
   stage: test
-  image: rust:latest
+  image: ${BUILD_IMAGE_LINUX_AMD64}
   tags:
     - linux
     - amd64
