@@ -18,22 +18,13 @@ pub enum ConnectionState {
 }
 impl ConnectionState {
     pub fn is_disconnected(&self) -> bool {
-        match *self {
-            Self::Disconnected => true,
-            _ => false,
-        }
+        matches!(*self, Self::Disconnected)
     }
     pub fn is_connected(&self) -> bool {
-        match *self {
-            Self::Connected(_, _) => true,
-            _ => false,
-        }
+        matches!(*self, Self::Connected(_, _))
     }
     pub fn is_retrying(&self) -> bool {
-        match *self {
-            Self::Retrying(_, _) => true,
-            _ => false,
-        }
+        matches!(*self, Self::Retrying(_, _))
     }
 }
 

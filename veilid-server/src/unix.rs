@@ -16,9 +16,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 use veilid_core::xx::SingleShotEventual;
 
-fn parse_command_line<'a>(
-    default_config_path: &'a OsStr,
-) -> Result<clap::ArgMatches<'a>, clap::Error> {
+fn parse_command_line(default_config_path: &OsStr) -> Result<clap::ArgMatches, clap::Error> {
     let matches = App::new("veilid-server")
         .version("0.1")
         .about("Veilid Server")
@@ -158,10 +156,7 @@ pub async fn main() -> Result<(), String> {
         settingsrw.logging.file.level = settings::LogLevel::Trace;
     }
     if matches.is_present("attach") {
-        settingsrw.auto_attach = match matches.value_of("attach") {
-            Some("false") => false,
-            _ => true,
-        };
+        settingsrw.auto_attach = !matches!(matches.value_of("attach"), Some("false"));
     }
     if matches.occurrences_of("bootstrap") != 0 {
         let bootstrap = match matches.value_of("bootstrap") {
@@ -284,18 +279,10 @@ pub async fn main() -> Result<(), String> {
     // Handle state changes on main thread for capnproto rpc
     let capi2 = capi.clone();
     let capi_jh = async_std::task::spawn_local(async move {
-        loop {
-            let change = match receiver.recv().await {
-                Ok(change) => change,
-                Err(_) => {
-                    break;
-                }
-            };
-            let c = match capi2.borrow_mut().as_mut() {
-                Some(some_capi) => some_capi.clone(),
-                None => continue,
-            };
-            c.handle_state_change(change);
+        while let Ok(change) = receiver.recv().await {
+            if let Some(c) = capi2.borrow_mut().as_mut().cloned() {
+                c.handle_state_change(change);
+            }
         }
     });
 
@@ -315,11 +302,8 @@ pub async fn main() -> Result<(), String> {
     }
 
     // Stop the client api if we have one
-    match capi.borrow_mut().as_mut().cloned() {
-        Some(some_capi) => {
-            some_capi.stop().await;
-        }
-        None => (),
+    if let Some(c) = capi.borrow_mut().as_mut().cloned() {
+        c.stop().await;
     }
 
     // Shut down Veilid API

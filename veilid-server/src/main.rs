@@ -4,6 +4,7 @@
 mod client_api;
 mod settings;
 
+#[allow(clippy::all)]
 pub mod veilid_client_capnp {
     include!(concat!(env!("OUT_DIR"), "/proto/veilid_client_capnp.rs"));
 }

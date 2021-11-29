@@ -158,13 +158,14 @@ impl veilid_server::Server for VeilidServerImpl {
 
 // --- Client API Server-Side ---------------------------------
 
+type ClientApiAllFuturesJoinHandle =
+    async_std::task::JoinHandle<Result<Vec<()>, Box<(dyn std::error::Error + 'static)>>>;
+
 struct ClientApiInner {
     veilid_api: veilid_core::VeilidAPI,
     registration_map: Rc<RefCell<RegistrationMap>>,
     stop: Eventual,
-    join_handle: Option<
-        async_std::task::JoinHandle<Result<Vec<()>, Box<(dyn std::error::Error + 'static)>>>,
-    >,
+    join_handle: Option<ClientApiAllFuturesJoinHandle>,
 }
 
 pub struct ClientApi {
@@ -283,10 +284,11 @@ impl ClientApi {
             let registration_map2 = registration_map1.clone();
             async_std::task::spawn_local(request.send().promise.map(move |r| match r {
                 Ok(_) => {
-                    if let Some(ref mut s) = registration_map2
-                        .borrow_mut()
-                        .registrations
-                        .get_mut(&id) { s.requests_in_flight -= 1; }
+                    if let Some(ref mut s) =
+                        registration_map2.borrow_mut().registrations.get_mut(&id)
+                    {
+                        s.requests_in_flight -= 1;
+                    }
                 }
                 Err(e) => {
                     debug!("Got error: {:?}. Dropping registation.", e);

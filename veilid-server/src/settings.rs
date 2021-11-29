@@ -276,13 +276,13 @@ pub struct Logging {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct HTTPS {
+pub struct Https {
     pub enabled: bool,
     pub listen_address: NamedSocketAddrs,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct HTTP {
+pub struct Http {
     pub enabled: bool,
     pub listen_address: NamedSocketAddrs,
 }
@@ -290,12 +290,12 @@ pub struct HTTP {
 #[derive(Debug, Deserialize)]
 pub struct Application {
     pub path: PathBuf,
-    pub https: HTTPS,
-    pub http: HTTP,
+    pub https: Https,
+    pub http: Http,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct UDP {
+pub struct Udp {
     pub enabled: bool,
     pub socket_pool_size: u32,
     pub listen_address: NamedSocketAddrs,
@@ -303,7 +303,7 @@ pub struct UDP {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct TCP {
+pub struct Tcp {
     pub connect: bool,
     pub listen: bool,
     pub max_connections: u32,
@@ -312,7 +312,7 @@ pub struct TCP {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct WS {
+pub struct Ws {
     pub connect: bool,
     pub listen: bool,
     pub max_connections: u32,
@@ -322,7 +322,7 @@ pub struct WS {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct WSS {
+pub struct Wss {
     pub connect: bool,
     pub listen: bool,
     pub max_connections: u32,
@@ -333,21 +333,21 @@ pub struct WSS {
 
 #[derive(Debug, Deserialize)]
 pub struct Protocol {
-    pub udp: UDP,
-    pub tcp: TCP,
-    pub ws: WS,
-    pub wss: WSS,
+    pub udp: Udp,
+    pub tcp: Tcp,
+    pub ws: Ws,
+    pub wss: Wss,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct TLS {
+pub struct Tls {
     pub certificate_path: PathBuf,
     pub private_key_path: PathBuf,
     pub connection_initial_timeout: u64,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct RPC {
+pub struct Rpc {
     pub concurrency: u32,
     pub queue_size: u32,
     pub max_timestamp_behind: Option<u64>,
@@ -357,7 +357,7 @@ pub struct RPC {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct DHT {
+pub struct Dht {
     pub resolve_node_timeout: Option<u64>,
     pub resolve_node_count: u32,
     pub resolve_node_fanout: u32,
@@ -388,13 +388,13 @@ pub struct Network {
     pub node_id: veilid_core::DHTKey,
     pub node_id_secret: veilid_core::DHTKeySecret,
     pub bootstrap: Vec<ParsedURL>,
-    pub rpc: RPC,
-    pub dht: DHT,
+    pub rpc: Rpc,
+    pub dht: Dht,
     pub upnp: bool,
     pub natpmp: bool,
     pub address_filter: bool,
     pub restricted_nat_retries: u32,
-    pub tls: TLS,
+    pub tls: Tls,
     pub application: Application,
     pub protocol: Protocol,
     pub leases: Leases,
