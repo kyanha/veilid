@@ -27,5 +27,8 @@ test_linux_amd64:
     - linux
     - amd64
   script:
+    - dbus-uuidgen > /var/lib/dbus/machine-id
+    - mkdir -p /var/run/dbus
+    - dbus-daemon --config-file=/usr/share/dbus-1/system.conf --print-address
     #    - RUSTFLAGS="-D warnings" RUST_BACKTRACE=1 cargo test -- --nocapture
     - RUST_BACKTRACE=1 cargo test -- --nocapture
