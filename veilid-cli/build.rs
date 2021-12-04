@@ -4,8 +4,4 @@ fn main() {
         .src_prefix("../veilid-server/")
         .run()
         .expect("compiling schema");
-    #[cfg(unix)]
-    {
-        println!("cargo:rustc-link-lib=static=ncursesw");
-    }
 }
