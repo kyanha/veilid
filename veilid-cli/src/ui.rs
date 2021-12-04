@@ -25,10 +25,7 @@ struct Dirty<T> {
 
 impl<T> Dirty<T> {
     pub fn new(value: T) -> Self {
-        Self {
-            value,
-            dirty: true,
-        }
+        Self { value, dirty: true }
     }
     pub fn set(&mut self, value: T) {
         self.value = value;
@@ -161,13 +158,9 @@ impl UI {
                 .child(TextView::new(command))
                 .child(
                     EditView::new()
-                        .on_submit(|s, text| {
-                            UI::on_command_line_entered(s, text);
-                        })
-                        .on_edit(|s, text, cursor| UI::on_command_line_edit(s, text, cursor))
-                        .on_up_down(|s, dir| {
-                            UI::on_command_line_history(s, dir);
-                        })
+                        .on_submit(UI::on_command_line_entered)
+                        .on_edit(UI::on_command_line_edit)
+                        .on_up_down(UI::on_command_line_history)
                         .style(ColorStyle::new(
                             PaletteColor::Background,
                             PaletteColor::Secondary,
@@ -310,17 +303,17 @@ impl UI {
         siv.add_layer(
             Dialog::text("Do you want to exit?")
                 .button("Yes", |s| s.quit())
-                .button("No", |mut s| {
+                .button("No", |s| {
                     s.pop_layer();
-                    UI::setup_quit_handler(&mut s);
+                    UI::setup_quit_handler(s);
                 }),
         );
         siv.set_on_pre_event(cursive::event::Event::CtrlChar('c'), |s| {
             s.quit();
         });
-        siv.set_global_callback(cursive::event::Event::Key(Key::Esc), |mut s| {
+        siv.set_global_callback(cursive::event::Event::Key(Key::Esc), |s| {
             s.pop_layer();
-            UI::setup_quit_handler(&mut s);
+            UI::setup_quit_handler(s);
         });
     }
 
@@ -470,10 +463,7 @@ impl UI {
         match Self::run_command(s, text) {
             Ok(_) => {}
             Err(e) => {
-                let color = *Self::inner_mut(s)
-                    .log_colors
-                    .get(&Level::Error)
-                    .unwrap();
+                let color = *Self::inner_mut(s).log_colors.get(&Level::Error).unwrap();
 
                 cursive_flexi_logger_view::push_to_log(StyledString::styled(
                     format!("> {}", text),
@@ -690,9 +680,7 @@ impl UI {
                 let mut dlg = s.find_name::<Dialog>("connection-dialog").unwrap();
                 dlg.add_button("Connect", Self::submit_connection_address);
             }
-            ConnectionState::Connected(_, _) => {
-                
-            }
+            ConnectionState::Connected(_, _) => {}
             ConnectionState::Retrying(addr, _) => {
                 //
                 let mut edit = s.find_name::<EditView>("connection-address").unwrap();
@@ -716,7 +704,10 @@ impl UI {
 
         match inner.ui_state.connection_state.get() {
             ConnectionState::Disconnected => {
-                status.append_styled("Disconnected ".to_string(), ColorStyle::highlight_inactive());
+                status.append_styled(
+                    "Disconnected ".to_string(),
+                    ColorStyle::highlight_inactive(),
+                );
                 status.append_styled("|", ColorStyle::highlight_inactive());
             }
             ConnectionState::Retrying(addr, _) => {

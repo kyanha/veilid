@@ -58,17 +58,9 @@ impl BlockId {
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#[derive(Clone, Debug, PartialEq, PartialOrd, Ord, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, PartialOrd, Ord, Eq, Hash, Default)]
 pub struct SenderInfo {
     pub socket_address: Option<SocketAddr>,
-}
-
-impl Default for SenderInfo {
-    fn default() -> Self {
-        Self {
-            socket_address: None,
-        }
-    }
 }
 
 #[derive(Clone, Debug, Default)]
