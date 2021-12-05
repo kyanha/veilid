@@ -13,6 +13,9 @@ clippy:
   tags:
     - linux
     - amd64
+  cache:
+    paths:
+      - target/
   before_script:
     - rustup component add clippy
   script:
@@ -26,6 +29,9 @@ test_linux_amd64:
   tags:
     - linux
     - amd64
+  cache:
+    paths:
+      - target/
   script:
     #    - RUSTFLAGS="-D warnings" RUST_BACKTRACE=1 dbus-run-session -- cargo test -- --nocapture
     - RUST_BACKTRACE=1 dbus-run-session -- cargo test -- --nocapture
