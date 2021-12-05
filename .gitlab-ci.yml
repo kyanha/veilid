@@ -27,5 +27,5 @@ test_linux_amd64:
     - linux
     - amd64
   script:
-    #    - RUSTFLAGS="-D warnings" RUST_BACKTRACE=1 cargo test -- --nocapture
-    - RUST_BACKTRACE=1 cargo test -- --nocapture
+    #    - RUSTFLAGS="-D warnings" RUST_BACKTRACE=1 dbus-run-session -- cargo test -- --nocapture
+    - RUST_BACKTRACE=1 dbus-run-session -- cargo test -- --nocapture
