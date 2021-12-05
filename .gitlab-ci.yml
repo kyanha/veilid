@@ -5,33 +5,74 @@ variables:
 stages:
   - clippy
   - test
+  - build
 
 ############# Clippy Lint
+
 clippy:
   stage: clippy
   image: ${BUILD_IMAGE_LINUX_AMD64}
+  cache:
+    key: $CI_COMMIT_REF_SLUG-linux-amd64-release
+    paths:
+      - target/
   tags:
     - linux
     - amd64
-  cache:
-    paths:
-      - target/
-  before_script:
-    - rustup component add clippy
   script:
-    #    - RUSTFLAGS="-D warnings" RUST_BACKTRACE=1 cargo clippy
-    - RUST_BACKTRACE=1 cargo clippy
+    - cargo clippy --release
+  # Only run clippy on non-protected branches, for development
+  rules:
+    - if: $CI_COMMIT_REF_PROTECTED == "false"
 
 ############# Unit Testing
-test_linux_amd64:
+
+.test_rules_common:
+  # Only do tests for tags, protected branches, or merge requests
+  rules:
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_REF_PROTECTED == "true"
+    - if: $CI_MERGE_REQUEST_IID
+
+test_linux_amd64_release:
   stage: test
   image: ${BUILD_IMAGE_LINUX_AMD64}
+  cache:
+    key: $CI_COMMIT_REF_SLUG-linux-amd64-release
+    paths:
+      - target/
   tags:
     - linux
     - amd64
+  script:
+    - RUST_BACKTRACE=1 dbus-run-session -- cargo test --release -- --nocapture
+  rules:
+    - !reference [.test_rules_common, rules]
+
+############# Build
+
+.build_rules_common:
+  # Only build for tags or protected branches
+  rules:
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_REF_PROTECTED == "true"
+
+build_linux_amd64_release:
+  stage: build
+  image: ${BUILD_IMAGE_LINUX_AMD64}
   cache:
+    key: $CI_COMMIT_REF_SLUG-linux-amd64-release
     paths:
       - target/
+  tags:
+    - linux
+    - amd64
   script:
-    #    - RUSTFLAGS="-D warnings" RUST_BACKTRACE=1 dbus-run-session -- cargo test -- --nocapture
-    - RUST_BACKTRACE=1 dbus-run-session -- cargo test -- --nocapture
+    - cargo build --release
+  artifacts:
+    name: $CI_COMMIT_REF_SLUG-linux-amd64-release
+    paths:
+      - target/release/veilid-cli
+      - target/release/veilid-server
+  rules:
+    - !reference [.build_rules_common, rules]
