@@ -37,8 +37,8 @@ impl DialInfoEntry {
     pub fn matches_peer_scope(&self, scope: PeerScope) -> bool {
         match scope {
             PeerScope::All => true,
-            PeerScope::Public => self.is_public(),
-            PeerScope::Private => self.is_private(),
+            PeerScope::Global => self.is_public(),
+            PeerScope::Local => self.is_private(),
         }
     }
 

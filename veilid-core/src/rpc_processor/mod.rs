@@ -1194,7 +1194,7 @@ impl RPCProcessor {
 
             // find N nodes closest to the target node in our routing table
             let peer_scope = if address_filter {
-                PeerScope::Public
+                PeerScope::Global
             } else {
                 PeerScope::All
             };
@@ -1671,7 +1671,7 @@ impl RPCProcessor {
             let mut peer_info_builder = fnq.reborrow().init_peer_info();
 
             let own_peer_info = self.routing_table().get_own_peer_info(if address_filter {
-                PeerScope::Public
+                PeerScope::Global
             } else {
                 PeerScope::All
             });

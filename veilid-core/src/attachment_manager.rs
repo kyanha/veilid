@@ -126,11 +126,7 @@ impl AttachmentManager {
             table_store: table_store.clone(),
             crypto: crypto.clone(),
             attachment_machine: CallbackStateMachine::new(),
-            network_manager: NetworkManager::new(
-                config,
-                table_store,
-                crypto,
-            ),
+            network_manager: NetworkManager::new(config, table_store, crypto),
             maintain_peers: false,
             peer_count: 0,
             attach_timestamp: None,

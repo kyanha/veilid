@@ -107,8 +107,10 @@ impl veilid_server::Server for VeilidServerImpl {
         // Send state update
         let veilid_api = self.veilid_api.clone();
         Promise::from_future(async move {
-            veilid_api.send_state_update().await;
-            Ok(())
+            veilid_api
+                .send_state_update()
+                .await
+                .map_err(|e| ::capnp::Error::failed(format!("{:?}", e)))
         })
     }
 
@@ -120,8 +122,10 @@ impl veilid_server::Server for VeilidServerImpl {
         trace!("VeilidServerImpl::attach");
         let veilid_api = self.veilid_api.clone();
         Promise::from_future(async move {
-            veilid_api.attach().await;
-            Ok(())
+            veilid_api
+                .attach()
+                .await
+                .map_err(|e| ::capnp::Error::failed(format!("{:?}", e)))
         })
     }
     fn detach(
@@ -132,8 +136,10 @@ impl veilid_server::Server for VeilidServerImpl {
         trace!("VeilidServerImpl::detach");
         let veilid_api = self.veilid_api.clone();
         Promise::from_future(async move {
-            veilid_api.detach().await;
-            Ok(())
+            veilid_api
+                .detach()
+                .await
+                .map_err(|e| ::capnp::Error::failed(format!("{:?}", e)))
         })
     }
     fn shutdown(

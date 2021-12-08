@@ -44,7 +44,7 @@ struct RoutingTableInner {
     node_id_secret: DHTKeySecret,
     buckets: Vec<Bucket>,
     local_dial_info: Vec<DialInfoDetail>,
-    public_dial_info: Vec<DialInfoDetail>,
+    global_dial_info: Vec<DialInfoDetail>,
     bucket_entry_count: usize,
     // Waiters
     eventual_changed_dial_info: Eventual,
@@ -77,7 +77,7 @@ impl RoutingTable {
             node_id_secret: DHTKeySecret::default(),
             buckets: Vec::new(),
             local_dial_info: Vec::new(),
-            public_dial_info: Vec::new(),
+            global_dial_info: Vec::new(),
             bucket_entry_count: 0,
             eventual_changed_dial_info: Eventual::new(),
             stats_accounting: StatsAccounting::new(),
@@ -219,23 +219,23 @@ impl RoutingTable {
         self.inner.lock().local_dial_info.clear();
     }
 
-    pub fn has_public_dial_info(&self) -> bool {
+    pub fn has_global_dial_info(&self) -> bool {
         let inner = self.inner.lock();
-        !inner.public_dial_info.is_empty()
+        !inner.global_dial_info.is_empty()
     }
 
-    pub fn public_dial_info(&self) -> Vec<DialInfoDetail> {
+    pub fn global_dial_info(&self) -> Vec<DialInfoDetail> {
         let inner = self.inner.lock();
-        inner.public_dial_info.clone()
+        inner.global_dial_info.clone()
     }
 
-    pub fn public_dial_info_for_protocol(
+    pub fn global_dial_info_for_protocol(
         &self,
         protocol_type: ProtocolType,
     ) -> Vec<DialInfoDetail> {
         let inner = self.inner.lock();
         inner
-            .public_dial_info
+            .global_dial_info
             .iter()
             .filter_map(|di| {
                 if di.dial_info.protocol_type() != protocol_type {
@@ -246,13 +246,13 @@ impl RoutingTable {
             })
             .collect()
     }
-    pub fn public_dial_info_for_protocol_address_type(
+    pub fn global_dial_info_for_protocol_address_type(
         &self,
         protocol_address_type: ProtocolAddressType,
     ) -> Vec<DialInfoDetail> {
         let inner = self.inner.lock();
         inner
-            .public_dial_info
+            .global_dial_info
             .iter()
             .filter_map(|di| {
                 if di.dial_info.protocol_address_type() != protocol_address_type {
@@ -264,7 +264,7 @@ impl RoutingTable {
             .collect()
     }
 
-    pub fn register_public_dial_info(
+    pub fn register_global_dial_info(
         &self,
         dial_info: DialInfo,
         network_class: Option<NetworkClass>,
@@ -273,7 +273,7 @@ impl RoutingTable {
         let ts = get_timestamp();
         let mut inner = self.inner.lock();
 
-        inner.public_dial_info.push(DialInfoDetail {
+        inner.global_dial_info.push(DialInfoDetail {
             dial_info: dial_info.clone(),
             origin,
             network_class,
@@ -292,8 +292,8 @@ impl RoutingTable {
         );
     }
 
-    pub fn clear_public_dial_info(&self) {
-        self.inner.lock().public_dial_info.clear();
+    pub fn clear_global_dial_info(&self) {
+        self.inner.lock().global_dial_info.clear();
     }
 
     pub async fn wait_changed_dial_info(&self) {

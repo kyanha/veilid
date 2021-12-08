@@ -1,4 +1,4 @@
-#![warn(clippy::all)]
+#![deny(clippy::all)]
 #![cfg_attr(target_arch = "wasm32", no_std)]
 
 #[macro_use]
