@@ -89,8 +89,8 @@ lazy_static! {
 }
 
 pub fn shutdown() {
-    let mut shutdown_switch_locked = SHUTDOWN_SWITCH.lock();
-    if let Some(shutdown_switch) = shutdown_switch_locked.take() {
+    let shutdown_switch = SHUTDOWN_SWITCH.lock().take();
+    if let Some(shutdown_switch) = shutdown_switch {
         shutdown_switch.resolve(());
     }
 }
@@ -279,17 +279,22 @@ pub async fn main() -> Result<(), String> {
     // Handle state changes on main thread for capnproto rpc
     let capi2 = capi.clone();
     let capi_jh = async_std::task::spawn_local(async move {
+        trace!("state change processing started");
         while let Ok(change) = receiver.recv().await {
             if let Some(c) = capi2.borrow_mut().as_mut().cloned() {
                 c.handle_state_change(change);
             }
         }
+        trace!("state change processing stopped");
     });
 
     // Auto-attach if desired
     if auto_attach {
         info!("Auto-attach to the Veilid network");
-        veilid_api.attach().await;
+        if let Err(e) = veilid_api.attach().await {
+            error!("Auto-attaching to the Veilid network failed: {:?}", e);
+            shutdown();
+        }
     }
 
     // Idle while waiting to exit

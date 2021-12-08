@@ -36,6 +36,7 @@ struct VeilidCoreInner {
     table_store: Option<TableStore>,
     crypto: Option<Crypto>,
     attachment_manager: Option<AttachmentManager>,
+    api: VeilidAPIWeak,
 }
 
 #[derive(Clone)]
@@ -56,6 +57,7 @@ impl VeilidCore {
             table_store: None,
             crypto: None,
             attachment_manager: None,
+            api: VeilidAPIWeak::default(),
         }
     }
     pub fn new() -> Self {
@@ -64,18 +66,9 @@ impl VeilidCore {
         }
     }
 
-    // pub(crate) fn config(&self) -> VeilidConfig {
-    //     self.inner.lock().config.as_ref().unwrap().clone()
-    // }
-
-    // pub(crate) fn attachment_manager(&self) -> AttachmentManager {
-    //     self.inner
-    //         .lock()
-    //         .attachment_manager
-    //         .as_ref()
-    //         .unwrap()
-    //         .clone()
-    // }
+    pub(crate) fn config(&self) -> VeilidConfig {
+        self.inner.lock().config.as_ref().unwrap().clone()
+    }
 
     pub(crate) fn table_store(&self) -> TableStore {
         self.inner.lock().table_store.as_ref().unwrap().clone()
@@ -85,8 +78,21 @@ impl VeilidCore {
         self.inner.lock().crypto.as_ref().unwrap().clone()
     }
 
+    pub(crate) fn attachment_manager(&self) -> AttachmentManager {
+        self.inner
+            .lock()
+            .attachment_manager
+            .as_ref()
+            .unwrap()
+            .clone()
+    }
+
     // internal startup
-    async fn internal_startup(&self, setup: VeilidCoreSetup) -> Result<VeilidAPI, String> {
+    async fn internal_startup(
+        &self,
+        inner: &mut VeilidCoreInner,
+        setup: VeilidCoreSetup,
+    ) -> Result<VeilidAPI, String> {
         trace!("VeilidCore::internal_startup starting");
 
         cfg_if! {
@@ -102,19 +108,19 @@ impl VeilidCore {
         trace!("VeilidCore::internal_startup init config");
         let mut config = VeilidConfig::new();
         config.init(setup.config_callback).await?;
-        self.inner.lock().config = Some(config.clone());
+        inner.config = Some(config.clone());
 
         // Set up tablestore
         trace!("VeilidCore::internal_startup init tablestore");
         let table_store = TableStore::new(config.clone());
         table_store.init().await?;
-        self.inner.lock().table_store = Some(table_store.clone());
+        inner.table_store = Some(table_store.clone());
 
         // Set up crypto
         trace!("VeilidCore::internal_startup init crypto");
         let crypto = Crypto::new(config.clone(), table_store.clone());
         crypto.init().await?;
-        self.inner.lock().crypto = Some(crypto.clone());
+        inner.crypto = Some(crypto.clone());
 
         // Set up attachment manager
         trace!("VeilidCore::internal_startup init attachment manager");
@@ -131,20 +137,30 @@ impl VeilidCore {
                 },
             ))
             .await?;
-        self.inner.lock().attachment_manager = Some(attachment_manager.clone());
+        inner.attachment_manager = Some(attachment_manager.clone());
 
         // Set up the API
         trace!("VeilidCore::internal_startup init API");
         let this = self.clone();
-        let veilid_api = VeilidAPI::new(attachment_manager, this);
+        let veilid_api = VeilidAPI::new(this);
+        inner.api = veilid_api.weak();
+
         trace!("VeilidCore::internal_startup complete");
+
         Ok(veilid_api)
     }
 
     // called once at the beginning to start the node
     pub async fn startup(&self, setup: VeilidCoreSetup) -> Result<VeilidAPI, String> {
+        // See if we have an API started up already
+        let mut inner = self.inner.lock();
+        if inner.api.upgrade().is_some() {
+            // If so, return an error because we shouldn't try to do this more than once
+            return Err("Veilid API is started".to_owned());
+        }
+
         // Ensure we never end up partially initialized
-        match self.internal_startup(setup).await {
+        match self.internal_startup(&mut *inner, setup).await {
             Ok(v) => Ok(v),
             Err(e) => {
                 self.clone().internal_shutdown().await;
@@ -157,6 +173,9 @@ impl VeilidCore {
     pub(crate) async fn internal_shutdown(self) {
         let mut inner = self.inner.lock();
         trace!("VeilidCore::internal_shutdown starting");
+
+        // Detach the API object
+        inner.api = VeilidAPIWeak::default();
 
         // Shut down up attachment manager
         if let Some(attachment_manager) = &inner.attachment_manager {

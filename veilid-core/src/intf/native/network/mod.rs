@@ -833,7 +833,7 @@ impl Network {
 
             // Add all resolved addresses as public dialinfo
             for pdi_addr in &mut public_sockaddrs {
-                routing_table.register_public_dial_info(
+                routing_table.register_global_dial_info(
                     DialInfo::udp_from_socketaddr(pdi_addr),
                     Some(NetworkClass::Server),
                     DialInfoOrigin::Static,
@@ -844,7 +844,7 @@ impl Network {
             // Register local dial info as public if it is publicly routable
             for x in &dial_infos {
                 if x.is_public().unwrap_or(false) {
-                    routing_table.register_public_dial_info(
+                    routing_table.register_global_dial_info(
                         x.clone(),
                         Some(NetworkClass::Server),
                         DialInfoOrigin::Static,
@@ -895,13 +895,13 @@ impl Network {
             let public_port = public_port
                 .ok_or_else(|| "port must be specified for public WS address".to_owned())?;
 
-            routing_table.register_public_dial_info(
+            routing_table.register_global_dial_info(
                 DialInfo::ws(fqdn, public_port, public_fqdn),
                 Some(NetworkClass::Server),
                 DialInfoOrigin::Static,
             );
         } else {
-            routing_table.register_public_dial_info(
+            routing_table.register_global_dial_info(
                 DialInfo::ws(fqdn, port, path.clone()),
                 Some(NetworkClass::Server),
                 DialInfoOrigin::Static,
@@ -950,13 +950,13 @@ impl Network {
             let public_port = public_port
                 .ok_or_else(|| "port must be specified for public WSS address".to_owned())?;
 
-            routing_table.register_public_dial_info(
+            routing_table.register_global_dial_info(
                 DialInfo::wss(fqdn, public_port, public_fqdn),
                 None,
                 DialInfoOrigin::Static,
             );
         } else {
-            routing_table.register_public_dial_info(
+            routing_table.register_global_dial_info(
                 DialInfo::wss(fqdn, port, path.clone()),
                 None,
                 DialInfoOrigin::Static,
@@ -1004,7 +1004,7 @@ impl Network {
 
             // Add all resolved addresses as public dialinfo
             for pdi_addr in &mut public_sockaddrs {
-                routing_table.register_public_dial_info(
+                routing_table.register_global_dial_info(
                     DialInfo::tcp_from_socketaddr(pdi_addr),
                     None,
                     DialInfoOrigin::Static,
@@ -1015,7 +1015,7 @@ impl Network {
             // Register local dial info as public if it is publicly routable
             for x in &dial_infos {
                 if x.is_public().unwrap_or(false) {
-                    routing_table.register_public_dial_info(
+                    routing_table.register_global_dial_info(
                         x.clone(),
                         Some(NetworkClass::Server),
                         DialInfoOrigin::Static,
@@ -1079,7 +1079,7 @@ impl Network {
 
         // Drop all dial info
         routing_table.clear_local_dial_info();
-        routing_table.clear_public_dial_info();
+        routing_table.clear_global_dial_info();
 
         // Cancels all async background tasks by dropping join handles
         *self.inner.lock() = Self::new_inner(network_manager);
@@ -1099,7 +1099,7 @@ impl Network {
 
         // Go through our public dialinfo and see what our best network class is
         let mut network_class = NetworkClass::Invalid;
-        for x in routing_table.public_dial_info() {
+        for x in routing_table.global_dial_info() {
             if let Some(nc) = x.network_class {
                 if nc < network_class {
                     network_class = nc;
@@ -1141,7 +1141,7 @@ impl Network {
             && (network_class.inbound_capable() || network_class == NetworkClass::Invalid)
         {
             let need_udpv4_dialinfo = routing_table
-                .public_dial_info_for_protocol_address_type(ProtocolAddressType::UDPv4)
+                .global_dial_info_for_protocol_address_type(ProtocolAddressType::UDPv4)
                 .is_empty();
             if need_udpv4_dialinfo {
                 // If we have no public UDPv4 dialinfo, then we need to run a NAT check
@@ -1159,7 +1159,7 @@ impl Network {
             && (network_class.inbound_capable() || network_class == NetworkClass::Invalid)
         {
             let need_tcpv4_dialinfo = routing_table
-                .public_dial_info_for_protocol_address_type(ProtocolAddressType::TCPv4)
+                .global_dial_info_for_protocol_address_type(ProtocolAddressType::TCPv4)
                 .is_empty();
             if need_tcpv4_dialinfo {
                 // If we have no public TCPv4 dialinfo, then we need to run a NAT check

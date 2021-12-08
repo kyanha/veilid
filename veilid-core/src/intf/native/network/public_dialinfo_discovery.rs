@@ -27,11 +27,12 @@ impl Network {
         &self,
         protocol_address_type: ProtocolAddressType,
         ignore_node: Option<DHTKey>,
-    ) -> Result<(SocketAddr, NodeRef), String> {
+    ) -> Option<(SocketAddr, NodeRef)> {
         let routing_table = self.routing_table();
         let peers = routing_table.get_fast_nodes_of_type(protocol_address_type);
         if peers.is_empty() {
-            return Err(format!("no peers of type '{:?}'", protocol_address_type));
+            trace!("no peers of type '{:?}'", protocol_address_type);
+            return None;
         }
         for peer in peers {
             if let Some(ignore_node) = ignore_node {
@@ -40,36 +41,32 @@ impl Network {
                 }
             }
             if let Some(sa) = self.request_public_address(peer.clone()).await {
-                return Ok((sa, peer));
+                return Some((sa, peer));
             }
         }
-        Err("no peers responded with an external address".to_owned())
+        trace!("no peers responded with an external address");
+        None
     }
 
-    fn discover_local_address(
+    fn get_interface_addresses(
         &self,
         protocol_address_type: ProtocolAddressType,
-    ) -> Result<SocketAddr, String> {
+    ) -> Vec<SocketAddr> {
         let routing_table = self.routing_table();
 
-        match routing_table
-            .get_own_peer_info(PeerScope::Public)
+        routing_table
+            .get_own_peer_info(PeerScope::Local)
             .dial_infos
             .iter()
-            .find_map(|di| {
+            .filter_map(|di| {
                 if di.protocol_address_type() == protocol_address_type {
                     if let Ok(addr) = di.to_socket_addr() {
                         return Some(addr);
                     }
                 }
                 None
-            }) {
-            None => Err(format!(
-                "no local address for protocol address type: {:?}",
-                protocol_address_type
-            )),
-            Some(addr) => Ok(addr),
-        }
+            })
+            .collect()
     }
 
     async fn validate_dial_info(
@@ -96,9 +93,9 @@ impl Network {
         }
     }
 
-    async fn try_port_mapping(
+    async fn try_port_mapping<I: AsRef<[SocketAddr]>>(
         &self,
-        _local_addr: SocketAddr,
+        _intf_addrs: I,
         _protocol_address_type: ProtocolAddressType,
     ) -> Option<SocketAddr> {
         //xxx
@@ -114,19 +111,26 @@ impl Network {
             c.network.restricted_nat_retries
         };
 
-        // Get our local address
-        let local1 = self.discover_local_address(ProtocolAddressType::UDPv4)?;
+        // Get our interface addresses
+        let intf_addrs = self.get_interface_addresses(ProtocolAddressType::UDPv4);
 
         // Loop for restricted NAT retries
         loop {
             // Get our external address from some fast node, call it node B
-            let (external1, node_b) = self
+            let (external1, node_b) = match self
                 .discover_external_address(ProtocolAddressType::UDPv4, None)
-                .await?;
+                .await
+            {
+                None => {
+                    // If we can't get an external address, exit but don't throw an error so we can try again later
+                    return Ok(());
+                }
+                Some(v) => v,
+            };
             let external1_dial_info = DialInfo::udp_from_socketaddr(external1);
 
-            // If local1 == external1 then there is no NAT in place
-            if local1 == external1 {
+            // If our local interface list contains external1 then there is no NAT in place
+            if intf_addrs.contains(&external1) {
                 // No NAT
                 // Do a validate_dial_info on the external address from a routed node
                 if self
@@ -134,7 +138,7 @@ impl Network {
                     .await
                 {
                     // Add public dial info with Server network class
-                    routing_table.register_public_dial_info(
+                    routing_table.register_global_dial_info(
                         external1_dial_info,
                         Some(NetworkClass::Server),
                         DialInfoOrigin::Discovered,
@@ -150,12 +154,12 @@ impl Network {
                 // There is -some NAT-
                 // Attempt a UDP port mapping via all available and enabled mechanisms
                 if let Some(external_mapped) = self
-                    .try_port_mapping(local1, ProtocolAddressType::UDPv4)
+                    .try_port_mapping(&intf_addrs, ProtocolAddressType::UDPv4)
                     .await
                 {
                     // Got a port mapping, let's use it
                     let external_mapped_dial_info = DialInfo::udp_from_socketaddr(external_mapped);
-                    routing_table.register_public_dial_info(
+                    routing_table.register_global_dial_info(
                         external_mapped_dial_info,
                         Some(NetworkClass::Mapped),
                         DialInfoOrigin::Mapped,
@@ -178,7 +182,7 @@ impl Network {
                     {
                         // Yes, another machine can use the dial info directly, so Full Cone
                         // Add public dial info with full cone NAT network class
-                        routing_table.register_public_dial_info(
+                        routing_table.register_global_dial_info(
                             external1_dial_info,
                             Some(NetworkClass::FullNAT),
                             DialInfoOrigin::Discovered,
@@ -190,12 +194,19 @@ impl Network {
                         // No, we are restricted, determine what kind of restriction
 
                         // Get our external address from some fast node, that is not node B, call it node D
-                        let (external2, node_d) = self
+                        let (external2, node_d) = match self
                             .discover_external_address(
                                 ProtocolAddressType::UDPv4,
                                 Some(node_b.node_id()),
                             )
-                            .await?;
+                            .await
+                        {
+                            None => {
+                                // If we can't get an external address, exit but don't throw an error so we can try again later
+                                return Ok(());
+                            }
+                            Some(v) => v,
+                        };
                         // If we have two different external addresses, then this is a symmetric NAT
                         if external2 != external1 {
                             // Symmetric NAT is outbound only, no public dial info will work
@@ -220,14 +231,14 @@ impl Network {
                                     .await
                                 {
                                     // Got a reply from a non-default port, which means we're only address restricted
-                                    routing_table.register_public_dial_info(
+                                    routing_table.register_global_dial_info(
                                         external1_dial_info,
                                         Some(NetworkClass::AddressRestrictedNAT),
                                         DialInfoOrigin::Discovered,
                                     );
                                 } else {
                                     // Didn't get a reply from a non-default port, which means we are also port restricted
-                                    routing_table.register_public_dial_info(
+                                    routing_table.register_global_dial_info(
                                         external1_dial_info,
                                         Some(NetworkClass::PortRestrictedNAT),
                                         DialInfoOrigin::Discovered,

@@ -22,11 +22,12 @@ pub async fn test_attach_detach() {
         .startup(setup_veilid_core())
         .await
         .expect("startup failed");
-    api.attach().await;
+    api.attach().await.unwrap();
     intf::sleep(5000).await;
-    api.detach().await;
+    api.detach().await.unwrap();
     api.wait_for_state(VeilidState::Attachment(AttachmentState::Detached))
-        .await;
+        .await
+        .unwrap();
     api.shutdown().await;
 
     info!("--- test auto detach ---");
@@ -34,7 +35,7 @@ pub async fn test_attach_detach() {
         .startup(setup_veilid_core())
         .await
         .expect("startup failed");
-    api.attach().await;
+    api.attach().await.unwrap();
     intf::sleep(5000).await;
     api.shutdown().await;
 
@@ -43,7 +44,7 @@ pub async fn test_attach_detach() {
         .startup(setup_veilid_core())
         .await
         .expect("startup failed");
-    api.detach().await;
+    api.detach().await.unwrap();
     api.shutdown().await;
 }
 

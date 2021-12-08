@@ -30,7 +30,7 @@ impl RoutingTable {
                                 .dial_info_entries_as_ref()
                                 .iter()
                                 .find_map(|die| {
-                                    if die.matches_peer_scope(PeerScope::Public)
+                                    if die.matches_peer_scope(PeerScope::Global)
                                         && die.dial_info().protocol_address_type()
                                             == protocol_address_type
                                     {
@@ -63,13 +63,13 @@ impl RoutingTable {
     pub fn get_own_peer_info(&self, scope: PeerScope) -> PeerInfo {
         let dial_infos = match scope {
             PeerScope::All => {
-                let mut divec = self.public_dial_info();
+                let mut divec = self.global_dial_info();
                 divec.append(&mut self.local_dial_info());
                 divec.dedup();
                 divec
             }
-            PeerScope::Public => self.public_dial_info(),
-            PeerScope::Private => self.local_dial_info(),
+            PeerScope::Global => self.global_dial_info(),
+            PeerScope::Local => self.local_dial_info(),
         };
 
         PeerInfo {

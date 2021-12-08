@@ -135,7 +135,7 @@ impl LeaseManager {
         // xxx: depends on who is asking?
         // signaling requires inbound ability, so check to see if we have public dial info
         let routing_table = inner.network_manager.routing_table();
-        if !routing_table.has_public_dial_info() {
+        if !routing_table.has_global_dial_info() {
             return false;
         }
 
@@ -178,7 +178,7 @@ impl LeaseManager {
         // xxx: depends on who is asking?
         // relaying requires inbound ability, so check to see if we have public dial info
         let routing_table = inner.network_manager.routing_table();
-        if !routing_table.has_public_dial_info() {
+        if !routing_table.has_global_dial_info() {
             return false;
         }
         true

@@ -8,7 +8,7 @@
       "type": "lldb",
       "request": "attach",
       "name": "Attach to veilid-server",
-      "program": "${workspaceFolder}/veilid-server/target/debug/veilid-server",
+      "program": "${workspaceFolder}/target/debug/veilid-server",
       "pid": "${command:pickMyProcess}"
     },
     {
@@ -16,11 +16,11 @@
       "request": "launch",
       "name": "Launch veilid-cli",
       "args": ["--debug"],
-      "program": "${workspaceFolder}/veilid-cli/target/debug/veilid-cli",
+      "program": "${workspaceFolder}/target/debug/veilid-cli",
       "windows": {
-        "program": "${workspaceFolder}/veilid-cli/target/debug/veilid-cli.exe"
+        "program": "${workspaceFolder}/target/debug/veilid-cli.exe"
       },
-      "cwd": "${workspaceFolder}",
+      "cwd": "${workspaceFolder}/target/debug/",
       "sourceLanguages": ["rust"],
       "terminal": "console"
     },
@@ -39,9 +39,9 @@
       "type": "lldb",
       "request": "launch",
       "name": "Debug veilid-server",
-      "program": "${workspaceFolder}/veilid-server/target/debug/veilid-server",
+      "program": "${workspaceFolder}/target/debug/veilid-server",
       "args": ["--trace", "--attach=true"],
-      "cwd": "${workspaceFolder}/veilid-server/target/debug/",
+      "cwd": "${workspaceFolder}/target/debug/",
       "env": {
         "RUST_BACKTRACE": "1"
       },
@@ -65,7 +65,7 @@
         }
       },
       "args": ["${selectedText}"],
-      "cwd": "${workspaceFolder}/veilid-core"
+      "cwd": "${workspaceFolder}/target/debug/"
     },
 
     {

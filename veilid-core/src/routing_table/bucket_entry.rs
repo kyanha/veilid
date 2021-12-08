@@ -105,7 +105,7 @@ impl BucketEntry {
             .collect()
     }
 
-    pub fn public_dial_info(&self) -> Vec<DialInfo> {
+    pub fn global_dial_info(&self) -> Vec<DialInfo> {
         self.dial_info_entries
             .iter()
             .filter_map(|e| {
@@ -118,7 +118,7 @@ impl BucketEntry {
             .collect()
     }
 
-    pub fn public_dial_info_for_protocol(&self, protocol_type: ProtocolType) -> Vec<DialInfo> {
+    pub fn global_dial_info_for_protocol(&self, protocol_type: ProtocolType) -> Vec<DialInfo> {
         self.dial_info_entries
             .iter()
             .filter_map(|e| {
@@ -133,7 +133,7 @@ impl BucketEntry {
             .collect()
     }
 
-    pub fn private_dial_info(&self) -> Vec<DialInfo> {
+    pub fn local_dial_info(&self) -> Vec<DialInfo> {
         self.dial_info_entries
             .iter()
             .filter_map(|e| {
@@ -146,7 +146,7 @@ impl BucketEntry {
             .collect()
     }
 
-    pub fn private_dial_info_for_protocol(&mut self, protocol_type: ProtocolType) -> Vec<DialInfo> {
+    pub fn local_dial_info_for_protocol(&mut self, protocol_type: ProtocolType) -> Vec<DialInfo> {
         self.dial_info_entries
             .iter_mut()
             .filter_map(|e| {
@@ -166,8 +166,8 @@ impl BucketEntry {
             node_id: NodeId::new(key),
             dial_infos: match scope {
                 PeerScope::All => self.dial_info(),
-                PeerScope::Public => self.public_dial_info(),
-                PeerScope::Private => self.private_dial_info(),
+                PeerScope::Global => self.global_dial_info(),
+                PeerScope::Local => self.local_dial_info(),
             },
         }
     }

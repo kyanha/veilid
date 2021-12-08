@@ -1,6 +1,7 @@
 pub use crate::rpc_processor::InfoAnswer;
 use crate::*;
 use attachment_manager::AttachmentManager;
+use core::fmt;
 use network_manager::NetworkManager;
 use rpc_processor::{RPCError, RPCProcessor};
 use xx::*;
@@ -469,8 +470,8 @@ impl Default for DialInfo {
 #[derive(Clone, Copy, Debug)]
 pub enum PeerScope {
     All,
-    Public,
-    Private,
+    Global,
+    Local,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -876,119 +877,140 @@ impl RoutingContext {
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 
 struct VeilidAPIInner {
-    config: VeilidConfig,
-    attachment_manager: AttachmentManager,
-    core: VeilidCore,
-    network_manager: NetworkManager,
-    is_shutdown: bool,
+    core: Option<VeilidCore>,
+}
+
+impl fmt::Debug for VeilidAPIInner {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "VeilidAPIInner: {}",
+            match self.core {
+                Some(_) => "active",
+                None => "shutdown",
+            }
+        )
+    }
 }
 
 impl Drop for VeilidAPIInner {
     fn drop(&mut self) {
-        if !self.is_shutdown {
-            intf::spawn_local(self.core.clone().internal_shutdown()).detach();
+        if let Some(core) = self.core.take() {
+            intf::spawn_local(core.internal_shutdown()).detach();
         }
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct VeilidAPI {
     inner: Arc<Mutex<VeilidAPIInner>>,
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct VeilidAPIWeak {
+    inner: Weak<Mutex<VeilidAPIInner>>,
+}
+
+impl VeilidAPIWeak {
+    pub fn upgrade(&self) -> Option<VeilidAPI> {
+        self.inner.upgrade().map(|v| VeilidAPI { inner: v })
+    }
+}
+
 impl VeilidAPI {
-    pub fn new(attachment_manager: AttachmentManager, core: VeilidCore) -> Self {
+    pub(crate) fn new(core: VeilidCore) -> Self {
         Self {
-            inner: Arc::new(Mutex::new(VeilidAPIInner {
-                config: attachment_manager.config(),
-                attachment_manager: attachment_manager.clone(),
-                core,
-                network_manager: attachment_manager.network_manager(),
-                is_shutdown: false,
-            })),
+            inner: Arc::new(Mutex::new(VeilidAPIInner { core: Some(core) })),
+        }
+    }
+    pub fn weak(&self) -> VeilidAPIWeak {
+        VeilidAPIWeak {
+            inner: Arc::downgrade(&self.inner),
+        }
+    }
+    fn core(&self) -> Result<VeilidCore, VeilidAPIError> {
+        Ok(self
+            .inner
+            .lock()
+            .core
+            .as_ref()
+            .ok_or(VeilidAPIError::Shutdown)?
+            .clone())
+    }
+    fn config(&self) -> Result<VeilidConfig, VeilidAPIError> {
+        Ok(self.core()?.config())
+    }
+    fn attachment_manager(&self) -> Result<AttachmentManager, VeilidAPIError> {
+        Ok(self.core()?.attachment_manager())
+    }
+    fn network_manager(&self) -> Result<NetworkManager, VeilidAPIError> {
+        Ok(self.attachment_manager()?.network_manager())
+    }
+    fn rpc_processor(&self) -> Result<RPCProcessor, VeilidAPIError> {
+        Ok(self.network_manager()?.rpc_processor())
+    }
+
+    pub async fn shutdown(self) {
+        let core = { self.inner.lock().core.take() };
+        if let Some(core) = core {
+            core.internal_shutdown().await;
         }
     }
 
-    pub fn config(&self) -> VeilidConfig {
-        self.inner.lock().config.clone()
-    }
-
-    fn attachment_manager(&self) -> AttachmentManager {
-        self.inner.lock().attachment_manager.clone()
-    }
-
-    // fn network_manager(&self) -> NetworkManager {
-    //     self.inner.lock().network_manager.clone()
-    // }
-
-    fn rpc_processor(&self) -> RPCProcessor {
-        self.inner.lock().network_manager.rpc_processor()
-    }
-
-    pub async fn shutdown(&self) {
-        let mut inner = self.inner.lock();
-        if !inner.is_shutdown {
-            inner.core.clone().internal_shutdown().await;
-            inner.is_shutdown = true;
-        }
-    }
     pub fn is_shutdown(&self) -> bool {
-        self.inner.lock().is_shutdown
-    }
-
-    fn verify_not_shutdown(&self) -> Result<(), VeilidAPIError> {
-        if self.is_shutdown() {
-            return Err(VeilidAPIError::Shutdown);
-        }
-        Ok(())
+        self.inner.lock().core.is_none()
     }
 
     ////////////////////////////////////////////////////////////////
     // Attach/Detach
 
     // issue state changed updates for updating clients
-    pub async fn send_state_update(&self) {
+    pub async fn send_state_update(&self) -> Result<(), VeilidAPIError> {
         trace!("VeilidCore::send_state_update");
-        let attachment_manager = self.attachment_manager().clone();
+        let attachment_manager = self.attachment_manager()?;
         attachment_manager.send_state_update().await;
+        Ok(())
     }
 
     // connect to the network
-    pub async fn attach(&self) {
+    pub async fn attach(&self) -> Result<(), VeilidAPIError> {
         trace!("VeilidCore::attach");
-        let attachment_manager = self.attachment_manager().clone();
+        let attachment_manager = self.attachment_manager()?;
         attachment_manager.request_attach().await;
+        Ok(())
     }
 
     // disconnect from the network
-    pub async fn detach(&self) {
+    pub async fn detach(&self) -> Result<(), VeilidAPIError> {
         trace!("VeilidCore::detach");
-        let attachment_manager = self.attachment_manager().clone();
+        let attachment_manager = self.attachment_manager()?;
         attachment_manager.request_detach().await;
+        Ok(())
     }
 
     // wait for state change
     // xxx: this should not use 'sleep', perhaps this function should be eliminated anyway
-    pub async fn wait_for_state(&self, state: VeilidState) {
+    // xxx: it should really only be used for test anyway, and there is probably a better way to do this regardless
+    // xxx: that doesn't wait forever and can time out
+    pub async fn wait_for_state(&self, state: VeilidState) -> Result<(), VeilidAPIError> {
         loop {
             intf::sleep(500).await;
             match state {
                 VeilidState::Attachment(cs) => {
-                    if self.attachment_manager().get_state() == cs {
+                    if self.attachment_manager()?.get_state() == cs {
                         break;
                     }
                 }
             }
         }
+        Ok(())
     }
 
     ////////////////////////////////////////////////////////////////
     // Direct Node Access (pretty much for testing only)
 
     pub async fn info(&self, node_id: NodeId) -> Result<InfoAnswer, VeilidAPIError> {
-        self.verify_not_shutdown()?;
-
-        let rpc = self.rpc_processor();
+        let rpc = self.rpc_processor()?;
         let routing_table = rpc.routing_table();
         let node_ref = match routing_table.lookup_node_ref(node_id.key) {
             None => return Err(VeilidAPIError::NodeNotFound(node_id)),
@@ -1008,9 +1030,7 @@ impl VeilidAPI {
         redirect: bool,
         alternate_port: bool,
     ) -> Result<bool, VeilidAPIError> {
-        self.verify_not_shutdown()?;
-
-        let rpc = self.rpc_processor();
+        let rpc = self.rpc_processor()?;
         let routing_table = rpc.routing_table();
         let node_ref = match routing_table.lookup_node_ref(node_id.key) {
             None => return Err(VeilidAPIError::NodeNotFound(node_id)),
@@ -1022,9 +1042,8 @@ impl VeilidAPI {
     }
 
     pub async fn search_dht(&self, node_id: NodeId) -> Result<SearchDHTAnswer, VeilidAPIError> {
-        self.verify_not_shutdown()?;
-        let rpc_processor = self.rpc_processor();
-        let config = self.config();
+        let rpc_processor = self.rpc_processor()?;
+        let config = self.config()?;
         let (count, fanout, timeout) = {
             let c = config.get();
             (
@@ -1051,10 +1070,8 @@ impl VeilidAPI {
         &self,
         node_id: NodeId,
     ) -> Result<Vec<SearchDHTAnswer>, VeilidAPIError> {
-        self.verify_not_shutdown()?;
-
-        let rpc_processor = self.rpc_processor();
-        let config = self.config();
+        let rpc_processor = self.rpc_processor()?;
+        let config = self.config()?;
         let (count, fanout, timeout) = {
             let c = config.get();
             (
@@ -1151,7 +1168,6 @@ impl VeilidAPI {
         _endpoint_mode: TunnelMode,
         _depth: u8,
     ) -> Result<PartialTunnel, VeilidAPIError> {
-        self.verify_not_shutdown()?;
         panic!("unimplemented");
     }
 
@@ -1161,12 +1177,10 @@ impl VeilidAPI {
         _depth: u8,
         _partial_tunnel: PartialTunnel,
     ) -> Result<FullTunnel, VeilidAPIError> {
-        self.verify_not_shutdown()?;
         panic!("unimplemented");
     }
 
     pub async fn cancel_tunnel(&self, _tunnel_id: TunnelId) -> Result<bool, VeilidAPIError> {
-        self.verify_not_shutdown()?;
         panic!("unimplemented");
     }
 }

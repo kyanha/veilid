@@ -1,4 +1,4 @@
-#![warn(clippy::all)]
+#![deny(clippy::all)]
 
 use anyhow::*;
 use async_std::prelude::*;
