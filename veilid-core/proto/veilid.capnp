@@ -90,13 +90,13 @@ struct DialInfoTCP {
 }
 
 struct DialInfoWS {
-    fqdn                    @0  :Text;
+    host                    @0  :Text;
     port                    @1  :UInt16;
     path                    @2  :Text;
 }
 
 struct DialInfoWSS {
-    fqdn                    @0  :Text;
+    host                    @0  :Text;
     port                    @1  :UInt16;
     path                    @2  :Text;
 }

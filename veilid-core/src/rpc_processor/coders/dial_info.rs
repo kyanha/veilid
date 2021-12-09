@@ -22,24 +22,24 @@ pub fn decode_dial_info(reader: &veilid_capnp::dial_info::Reader) -> Result<Dial
             Ok(DialInfo::tcp(address, port))
         }
         Ok(veilid_capnp::dial_info::Which::Ws(Ok(ws))) => {
-            let fqdn = ws
-                .get_fqdn()
-                .map_err(map_error_internal!("missing ws fqdn"))?;
+            let host = ws
+                .get_host()
+                .map_err(map_error_internal!("missing ws host"))?;
             let port = ws.get_port();
             let path = ws
                 .get_path()
                 .map_err(map_error_internal!("missing ws path"))?;
-            Ok(DialInfo::ws(fqdn.to_owned(), port, path.to_owned()))
+            Ok(DialInfo::ws(host.to_owned(), port, path.to_owned()))
         }
         Ok(veilid_capnp::dial_info::Which::Wss(Ok(wss))) => {
-            let fqdn = wss
-                .get_fqdn()
-                .map_err(map_error_internal!("missing wss fqdn"))?;
+            let host = wss
+                .get_host()
+                .map_err(map_error_internal!("missing wss host"))?;
             let port = wss.get_port();
             let path = wss
                 .get_path()
                 .map_err(map_error_internal!("missing wss path"))?;
-            Ok(DialInfo::wss(fqdn.to_owned(), port, path.to_owned()))
+            Ok(DialInfo::wss(host.to_owned(), port, path.to_owned()))
         }
         _ => Err(rpc_error_internal("invalid dial info type")),
     }
@@ -62,13 +62,13 @@ pub fn encode_dial_info(
         }
         DialInfo::WS(ws) => {
             let mut di_ws_builder = builder.reborrow().init_ws();
-            let mut fqdnb = di_ws_builder.reborrow().init_fqdn(
-                ws.fqdn
+            let mut hostb = di_ws_builder.reborrow().init_host(
+                ws.host
                     .len()
                     .try_into()
-                    .map_err(map_error_internal!("fqdn too long"))?,
+                    .map_err(map_error_internal!("host too long"))?,
             );
-            fqdnb.push_str(ws.fqdn.as_str());
+            hostb.push_str(ws.host.as_str());
             di_ws_builder.set_port(ws.port);
             let mut pathb = di_ws_builder.init_path(
                 ws.path
@@ -80,13 +80,13 @@ pub fn encode_dial_info(
         }
         DialInfo::WSS(wss) => {
             let mut di_wss_builder = builder.reborrow().init_wss();
-            let mut fqdnb = di_wss_builder.reborrow().init_fqdn(
-                wss.fqdn
+            let mut hostb = di_wss_builder.reborrow().init_host(
+                wss.host
                     .len()
                     .try_into()
-                    .map_err(map_error_internal!("fqdn too long"))?,
+                    .map_err(map_error_internal!("host too long"))?,
             );
-            fqdnb.push_str(wss.fqdn.as_str());
+            hostb.push_str(wss.host.as_str());
             di_wss_builder.set_port(wss.port);
             let mut pathb = di_wss_builder.init_path(
                 wss.path

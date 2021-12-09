@@ -869,10 +869,10 @@ impl Network {
             )
         };
         trace!("WS: starting listener at {:?}", listen_address);
-        let (fqdn, port) = split_port(&listen_address)
+        let (host, port) = split_port(&listen_address)
             .map_err(|_| "invalid WS listen address, port not specified correctly".to_owned())?;
         let port = port.ok_or_else(|| "port must be specified for WS address".to_owned())?;
-        let _ = self
+        let addresses = self
             .start_tcp_listener(
                 listen_address.clone(),
                 false,
@@ -881,11 +881,12 @@ impl Network {
             .await?;
         trace!("WS: listener started");
 
-        // websockets must use FQDN
-        routing_table.register_local_dial_info(
-            DialInfo::ws(fqdn.clone(), port, path.clone()),
-            DialInfoOrigin::Static,
-        );
+        let mut dial_infos: Vec<DialInfo> = Vec::new();
+        for (a, p) in addresses {
+            let di = DialInfo::ws(a.address_string(), p, path.clone());
+            dial_infos.push(di.clone());
+            routing_table.register_local_dial_info(di, DialInfoOrigin::Static);
+        }
 
         // Add static public dialinfo if it's configured
         if let Some(url) = url.as_ref() {
@@ -922,7 +923,7 @@ impl Network {
             )
         };
         trace!("WSS: starting listener at {}", listen_address);
-        let (fqdn, port) = split_port(&listen_address)
+        let (host, port) = split_port(&listen_address)
             .map_err(|_| "invalid WSS listen address, port not specified correctly".to_owned())?;
         let port = port.ok_or_else(|| "port must be specified for WSS address".to_owned())?;
 
@@ -935,11 +936,17 @@ impl Network {
             .await?;
         trace!("WSS: listener started");
 
-        // websockets must use FQDN
-        routing_table.register_local_dial_info(
-            DialInfo::wss(fqdn.clone(), port, path.clone()),
-            DialInfoOrigin::Static,
-        );
+        // NOTE: No local dial info for WSS, as there is no way to connect to a local dialinfo via TLS
+        // If the hostname is specified, it is the public dialinfo via the URL. If no hostname
+        // is specified, then TLS won't validate, so no local dialinfo is possible.
+        // This is not the case with unencrypted websockets, which can be specified solely by an IP address
+        //
+        // let mut dial_infos: Vec<DialInfo> = Vec::new();
+        // for (a, p) in addresses {
+        //     let di = DialInfo::wss(a.address_string(), p, path.clone());
+        //     dial_infos.push(di.clone());
+        //     routing_table.register_local_dial_info(di, DialInfoOrigin::Static);
+        // }
 
         // Add static public dialinfo if it's configured
         if let Some(url) = url.as_ref() {

@@ -92,8 +92,8 @@ impl WebsocketProtocolHandler {
     ) -> Result<NetworkConnection, String> {
         let url = dial_info.to_url_string(None);
         let (tls, host, port, protocol_type) = match dial_info {
-            DialInfo::WS(ws) => (false, ws.fqdn.clone(), ws.port, ProtocolType::WS),
-            DialInfo::WSS(wss) => (true, wss.fqdn.clone(), wss.port, ProtocolType::WSS),
+            DialInfo::WS(ws) => (false, ws.host.clone(), ws.port, ProtocolType::WS),
+            DialInfo::WSS(wss) => (true, wss.host.clone(), wss.port, ProtocolType::WSS),
             _ => return Err("wrong protocol for WebsocketProtocolHandler".to_owned()),
         };
 

@@ -175,14 +175,14 @@ pub struct DialInfoTCP {
 
 #[derive(Clone, Debug, PartialEq, PartialOrd, Ord, Eq)]
 pub struct DialInfoWS {
-    pub fqdn: String,
+    pub host: String,
     pub port: u16,
     pub path: String,
 }
 
 #[derive(Clone, Debug, PartialEq, PartialOrd, Ord, Eq)]
 pub struct DialInfoWSS {
-    pub fqdn: String,
+    pub host: String,
     pub port: u16,
     pub path: String,
 }
@@ -220,11 +220,11 @@ impl DialInfo {
         }
         Self::TCP(DialInfoTCP { address, port })
     }
-    pub fn ws(fqdn: String, port: u16, path: String) -> Self {
-        Self::WS(DialInfoWS { fqdn, port, path })
+    pub fn ws(host: String, port: u16, path: String) -> Self {
+        Self::WS(DialInfoWS { host, port, path })
     }
-    pub fn wss(fqdn: String, port: u16, path: String) -> Self {
-        Self::WSS(DialInfoWSS { fqdn, port, path })
+    pub fn wss(host: String, port: u16, path: String) -> Self {
+        Self::WSS(DialInfoWSS { host, port, path })
     }
     pub fn protocol_type(&self) -> ProtocolType {
         match self {
@@ -294,14 +294,14 @@ impl DialInfo {
 
     pub fn try_ws(&self) -> Option<String> {
         match self {
-            Self::WS(v) => Some(v.fqdn.clone()),
+            Self::WS(v) => Some(v.host.clone()),
             _ => None,
         }
     }
 
     pub fn try_wss(&self) -> Option<String> {
         match self {
-            Self::WSS(v) => Some(v.fqdn.clone()),
+            Self::WSS(v) => Some(v.host.clone()),
             _ => None,
         }
     }
@@ -310,24 +310,24 @@ impl DialInfo {
         match self {
             Self::UDP(di) => di.address.address_string(),
             Self::TCP(di) => di.address.address_string(),
-            Self::WS(di) => di.fqdn.clone(),
-            Self::WSS(di) => di.fqdn.clone(),
+            Self::WS(di) => di.host.clone(),
+            Self::WSS(di) => di.host.clone(),
         }
     }
     pub fn address_string_with_port(&self) -> String {
         match self {
             Self::UDP(di) => di.address.address_string_with_port(di.port),
             Self::TCP(di) => di.address.address_string_with_port(di.port),
-            Self::WS(di) => format!("{}:{}", di.fqdn.clone(), di.port),
-            Self::WSS(di) => format!("{}:{}", di.fqdn.clone(), di.port),
+            Self::WS(di) => format!("{}:{}", di.host.clone(), di.port),
+            Self::WSS(di) => format!("{}:{}", di.host.clone(), di.port),
         }
     }
     pub fn all_but_path(&self) -> String {
         match self {
             Self::UDP(di) => format!("udp://{}", di.address.address_string_with_port(di.port)),
             Self::TCP(di) => format!("tcp://{}", di.address.address_string_with_port(di.port)),
-            Self::WS(di) => format!("ws://{}:{}", di.fqdn.clone(), di.port),
-            Self::WSS(di) => format!("wss://{}:{}", di.fqdn.clone(), di.port),
+            Self::WS(di) => format!("ws://{}:{}", di.host.clone(), di.port),
+            Self::WSS(di) => format!("wss://{}:{}", di.host.clone(), di.port),
         }
     }
 
@@ -350,14 +350,14 @@ impl DialInfo {
             Self::WS(di) => format!(
                 "ws://{}{}:{}{}",
                 user_string,
-                di.fqdn.clone(),
+                di.host.clone(),
                 di.port,
                 prepend_slash(di.path.clone())
             ),
             Self::WSS(di) => format!(
                 "wss://{}{}:{}{}",
                 user_string,
-                di.fqdn.clone(),
+                di.host.clone(),
                 di.port,
                 prepend_slash(di.path.clone())
             ),
@@ -376,16 +376,16 @@ impl DialInfo {
             }
             Self::WS(di) => {
                 let addr: IpAddr = di
-                    .fqdn
+                    .host
                     .parse()
-                    .map_err(|e| format!("Failed to parse WS fqdn: {}", e))?;
+                    .map_err(|e| format!("Failed to parse WS host '{}': {}", di.host, e))?;
                 Ok(addr)
             }
             Self::WSS(di) => {
                 let addr: IpAddr = di
-                    .fqdn
+                    .host
                     .parse()
-                    .map_err(|e| format!("Failed to parse WSS fqdn: {}", e))?;
+                    .map_err(|e| format!("Failed to parse WSS host '{}': {}", di.host, e))?;
                 Ok(addr)
             }
         }

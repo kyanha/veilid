@@ -237,14 +237,14 @@ impl WebsocketProtocolHandler {
             DialInfo::WS(di) => (
                 false,
                 di.path.clone(),
-                di.fqdn.clone(),
+                di.host.clone(),
                 di.port,
                 ProtocolType::WS,
             ),
             DialInfo::WSS(di) => (
                 true,
                 di.path.clone(),
-                di.fqdn.clone(),
+                di.host.clone(),
                 di.port,
                 ProtocolType::WSS,
             ),
