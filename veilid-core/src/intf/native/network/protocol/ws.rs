@@ -145,7 +145,11 @@ impl WebsocketProtocolHandler {
     pub fn new(network_manager: NetworkManager, tls: bool, local_address: SocketAddr) -> Self {
         let config = network_manager.config();
         let c = config.get();
-        let path = format!("GET {}", c.network.protocol.ws.path.trim_end_matches('/'));
+        let path = if tls {
+            format!("GET {}", c.network.protocol.ws.path.trim_end_matches('/'))
+        } else {
+            format!("GET {}", c.network.protocol.wss.path.trim_end_matches('/'))
+        };
         let connection_initial_timeout = if tls {
             c.network.tls.connection_initial_timeout
         } else {

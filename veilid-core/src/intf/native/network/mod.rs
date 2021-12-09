@@ -869,9 +869,6 @@ impl Network {
             )
         };
         trace!("WS: starting listener at {:?}", listen_address);
-        let (host, port) = split_port(&listen_address)
-            .map_err(|_| "invalid WS listen address, port not specified correctly".to_owned())?;
-        let port = port.ok_or_else(|| "port must be specified for WS address".to_owned())?;
         let addresses = self
             .start_tcp_listener(
                 listen_address.clone(),
@@ -914,19 +911,14 @@ impl Network {
 
     pub async fn start_wss_listeners(&self) -> Result<(), String> {
         let routing_table = self.routing_table();
-        let (listen_address, url, path) = {
+        let (listen_address, url) = {
             let c = self.config.get();
             (
                 c.network.protocol.wss.listen_address.clone(),
                 c.network.protocol.wss.url.clone(),
-                c.network.protocol.wss.path.clone(),
             )
         };
         trace!("WSS: starting listener at {}", listen_address);
-        let (host, port) = split_port(&listen_address)
-            .map_err(|_| "invalid WSS listen address, port not specified correctly".to_owned())?;
-        let port = port.ok_or_else(|| "port must be specified for WSS address".to_owned())?;
-
         let _ = self
             .start_tcp_listener(
                 listen_address.clone(),
