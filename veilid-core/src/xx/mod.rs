@@ -7,12 +7,14 @@ mod ip_addr_port;
 mod ip_extra;
 mod single_future;
 mod single_shot_eventual;
+mod split_url;
 mod tick_task;
 mod tools;
 
 pub use cfg_if::*;
 pub use log::*;
 pub use parking_lot::*;
+pub use split_url::*;
 pub use static_assertions::*;
 
 pub type PinBox<T> = Pin<Box<T>>;

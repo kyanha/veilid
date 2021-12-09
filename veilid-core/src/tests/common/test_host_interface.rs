@@ -311,6 +311,131 @@ pub async fn test_sleep() {
     }
 }
 
+macro_rules! assert_split_url {
+    ($url:expr, $scheme:expr, $host:expr) => {
+        assert_eq!(
+            SplitUrl::from_str($url),
+            Ok(SplitUrl::new($scheme, None, $host, None, None))
+        );
+    };
+    ($url:expr, $scheme:expr, $host:expr, $port:expr) => {
+        assert_eq!(
+            SplitUrl::from_str($url),
+            Ok(SplitUrl::new($scheme, None, $host, $port, None))
+        );
+    };
+    ($url:expr, $scheme:expr, $host:expr, $port:expr, $path:expr) => {
+        assert_eq!(
+            SplitUrl::from_str($url),
+            Ok(SplitUrl::new(
+                $scheme,
+                None,
+                $host,
+                $port,
+                Some(SplitUrlPath::new(
+                    $path,
+                    Option::<String>::None,
+                    Option::<String>::None
+                ))
+            ))
+        );
+    };
+    ($url:expr, $scheme:expr, $host:expr, $port:expr, $path:expr, $frag:expr, $query:expr) => {
+        assert_eq!(
+            SplitUrl::from_str($url),
+            Ok(SplitUrl::new(
+                $scheme,
+                None,
+                $host,
+                $port,
+                Some(SplitUrlPath::new($path, $frag, $query))
+            ))
+        );
+    };
+}
+
+macro_rules! assert_split_url_parse {
+    ($url:expr) => {
+        let url = $url;
+        let su1 = SplitUrl::from_str(url).expect("should parse");
+        assert_eq!(su1.to_string(), url);
+    };
+}
+macro_rules! assert_err {
+    ($ex:expr) => {
+        if let Ok(v) = $ex {
+            panic!("assertion failed, expected Err(..), got {:?}", v);
+        }
+    };
+}
+
+pub async fn test_split_url() {
+    info!("testing split_url");
+
+    assert_split_url!("http://foo", "http", "foo");
+    assert_split_url!("http://foo:1234", "http", "foo", Some(1234));
+    assert_split_url!("http://foo:1234/", "http", "foo", Some(1234), "");
+    assert_split_url!(
+        "http://foo:1234/asdf/qwer",
+        "http",
+        "foo",
+        Some(1234),
+        "asdf/qwer"
+    );
+    assert_split_url!("http://foo/", "http", "foo", None, "");
+    assert_split_url!("http://foo/asdf/qwer", "http", "foo", None, "asdf/qwer");
+    assert_split_url!(
+        "http://foo/asdf/qwer#3",
+        "http",
+        "foo",
+        None,
+        "asdf/qwer",
+        Some("3"),
+        Option::<String>::None
+    );
+    assert_split_url!(
+        "http://foo/asdf/qwer?xxx",
+        "http",
+        "foo",
+        None,
+        "asdf/qwer",
+        Option::<String>::None,
+        Some("xxx")
+    );
+    assert_split_url!(
+        "http://foo/asdf/qwer#yyy?xxx",
+        "http",
+        "foo",
+        None,
+        "asdf/qwer",
+        Some("yyy"),
+        Some("xxx")
+    );
+    assert_err!(SplitUrl::from_str("://asdf"));
+    assert_err!(SplitUrl::from_str(""));
+    assert_err!(SplitUrl::from_str("::"));
+    assert_err!(SplitUrl::from_str("://:"));
+    assert_err!(SplitUrl::from_str("a://:"));
+    assert_err!(SplitUrl::from_str("a://:1243"));
+    assert_err!(SplitUrl::from_str("a://:65536"));
+    assert_err!(SplitUrl::from_str("a://:-16"));
+    assert_err!(SplitUrl::from_str("a:///"));
+    assert_err!(SplitUrl::from_str("a:///qwer:"));
+    assert_err!(SplitUrl::from_str("a:///qwer://"));
+    assert_err!(SplitUrl::from_str("a://qwer://"));
+
+    assert_split_url_parse!("sch://foo:bar@baz.com:1234/fnord#qux?zuz");
+    assert_split_url_parse!("sch://foo:bar@baz.com:1234/fnord#qux");
+    assert_split_url_parse!("sch://foo:bar@baz.com:1234/fnord?zuz");
+    assert_split_url_parse!("sch://foo:bar@baz.com:1234/fnord/");
+    assert_split_url_parse!("sch://foo:bar@baz.com:1234//");
+    assert_split_url_parse!("sch://foo:bar@baz.com:1234");
+    assert_split_url_parse!("sch://@baz.com:1234");
+    assert_split_url_parse!("sch://baz.com/asdf/asdf");
+    assert_split_url_parse!("sch://baz.com/");
+    assert_split_url_parse!("s://s");
+}
+
 pub async fn test_protected_store() {
     info!("testing protected store");
 
@@ -518,6 +643,7 @@ pub async fn test_all() {
     test_log().await;
     test_get_timestamp().await;
     test_tools().await;
+    test_split_url().await;
     test_get_random_u64().await;
     test_get_random_u32().await;
     test_sleep().await;

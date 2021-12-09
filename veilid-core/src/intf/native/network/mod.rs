@@ -860,11 +860,11 @@ impl Network {
 
     pub async fn start_ws_listeners(&self) -> Result<(), String> {
         let routing_table = self.routing_table();
-        let (listen_address, public_address, path) = {
+        let (listen_address, url, path) = {
             let c = self.config.get();
             (
                 c.network.protocol.ws.listen_address.clone(),
-                c.network.protocol.ws.public_address.clone(),
+                c.network.protocol.ws.url.clone(),
                 c.network.protocol.ws.path.clone(),
             )
         };
@@ -888,21 +888,20 @@ impl Network {
         );
 
         // Add static public dialinfo if it's configured
-        if let Some(public_address) = public_address.as_ref() {
-            let (public_fqdn, public_port) = split_port(public_address).map_err(|_| {
-                "invalid WS public address, port not specified correctly".to_owned()
-            })?;
-            let public_port = public_port
-                .ok_or_else(|| "port must be specified for public WS address".to_owned())?;
-
+        if let Some(url) = url.as_ref() {
+            let split_url = SplitUrl::from_str(url)?;
+            if split_url.scheme.to_ascii_lowercase() != "ws" {
+                return Err("WS URL must use 'ws://' scheme".to_owned());
+            }
             routing_table.register_global_dial_info(
-                DialInfo::ws(fqdn, public_port, public_fqdn),
-                Some(NetworkClass::Server),
-                DialInfoOrigin::Static,
-            );
-        } else {
-            routing_table.register_global_dial_info(
-                DialInfo::ws(fqdn, port, path.clone()),
+                DialInfo::ws(
+                    split_url.host,
+                    split_url.port.unwrap_or(80),
+                    split_url
+                        .path
+                        .map(|p| p.to_string())
+                        .unwrap_or_else(|| "/".to_string()),
+                ),
                 Some(NetworkClass::Server),
                 DialInfoOrigin::Static,
             );
@@ -914,11 +913,11 @@ impl Network {
 
     pub async fn start_wss_listeners(&self) -> Result<(), String> {
         let routing_table = self.routing_table();
-        let (listen_address, public_address, path) = {
+        let (listen_address, url, path) = {
             let c = self.config.get();
             (
                 c.network.protocol.wss.listen_address.clone(),
-                c.network.protocol.wss.public_address.clone(),
+                c.network.protocol.wss.url.clone(),
                 c.network.protocol.wss.path.clone(),
             )
         };
@@ -943,24 +942,25 @@ impl Network {
         );
 
         // Add static public dialinfo if it's configured
-        if let Some(public_address) = public_address.as_ref() {
-            let (public_fqdn, public_port) = split_port(public_address).map_err(|_| {
-                "invalid WSS public address, port not specified correctly".to_owned()
-            })?;
-            let public_port = public_port
-                .ok_or_else(|| "port must be specified for public WSS address".to_owned())?;
-
+        if let Some(url) = url.as_ref() {
+            let split_url = SplitUrl::from_str(url)?;
+            if split_url.scheme.to_ascii_lowercase() != "wss" {
+                return Err("WSS URL must use 'wss://' scheme".to_owned());
+            }
             routing_table.register_global_dial_info(
-                DialInfo::wss(fqdn, public_port, public_fqdn),
-                None,
+                DialInfo::wss(
+                    split_url.host,
+                    split_url.port.unwrap_or(443),
+                    split_url
+                        .path
+                        .map(|p| p.to_string())
+                        .unwrap_or_else(|| "/".to_string()),
+                ),
+                Some(NetworkClass::Server),
                 DialInfoOrigin::Static,
             );
         } else {
-            routing_table.register_global_dial_info(
-                DialInfo::wss(fqdn, port, path.clone()),
-                None,
-                DialInfoOrigin::Static,
-            );
+            return Err("WSS URL must be specified due to TLS requirements".to_owned());
         }
 
         self.inner.lock().wss_listen = true;

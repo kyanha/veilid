@@ -70,13 +70,16 @@ core:
             private_key_path: "/etc/veilid/private/server.key"
             connection_initial_timeout: 2000000
         application:
-            path: "app"
             https:
-                enabled: true
+                enabled: false
                 listen_address: "[::]:5150"
+                path: "app"
+                # url: "https://localhost:5150"
             http:
-                enabled: true
+                enabled: false
                 listen_address: "[::]:5150"
+                path: "app"
+                # url: "http://localhost:5150"
         protocol:
             udp:
                 enabled: true
@@ -94,15 +97,15 @@ core:
                 listen: true
                 max_connections: 16
                 listen_address: "[::]:5150"
-                path: "/ws"
-                # "public_address": ""
+                path: "ws"
+                # url: "ws://localhost:5150/ws"
             wss:
                 connect: true
-                listen: true
+                listen: false
                 max_connections: 16
                 listen_address: "[::]:5150"
-                path: "/ws"
-                # "public_address": ""             
+                path: "ws"
+                # url: ""
         leases:
             max_server_signal_leases: 256
             max_server_relay_leases: 8
@@ -173,30 +176,47 @@ pub fn convert_loglevel(log_level: LogLevel) -> LevelFilter {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ParsedURL {
+pub struct ParsedUrl {
     pub urlstring: String,
     pub url: Url,
 }
 
-impl FromStr for ParsedURL {
-    type Err = url::ParseError;
-    fn from_str(s: &str) -> Result<ParsedURL, url::ParseError> {
-        let url = Url::parse(s)?;
+impl ParsedUrl {
+    pub fn offset_port(&mut self, offset: u16) -> Result<(), ()> {
+        // Bump port on url
+        self.url.set_port(Some(self.url.port().unwrap() + offset))?;
+        self.urlstring = self.url.to_string();
+        Ok(())
+    }
+}
 
+impl FromStr for ParsedUrl {
+    type Err = url::ParseError;
+    fn from_str(s: &str) -> Result<ParsedUrl, url::ParseError> {
+        let mut url = Url::parse(s)?;
+        if url.scheme().to_lowercase() == "http" && url.port().is_none() {
+            url.set_port(Some(80))
+                .map_err(|_| url::ParseError::InvalidPort)?
+        }
+        if url.scheme().to_lowercase() == "https" && url.port().is_none() {
+            url.set_port(Some(443))
+                .map_err(|_| url::ParseError::InvalidPort)?;
+        }
+        let parsed_urlstring = url.to_string();
         Ok(Self {
-            urlstring: s.to_string(),
+            urlstring: parsed_urlstring,
             url,
         })
     }
 }
 
-impl<'de> serde::Deserialize<'de> for ParsedURL {
+impl<'de> serde::Deserialize<'de> for ParsedUrl {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
         let s = String::deserialize(deserializer)?;
-        ParsedURL::from_str(s.as_str()).map_err(serde::de::Error::custom)
+        ParsedUrl::from_str(s.as_str()).map_err(serde::de::Error::custom)
     }
 }
 
@@ -279,17 +299,20 @@ pub struct Logging {
 pub struct Https {
     pub enabled: bool,
     pub listen_address: NamedSocketAddrs,
+    pub path: PathBuf,
+    pub url: Option<ParsedUrl>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct Http {
     pub enabled: bool,
     pub listen_address: NamedSocketAddrs,
+    pub path: PathBuf,
+    pub url: Option<ParsedUrl>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct Application {
-    pub path: PathBuf,
     pub https: Https,
     pub http: Http,
 }
@@ -317,8 +340,8 @@ pub struct Ws {
     pub listen: bool,
     pub max_connections: u32,
     pub listen_address: NamedSocketAddrs,
-    pub path: String,
-    pub public_address: Option<NamedSocketAddrs>,
+    pub path: PathBuf,
+    pub url: Option<ParsedUrl>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -327,8 +350,8 @@ pub struct Wss {
     pub listen: bool,
     pub max_connections: u32,
     pub listen_address: NamedSocketAddrs,
-    pub path: String,
-    pub public_address: Option<NamedSocketAddrs>,
+    pub path: PathBuf,
+    pub url: Option<ParsedUrl>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -387,7 +410,7 @@ pub struct Network {
     pub connection_initial_timeout: u64,
     pub node_id: veilid_core::DHTKey,
     pub node_id_secret: veilid_core::DHTKeySecret,
-    pub bootstrap: Vec<ParsedURL>,
+    pub bootstrap: Vec<ParsedUrl>,
     pub rpc: Rpc,
     pub dht: Dht,
     pub upnp: bool,
@@ -450,8 +473,12 @@ impl Settings {
             load_config(&mut cfg, config_file_path)?;
         }
 
+        // Generate config
+        let inner: SettingsInner = cfg.try_into()?;
+
+        //
         Ok(Self {
-            inner: Arc::new(RwLock::new(cfg.try_into()?)),
+            inner: Arc::new(RwLock::new(inner)),
         })
     }
     pub fn read(&self) -> RwLockReadGuard<SettingsInner> {
@@ -493,6 +520,9 @@ impl Settings {
             .ws
             .listen_address
             .offset_port(idx)?;
+        if let Some(url) = &mut (*settingsrw).core.network.protocol.ws.url {
+            url.offset_port(idx)?;
+        }
         (*settingsrw)
             .core
             .network
@@ -500,6 +530,9 @@ impl Settings {
             .wss
             .listen_address
             .offset_port(idx)?;
+        if let Some(url) = &mut (*settingsrw).core.network.protocol.wss.url {
+            url.offset_port(idx)?;
+        }
         // bump application ports
         (*settingsrw)
             .core
@@ -508,6 +541,9 @@ impl Settings {
             .http
             .listen_address
             .offset_port(idx)?;
+        if let Some(url) = &mut (*settingsrw).core.network.application.http.url {
+            url.offset_port(idx)?;
+        }
         (*settingsrw)
             .core
             .network
@@ -515,7 +551,9 @@ impl Settings {
             .https
             .listen_address
             .offset_port(idx)?;
-
+        if let Some(url) = &mut (*settingsrw).core.network.application.https.url {
+            url.offset_port(idx)?;
+        }
         Ok(())
     }
 
@@ -665,15 +703,6 @@ impl Settings {
                 "network.tls.connection_initial_timeout" => {
                     Ok(Box::new(inner.core.network.tls.connection_initial_timeout))
                 }
-                "network.application.path" => Ok(Box::new(
-                    inner
-                        .core
-                        .network
-                        .application
-                        .path
-                        .to_string_lossy()
-                        .to_string(),
-                )),
                 "network.application.https.enabled" => {
                     Ok(Box::new(inner.core.network.application.https.enabled))
                 }
@@ -687,6 +716,26 @@ impl Settings {
                         .name
                         .clone(),
                 )),
+                "network.application.https.path" => Ok(Box::new(
+                    inner
+                        .core
+                        .network
+                        .application
+                        .https
+                        .path
+                        .to_string_lossy()
+                        .to_string(),
+                )),
+                "network.application.https.url" => Ok(Box::new(
+                    inner
+                        .core
+                        .network
+                        .application
+                        .https
+                        .url
+                        .as_ref()
+                        .map(|a| a.urlstring.clone()),
+                )),
                 "network.application.http.enabled" => {
                     Ok(Box::new(inner.core.network.application.http.enabled))
                 }
@@ -699,6 +748,26 @@ impl Settings {
                         .listen_address
                         .name
                         .clone(),
+                )),
+                "network.application.http.path" => Ok(Box::new(
+                    inner
+                        .core
+                        .network
+                        .application
+                        .http
+                        .path
+                        .to_string_lossy()
+                        .to_string(),
+                )),
+                "network.application.http.url" => Ok(Box::new(
+                    inner
+                        .core
+                        .network
+                        .application
+                        .http
+                        .url
+                        .as_ref()
+                        .map(|a| a.urlstring.clone()),
                 )),
                 "network.protocol.udp.enabled" => {
                     Ok(Box::new(inner.core.network.protocol.udp.enabled))
@@ -751,18 +820,25 @@ impl Settings {
                 "network.protocol.ws.listen_address" => Ok(Box::new(
                     inner.core.network.protocol.ws.listen_address.name.clone(),
                 )),
-                "network.protocol.ws.path" => {
-                    Ok(Box::new(inner.core.network.protocol.ws.path.clone()))
-                }
-                "network.protocol.ws.public_address" => Ok(Box::new(
+                "network.protocol.ws.path" => Ok(Box::new(
                     inner
                         .core
                         .network
                         .protocol
                         .ws
-                        .public_address
+                        .path
+                        .to_string_lossy()
+                        .to_string(),
+                )),
+                "network.protocol.ws.url" => Ok(Box::new(
+                    inner
+                        .core
+                        .network
+                        .protocol
+                        .ws
+                        .url
                         .as_ref()
-                        .map(|a| a.name.clone()),
+                        .map(|a| a.urlstring.clone()),
                 )),
                 "network.protocol.wss.connect" => {
                     Ok(Box::new(inner.core.network.protocol.wss.connect))
@@ -776,19 +852,19 @@ impl Settings {
                 "network.protocol.wss.listen_address" => Ok(Box::new(
                     inner.core.network.protocol.wss.listen_address.name.clone(),
                 )),
-                "network.protocol.wss.path" => {
-                    Ok(Box::new(inner.core.network.protocol.wss.path.clone()))
-                }
-                "network.protocol.wss.public_address" => Ok(Box::new(
+                "network.protocol.wss.path" => Ok(Box::new(
                     inner
                         .core
                         .network
                         .protocol
                         .wss
-                        .public_address
-                        .as_ref()
-                        .map(|a| a.name.clone()),
+                        .path
+                        .to_string_lossy()
+                        .to_string(),
                 )),
+                "network.protocol.wss.url" => {
+                    Ok(Box::new(inner.core.network.protocol.wss.url.clone()))
+                }
                 "network.leases.max_server_signal_leases" => {
                     Ok(Box::new(inner.core.network.leases.max_server_signal_leases))
                 }
@@ -899,11 +975,7 @@ mod tests {
         );
         assert_eq!(s.core.network.tls.connection_initial_timeout, 2_000_000u64);
         //
-        assert_eq!(
-            s.core.network.application.path,
-            std::path::PathBuf::from("app")
-        );
-        assert_eq!(s.core.network.application.https.enabled, true);
+        assert_eq!(s.core.network.application.https.enabled, false);
         assert_eq!(
             s.core.network.application.https.listen_address.name,
             "[::]:5150"
@@ -915,7 +987,12 @@ mod tests {
                 .unwrap()
                 .collect::<Vec<SocketAddr>>()
         );
-        assert_eq!(s.core.network.application.http.enabled, true);
+        assert_eq!(
+            s.core.network.application.https.path,
+            std::path::PathBuf::from("app")
+        );
+        assert_eq!(s.core.network.application.https.url, None);
+        assert_eq!(s.core.network.application.http.enabled, false);
         assert_eq!(
             s.core.network.application.http.listen_address.name,
             "[::]:5150"
@@ -927,6 +1004,11 @@ mod tests {
                 .unwrap()
                 .collect::<Vec<SocketAddr>>()
         );
+        assert_eq!(
+            s.core.network.application.http.path,
+            std::path::PathBuf::from("app")
+        );
+        assert_eq!(s.core.network.application.http.url, None);
         //
         assert_eq!(s.core.network.protocol.udp.enabled, true);
         assert_eq!(s.core.network.protocol.udp.socket_pool_size, 0);
@@ -966,11 +1048,14 @@ mod tests {
                 .unwrap()
                 .collect::<Vec<SocketAddr>>()
         );
-        assert_eq!(s.core.network.protocol.ws.path, "/ws");
-        assert_eq!(s.core.network.protocol.ws.public_address, None);
+        assert_eq!(
+            s.core.network.protocol.ws.path,
+            std::path::PathBuf::from("ws")
+        );
+        assert_eq!(s.core.network.protocol.ws.url, None);
         //
         assert_eq!(s.core.network.protocol.wss.connect, true);
-        assert_eq!(s.core.network.protocol.wss.listen, true);
+        assert_eq!(s.core.network.protocol.wss.listen, false);
         assert_eq!(s.core.network.protocol.wss.max_connections, 16);
         assert_eq!(s.core.network.protocol.wss.listen_address.name, "[::]:5150");
         assert_eq!(
@@ -980,9 +1065,12 @@ mod tests {
                 .unwrap()
                 .collect::<Vec<SocketAddr>>()
         );
-        assert_eq!(s.core.network.protocol.wss.path, "/ws");
-        assert_eq!(s.core.network.protocol.wss.public_address, None);
-
+        assert_eq!(
+            s.core.network.protocol.wss.path,
+            std::path::PathBuf::from("ws")
+        );
+        assert_eq!(s.core.network.protocol.wss.url, None);
+        //
         assert_eq!(s.core.network.leases.max_server_signal_leases, 256);
         assert_eq!(s.core.network.leases.max_server_relay_leases, 8);
         assert_eq!(s.core.network.leases.max_client_signal_leases, 2);

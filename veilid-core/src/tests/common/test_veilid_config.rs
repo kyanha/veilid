@@ -189,13 +189,16 @@ pub fn config_callback(key: String) -> Result<Box<dyn core::any::Any>, String> {
         "network.tls.certificate_path" => Ok(Box::new(get_certfile_path())),
         "network.tls.private_key_path" => Ok(Box::new(get_keyfile_path())),
         "network.tls.connection_initial_timeout" => Ok(Box::new(2_000_000u64)),
-        "network.application.path" => Ok(Box::new(String::from("/app"))),
-        "network.application.https.enabled" => Ok(Box::new(true)),
+        "network.application.https.enabled" => Ok(Box::new(false)),
         "network.application.https.listen_address" => Ok(Box::new(String::from("[::1]:5150"))),
-        "network.application.http.enabled" => Ok(Box::new(true)),
+        "network.application.https.path" => Ok(Box::new(String::from("app"))),
+        "network.application.https.url" => Ok(Box::new(Option::<String>::None)),
+        "network.application.http.enabled" => Ok(Box::new(false)),
         "network.application.http.listen_address" => Ok(Box::new(String::from("[::1]:5150"))),
+        "network.application.http.path" => Ok(Box::new(String::from("app"))),
+        "network.application.http.url" => Ok(Box::new(Option::<String>::None)),
         "network.protocol.udp.enabled" => Ok(Box::new(true)),
-        "network.protocol.udp.socket_pool_size" => Ok(Box::new(0u32)),
+        "network.protocol.udp.socket_pool_size" => Ok(Box::new(16u32)),
         "network.protocol.udp.listen_address" => Ok(Box::new(String::from("[::1]:5150"))),
         "network.protocol.udp.public_address" => Ok(Box::new(Option::<String>::None)),
         "network.protocol.tcp.connect" => Ok(Box::new(true)),
@@ -203,23 +206,27 @@ pub fn config_callback(key: String) -> Result<Box<dyn core::any::Any>, String> {
         "network.protocol.tcp.max_connections" => Ok(Box::new(32u32)),
         "network.protocol.tcp.listen_address" => Ok(Box::new(String::from("[::1]:5150"))),
         "network.protocol.tcp.public_address" => Ok(Box::new(Option::<String>::None)),
-        "network.protocol.ws.connect" => Ok(Box::new(true)),
-        "network.protocol.ws.listen" => Ok(Box::new(true)),
+        "network.protocol.ws.connect" => Ok(Box::new(false)),
+        "network.protocol.ws.listen" => Ok(Box::new(false)),
         "network.protocol.ws.max_connections" => Ok(Box::new(16u32)),
         "network.protocol.ws.listen_address" => Ok(Box::new(String::from("[::1]:5150"))),
-        "network.protocol.ws.path" => Ok(Box::new(String::from("/ws"))),
-        "network.protocol.ws.public_address" => Ok(Box::new(Option::<String>::None)),
-        "network.protocol.wss.connect" => Ok(Box::new(true)),
-        "network.protocol.wss.listen" => Ok(Box::new(true)),
+        "network.protocol.ws.path" => Ok(Box::new(String::from("ws"))),
+        "network.protocol.ws.url" => Ok(Box::new(Option::<String>::None)),
+        "network.protocol.wss.connect" => Ok(Box::new(false)),
+        "network.protocol.wss.listen" => Ok(Box::new(false)),
         "network.protocol.wss.max_connections" => Ok(Box::new(16u32)),
         "network.protocol.wss.listen_address" => Ok(Box::new(String::from("[::1]:5150"))),
-        "network.protocol.wss.path" => Ok(Box::new(String::from("/ws"))),
-        "network.protocol.wss.public_address" => Ok(Box::new(Option::<String>::None)),
+        "network.protocol.wss.path" => Ok(Box::new(String::from("ws"))),
+        "network.protocol.wss.url" => Ok(Box::new(Option::<String>::None)),
         "network.leases.max_server_signal_leases" => Ok(Box::new(256u32)),
         "network.leases.max_server_relay_leases" => Ok(Box::new(8u32)),
         "network.leases.max_client_signal_leases" => Ok(Box::new(2u32)),
         "network.leases.max_client_relay_leases" => Ok(Box::new(2u32)),
-        _ => Err(format!("config key '{}' doesn't exist", key)),
+        _ => {
+            let err = format!("config key '{}' doesn't exist", key);
+            debug!("{}", err);
+            Err(err)
+        }
     }
 }
 
@@ -278,13 +285,16 @@ pub async fn test_config() {
     assert_eq!(inner.network.tls.private_key_path, get_keyfile_path());
     assert_eq!(inner.network.tls.connection_initial_timeout, 2_000_000u64);
 
-    assert_eq!(inner.network.application.path, "/app");
-    assert_eq!(inner.network.application.https.enabled, true);
+    assert_eq!(inner.network.application.https.enabled, false);
     assert_eq!(inner.network.application.https.listen_address, "[::1]:5150");
-    assert_eq!(inner.network.application.http.enabled, true);
+    assert_eq!(inner.network.application.https.path, "app");
+    assert_eq!(inner.network.application.https.url, None);
+    assert_eq!(inner.network.application.http.enabled, false);
     assert_eq!(inner.network.application.http.listen_address, "[::1]:5150");
+    assert_eq!(inner.network.application.http.path, "app");
+    assert_eq!(inner.network.application.http.url, None);
     assert_eq!(inner.network.protocol.udp.enabled, true);
-    assert_eq!(inner.network.protocol.udp.socket_pool_size, 0u32);
+    assert_eq!(inner.network.protocol.udp.socket_pool_size, 16u32);
     assert_eq!(inner.network.protocol.udp.listen_address, "[::1]:5150");
     assert_eq!(inner.network.protocol.udp.public_address, None);
     assert_eq!(inner.network.protocol.tcp.connect, true);
@@ -292,18 +302,18 @@ pub async fn test_config() {
     assert_eq!(inner.network.protocol.tcp.max_connections, 32u32);
     assert_eq!(inner.network.protocol.tcp.listen_address, "[::1]:5150");
     assert_eq!(inner.network.protocol.tcp.public_address, None);
-    assert_eq!(inner.network.protocol.ws.connect, true);
-    assert_eq!(inner.network.protocol.ws.listen, true);
+    assert_eq!(inner.network.protocol.ws.connect, false);
+    assert_eq!(inner.network.protocol.ws.listen, false);
     assert_eq!(inner.network.protocol.ws.max_connections, 16u32);
     assert_eq!(inner.network.protocol.ws.listen_address, "[::1]:5150");
-    assert_eq!(inner.network.protocol.ws.path, "/ws");
-    assert_eq!(inner.network.protocol.ws.public_address, None);
-    assert_eq!(inner.network.protocol.wss.connect, true);
-    assert_eq!(inner.network.protocol.wss.listen, true);
+    assert_eq!(inner.network.protocol.ws.path, "ws");
+    assert_eq!(inner.network.protocol.ws.url, None);
+    assert_eq!(inner.network.protocol.wss.connect, false);
+    assert_eq!(inner.network.protocol.wss.listen, false);
     assert_eq!(inner.network.protocol.wss.max_connections, 16u32);
     assert_eq!(inner.network.protocol.wss.listen_address, "[::1]:5150");
-    assert_eq!(inner.network.protocol.wss.path, "/ws");
-    assert_eq!(inner.network.protocol.wss.public_address, None);
+    assert_eq!(inner.network.protocol.wss.path, "ws");
+    assert_eq!(inner.network.protocol.wss.url, None);
 }
 
 pub async fn test_all() {

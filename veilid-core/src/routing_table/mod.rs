@@ -205,14 +205,14 @@ impl RoutingTable {
         });
 
         info!(
-            "Local Dial Info: {} ({:?})",
+            "Local Dial Info: {}",
             NodeDialInfoSingle {
                 node_id: NodeId::new(inner.node_id),
                 dial_info
             }
             .to_string(),
-            origin,
         );
+        debug!("    Origin: {:?}", origin);
     }
 
     pub fn clear_local_dial_info(&self) {
@@ -281,15 +281,15 @@ impl RoutingTable {
         });
 
         info!(
-            "Public Dial Info: {} ({:?}#{:?})",
+            "Public Dial Info: {}",
             NodeDialInfoSingle {
                 node_id: NodeId::new(inner.node_id),
                 dial_info
             }
             .to_string(),
-            origin,
-            network_class,
         );
+        debug!("    Origin: {:?}", origin);
+        debug!("    Network Class: {:?}", network_class);
     }
 
     pub fn clear_global_dial_info(&self) {
@@ -612,6 +612,8 @@ impl RoutingTable {
             let c = self.config.get();
             c.network.bootstrap.clone()
         };
+
+        trace!("Bootstrap task with: {:?}", bootstrap);
 
         // Map all bootstrap entries to a single key with multiple dialinfo
         let mut bsmap: BTreeMap<DHTKey, Vec<DialInfo>> = BTreeMap::new();

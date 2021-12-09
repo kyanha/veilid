@@ -15,10 +15,10 @@ if sys.version_info < (3, 0, 0):
     sys.exit(1)
 
 script_dir = os.path.dirname(os.path.realpath(__file__))
-veilid_server_exe_debug = os.path.join(script_dir, '..', 'veilid-server',
+veilid_server_exe_debug = os.path.join(script_dir, '..',
                                        'target', 'debug', 'veilid-server')
 veilid_server_exe_release = os.path.join(
-    script_dir, '..', 'veilid-server', 'target', 'release', 'veilid-server')
+    script_dir, '..', 'target', 'release', 'veilid-server')
 main_process = None
 subindex_processes = []
 

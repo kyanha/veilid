@@ -163,15 +163,13 @@ impl VeilidCore {
         match self.internal_startup(&mut *inner, setup).await {
             Ok(v) => Ok(v),
             Err(e) => {
-                self.clone().internal_shutdown().await;
+                Self::internal_shutdown(&mut *inner).await;
                 Err(e)
             }
         }
     }
 
-    // stop the node gracefully because the veilid api was dropped
-    pub(crate) async fn internal_shutdown(self) {
-        let mut inner = self.inner.lock();
+    async fn internal_shutdown(inner: &mut VeilidCoreInner) {
         trace!("VeilidCore::internal_shutdown starting");
 
         // Detach the API object
@@ -202,6 +200,12 @@ impl VeilidCore {
         }
 
         trace!("VeilidCore::shutdown complete");
+    }
+
+    // stop the node gracefully because the veilid api was dropped
+    pub(crate) async fn shutdown(self) {
+        let mut inner = self.inner.lock();
+        Self::internal_shutdown(&mut *inner);
     }
 
     //

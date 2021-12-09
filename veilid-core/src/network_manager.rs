@@ -227,10 +227,11 @@ impl NetworkManager {
     }
 
     pub async fn tick(&self) -> Result<(), String> {
-        let (net, lease_manager, receipt_manager) = {
+        let (routing_table, net, lease_manager, receipt_manager) = {
             let inner = self.inner.lock();
             let components = inner.components.as_ref().unwrap();
             (
+                inner.routing_table.as_ref().unwrap().clone(),
                 components.net.clone(),
                 components.lease_manager.clone(),
                 components.receipt_manager.clone(),
@@ -243,6 +244,9 @@ impl NetworkManager {
             net.shutdown().await;
             net.startup().await?;
         }
+
+        // Run the routing table tick
+        routing_table.tick().await?;
 
         // Run the low level network tick
         net.tick().await?;

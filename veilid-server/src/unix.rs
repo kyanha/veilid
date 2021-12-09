@@ -162,13 +162,12 @@ pub async fn main() -> Result<(), String> {
         let bootstrap = match matches.value_of("bootstrap") {
             Some(x) => {
                 println!("Overriding bootstrap with: ");
-                let mut out: Vec<settings::ParsedURL> = Vec::new();
+                let mut out: Vec<settings::ParsedUrl> = Vec::new();
                 for x in x.split(',') {
                     println!("    {}", x);
-                    out.push(
-                        settings::ParsedURL::from_str(x)
-                            .map_err(|e| format!("unable to parse url in bootstrap list: {}", e))?,
-                    );
+                    out.push(settings::ParsedUrl::from_str(x).map_err(|e| {
+                        format!("unable to parse url in bootstrap list: {} for {}", e, x)
+                    })?);
                 }
                 out
             }

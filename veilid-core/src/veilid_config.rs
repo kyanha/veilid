@@ -14,17 +14,20 @@ cfg_if! {
 pub struct VeilidConfigHTTPS {
     pub enabled: bool,
     pub listen_address: String,
+    pub path: String,
+    pub url: Option<String>, // Fixed URL is not optional for TLS-based protocols and is dynamically validated
 }
 
 #[derive(Default, Clone)]
 pub struct VeilidConfigHTTP {
     pub enabled: bool,
     pub listen_address: String,
+    pub path: String,
+    pub url: Option<String>,
 }
 
 #[derive(Default, Clone)]
 pub struct VeilidConfigApplication {
-    pub path: String,
     pub https: VeilidConfigHTTPS,
     pub http: VeilidConfigHTTP,
 }
@@ -53,7 +56,7 @@ pub struct VeilidConfigWS {
     pub max_connections: u32,
     pub listen_address: String,
     pub path: String,
-    pub public_address: Option<String>,
+    pub url: Option<String>,
 }
 
 #[derive(Default, Clone)]
@@ -63,7 +66,7 @@ pub struct VeilidConfigWSS {
     pub max_connections: u32,
     pub listen_address: String,
     pub path: String,
-    pub public_address: Option<String>,
+    pub url: Option<String>, // Fixed URL is not optional for TLS-based protocols and is dynamically validated
 }
 
 #[derive(Default, Clone)]
@@ -184,9 +187,11 @@ impl VeilidConfig {
         macro_rules! get_config {
             ($key:expr) => {
                 let keyname = &stringify!($key)[6..];
-                $key = *cb(keyname.to_owned())?
-                    .downcast()
-                    .map_err(|_| format!("incorrect type for key: {}", keyname))?;
+                $key = *cb(keyname.to_owned())?.downcast().map_err(|_| {
+                    let err = format!("incorrect type for key: {}", keyname);
+                    debug!("{}", err);
+                    err
+                })?;
             };
         }
 
@@ -232,11 +237,14 @@ impl VeilidConfig {
             get_config!(inner.network.tls.certificate_path);
             get_config!(inner.network.tls.private_key_path);
             get_config!(inner.network.tls.connection_initial_timeout);
-            get_config!(inner.network.application.path);
             get_config!(inner.network.application.https.enabled);
             get_config!(inner.network.application.https.listen_address);
+            get_config!(inner.network.application.https.path);
+            get_config!(inner.network.application.https.url);
             get_config!(inner.network.application.http.enabled);
             get_config!(inner.network.application.http.listen_address);
+            get_config!(inner.network.application.http.path);
+            get_config!(inner.network.application.http.url);
             get_config!(inner.network.protocol.udp.enabled);
             get_config!(inner.network.protocol.udp.socket_pool_size);
             get_config!(inner.network.protocol.udp.listen_address);
@@ -251,13 +259,13 @@ impl VeilidConfig {
             get_config!(inner.network.protocol.ws.max_connections);
             get_config!(inner.network.protocol.ws.listen_address);
             get_config!(inner.network.protocol.ws.path);
-            get_config!(inner.network.protocol.ws.public_address);
+            get_config!(inner.network.protocol.ws.url);
             get_config!(inner.network.protocol.wss.connect);
             get_config!(inner.network.protocol.wss.listen);
             get_config!(inner.network.protocol.wss.max_connections);
             get_config!(inner.network.protocol.wss.listen_address);
             get_config!(inner.network.protocol.wss.path);
-            get_config!(inner.network.protocol.wss.public_address);
+            get_config!(inner.network.protocol.wss.url);
             get_config!(inner.network.leases.max_server_signal_leases);
             get_config!(inner.network.leases.max_server_relay_leases);
             get_config!(inner.network.leases.max_client_signal_leases);
@@ -266,7 +274,12 @@ impl VeilidConfig {
 
         // Initialize node id as early as possible because it is used
         // for encryption purposes all over the program
-        self.init_node_id().await
+        self.init_node_id().await?;
+
+        // Validate settings
+        self.validate().await?;
+
+        Ok(())
     }
 
     pub async fn terminate(&self) {
@@ -275,6 +288,85 @@ impl VeilidConfig {
 
     pub fn get(&self) -> RwLockReadGuard<VeilidConfigInner> {
         self.inner.read()
+    }
+
+    async fn validate(&self) -> Result<(), String> {
+        let inner = self.inner.read();
+        if inner.network.protocol.udp.enabled {
+            // Validate UDP settings
+            if inner.network.protocol.udp.socket_pool_size == 0 {
+                return Err("UDP socket pool size must be > 0 in config key 'network.protocol.udp.socket_pool_size'".to_owned());
+            }
+        }
+        if inner.network.protocol.tcp.listen {
+            // Validate TCP settings
+            if inner.network.protocol.tcp.max_connections == 0 {
+                return Err("TCP max connections must be > 0 in config key 'network.protocol.tcp.max_connections'".to_owned());
+            }
+        }
+        if inner.network.protocol.ws.listen {
+            // Validate WS settings
+            if inner.network.protocol.ws.max_connections == 0 {
+                return Err("WS max connections must be > 0 in config key 'network.protocol.ws.max_connections'".to_owned());
+            }
+            if inner.network.application.https.enabled
+                && inner.network.application.https.path == inner.network.protocol.ws.path
+            {
+                return Err("WS path conflicts with HTTPS application path in config key 'network.protocol.ws.path'".to_owned());
+            }
+            if inner.network.application.http.enabled
+                && inner.network.application.http.path == inner.network.protocol.ws.path
+            {
+                return Err("WS path conflicts with HTTP application path in config key 'network.protocol.ws.path'".to_owned());
+            }
+        }
+        if inner.network.protocol.wss.listen {
+            // Validate WSS settings
+            if inner.network.protocol.wss.max_connections == 0 {
+                return Err("WSS max connections must be > 0 in config key 'network.protocol.wss.max_connections'".to_owned());
+            }
+            if inner
+                .network
+                .protocol
+                .wss
+                .url
+                .as_ref()
+                .map(|u| u.is_empty())
+                .unwrap_or_default()
+            {
+                return Err(
+                    "WSS URL must be specified in config key 'network.protocol.wss.url'".to_owned(),
+                );
+            }
+            if inner.network.application.https.enabled
+                && inner.network.application.https.path == inner.network.protocol.wss.path
+            {
+                return Err("WSS path conflicts with HTTPS application path in config key 'network.protocol.ws.path'".to_owned());
+            }
+            if inner.network.application.http.enabled
+                && inner.network.application.http.path == inner.network.protocol.wss.path
+            {
+                return Err("WSS path conflicts with HTTP application path in config key 'network.protocol.ws.path'".to_owned());
+            }
+        }
+        if inner.network.application.https.enabled {
+            // Validate HTTPS settings
+            if inner
+                .network
+                .application
+                .https
+                .url
+                .as_ref()
+                .map(|u| u.is_empty())
+                .unwrap_or_default()
+            {
+                return Err(
+                    "HTTPS URL must be specified in config key 'network.application.https.url'"
+                        .to_owned(),
+                );
+            }
+        }
+        Ok(())
     }
 
     // Get the node id from config if one is specified

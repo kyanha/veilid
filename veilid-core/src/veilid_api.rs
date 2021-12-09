@@ -385,7 +385,7 @@ impl DialInfo {
                 let addr: IpAddr = di
                     .fqdn
                     .parse()
-                    .map_err(|e| format!("Failed to parse WS fqdn: {}", e))?;
+                    .map_err(|e| format!("Failed to parse WSS fqdn: {}", e))?;
                 Ok(addr)
             }
         }
@@ -896,7 +896,7 @@ impl fmt::Debug for VeilidAPIInner {
 impl Drop for VeilidAPIInner {
     fn drop(&mut self) {
         if let Some(core) = self.core.take() {
-            intf::spawn_local(core.internal_shutdown()).detach();
+            intf::spawn_local(core.shutdown()).detach();
         }
     }
 }
@@ -953,7 +953,7 @@ impl VeilidAPI {
     pub async fn shutdown(self) {
         let core = { self.inner.lock().core.take() };
         if let Some(core) = core {
-            core.internal_shutdown().await;
+            core.shutdown().await;
         }
     }
 
