@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 #![deny(clippy::all)]
+#![deny(unused_must_use)]
 
 mod client_api;
 mod settings;

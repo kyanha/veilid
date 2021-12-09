@@ -205,7 +205,7 @@ impl VeilidCore {
     // stop the node gracefully because the veilid api was dropped
     pub(crate) async fn shutdown(self) {
         let mut inner = self.inner.lock();
-        Self::internal_shutdown(&mut *inner);
+        Self::internal_shutdown(&mut *inner).await;
     }
 
     //
