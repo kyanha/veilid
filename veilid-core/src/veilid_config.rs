@@ -292,12 +292,9 @@ impl VeilidConfig {
 
     async fn validate(&self) -> Result<(), String> {
         let inner = self.inner.read();
-        if inner.network.protocol.udp.enabled {
-            // Validate UDP settings
-            if inner.network.protocol.udp.socket_pool_size == 0 {
-                return Err("UDP socket pool size must be > 0 in config key 'network.protocol.udp.socket_pool_size'".to_owned());
-            }
-        }
+        // if inner.network.protocol.udp.enabled {
+        //     // Validate UDP settings
+        // }
         if inner.network.protocol.tcp.listen {
             // Validate TCP settings
             if inner.network.protocol.tcp.max_connections == 0 {

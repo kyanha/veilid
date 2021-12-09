@@ -862,9 +862,16 @@ impl Settings {
                         .to_string_lossy()
                         .to_string(),
                 )),
-                "network.protocol.wss.url" => {
-                    Ok(Box::new(inner.core.network.protocol.wss.url.clone()))
-                }
+                "network.protocol.wss.url" => Ok(Box::new(
+                    inner
+                        .core
+                        .network
+                        .protocol
+                        .wss
+                        .url
+                        .as_ref()
+                        .map(|a| a.urlstring.clone()),
+                )),
                 "network.leases.max_server_signal_leases" => {
                     Ok(Box::new(inner.core.network.leases.max_server_signal_leases))
                 }
