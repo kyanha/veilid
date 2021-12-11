@@ -1502,7 +1502,7 @@ impl RPCProcessor {
         body: Vec<u8>,
         peer_noderef: NodeRef,
     ) -> Result<(), ()> {
-        debug!("enqueue_message: body len = {}", body.len());
+        trace!("enqueue_message: body len = {}", body.len());
         let msg = RPCMessage {
             header: RPCMessageHeader {
                 timestamp: get_timestamp(),

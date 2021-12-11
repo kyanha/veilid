@@ -19,11 +19,11 @@ const RELIABLE_PING_INTERVAL_MULTIPLIER: f64 = 2.0;
 const UNRELIABLE_PING_SPAN_SECS: u32 = 60;
 const UNRELIABLE_PING_INTERVAL_SECS: u32 = 5;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum BucketEntryState {
-    Reliable,
-    Unreliable,
     Dead,
+    Unreliable,
+    Reliable,
 }
 
 #[derive(Debug, Clone)]
@@ -243,14 +243,18 @@ impl BucketEntry {
         // if we have had consecutive ping replies for longer that UNRELIABLE_PING_SPAN_SECS
         match self.peer_stats.ping_stats.first_consecutive_pong_time {
             None => false,
-            Some(ts) => (cur_ts - ts) >= (UNRELIABLE_PING_SPAN_SECS as u64 * 1000000u64),
+            Some(ts) => {
+                cur_ts.saturating_sub(ts) >= (UNRELIABLE_PING_SPAN_SECS as u64 * 1000000u64)
+            }
         }
     }
     pub(super) fn check_dead(&self, cur_ts: u64) -> bool {
         // if we have not heard from the node at all for the duration of the unreliable ping span
         match self.peer_stats.last_seen {
             None => true,
-            Some(ts) => (cur_ts - ts) >= (UNRELIABLE_PING_SPAN_SECS as u64 * 1000000u64),
+            Some(ts) => {
+                cur_ts.saturating_sub(ts) >= (UNRELIABLE_PING_SPAN_SECS as u64 * 1000000u64)
+            }
         }
     }
 
@@ -268,9 +272,10 @@ impl BucketEntry {
                             .first_consecutive_pong_time
                             .unwrap();
                         let start_of_reliable_time = first_consecutive_pong_time
-                            + (UNRELIABLE_PING_SPAN_SECS as u64 * 1000000u64);
-                        let reliable_cur = cur_ts - start_of_reliable_time;
-                        let reliable_last = last_pinged - start_of_reliable_time;
+                            + ((UNRELIABLE_PING_SPAN_SECS - UNRELIABLE_PING_INTERVAL_SECS) as u64
+                                * 1000000u64);
+                        let reliable_cur = cur_ts.saturating_sub(start_of_reliable_time);
+                        let reliable_last = last_pinged.saturating_sub(start_of_reliable_time);
 
                         retry_falloff_log(
                             reliable_last,
@@ -287,7 +292,7 @@ impl BucketEntry {
                 match self.peer_stats.ping_stats.last_pinged {
                     None => true,
                     Some(last_pinged) => {
-                        (cur_ts - last_pinged)
+                        cur_ts.saturating_sub(last_pinged)
                             >= (UNRELIABLE_PING_INTERVAL_SECS as u64 * 1000000u64)
                     }
                 }
@@ -301,6 +306,43 @@ impl BucketEntry {
         self.peer_stats.ping_stats.recent_lost_pings = 0;
         // Mark the node as seen
         self.peer_stats.last_seen = Some(ts);
+    }
+
+    pub(super) fn state_debug_info(&self, cur_ts: u64) -> String {
+        let last_pinged = if let Some(last_pinged) = self.peer_stats.ping_stats.last_pinged {
+            format!(
+                "{}s ago",
+                timestamp_to_secs(cur_ts.saturating_sub(last_pinged))
+            )
+        } else {
+            "never".to_owned()
+        };
+        let first_consecutive_pong_time = if let Some(first_consecutive_pong_time) =
+            self.peer_stats.ping_stats.first_consecutive_pong_time
+        {
+            format!(
+                "{}s ago",
+                timestamp_to_secs(cur_ts.saturating_sub(first_consecutive_pong_time))
+            )
+        } else {
+            "never".to_owned()
+        };
+        let last_seen = if let Some(last_seen) = self.peer_stats.last_seen {
+            format!(
+                "{}s ago",
+                timestamp_to_secs(cur_ts.saturating_sub(last_seen))
+            )
+        } else {
+            "never".to_owned()
+        };
+
+        format!(
+            "state: {:?}, first_consecutive_pong_time: {}, last_pinged: {}, last_seen: {}",
+            self.state(cur_ts),
+            first_consecutive_pong_time,
+            last_pinged,
+            last_seen
+        )
     }
 
     ////////////////////////////////////////////////////////////////

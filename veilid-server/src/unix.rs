@@ -1,8 +1,10 @@
 #[cfg(unix)]
 use crate::client_api;
+use crate::client_log_channel::*;
 use crate::settings;
 use async_std::channel::{bounded, Receiver, Sender};
 use clap::{App, Arg};
+use futures::*;
 use lazy_static::*;
 use log::*;
 use parking_lot::Mutex;
@@ -187,7 +189,7 @@ pub async fn main() -> Result<(), String> {
 
     // Set up loggers
     let mut logs: Vec<Box<dyn SharedLogger>> = Vec::new();
-
+    let mut client_log_channel: Option<ClientLogChannel> = None;
     let mut cb = ConfigBuilder::new();
     cb.add_filter_ignore_str("async_std");
     cb.add_filter_ignore_str("async_io");
@@ -226,6 +228,15 @@ pub async fn main() -> Result<(), String> {
             settings::convert_loglevel(settingsr.logging.file.level),
             cb.build(),
             logfile,
+        ))
+    }
+    if settingsr.logging.client.enabled {
+        let clog = ClientLogChannel::new();
+        client_log_channel = Some(clog.clone());
+        logs.push(WriteLogger::new(
+            settings::convert_loglevel(settingsr.logging.file.level),
+            cb.build(),
+            clog,
         ))
     }
     CombinedLogger::init(logs).map_err(|e| format!("failed to init logs: {}", e))?;
@@ -280,12 +291,27 @@ pub async fn main() -> Result<(), String> {
     let capi_jh = async_std::task::spawn_local(async move {
         trace!("state change processing started");
         while let Ok(change) = receiver.recv().await {
-            if let Some(c) = capi2.borrow_mut().as_mut().cloned() {
+            if let Some(c) = capi2.borrow().as_ref().cloned() {
                 c.handle_state_change(change);
             }
         }
         trace!("state change processing stopped");
     });
+    // Handle log messages on main thread for capnproto rpc
+    let capi2 = capi.clone();
+    let capi_jh2 = if let Some(client_log_channel) = client_log_channel {
+        Some(async_std::task::spawn_local(async move {
+            trace!("client logging started");
+            while let Ok(message) = client_log_channel.recv().await {
+                if let Some(c) = capi2.borrow().as_ref().cloned() {
+                    c.handle_client_log(message);
+                }
+            }
+            trace!("client logging stopped")
+        }))
+    } else {
+        None
+    };
 
     // Auto-attach if desired
     if auto_attach {
@@ -313,8 +339,11 @@ pub async fn main() -> Result<(), String> {
     // Shut down Veilid API
     veilid_api.shutdown().await;
 
-    // Wait for statechanged handler to exit
+    // Wait for client api handlers to exit
     capi_jh.await;
+    if let Some(capi_jh2) = capi_jh2 {
+        capi_jh2.await;
+    }
 
     Ok(())
 }

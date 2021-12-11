@@ -3,6 +3,7 @@ use crate::*;
 use attachment_manager::AttachmentManager;
 use core::fmt;
 use network_manager::NetworkManager;
+use routing_table::*;
 use rpc_processor::{RPCError, RPCProcessor};
 use xx::*;
 
@@ -959,6 +960,51 @@ impl VeilidAPI {
 
     pub fn is_shutdown(&self) -> bool {
         self.inner.lock().core.is_none()
+    }
+
+    ////////////////////////////////////////////////////////////////
+    // Debugging
+
+    async fn debug_buckets(&self, mut debug_args: Vec<String>) -> Result<String, VeilidAPIError> {
+        let min_state = {
+            if let Some(min_state) = debug_args.pop() {
+                if min_state == "dead" {
+                    BucketEntryState::Dead
+                } else if min_state == "reliable" {
+                    BucketEntryState::Reliable
+                } else {
+                    return Err(VeilidAPIError::Internal(format!(
+                        "Invalid argument '{}'",
+                        min_state
+                    )));
+                }
+            } else {
+                BucketEntryState::Unreliable
+            }
+        };
+        // Dump routing table bucket info
+        let rpc = self.rpc_processor()?;
+        let routing_table = rpc.routing_table();
+        Ok(routing_table.debug_info(min_state))
+    }
+
+    pub async fn debug(&self, what: String) -> Result<String, VeilidAPIError> {
+        trace!("VeilidCore::debug");
+        let mut out = String::new();
+        let mut debug_args: Vec<String> = what
+            .split_ascii_whitespace()
+            .map(|s| s.to_owned())
+            .collect();
+        if let Some(arg) = debug_args.pop() {
+            if arg == "buckets" {
+                out += self.debug_buckets(debug_args).await?.as_str();
+            } else {
+                out += ">>> Unknown command\n";
+            }
+        } else {
+            out += ">>> Debug commands:\n      buckets [dead|reliable]\n";
+        }
+        Ok(out)
     }
 
     ////////////////////////////////////////////////////////////////

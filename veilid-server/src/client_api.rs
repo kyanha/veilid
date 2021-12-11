@@ -160,6 +160,25 @@ impl veilid_server::Server for VeilidServerImpl {
 
         Promise::ok(())
     }
+
+    fn debug(
+        &mut self,
+        params: veilid_server::DebugParams,
+        mut results: veilid_server::DebugResults,
+    ) -> Promise<(), ::capnp::Error> {
+        trace!("VeilidServerImpl::attach");
+        let veilid_api = self.veilid_api.clone();
+        let what = pry!(pry!(params.get()).get_what()).to_owned();
+
+        Promise::from_future(async move {
+            let output = veilid_api
+                .debug(what)
+                .await
+                .map_err(|e| ::capnp::Error::failed(format!("{:?}", e)))?;
+            results.get().set_output(output.as_str());
+            Ok(())
+        })
+    }
 }
 
 // --- Client API Server-Side ---------------------------------
@@ -268,9 +287,11 @@ impl ClientApi {
         }
     }
 
-    pub fn handle_state_change(self: Rc<Self>, changed: veilid_core::VeilidStateChange) {
-        trace!("state changed: {:?}", changed);
-
+    fn send_request_to_all_clients<F, T>(self: Rc<Self>, request: F)
+    where
+        F: Fn(u64, &mut RegistrationHandle) -> ::capnp::capability::RemotePromise<T>,
+        T: capnp::traits::Pipelined + for<'a> capnp::traits::Owned<'a> + 'static + Unpin,
+    {
         // Send status update to each registered client
         let registration_map = self.inner.borrow().registration_map.clone();
         let registration_map1 = registration_map.clone();
@@ -278,17 +299,16 @@ impl ClientApi {
         for (&id, mut registration) in regs.iter_mut() {
             if registration.requests_in_flight > 5 {
                 debug!(
-                    "too many requests in flight for status updates: {}",
+                    "too many requests in flight: {}",
                     registration.requests_in_flight
                 );
             }
             registration.requests_in_flight += 1;
-            // Make a state changed request
-            let mut request = registration.client.state_changed_request();
-            let rpc_changed = request.get().init_changed();
-            ClientApi::convert_state_changed(&changed, rpc_changed);
+
+            let request_promise = request(id, registration);
+
             let registration_map2 = registration_map1.clone();
-            async_std::task::spawn_local(request.send().promise.map(move |r| match r {
+            async_std::task::spawn_local(request_promise.promise.map(move |r| match r {
                 Ok(_) => {
                     if let Some(ref mut s) =
                         registration_map2.borrow_mut().registrations.get_mut(&id)
@@ -302,6 +322,23 @@ impl ClientApi {
                 }
             }));
         }
+    }
+
+    pub fn handle_state_change(self: Rc<Self>, changed: veilid_core::VeilidStateChange) {
+        self.send_request_to_all_clients(|_id, registration| {
+            let mut request = registration.client.state_changed_request();
+            let rpc_changed = request.get().init_changed();
+            ClientApi::convert_state_changed(&changed, rpc_changed);
+            request.send()
+        });
+    }
+
+    pub fn handle_client_log(self: Rc<Self>, message: String) {
+        self.send_request_to_all_clients(|_id, registration| {
+            let mut request = registration.client.log_message_request();
+            request.get().set_message(&message);
+            request.send()
+        });
     }
 
     pub fn run(self: Rc<Self>, bind_addrs: Vec<SocketAddr>) {

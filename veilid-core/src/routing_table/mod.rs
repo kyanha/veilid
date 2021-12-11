@@ -213,10 +213,14 @@ impl RoutingTable {
             .to_string(),
         );
         debug!("    Origin: {:?}", origin);
+
+        Self::trigger_changed_dial_info(&mut *inner);
     }
 
     pub fn clear_local_dial_info(&self) {
-        self.inner.lock().local_dial_info.clear();
+        let mut inner = self.inner.lock();
+        inner.local_dial_info.clear();
+        Self::trigger_changed_dial_info(&mut *inner);
     }
 
     pub fn has_global_dial_info(&self) -> bool {
@@ -290,10 +294,13 @@ impl RoutingTable {
         );
         debug!("    Origin: {:?}", origin);
         debug!("    Network Class: {:?}", network_class);
+        Self::trigger_changed_dial_info(&mut *inner);
     }
 
     pub fn clear_global_dial_info(&self) {
-        self.inner.lock().global_dial_info.clear();
+        let mut inner = self.inner.lock();
+        inner.global_dial_info.clear();
+        Self::trigger_changed_dial_info(&mut *inner);
     }
 
     pub async fn wait_changed_dial_info(&self) {
@@ -304,14 +311,10 @@ impl RoutingTable {
             .instance_empty();
         inst.await;
     }
-    pub async fn trigger_changed_dial_info(&self) {
-        let eventual = {
-            let mut inner = self.inner.lock();
-            let mut new_eventual = Eventual::new();
-            core::mem::swap(&mut inner.eventual_changed_dial_info, &mut new_eventual);
-            new_eventual
-        };
-        eventual.resolve().await;
+    fn trigger_changed_dial_info(inner: &mut RoutingTableInner) {
+        let mut new_eventual = Eventual::new();
+        core::mem::swap(&mut inner.eventual_changed_dial_info, &mut new_eventual);
+        spawn(new_eventual.resolve()).detach();
     }
 
     fn bucket_depth(index: usize) -> usize {
@@ -349,6 +352,38 @@ impl RoutingTable {
 
     pub async fn terminate(&self) {
         *self.inner.lock() = Self::new_inner(self.network_manager());
+    }
+
+    // debugging info
+    pub fn debug_info(&self, min_state: BucketEntryState) -> String {
+        let inner = self.inner.lock();
+        let cur_ts = get_timestamp();
+
+        let mut out = String::new();
+        const COLS: usize = 16;
+        let rows = inner.buckets.len() / COLS;
+        let mut r = 0;
+        let mut b = 0;
+        out += "Buckets:\n";
+        while r < rows {
+            let mut c = 0;
+            out += format!("  {:>3}: ", b).as_str();
+            while c < COLS {
+                let mut cnt = 0;
+                for e in inner.buckets[b].entries() {
+                    if e.1.state(cur_ts) >= min_state {
+                        cnt += 1;
+                    }
+                }
+                out += format!("{:>3} ", cnt).as_str();
+                b += 1;
+                c += 1;
+            }
+            out += "\n";
+            r += 1;
+        }
+
+        out
     }
 
     // Just match address and port to help sort dialinfoentries for buckets
@@ -613,7 +648,7 @@ impl RoutingTable {
             c.network.bootstrap.clone()
         };
 
-        trace!("Bootstrap task with: {:?}", bootstrap);
+        debug!("--- bootstrap_task");
 
         // Map all bootstrap entries to a single key with multiple dialinfo
         let mut bsmap: BTreeMap<DHTKey, Vec<DialInfo>> = BTreeMap::new();
@@ -630,6 +665,7 @@ impl RoutingTable {
                 .or_insert_with(Vec::new)
                 .push(ndis.dial_info);
         }
+        trace!("    bootstrap list: {:?}", bsmap);
 
         // Run all bootstrap operations concurrently
         let mut unord = FuturesUnordered::new();
@@ -641,7 +677,7 @@ impl RoutingTable {
                 }
             };
 
-            info!("Bootstrapping {} with {:?}", k.encode(), &v);
+            trace!("    bootstrapping {} with {:?}", k.encode(), &v);
             unord.push(self.reverse_find_node(nr, true));
         }
         while unord.next().await.is_some() {}
@@ -654,6 +690,8 @@ impl RoutingTable {
     // Ask our remaining peers to give us more peers before we go
     // back to the bootstrap servers to keep us from bothering them too much
     async fn peer_minimum_refresh_task_routine(self) -> Result<(), String> {
+        trace!("--- peer_minimum_refresh task");
+
         // get list of all peers we know about, even the unreliable ones, and ask them to bootstrap too
         let noderefs = {
             let mut inner = self.inner.lock();
@@ -665,11 +703,12 @@ impl RoutingTable {
             }
             noderefs
         };
+        trace!("    refreshing with nodes: {:?}", noderefs);
 
         // do peer minimum search concurrently
         let mut unord = FuturesUnordered::new();
         for nr in noderefs {
-            debug!("Peer minimum search with {:?}", nr);
+            debug!("    --- peer minimum search with {:?}", nr);
             unord.push(self.reverse_find_node(nr, false));
         }
         while unord.next().await.is_some() {}
@@ -680,12 +719,18 @@ impl RoutingTable {
     // Ping each node in the routing table if they need to be pinged
     // to determine their reliability
     async fn ping_validator_task_routine(self, _last_ts: u64, cur_ts: u64) -> Result<(), String> {
+        trace!("--- ping_validator task");
         let rpc = self.rpc_processor();
         let mut inner = self.inner.lock();
         for b in &mut inner.buckets {
             for (k, entry) in b.entries_mut() {
                 if entry.needs_ping(cur_ts) {
                     let nr = NodeRef::new(self.clone(), *k, entry);
+                    debug!(
+                        "    --- ping validating: {:?} ({})",
+                        nr,
+                        entry.state_debug_info(cur_ts)
+                    );
                     intf::spawn_local(rpc.clone().rpc_call_info(nr)).detach();
                 }
             }
@@ -695,6 +740,7 @@ impl RoutingTable {
 
     // Compute transfer statistics to determine how 'fast' a node is
     async fn rolling_transfers_task_routine(self, last_ts: u64, cur_ts: u64) -> Result<(), String> {
+        trace!("--- rolling_transfers task");
         let inner = &mut *self.inner.lock();
 
         // Roll our own node's transfers

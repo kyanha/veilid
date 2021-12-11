@@ -34,14 +34,17 @@ interface VeilidServer {
 
     register @0 (veilidClient: VeilidClient) -> (registration: Registration);
 
-    attach @1 () -> (result: Bool);
-    detach @2 () -> (result: Bool);
-    shutdown @3 () -> (result: Bool);
+    attach @1 ();
+    detach @2 ();
+    shutdown @3 ();
+
+    debug @4 (what: Text) -> (output: Text);
 
 }
 
 interface VeilidClient {
 
     stateChanged @0 (changed: VeilidStateChange);
+    logMessage @1 (message: Text);
 
 }

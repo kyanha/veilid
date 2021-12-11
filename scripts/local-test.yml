@@ -1,0 +1,6 @@
+---
+core:
+  network:
+    dht:
+      min_peer_count: 1
+    address_filter: false

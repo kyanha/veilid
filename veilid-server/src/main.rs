@@ -3,6 +3,7 @@
 #![deny(unused_must_use)]
 
 mod client_api;
+mod client_log_channel;
 mod settings;
 
 #[allow(clippy::all)]

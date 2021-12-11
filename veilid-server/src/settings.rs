@@ -29,6 +29,9 @@ logging:
         path: ""
         append: true
         level: "info"
+    client:
+        enable: false
+        level: "info"
 testing:
     subnode_index: 0
 core:
@@ -284,6 +287,12 @@ pub struct File {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct Client {
+    pub enabled: bool,
+    pub level: LogLevel,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct ClientApi {
     pub enabled: bool,
     pub listen_address: NamedSocketAddrs,
@@ -293,6 +302,7 @@ pub struct ClientApi {
 pub struct Logging {
     pub terminal: Terminal,
     pub file: File,
+    pub client: Client,
 }
 
 #[derive(Debug, Deserialize)]
@@ -928,6 +938,8 @@ mod tests {
         assert_eq!(s.logging.file.path, "");
         assert_eq!(s.logging.file.append, true);
         assert_eq!(s.logging.file.level, LogLevel::Info);
+        assert_eq!(s.logging.client.enabled, true);
+        assert_eq!(s.logging.client.level, LogLevel::Info);
         assert_eq!(s.testing.subnode_index, 0);
         assert_eq!(
             s.core.tablestore.directory,

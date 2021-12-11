@@ -142,7 +142,7 @@ impl ClientApiConnection {
         }
     }
 
-    pub async fn server_attach(&mut self) -> Result<bool> {
+    pub async fn server_attach(&mut self) -> Result<()> {
         trace!("ClientApiConnection::server_attach");
         let server = {
             let inner = self.inner.borrow();
@@ -154,10 +154,10 @@ impl ClientApiConnection {
         };
         let request = server.borrow().attach_request();
         let response = request.send().promise.await?;
-        Ok(response.get()?.get_result())
+        response.get().map(drop).map_err(|e| anyhow!(e))
     }
 
-    pub async fn server_detach(&mut self) -> Result<bool> {
+    pub async fn server_detach(&mut self) -> Result<()> {
         trace!("ClientApiConnection::server_detach");
         let server = {
             let inner = self.inner.borrow();
@@ -169,10 +169,10 @@ impl ClientApiConnection {
         };
         let request = server.borrow().detach_request();
         let response = request.send().promise.await?;
-        Ok(response.get()?.get_result())
+        response.get().map(drop).map_err(|e| anyhow!(e))
     }
 
-    pub async fn server_shutdown(&mut self) -> Result<bool> {
+    pub async fn server_shutdown(&mut self) -> Result<()> {
         trace!("ClientApiConnection::server_shutdown");
         let server = {
             let inner = self.inner.borrow();
@@ -184,7 +184,27 @@ impl ClientApiConnection {
         };
         let request = server.borrow().shutdown_request();
         let response = request.send().promise.await?;
-        Ok(response.get()?.get_result())
+        response.get().map(drop).map_err(|e| anyhow!(e))
+    }
+
+    pub async fn server_debug(&mut self, what: String) -> Result<String> {
+        trace!("ClientApiConnection::server_debug");
+        let server = {
+            let inner = self.inner.borrow();
+            inner
+                .server
+                .as_ref()
+                .ok_or(anyhow!("Not connected, ignoring attach request"))?
+                .clone()
+        };
+        let mut request = server.borrow().debug_request();
+        request.get().set_what(&what);
+        let response = request.send().promise.await?;
+        response
+            .get()?
+            .get_output()
+            .map(|o| o.to_owned())
+            .map_err(|e| anyhow!(e))
     }
 
     // Start Client API connection

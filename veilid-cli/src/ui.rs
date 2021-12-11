@@ -44,7 +44,7 @@ impl<T> Dirty<T> {
     }
 }
 
-pub type UICallback = Box<dyn Fn(UI) + 'static>;
+pub type UICallback = Box<dyn Fn(&mut Cursive) + Send>;
 
 struct UIState {
     attachment_state: Dirty<AttachmentState>,
@@ -84,126 +84,8 @@ pub struct UI {
 }
 
 impl UI {
-    pub fn new(node_log_scrollback: usize, settings: &Settings) -> Self {
-        cursive_flexi_logger_view::resize(node_log_scrollback);
-
-        // Instantiate the cursive runnable
-        /*
-        // reduces flicker, but it costs cpu
-        let mut runnable = CursiveRunnable::new(
-            || -> Result<Box<dyn cursive_buffered_backend::Backend>, UIError> {
-                let crossterm_backend = cursive::backends::crossterm::Backend::init().unwrap();
-                let buffered_backend =
-                    cursive_buffered_backend::BufferedBackend::new(crossterm_backend);
-
-                Ok(Box::new(buffered_backend))
-            },
-        );
-        */
-        let runnable = cursive::default();
-        // Make the callback mechanism easily reachable
-        let cb_sink = runnable.cb_sink().clone();
-
-        // Create the UI object
-        let this = Self {
-            siv: Rc::new(RefCell::new(runnable)),
-            inner: Rc::new(RefCell::new(UIInner {
-                ui_state: UIState::new(),
-                log_colors: Default::default(),
-                cmdproc: None,
-                cmd_history: {
-                    let mut vd = VecDeque::new();
-                    vd.push_back("".to_string());
-                    vd
-                },
-                cmd_history_position: 0,
-                cmd_history_max_size: settings.interface.command_line.history_size,
-                connection_dialog_state: None,
-                cb_sink,
-            })),
-        };
-
-        let mut siv = this.siv.borrow_mut();
-        let mut inner = this.inner.borrow_mut();
-
-        // Make the inner object accessible in callbacks easily
-        siv.set_user_data(this.inner.clone());
-
-        // Create layouts
-        let mut mainlayout = LinearLayout::vertical().with_name("main-layout");
-        mainlayout.get_mut().add_child(
-            Panel::new(
-                FlexiLoggerView::new_scrollable()
-                    .with_name("node-events")
-                    .full_screen(),
-            )
-            .title_position(HAlign::Left)
-            .title("Node Events"),
-        );
-        mainlayout.get_mut().add_child(
-            Panel::new(ScrollView::new(
-                TextView::new("Peer Table")
-                    .with_name("peers")
-                    .fixed_height(8)
-                    .scrollable(),
-            ))
-            .title_position(HAlign::Left)
-            .title("Peers"),
-        );
-        let mut command = StyledString::new();
-        command.append_styled("Command> ", ColorStyle::title_primary());
-        //
-        mainlayout.get_mut().add_child(
-            LinearLayout::horizontal()
-                .child(TextView::new(command))
-                .child(
-                    EditView::new()
-                        .on_submit(UI::on_command_line_entered)
-                        .on_edit(UI::on_command_line_edit)
-                        .on_up_down(UI::on_command_line_history)
-                        .style(ColorStyle::new(
-                            PaletteColor::Background,
-                            PaletteColor::Secondary,
-                        ))
-                        .with_name("command-line")
-                        .full_screen()
-                        .fixed_height(1),
-                )
-                .child(
-                    Button::new("Attach", |s| {
-                        UI::on_button_attach_pressed(s);
-                    })
-                    .with_name("button-attach"),
-                ),
-        );
-        let mut version = StyledString::new();
-        version.append_styled(
-            concat!(" | veilid-cli v", env!("CARGO_PKG_VERSION")),
-            ColorStyle::highlight_inactive(),
-        );
-
-        mainlayout.get_mut().add_child(
-            LinearLayout::horizontal()
-                .color(Some(ColorStyle::highlight_inactive()))
-                .child(
-                    TextView::new("")
-                        .with_name("status-bar")
-                        .full_screen()
-                        .fixed_height(1),
-                )
-                .child(TextView::new(version)),
-        );
-
-        siv.add_fullscreen_layer(mainlayout);
-
-        UI::setup_colors(&mut siv, &mut inner, settings);
-        UI::setup_quit_handler(&mut siv);
-
-        drop(inner);
-        drop(siv);
-
-        this
-    }
+    /////////////////////////////////////////////////////////////////////////////////////
+    // Private functions
 
     fn command_processor(s: &mut Cursive) -> CommandProcessor {
         let inner = Self::inner(s);
@@ -317,53 +199,6 @@ impl UI {
         });
     }
 
-    pub fn cursive_flexi_logger(&mut self) -> Box<CursiveLogWriter> {
-        let mut flv =
-            cursive_flexi_logger_view::cursive_flexi_logger(self.siv.borrow().cb_sink().clone());
-        flv.set_colors(self.inner.borrow().log_colors.clone());
-        flv
-    }
-    pub fn set_command_processor(&mut self, cmdproc: CommandProcessor) {
-        let mut inner = self.inner.borrow_mut();
-        inner.cmdproc = Some(cmdproc);
-        let _ = inner.cb_sink.send(Box::new(UI::update_cb));
-    }
-    pub fn set_attachment_state(&mut self, state: AttachmentState) {
-        let mut inner = self.inner.borrow_mut();
-        inner.ui_state.attachment_state.set(state);
-        let _ = inner.cb_sink.send(Box::new(UI::update_cb));
-    }
-    pub fn set_connection_state(&mut self, state: ConnectionState) {
-        let mut inner = self.inner.borrow_mut();
-        inner.ui_state.connection_state.set(state);
-        let _ = inner.cb_sink.send(Box::new(UI::update_cb));
-    }
-    pub fn add_node_event(&mut self, event: &str) {
-        let inner = self.inner.borrow_mut();
-        let color = *inner.log_colors.get(&Level::Info).unwrap();
-        for line in event.lines() {
-            cursive_flexi_logger_view::push_to_log(StyledString::styled(line, color));
-        }
-        let _ = inner.cb_sink.send(Box::new(UI::update_cb));
-    }
-    pub fn quit(&mut self) {
-        let inner = self.inner.borrow_mut();
-        let _ = inner.cb_sink.send(Box::new(|s| {
-            s.quit();
-        }));
-    }
-    // Note: Cursive is not re-entrant, can't borrow_mut self.siv again after this
-    pub async fn run_async(&mut self) {
-        let mut siv = self.siv.borrow_mut();
-        siv.run_async().await;
-    }
-    // pub fn run(&mut self) {
-    //     let mut siv = self.siv.borrow_mut();
-    //     siv.run();
-    // }
-
-    /////////////////////////////////////////////////////////////////////////////////////
-    // Private functions
     // fn main_layout(s: &mut Cursive) -> ViewRef<LinearLayout> {
     //     s.find_name("main-layout").unwrap()
     // }
@@ -426,9 +261,28 @@ impl UI {
         inner.cmd_history[hlen - 1] = text.to_owned();
     }
 
-    pub fn enable_command_ui(s: &mut Cursive, enabled: bool) {
+    fn enable_command_ui(s: &mut Cursive, enabled: bool) {
         Self::command_line(s).set_enabled(enabled);
         Self::button_attach(s).set_enabled(enabled);
+    }
+
+    fn display_string_dialog_cb(
+        s: &mut Cursive,
+        title: String,
+        contents: String,
+        close_cb: UICallback,
+    ) {
+        // Creates a dialog around some text with a single button
+        s.add_layer(
+            Dialog::around(TextView::new(contents))
+                .title(title)
+                .button("Close", move |s| {
+                    s.pop_layer();
+                    close_cb(s);
+                })
+                //.wrap_with(CircularFocus::new)
+                //.wrap_tab(),
+        );
     }
 
     fn run_command(s: &mut Cursive, text: &str) -> Result<(), String> {
@@ -438,15 +292,8 @@ impl UI {
         let cmdproc = Self::command_processor(s);
         cmdproc.run_command(
             text,
-            Box::new(|ui: UI| {
-                let _ = ui
-                    .inner
-                    .borrow()
-                    .cb_sink
-                    .send(Box::new(|s| {
-                        Self::enable_command_ui(s, true);
-                    }))
-                    .unwrap();
+            Box::new(|s| {
+                Self::enable_command_ui(s, true);
             }),
         )
     }
@@ -772,4 +619,193 @@ impl UI {
             Self::refresh_connection_dialog(s);
         }
     }
+
+    ////////////////////////////////////////////////////////////////////////////
+    // Public functions
+
+    pub fn new(node_log_scrollback: usize, settings: &Settings) -> Self {
+        cursive_flexi_logger_view::resize(node_log_scrollback);
+
+        // Instantiate the cursive runnable
+        /*
+        // reduces flicker, but it costs cpu
+        let mut runnable = CursiveRunnable::new(
+            || -> Result<Box<dyn cursive_buffered_backend::Backend>, UIError> {
+                let crossterm_backend = cursive::backends::crossterm::Backend::init().unwrap();
+                let buffered_backend =
+                    cursive_buffered_backend::BufferedBackend::new(crossterm_backend);
+
+                Ok(Box::new(buffered_backend))
+            },
+        );
+        */
+        let runnable = cursive::default();
+        // Make the callback mechanism easily reachable
+        let cb_sink = runnable.cb_sink().clone();
+
+        // Create the UI object
+        let this = Self {
+            siv: Rc::new(RefCell::new(runnable)),
+            inner: Rc::new(RefCell::new(UIInner {
+                ui_state: UIState::new(),
+                log_colors: Default::default(),
+                cmdproc: None,
+                cmd_history: {
+                    let mut vd = VecDeque::new();
+                    vd.push_back("".to_string());
+                    vd
+                },
+                cmd_history_position: 0,
+                cmd_history_max_size: settings.interface.command_line.history_size,
+                connection_dialog_state: None,
+                cb_sink,
+            })),
+        };
+
+        let mut siv = this.siv.borrow_mut();
+        let mut inner = this.inner.borrow_mut();
+
+        // Make the inner object accessible in callbacks easily
+        siv.set_user_data(this.inner.clone());
+
+        // Create layouts
+        let mut mainlayout = LinearLayout::vertical().with_name("main-layout");
+        mainlayout.get_mut().add_child(
+            Panel::new(
+                FlexiLoggerView::new_scrollable()
+                    .with_name("node-events")
+                    .full_screen(),
+            )
+            .title_position(HAlign::Left)
+            .title("Node Events"),
+        );
+        mainlayout.get_mut().add_child(
+            Panel::new(ScrollView::new(
+                TextView::new("Peer Table")
+                    .with_name("peers")
+                    .fixed_height(8)
+                    .scrollable(),
+            ))
+            .title_position(HAlign::Left)
+            .title("Peers"),
+        );
+        let mut command = StyledString::new();
+        command.append_styled("Command> ", ColorStyle::title_primary());
+        //
+        mainlayout.get_mut().add_child(
+            LinearLayout::horizontal()
+                .child(TextView::new(command))
+                .child(
+                    EditView::new()
+                        .on_submit(UI::on_command_line_entered)
+                        .on_edit(UI::on_command_line_edit)
+                        .on_up_down(UI::on_command_line_history)
+                        .style(ColorStyle::new(
+                            PaletteColor::Background,
+                            PaletteColor::Secondary,
+                        ))
+                        .with_name("command-line")
+                        .full_screen()
+                        .fixed_height(1),
+                )
+                .child(
+                    Button::new("Attach", |s| {
+                        UI::on_button_attach_pressed(s);
+                    })
+                    .with_name("button-attach"),
+                ),
+        );
+        let mut version = StyledString::new();
+        version.append_styled(
+            concat!(" | veilid-cli v", env!("CARGO_PKG_VERSION")),
+            ColorStyle::highlight_inactive(),
+        );
+
+        mainlayout.get_mut().add_child(
+            LinearLayout::horizontal()
+                .color(Some(ColorStyle::highlight_inactive()))
+                .child(
+                    TextView::new("")
+                        .with_name("status-bar")
+                        .full_screen()
+                        .fixed_height(1),
+                )
+                .child(TextView::new(version)),
+        );
+
+        siv.add_fullscreen_layer(mainlayout);
+
+        UI::setup_colors(&mut siv, &mut inner, settings);
+        UI::setup_quit_handler(&mut siv);
+
+        drop(inner);
+        drop(siv);
+
+        this
+    }
+    pub fn cursive_flexi_logger(&self) -> Box<CursiveLogWriter> {
+        let mut flv =
+            cursive_flexi_logger_view::cursive_flexi_logger(self.siv.borrow().cb_sink().clone());
+        flv.set_colors(self.inner.borrow().log_colors.clone());
+        flv
+    }
+    pub fn set_command_processor(&mut self, cmdproc: CommandProcessor) {
+        let mut inner = self.inner.borrow_mut();
+        inner.cmdproc = Some(cmdproc);
+        let _ = inner.cb_sink.send(Box::new(UI::update_cb));
+    }
+    pub fn set_attachment_state(&mut self, state: AttachmentState) {
+        let mut inner = self.inner.borrow_mut();
+        inner.ui_state.attachment_state.set(state);
+        let _ = inner.cb_sink.send(Box::new(UI::update_cb));
+    }
+    pub fn set_connection_state(&mut self, state: ConnectionState) {
+        let mut inner = self.inner.borrow_mut();
+        inner.ui_state.connection_state.set(state);
+        let _ = inner.cb_sink.send(Box::new(UI::update_cb));
+    }
+    pub fn add_node_event(&self, event: &str) {
+        let inner = self.inner.borrow();
+        let color = *inner.log_colors.get(&Level::Info).unwrap();
+        for line in event.lines() {
+            cursive_flexi_logger_view::push_to_log(StyledString::styled(line, color));
+        }
+        let _ = inner.cb_sink.send(Box::new(UI::update_cb));
+    }
+
+    pub fn display_string_dialog<T: ToString, S: ToString>(
+        &self,
+        title: T,
+        text: S,
+        close_cb: UICallback,
+    ) {
+        let title = title.to_string();
+        let text = text.to_string();
+        let inner = self.inner.borrow();
+        let _ = inner.cb_sink.send(Box::new(move |s| {
+            UI::display_string_dialog_cb(s, title, text, close_cb)
+        }));
+    }
+
+    pub fn quit(&self) {
+        let inner = self.inner.borrow();
+        let _ = inner.cb_sink.send(Box::new(|s| {
+            s.quit();
+        }));
+    }
+
+    pub fn send_callback(&self, callback: UICallback) {
+        let inner = self.inner.borrow();
+        let _ = inner.cb_sink.send(Box::new(move |s| callback(s)));
+    }
+
+    // Note: Cursive is not re-entrant, can't borrow_mut self.siv again after this
+    pub async fn run_async(&mut self) {
+        let mut siv = self.siv.borrow_mut();
+        siv.run_async().await;
+    }
+    // pub fn run(&mut self) {
+    //     let mut siv = self.siv.borrow_mut();
+    //     siv.run();
+    // }
 }

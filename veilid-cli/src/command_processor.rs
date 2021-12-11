@@ -97,19 +97,19 @@ disconnect          - disconnect the client from the Veilid node
 shutdown            - shut the server down
 attach              - attach the server to the Veilid network
 detach              - detach the server from the Veilid network
+debug               - send a debugging command to the Veilid server
 "#,
         );
         let ui = self.ui();
-        callback(ui);
+        ui.send_callback(callback);
         Ok(())
     }
 
     pub fn cmd_exit(&self, callback: UICallback) -> Result<(), String> {
         trace!("CommandProcessor::cmd_exit");
         let ui = self.ui();
-        callback(ui);
-        //
-        self.ui().quit();
+        ui.send_callback(callback);
+        ui.quit();
         Ok(())
     }
 
@@ -121,7 +121,7 @@ detach              - detach the server from the Veilid network
             if let Err(e) = capi.server_shutdown().await {
                 error!("Server command 'shutdown' failed to execute: {}", e);
             }
-            callback(ui);
+            ui.send_callback(callback);
         });
         Ok(())
     }
@@ -134,7 +134,7 @@ detach              - detach the server from the Veilid network
             if let Err(e) = capi.server_attach().await {
                 error!("Server command 'attach' failed to execute: {}", e);
             }
-            callback(ui);
+            ui.send_callback(callback);
         });
         Ok(())
     }
@@ -147,7 +147,7 @@ detach              - detach the server from the Veilid network
             if let Err(e) = capi.server_detach().await {
                 error!("Server command 'detach' failed to execute: {}", e);
             }
-            callback(ui);
+            ui.send_callback(callback);
         });
         Ok(())
     }
@@ -158,7 +158,23 @@ detach              - detach the server from the Veilid network
         let ui = self.ui();
         async_std::task::spawn_local(async move {
             capi.disconnect().await;
-            callback(ui);
+            ui.send_callback(callback);
+        });
+        Ok(())
+    }
+
+    pub fn cmd_debug(&self, rest: Option<String>, callback: UICallback) -> Result<(), String> {
+        trace!("CommandProcessor::cmd_debug");
+        let mut capi = self.capi();
+        let ui = self.ui();
+        async_std::task::spawn_local(async move {
+            match capi.server_debug(rest.unwrap_or_default()).await {
+                Ok(output) => ui.display_string_dialog("Debug Output", output, callback),
+                Err(e) => {
+                    error!("Server command 'debug' failed to execute: {}", e);
+                    ui.send_callback(callback);
+                }
+            }
         });
         Ok(())
     }
@@ -166,7 +182,6 @@ detach              - detach the server from the Veilid network
     pub fn run_command(&self, command_line: &str, callback: UICallback) -> Result<(), String> {
         //
         let (cmd, rest) = Self::word_split(command_line);
-
         match cmd.as_str() {
             "help" => self.cmd_help(rest, callback),
             "exit" => self.cmd_exit(callback),
@@ -175,8 +190,10 @@ detach              - detach the server from the Veilid network
             "shutdown" => self.cmd_shutdown(callback),
             "attach" => self.cmd_attach(callback),
             "detach" => self.cmd_detach(callback),
+            "debug" => self.cmd_debug(rest, callback),
             _ => {
-                callback(self.ui());
+                let ui = self.ui();
+                ui.send_callback(callback);
                 Err(format!("Invalid command: {}", cmd))
             }
         }

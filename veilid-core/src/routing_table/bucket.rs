@@ -8,7 +8,7 @@ pub struct Bucket {
 }
 pub(super) type EntriesIterMut<'a> =
     alloc::collections::btree_map::IterMut<'a, DHTKey, BucketEntry>;
-//pub(super) type EntriesIter<'a> = alloc::collections::btree_map::Iter<'a, DHTKey, BucketEntry>;
+pub(super) type EntriesIter<'a> = alloc::collections::btree_map::Iter<'a, DHTKey, BucketEntry>;
 
 fn state_ordering(state: BucketEntryState) -> usize {
     match state {
@@ -61,9 +61,9 @@ impl Bucket {
         self.entries.get_mut(key)
     }
 
-    // pub(super) fn entries(&self) -> EntriesIter {
-    //     self.entries.iter()
-    // }
+    pub(super) fn entries(&self) -> EntriesIter {
+        self.entries.iter()
+    }
 
     pub(super) fn entries_mut(&mut self) -> EntriesIterMut {
         self.entries.iter_mut()
@@ -72,9 +72,12 @@ impl Bucket {
     pub(super) fn kick(&mut self, bucket_depth: usize) -> Option<BTreeSet<DHTKey>> {
         // Get number of entries to attempt to purge from bucket
         let bucket_len = self.entries.len();
+
+        // Don't bother kicking bucket unless it is full
         if bucket_len <= bucket_depth {
             return None;
         }
+
         // Try to purge the newest entries that overflow the bucket
         let mut dead_node_ids: BTreeSet<DHTKey> = BTreeSet::new();
         let mut extra_entries = bucket_len - bucket_depth;
