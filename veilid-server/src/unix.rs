@@ -299,8 +299,8 @@ pub async fn main() -> Result<(), String> {
     });
     // Handle log messages on main thread for capnproto rpc
     let capi2 = capi.clone();
-    let capi_jh2 = if let Some(client_log_channel) = client_log_channel {
-        Some(async_std::task::spawn_local(async move {
+    let capi_jh2 = client_log_channel.map(|client_log_channel| {
+        async_std::task::spawn_local(async move {
             trace!("client logging started");
             while let Ok(message) = client_log_channel.recv().await {
                 if let Some(c) = capi2.borrow().as_ref().cloned() {
@@ -308,10 +308,8 @@ pub async fn main() -> Result<(), String> {
                 }
             }
             trace!("client logging stopped")
-        }))
-    } else {
-        None
-    };
+        })
+    });
 
     // Auto-attach if desired
     if auto_attach {
