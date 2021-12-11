@@ -4,16 +4,13 @@ use crate::client_log_channel::*;
 use crate::settings;
 use async_std::channel::{bounded, Receiver, Sender};
 use clap::{App, Arg};
-use futures::*;
 use lazy_static::*;
 use log::*;
 use parking_lot::Mutex;
 use simplelog::*;
-use std::cell::RefCell;
 use std::ffi::OsStr;
 use std::fs::OpenOptions;
 use std::path::Path;
-use std::rc::Rc;
 use std::str::FromStr;
 use std::sync::Arc;
 use veilid_core::xx::SingleShotEventual;
@@ -236,7 +233,7 @@ pub async fn main() -> Result<(), String> {
         logs.push(WriteLogger::new(
             settings::convert_loglevel(settingsr.logging.file.level),
             cb.build(),
-            clog,
+            std::io::LineWriter::with_capacity(65536, clog),
         ))
     }
     CombinedLogger::init(logs).map_err(|e| format!("failed to init logs: {}", e))?;
@@ -272,7 +269,7 @@ pub async fn main() -> Result<(), String> {
         .map_err(|e| format!("VeilidCore startup failed: {}", e))?;
 
     // Start client api if one is requested
-    let capi = Rc::new(RefCell::new(if settingsr.client_api.enabled {
+    let mut capi = if settingsr.client_api.enabled {
         let some_capi = client_api::ClientApi::new(veilid_api.clone());
         some_capi
             .clone()
@@ -280,36 +277,37 @@ pub async fn main() -> Result<(), String> {
         Some(some_capi)
     } else {
         None
-    }));
+    };
 
     // Drop rwlock on settings
     let auto_attach = settingsr.auto_attach;
     drop(settingsr);
 
     // Handle state changes on main thread for capnproto rpc
-    let capi2 = capi.clone();
-    let capi_jh = async_std::task::spawn_local(async move {
-        trace!("state change processing started");
-        while let Ok(change) = receiver.recv().await {
-            if let Some(c) = capi2.borrow().as_ref().cloned() {
-                c.handle_state_change(change);
-            }
-        }
-        trace!("state change processing stopped");
-    });
-    // Handle log messages on main thread for capnproto rpc
-    let capi2 = capi.clone();
-    let capi_jh2 = client_log_channel.map(|client_log_channel| {
+    let capi_jh = capi.clone().map(|capi| {
         async_std::task::spawn_local(async move {
-            trace!("client logging started");
-            while let Ok(message) = client_log_channel.recv().await {
-                if let Some(c) = capi2.borrow().as_ref().cloned() {
-                    c.handle_client_log(message);
-                }
+            trace!("state change processing started");
+            while let Ok(change) = receiver.recv().await {
+                capi.clone().handle_state_change(change);
             }
-            trace!("client logging stopped")
+            trace!("state change processing stopped");
         })
     });
+    // Handle log messages on main thread for capnproto rpc
+    let capi_jh2 = capi
+        .clone()
+        .map(|capi| {
+            client_log_channel.map(|client_log_channel| {
+                async_std::task::spawn_local(async move {
+                    trace!("client logging started");
+                    while let Ok(message) = client_log_channel.recv().await {
+                        capi.clone().handle_client_log(message);
+                    }
+                    trace!("client logging stopped")
+                })
+            })
+        })
+        .flatten();
 
     // Auto-attach if desired
     if auto_attach {
@@ -330,7 +328,7 @@ pub async fn main() -> Result<(), String> {
     }
 
     // Stop the client api if we have one
-    if let Some(c) = capi.borrow_mut().as_mut().cloned() {
+    if let Some(c) = capi.as_mut().cloned() {
         c.stop().await;
     }
 
@@ -338,7 +336,9 @@ pub async fn main() -> Result<(), String> {
     veilid_api.shutdown().await;
 
     // Wait for client api handlers to exit
-    capi_jh.await;
+    if let Some(capi_jh) = capi_jh {
+        capi_jh.await;
+    }
     if let Some(capi_jh2) = capi_jh2 {
         capi_jh2.await;
     }

@@ -166,7 +166,7 @@ impl veilid_server::Server for VeilidServerImpl {
         params: veilid_server::DebugParams,
         mut results: veilid_server::DebugResults,
     ) -> Promise<(), ::capnp::Error> {
-        trace!("VeilidServerImpl::attach");
+        trace!("VeilidServerImpl::debug");
         let veilid_api = self.veilid_api.clone();
         let what = pry!(pry!(params.get()).get_what()).to_owned();
 
@@ -298,7 +298,7 @@ impl ClientApi {
         let regs = &mut registration_map.borrow_mut().registrations;
         for (&id, mut registration) in regs.iter_mut() {
             if registration.requests_in_flight > 5 {
-                debug!(
+                println!(
                     "too many requests in flight: {}",
                     registration.requests_in_flight
                 );
@@ -317,7 +317,7 @@ impl ClientApi {
                     }
                 }
                 Err(e) => {
-                    debug!("Got error: {:?}. Dropping registation.", e);
+                    println!("Got error: {:?}. Dropping registation.", e);
                     registration_map2.borrow_mut().registrations.remove(&id);
                 }
             }));

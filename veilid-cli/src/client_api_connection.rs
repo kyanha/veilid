@@ -43,6 +43,16 @@ impl veilid_client::Server for VeilidClientImpl {
 
         Promise::ok(())
     }
+
+    fn log_message(
+        &mut self,
+        params: veilid_client::LogMessageParams,
+        _results: veilid_client::LogMessageResults,
+    ) -> Promise<(), ::capnp::Error> {
+        let message = pry!(pry!(params.get()).get_message());
+        self.comproc.add_log_message(message);
+        Promise::ok(())
+    }
 }
 
 struct ClientApiConnectionInner {

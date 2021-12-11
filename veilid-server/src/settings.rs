@@ -30,7 +30,7 @@ logging:
         append: true
         level: "info"
     client:
-        enable: false
+        enabled: true
         level: "info"
 testing:
     subnode_index: 0

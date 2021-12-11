@@ -14,7 +14,7 @@ pub struct ClientLogChannel {
 
 impl ClientLogChannel {
     pub fn new() -> Self {
-        let (sender, receiver) = bounded(1);
+        let (sender, receiver) = bounded(1024);
         Self {
             inner: Arc::new(ClientLogChannelInner { sender, receiver }),
         }
@@ -27,11 +27,8 @@ impl ClientLogChannel {
 
 impl std::io::Write for ClientLogChannel {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        if let Err(e) = self
-            .inner
-            .sender
-            .try_send(String::from_utf8_lossy(buf).to_string())
-        {
+        let bufstr = String::from_utf8_lossy(buf).to_string();
+        if let Err(e) = self.inner.sender.try_send(bufstr) {
             match e {
                 TrySendError::Full(_) => Err(std::io::Error::from(std::io::ErrorKind::WouldBlock)),
                 TrySendError::Closed(_) => {

@@ -277,6 +277,10 @@ debug               - send a debugging command to the Veilid server
         self.inner_mut().ui.set_attachment_state(state);
     }
 
+    pub fn add_log_message(&mut self, message: &str) {
+        self.inner().ui.add_node_event(message);
+    }
+
     // called by client_api_connection
     // calls into ui
     ////////////////////////////////////////////
