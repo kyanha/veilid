@@ -221,7 +221,9 @@ impl NetworkManager {
         }
 
         // reset the state
-        *self.inner.lock() = Self::new_inner();
+        let mut inner = self.inner.lock();
+        inner.components = None;
+        inner.network_class = None;
 
         trace!("NetworkManager::shutdown end");
     }

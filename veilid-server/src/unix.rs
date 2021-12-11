@@ -13,6 +13,7 @@ use std::fs::OpenOptions;
 use std::path::Path;
 use std::str::FromStr;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 use veilid_core::xx::SingleShotEventual;
 
 fn parse_command_line(default_config_path: &OsStr) -> Result<clap::ArgMatches, clap::Error> {
@@ -187,6 +188,7 @@ pub async fn main() -> Result<(), String> {
     // Set up loggers
     let mut logs: Vec<Box<dyn SharedLogger>> = Vec::new();
     let mut client_log_channel: Option<ClientLogChannel> = None;
+    let mut client_log_channel_closer: Option<ClientLogChannelCloser> = None;
     let mut cb = ConfigBuilder::new();
     cb.add_filter_ignore_str("async_std");
     cb.add_filter_ignore_str("async_io");
@@ -228,12 +230,13 @@ pub async fn main() -> Result<(), String> {
         ))
     }
     if settingsr.logging.client.enabled {
-        let clog = ClientLogChannel::new();
-        client_log_channel = Some(clog.clone());
+        let (clog, clogwriter, clogcloser) = ClientLogChannel::new();
+        client_log_channel = Some(clog);
+        client_log_channel_closer = Some(clogcloser);
         logs.push(WriteLogger::new(
             settings::convert_loglevel(settingsr.logging.file.level),
             cb.build(),
-            std::io::LineWriter::with_capacity(65536, clog),
+            clogwriter,
         ))
     }
     CombinedLogger::init(logs).map_err(|e| format!("failed to init logs: {}", e))?;
@@ -284,26 +287,45 @@ pub async fn main() -> Result<(), String> {
     drop(settingsr);
 
     // Handle state changes on main thread for capnproto rpc
-    let capi_jh = capi.clone().map(|capi| {
+    let state_change_receiver_jh = capi.clone().map(|capi| {
         async_std::task::spawn_local(async move {
-            trace!("state change processing started");
             while let Ok(change) = receiver.recv().await {
                 capi.clone().handle_state_change(change);
             }
-            trace!("state change processing stopped");
         })
     });
     // Handle log messages on main thread for capnproto rpc
-    let capi_jh2 = capi
+    let client_log_receiver_jh = capi
         .clone()
         .map(|capi| {
-            client_log_channel.map(|client_log_channel| {
+            client_log_channel.take().map(|mut client_log_channel| {
                 async_std::task::spawn_local(async move {
-                    trace!("client logging started");
-                    while let Ok(message) = client_log_channel.recv().await {
-                        capi.clone().handle_client_log(message);
+                    // Batch messages to either 16384 chars at once or every second to minimize packets
+                    let rate = Duration::from_secs(1);
+                    let mut start = Instant::now();
+                    let mut messages = String::new();
+                    loop {
+                        let timeout_dur =
+                            rate.checked_sub(start.elapsed()).unwrap_or(Duration::ZERO);
+                        match async_std::future::timeout(timeout_dur, client_log_channel.recv())
+                            .await
+                        {
+                            Ok(Ok(message)) => {
+                                messages += &message;
+                                if messages.len() > 16384 {
+                                    capi.clone()
+                                        .handle_client_log(core::mem::take(&mut messages));
+                                    start = Instant::now();
+                                }
+                            }
+                            Ok(Err(_)) => break,
+                            Err(_) => {
+                                capi.clone()
+                                    .handle_client_log(core::mem::take(&mut messages));
+                                start = Instant::now();
+                            }
+                        }
                     }
-                    trace!("client logging stopped")
                 })
             })
         })
@@ -332,15 +354,22 @@ pub async fn main() -> Result<(), String> {
         c.stop().await;
     }
 
-    // Shut down Veilid API
+    // Shut down Veilid API to release state change sender
     veilid_api.shutdown().await;
 
-    // Wait for client api handlers to exit
-    if let Some(capi_jh) = capi_jh {
-        capi_jh.await;
+    // Close the client api log channel if it is open to release client log sender
+    if let Some(client_log_channel_closer) = client_log_channel_closer {
+        client_log_channel_closer.close();
     }
-    if let Some(capi_jh2) = capi_jh2 {
-        capi_jh2.await;
+
+    // Wait for state change receiver to exit
+    if let Some(state_change_receiver_jh) = state_change_receiver_jh {
+        state_change_receiver_jh.await;
+    }
+
+    // Wait for client api log receiver to exit
+    if let Some(client_log_receiver_jh) = client_log_receiver_jh {
+        client_log_receiver_jh.await;
     }
 
     Ok(())
