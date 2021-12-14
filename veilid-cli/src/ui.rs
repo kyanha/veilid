@@ -200,21 +200,6 @@ impl UI {
         });
     }
 
-    // fn main_layout(s: &mut Cursive) -> ViewRef<LinearLayout> {
-    //     s.find_name("main-layout").unwrap()
-    // }
-    // fn column_layout(s: &mut Cursive) -> ViewRef<LinearLayout> {
-    //     s.find_name("column-layout").unwrap()
-    // }
-    // fn button_layout(s: &mut Cursive) -> ViewRef<LinearLayout> {
-    //     s.find_name("button-layout").unwrap()
-    // }
-    // fn peers(s: &mut Cursive) -> ViewRef<TextView> {
-    //     s.find_name("peers").unwrap()
-    // }
-    // fn node_events(s: &mut Cursive) -> ViewRef<FlexiLoggerView> {
-    //     s.find_name("node-events").unwrap()
-    // }
     fn command_line(s: &mut Cursive) -> ViewRef<EditView> {
         s.find_name("command-line").unwrap()
     }
@@ -483,9 +468,14 @@ impl UI {
         drop(inner);
         if hide {
             s.pop_layer();
+            s.pop_layer();
             return true;
         }
         if show {
+            s.add_fullscreen_layer(Layer::with_color(
+                ResizedView::with_full_screen(DummyView {}),
+                ColorStyle::new(PaletteColor::Background, PaletteColor::Background),
+            ));
             s.add_layer(
                 Dialog::around(
                     LinearLayout::vertical().child(

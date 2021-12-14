@@ -36,7 +36,7 @@ impl RawUdpProtocolHandler {
         }
 
         trace!(
-            "receiving message of length {} from {}",
+            "receiving UDP message of length {} from {}",
             data.len(),
             remote_addr
         );
@@ -67,7 +67,7 @@ impl RawUdpProtocolHandler {
         }
 
         trace!(
-            "sending message of length {} to {}",
+            "sending UDP message of length {} to {}",
             data.len(),
             socket_addr
         );

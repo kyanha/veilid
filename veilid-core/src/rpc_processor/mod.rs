@@ -89,13 +89,13 @@ macro_rules! map_error_panic {
     };
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub enum Destination {
     Direct(NodeRef),
     PrivateRoute(PrivateRoute),
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub enum RespondTo {
     None,
     Sender,
@@ -320,6 +320,7 @@ impl RPCProcessor {
 
         if nr.node_id() != node_id {
             // found a close node, but not exact within our configured resolve_node timeout
+            error!("XXX: Timeout");
             return Err(RPCError::Timeout);
         }
 
