@@ -15,7 +15,8 @@ use log::*;
 use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 use std::rc::Rc;
-use thiserror::Error;
+// use thiserror::Error;
+
 //////////////////////////////////////////////////////////////
 ///
 struct Dirty<T> {
@@ -60,9 +61,9 @@ impl UIState {
     }
 }
 
-#[derive(Error, Debug)]
-#[error("???")]
-struct UIError;
+//#[derive(Error, Debug)]
+//#[error("???")]
+//struct UIError;
 
 pub struct UIInner {
     ui_state: UIState,
@@ -273,8 +274,10 @@ impl UI {
         close_cb: UICallback,
     ) {
         // Creates a dialog around some text with a single button
+        let close_cb = Rc::new(close_cb);
+        let close_cb2 = close_cb.clone();
         s.add_layer(
-            Dialog::around(TextView::new(contents))
+            Dialog::around(TextView::new(contents).scrollable())
                 .title(title)
                 .button("Close", move |s| {
                     s.pop_layer();
@@ -283,6 +286,11 @@ impl UI {
                 //.wrap_with(CircularFocus::new)
                 //.wrap_tab(),
         );
+        s.set_global_callback(cursive::event::Event::Key(Key::Esc), move |s| {
+            s.set_global_callback(cursive::event::Event::Key(Key::Esc), UI::quit_handler);
+            s.pop_layer();
+            close_cb2(s);
+        });
     }
 
     fn run_command(s: &mut Cursive, text: &str) -> Result<(), String> {

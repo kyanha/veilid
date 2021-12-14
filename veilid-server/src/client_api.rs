@@ -221,7 +221,9 @@ impl ClientApi {
             inner.join_handle.take().unwrap()
         };
         trace!("ClientApi::stop: waiting for stop");
-        let _ = jh.await;
+        if let Err(err) = jh.await {
+            error!("{}", err);
+        }
         trace!("ClientApi::stop: stopped");
     }
 

@@ -31,8 +31,7 @@ pub async fn save_user_secret_string(
     let krname = keyring_name(namespace);
     let kr = get_keyring(krname.as_str(), key);
     let existed = kr.get_password().is_ok();
-    let _ = kr
-        .set_password(value)
+    kr.set_password(value)
         .map_err(|e| format!("Failed to save user secret: {}", e))?;
     Ok(existed)
 }

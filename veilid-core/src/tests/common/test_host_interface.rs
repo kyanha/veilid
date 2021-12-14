@@ -361,13 +361,6 @@ macro_rules! assert_split_url_parse {
         assert_eq!(su1.to_string(), url);
     };
 }
-macro_rules! assert_err {
-    ($ex:expr) => {
-        if let Ok(v) = $ex {
-            panic!("assertion failed, expected Err(..), got {:?}", v);
-        }
-    };
-}
 
 pub async fn test_split_url() {
     info!("testing split_url");

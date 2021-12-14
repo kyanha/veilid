@@ -3646,6 +3646,7 @@ dependencies = [
  "async_executors",
  "backtrace",
  "blake3",
+ "bugsalot",
  "capnp",
  "capnpc",
  "cfg-if 0.1.10",

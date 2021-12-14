@@ -1188,7 +1188,7 @@ impl RPCProcessor {
 
             // add node information for the requesting node to our routing table
             let routing_table = self.routing_table();
-            let _ = routing_table
+            let _requesting_node_ref = routing_table
                 .register_node_with_dial_info(peer_info.node_id.key, &peer_info.dial_infos)
                 .map_err(map_error_string!())?;
 
@@ -1529,7 +1529,7 @@ impl RPCProcessor {
             let mut respond_to = question.reborrow().init_respond_to();
             respond_to.set_sender(());
             let detail = question.reborrow().init_detail();
-            let _ = detail.init_info_q();
+            detail.init_info_q();
 
             info_q_msg.into_reader()
         };

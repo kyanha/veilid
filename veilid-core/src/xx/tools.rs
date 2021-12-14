@@ -1,6 +1,15 @@
 use crate::xx::*;
 use alloc::string::ToString;
 
+#[macro_export]
+macro_rules! assert_err {
+    ($ex:expr) => {
+        if let Ok(v) = $ex {
+            panic!("assertion failed, expected Err(..), got {:?}", v);
+        }
+    };
+}
+
 pub fn split_port(name: &str) -> Result<(String, Option<u16>), String> {
     if let Some(split) = name.rfind(':') {
         let hoststr = &name[0..split];

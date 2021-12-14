@@ -1,5 +1,6 @@
 mod bucket;
 mod bucket_entry;
+mod debug;
 mod dial_info_entry;
 mod find_nodes;
 mod node_ref;
@@ -15,6 +16,7 @@ use alloc::collections::VecDeque;
 use alloc::str::FromStr;
 use bucket::*;
 pub use bucket_entry::*;
+pub use debug::*;
 pub use dial_info_entry::*;
 pub use find_nodes::*;
 use futures_util::stream::{FuturesUnordered, StreamExt};
@@ -354,38 +356,6 @@ impl RoutingTable {
         *self.inner.lock() = Self::new_inner(self.network_manager());
     }
 
-    // debugging info
-    pub fn debug_info(&self, min_state: BucketEntryState) -> String {
-        let inner = self.inner.lock();
-        let cur_ts = get_timestamp();
-
-        let mut out = String::new();
-        const COLS: usize = 16;
-        let rows = inner.buckets.len() / COLS;
-        let mut r = 0;
-        let mut b = 0;
-        out += "Buckets:\n";
-        while r < rows {
-            let mut c = 0;
-            out += format!("  {:>3}: ", b).as_str();
-            while c < COLS {
-                let mut cnt = 0;
-                for e in inner.buckets[b].entries() {
-                    if e.1.state(cur_ts) >= min_state {
-                        cnt += 1;
-                    }
-                }
-                out += format!("{:>3} ", cnt).as_str();
-                b += 1;
-                c += 1;
-            }
-            out += "\n";
-            r += 1;
-        }
-
-        out
-    }
-
     // Just match address and port to help sort dialinfoentries for buckets
     // because inbound connections will not have dialinfo associated with them
     // but should have ip addresses if they have changed
@@ -590,7 +560,6 @@ impl RoutingTable {
         for p in res.peers {
             // if our own node if is in the list then ignore it, as we don't add ourselves to our own routing table
             if p.node_id.key == node_id {
-                // however, it is useful to note when
                 continue;
             }
 

@@ -219,7 +219,15 @@ macro_rules! byte_array_type {
         impl fmt::Debug for $name {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 write!(f, concat!(stringify!($name), "("))?;
-                write!(f, "{}", String::from(self))?;
+                write!(
+                    f,
+                    "{}",
+                    if self.valid {
+                        self.encode()
+                    } else {
+                        "".to_owned()
+                    }
+                )?;
                 write!(f, ")")
             }
         }

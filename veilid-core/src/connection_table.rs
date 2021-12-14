@@ -64,7 +64,9 @@ impl ConnectionTable {
         &self,
         descriptor: ConnectionDescriptor,
         conn: NetworkConnection,
-    ) -> Result<ConnectionTableEntry, ()> {
+    ) -> Result<ConnectionTableEntry, String> {
+        trace!("descriptor: {:?}", descriptor);
+
         assert_ne!(
             descriptor.protocol_type(),
             ProtocolType::UDP,
@@ -73,7 +75,10 @@ impl ConnectionTable {
 
         let mut inner = self.inner.lock();
         if inner.conn_by_addr.contains_key(&descriptor) {
-            return Err(());
+            return Err(format!(
+                "Connection already added to table: {:?}",
+                descriptor
+            ));
         }
 
         let timestamp = get_timestamp();
@@ -106,13 +111,15 @@ impl ConnectionTable {
     pub fn remove_connection(
         &self,
         descriptor: &ConnectionDescriptor,
-    ) -> Result<ConnectionTableEntry, ()> {
+    ) -> Result<ConnectionTableEntry, String> {
+        trace!("descriptor: {:?}", descriptor);
+
         let mut inner = self.inner.lock();
 
         let res = inner.conn_by_addr.remove(descriptor);
         match res {
             Some(v) => Ok(v),
-            None => Err(()),
+            None => Err(format!("Connection not in table: {:?}", descriptor)),
         }
     }
 }

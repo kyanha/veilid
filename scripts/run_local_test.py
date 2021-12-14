@@ -141,7 +141,7 @@ def main():
     # Run all secondaries and add primary to bootstrap
     for n in range(1, args.count):
 
-        # time.sleep(2)
+        time.sleep(1)
 
         sub_args = base_args.copy()
         sub_args.append("--subnode_index={}".format(n))

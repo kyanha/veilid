@@ -38,6 +38,7 @@ pub struct BucketEntry {
 
 impl BucketEntry {
     pub(super) fn new() -> Self {
+        let now = get_timestamp();
         Self {
             ref_count: 0,
             min_max_version: None,
@@ -45,7 +46,7 @@ impl BucketEntry {
             dial_info_entries: VecDeque::new(),
             stats_accounting: StatsAccounting::new(),
             peer_stats: PeerStats {
-                time_added: get_timestamp(),
+                time_added: now,
                 last_seen: None,
                 ping_stats: PingStats::default(),
                 latency: None,
@@ -250,8 +251,9 @@ impl BucketEntry {
     }
     pub(super) fn check_dead(&self, cur_ts: u64) -> bool {
         // if we have not heard from the node at all for the duration of the unreliable ping span
+        // a node is not dead if we haven't heard from it yet
         match self.peer_stats.last_seen {
-            None => true,
+            None => false,
             Some(ts) => {
                 cur_ts.saturating_sub(ts) >= (UNRELIABLE_PING_SPAN_SECS as u64 * 1000000u64)
             }
@@ -353,6 +355,11 @@ impl BucketEntry {
         self.stats_accounting.add_up(bytes);
         self.peer_stats.ping_stats.in_flight += 1;
         self.peer_stats.ping_stats.last_pinged = Some(ts);
+        // if we haven't heard from this node yet and it's our first attempt at contacting it
+        // then we set the last_seen time
+        if self.peer_stats.last_seen.is_none() {
+            self.peer_stats.last_seen = Some(ts);
+        }
     }
     pub(super) fn ping_rcvd(&mut self, ts: u64, bytes: u64) {
         self.stats_accounting.add_down(bytes);
@@ -383,8 +390,13 @@ impl BucketEntry {
         self.peer_stats.ping_stats.consecutive_pongs = 0;
         self.peer_stats.ping_stats.first_consecutive_pong_time = None;
     }
-    pub(super) fn question_sent(&mut self, _ts: u64, bytes: u64) {
+    pub(super) fn question_sent(&mut self, ts: u64, bytes: u64) {
         self.stats_accounting.add_up(bytes);
+        // if we haven't heard from this node yet and it's our first attempt at contacting it
+        // then we set the last_seen time
+        if self.peer_stats.last_seen.is_none() {
+            self.peer_stats.last_seen = Some(ts);
+        }
     }
     pub(super) fn question_rcvd(&mut self, ts: u64, bytes: u64) {
         self.stats_accounting.add_down(bytes);

@@ -221,13 +221,13 @@ impl Crypto {
 
     pub fn get_random_nonce() -> Nonce {
         let mut nonce = [0u8; 24];
-        let _ = random_bytes(&mut nonce).unwrap();
+        random_bytes(&mut nonce).unwrap();
         nonce
     }
 
     pub fn get_random_secret() -> SharedSecret {
         let mut s = [0u8; 32];
-        let _ = random_bytes(&mut s).unwrap();
+        random_bytes(&mut s).unwrap();
         s
     }
 
@@ -251,7 +251,7 @@ impl Crypto {
         associated_data: Option<&[u8]>,
     ) -> Result<Vec<u8>, ()> {
         let mut out = body.to_vec();
-        let _ = Self::decrypt_in_place(&mut out, nonce, shared_secret, associated_data)?;
+        Self::decrypt_in_place(&mut out, nonce, shared_secret, associated_data)?;
         Ok(out)
     }
 
@@ -276,7 +276,7 @@ impl Crypto {
         associated_data: Option<&[u8]>,
     ) -> Result<Vec<u8>, ()> {
         let mut out = body.to_vec();
-        let _ = Self::encrypt_in_place(&mut out, nonce, shared_secret, associated_data)?;
+        Self::encrypt_in_place(&mut out, nonce, shared_secret, associated_data)?;
         Ok(out)
     }
 }

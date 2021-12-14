@@ -35,13 +35,13 @@ fn parse_command_line(default_config_path: &OsStr) -> Result<clap::ArgMatches, c
         .arg(
             Arg::with_name("debug")
                 .long("debug")
-                .help("Turn on debug logging"),
+                .help("Turn on debug logging on the terminal"),
         )
         .arg(
             Arg::with_name("trace")
                 .long("trace")
                 .conflicts_with("debug")
-                .help("Turn on trace logging"),
+                .help("Turn on trace logging on the terminal"),
         )
         .arg(
             Arg::with_name("generate-id")
@@ -72,15 +72,14 @@ fn parse_command_line(default_config_path: &OsStr) -> Result<clap::ArgMatches, c
                 .possible_values(&["false", "true"])
                 .help("Automatically attach the server to the Veilid network"),
         )
-        .arg(
-            Arg::with_name("wait-for-debug")
-                .long("wait-for-debug")
-                .help("Wait for debugger to attach"),
-        )
-
-        .get_matches();
-
-    Ok(matches)
+        ;
+    #[cfg(debug_assertions)]
+    let matches = matches.arg(
+        Arg::with_name("wait-for-debug")
+            .long("wait-for-debug")
+            .help("Wait for debugger to attach"),
+    );
+    Ok(matches.get_matches())
 }
 
 lazy_static! {
@@ -108,6 +107,7 @@ pub async fn main() -> Result<(), String> {
         .map_err(|e| format!("failed to parse command line: {}", e))?;
 
     // Check for one-off commands
+    #[cfg(debug_assertions)]
     if matches.occurrences_of("wait-for-debug") != 0 {
         use bugsalot::debugger;
         debugger::wait_until_attached(None).expect("state() not implemented on this platform");
@@ -148,12 +148,12 @@ pub async fn main() -> Result<(), String> {
         settingsrw.testing.subnode_index = subnode_index;
     }
     if matches.occurrences_of("debug") != 0 {
+        settingsrw.logging.terminal.enabled = true;
         settingsrw.logging.terminal.level = settings::LogLevel::Debug;
-        settingsrw.logging.file.level = settings::LogLevel::Debug;
     }
     if matches.occurrences_of("trace") != 0 {
+        settingsrw.logging.terminal.enabled = true;
         settingsrw.logging.terminal.level = settings::LogLevel::Trace;
-        settingsrw.logging.file.level = settings::LogLevel::Trace;
     }
     if matches.is_present("attach") {
         settingsrw.auto_attach = !matches!(matches.value_of("attach"), Some("false"));
@@ -234,7 +234,7 @@ pub async fn main() -> Result<(), String> {
         client_log_channel = Some(clog);
         client_log_channel_closer = Some(clogcloser);
         logs.push(WriteLogger::new(
-            settings::convert_loglevel(settingsr.logging.file.level),
+            settings::convert_loglevel(settingsr.logging.client.level),
             cb.build(),
             clogwriter,
         ))

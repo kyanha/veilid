@@ -135,7 +135,7 @@ impl RawTcpProtocolHandler {
 
         let conn = NetworkConnection::RawTcp(RawTcpNetworkConnection::new(stream));
         let peer_addr = PeerAddress::new(
-            Address::from_socket_addr(socket_addr),
+            Address::from_socket_addr(socket_addr).to_canonical(),
             socket_addr.port(),
             ProtocolType::TCP,
         );
@@ -199,7 +199,7 @@ impl RawTcpProtocolHandler {
             .map_err(|e| format!("couldn't get local address for tcp socket: {}", e))?;
         let ps = AsyncPeekStream::new(ts);
         let peer_addr = PeerAddress::new(
-            Address::from_socket_addr(remote_socket_addr),
+            Address::from_socket_addr(remote_socket_addr).to_canonical(),
             remote_socket_addr.port(),
             ProtocolType::TCP,
         );

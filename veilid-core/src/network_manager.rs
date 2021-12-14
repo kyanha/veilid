@@ -298,7 +298,10 @@ impl NetworkManager {
                 .add_connection(descriptor.clone(), conn.clone())
             {
                 Ok(e) => e,
-                Err(_) => return,
+                Err(err) => {
+                    error!("{}", err);
+                    return;
+                }
             };
 
             //
@@ -324,7 +327,9 @@ impl NetworkManager {
                 };
             }
 
-            let _ = this.connection_table().remove_connection(&descriptor);
+            if let Err(err) = this.connection_table().remove_connection(&descriptor) {
+                error!("{}", err);
+            }
         })
     }
 

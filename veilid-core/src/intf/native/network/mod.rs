@@ -586,10 +586,7 @@ impl Network {
 
                 // Return local dial infos we listen on
                 for ldi_addr in ldi_addrs {
-                    out.push(DialInfo::udp(
-                        Address::from_socket_addr(ldi_addr),
-                        ldi_addr.port(),
-                    ));
+                    out.push(DialInfo::udp_from_socketaddr(ldi_addr));
                 }
             }
         }
@@ -748,7 +745,7 @@ impl Network {
                         .await
                         .map_err(|_| "failed to send message to UDP dial info".to_owned());
                 } else {
-                    return Err("no appropriate udp protocol handler for dial_info".to_owned());
+                    return Err("no appropriate UDP protocol handler for dial_info".to_owned());
                 }
             }
             DialInfo::TCP(_) => {
@@ -987,7 +984,7 @@ impl Network {
 
         let mut dial_infos: Vec<DialInfo> = Vec::new();
         for (a, p) in addresses {
-            let di = DialInfo::tcp(a, p);
+            let di = DialInfo::tcp(a.to_canonical(), p);
             dial_infos.push(di.clone());
             routing_table.register_local_dial_info(di, DialInfoOrigin::Static);
         }

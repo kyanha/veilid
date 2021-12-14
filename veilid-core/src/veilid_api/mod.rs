@@ -1,3 +1,6 @@
+mod debug;
+pub use debug::*;
+
 pub use crate::rpc_processor::InfoAnswer;
 use crate::*;
 use attachment_manager::AttachmentManager;
@@ -105,6 +108,16 @@ pub enum Address {
 }
 
 impl Address {
+    pub fn to_canonical(&self) -> Address {
+        match self {
+            Address::IPV4(v4) => Address::IPV4(*v4),
+            Address::IPV6(v6) => match v6.to_ipv4() {
+                Some(v4) => Address::IPV4(v4),
+                None => Address::IPV6(*v6),
+            },
+            Address::Hostname(h) => Address::Hostname(h.clone()),
+        }
+    }
     pub fn from_socket_addr(sa: SocketAddr) -> Address {
         match sa {
             SocketAddr::V4(v4) => Address::IPV4(*v4.ip()),
@@ -199,23 +212,25 @@ pub enum DialInfo {
 impl DialInfo {
     pub fn udp_from_socketaddr(socketaddr: SocketAddr) -> Self {
         Self::UDP(DialInfoUDP {
-            address: Address::from_socket_addr(socketaddr),
+            address: Address::from_socket_addr(socketaddr).to_canonical(),
             port: socketaddr.port(),
         })
     }
     pub fn tcp_from_socketaddr(socketaddr: SocketAddr) -> Self {
         Self::TCP(DialInfoTCP {
-            address: Address::from_socket_addr(socketaddr),
+            address: Address::from_socket_addr(socketaddr).to_canonical(),
             port: socketaddr.port(),
         })
     }
     pub fn udp(address: Address, port: u16) -> Self {
+        let address = address.to_canonical();
         if let Address::Hostname(_) = address {
             panic!("invalid address type for protocol")
         }
         Self::UDP(DialInfoUDP { address, port })
     }
     pub fn tcp(address: Address, port: u16) -> Self {
+        let address = address.to_canonical();
         if let Address::Hostname(_) = address {
             panic!("invalid address type for protocol")
         }
@@ -673,11 +688,11 @@ pub struct PingStats {
 #[derive(Clone, Debug, Default)]
 pub struct PeerStats {
     pub time_added: u64,               // when the peer was added to the routing table
-    pub last_seen: Option<u64>,        // when the peer was last seen for any reason
-    pub ping_stats: PingStats,         // information about pings
+    pub last_seen: Option<u64>, // when the peer was last seen for any reason, including when we first attempted to reach out to it
+    pub ping_stats: PingStats,  // information about pings
     pub latency: Option<LatencyStats>, // latencies for communications with the peer
     pub transfer: TransferStatsDownUp, // Stats for communications with the peer
-    pub node_info: Option<NodeInfo>,   // Last known node info
+    pub node_info: Option<NodeInfo>, // Last known node info
 }
 
 cfg_if! {
@@ -698,6 +713,15 @@ pub enum VeilidAPIError {
     NoDialInfo(NodeId),
     Internal(String),
     Unimplemented(String),
+    InvalidArgument {
+        context: String,
+        argument: String,
+        value: String,
+    },
+    MissingArgument {
+        context: String,
+        argument: String,
+    },
 }
 
 fn convert_rpc_error(x: RPCError) -> VeilidAPIError {
@@ -960,51 +984,6 @@ impl VeilidAPI {
 
     pub fn is_shutdown(&self) -> bool {
         self.inner.lock().core.is_none()
-    }
-
-    ////////////////////////////////////////////////////////////////
-    // Debugging
-
-    async fn debug_buckets(&self, mut debug_args: Vec<String>) -> Result<String, VeilidAPIError> {
-        let min_state = {
-            if let Some(min_state) = debug_args.pop() {
-                if min_state == "dead" {
-                    BucketEntryState::Dead
-                } else if min_state == "reliable" {
-                    BucketEntryState::Reliable
-                } else {
-                    return Err(VeilidAPIError::Internal(format!(
-                        "Invalid argument '{}'",
-                        min_state
-                    )));
-                }
-            } else {
-                BucketEntryState::Unreliable
-            }
-        };
-        // Dump routing table bucket info
-        let rpc = self.rpc_processor()?;
-        let routing_table = rpc.routing_table();
-        Ok(routing_table.debug_info(min_state))
-    }
-
-    pub async fn debug(&self, what: String) -> Result<String, VeilidAPIError> {
-        trace!("VeilidCore::debug");
-        let mut out = String::new();
-        let mut debug_args: Vec<String> = what
-            .split_ascii_whitespace()
-            .map(|s| s.to_owned())
-            .collect();
-        if let Some(arg) = debug_args.pop() {
-            if arg == "buckets" {
-                out += self.debug_buckets(debug_args).await?.as_str();
-            } else {
-                out += ">>> Unknown command\n";
-            }
-        } else {
-            out += ">>> Debug commands:\n      buckets [dead|reliable]\n";
-        }
-        Ok(out)
     }
 
     ////////////////////////////////////////////////////////////////
