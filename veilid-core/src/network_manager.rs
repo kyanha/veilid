@@ -275,14 +275,14 @@ impl NetworkManager {
             .lock()
             .connection_add_channel_tx
             .as_ref()
-            .ok_or_else(|| "connection channel isn't open yet".to_owned())?
+            .ok_or_else(fn_string!("connection channel isn't open yet"))?
             .clone();
         let this = self.clone();
         let receiver_loop_future = Self::process_connection(this, descriptor, conn);
-        Ok(tx
-            .try_send(receiver_loop_future)
+        tx.try_send(receiver_loop_future)
             .await
-            .map_err(|_| "connection loop stopped".to_owned())?)
+            .map_err(map_to_string)
+            .map_err(logthru_net!(error "failed to start receiver loop"))
     }
 
     // Connection receiver loop
@@ -299,7 +299,7 @@ impl NetworkManager {
             {
                 Ok(e) => e,
                 Err(err) => {
-                    error!("{}", err);
+                    error!(target: "net", "{}", err);
                     return;
                 }
             };
@@ -323,7 +323,10 @@ impl NetworkManager {
                 };
                 match this.on_recv_envelope(message.as_slice(), &descriptor).await {
                     Ok(_) => (),
-                    Err(_) => break,
+                    Err(e) => {
+                        error!("{}", e);
+                        break;
+                    }
                 };
             }
 
@@ -527,19 +530,16 @@ impl NetworkManager {
         &self,
         data: &[u8],
         descriptor: &ConnectionDescriptor,
-    ) -> Result<bool, ()> {
+    ) -> Result<bool, String> {
         // Is this an out-of-band receipt instead of an envelope?
         if data[0..4] == *RECEIPT_MAGIC {
-            self.process_receipt(data).await.map_err(|s| {
-                trace!("receipt failed to process: {}", s);
-            })?;
+            self.process_receipt(data).await?;
             return Ok(true);
         }
 
         // Decode envelope header
-        let envelope = Envelope::from_data(data).map_err(|_| {
-            trace!("envelope failed to decode");
-        })?;
+        let envelope =
+            Envelope::from_data(data).map_err(|_| "envelope failed to decode".to_owned())?;
 
         // Get routing table and rpc processor
         let (routing_table, lease_manager, rpc) = {
@@ -560,22 +560,22 @@ impl NetworkManager {
             if !lease_manager.server_has_valid_relay_lease(&recipient_id)
                 && !lease_manager.server_has_valid_relay_lease(&sender_id)
             {
-                trace!("received envelope not intended for this node");
-                return Err(());
+                return Err("received envelope not intended for this node".to_owned());
             }
 
             // Resolve the node to send this to
-            let relay_nr = rpc.resolve_node(recipient_id).await.map_err(|_| {
-                trace!("failed to resolve recipient node for relay, dropping packet...");
+            let relay_nr = rpc.resolve_node(recipient_id).await.map_err(|e| {
+                format!(
+                    "failed to resolve recipient node for relay, dropping packet...: {:?}",
+                    e
+                )
             })?;
 
             // Re-send the packet to the leased node
             self.net()
                 .send_data(relay_nr, data.to_vec())
                 .await
-                .map_err(|_| {
-                    trace!("failed to forward envelope");
-                })?;
+                .map_err(|e| format!("failed to forward envelope: {}", e))?;
             // Inform caller that we dealt with the envelope, but did not process it locally
             return Ok(false);
         }
@@ -585,7 +585,9 @@ impl NetworkManager {
 
         // Decrypt the envelope body
         // xxx: punish nodes that send messages that fail to decrypt eventually
-        let body = envelope.decrypt_body(self.crypto(), data, &node_id_secret)?;
+        let body = envelope
+            .decrypt_body(self.crypto(), data, &node_id_secret)
+            .map_err(|_| "failed to decrypt envelope body".to_owned())?;
 
         // Get timestamp range
         let (tsbehind, tsahead) = {
@@ -601,20 +603,18 @@ impl NetworkManager {
         let ets = envelope.get_timestamp();
         if let Some(tsbehind) = tsbehind {
             if tsbehind > 0 && (ts > ets && ts - ets > tsbehind) {
-                trace!(
+                return Err(format!(
                     "envelope time was too far in the past: {}ms ",
                     timestamp_to_secs(ts - ets) * 1000f64
-                );
-                return Err(());
+                ));
             }
         }
         if let Some(tsahead) = tsahead {
             if tsahead > 0 && (ts < ets && ets - ts > tsahead) {
-                trace!(
+                return Err(format!(
                     "envelope time was too far in the future: {}ms",
                     timestamp_to_secs(ets - ts) * 1000f64
-                );
-                return Err(());
+                ));
             }
         }
 
@@ -625,9 +625,7 @@ impl NetworkManager {
                 descriptor.clone(),
                 ts,
             )
-            .map_err(|_| {
-                trace!("node id registration failed");
-            })?;
+            .map_err(|e| format!("node id registration failed: {}", e))?;
         source_noderef.operate(|e| e.set_min_max_version(envelope.get_min_max_version()));
 
         // xxx: deal with spoofing and flooding here?
@@ -635,9 +633,7 @@ impl NetworkManager {
         // Pass message to RPC system
         rpc.enqueue_message(envelope, body, source_noderef)
             .await
-            .map_err(|_| {
-                trace!("enqueing rpc message failed");
-            })?;
+            .map_err(|e| format!("enqueing rpc message failed: {}", e))?;
 
         // Inform caller that we dealt with the envelope locally
         Ok(true)

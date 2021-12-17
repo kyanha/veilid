@@ -11,6 +11,11 @@ pub fn get_timestamp() -> u64 {
     }
 }
 
+pub fn get_timestamp_string() -> String {
+    let dt = chrono::Utc::now();
+    dt.time().format("%H:%M:%S.3f").to_string()
+}
+
 pub fn random_bytes(dest: &mut [u8]) -> Result<(), String> {
     let mut rng = rand::thread_rng();
     rng.try_fill_bytes(dest).map_err(|err| format!("{:?}", err))

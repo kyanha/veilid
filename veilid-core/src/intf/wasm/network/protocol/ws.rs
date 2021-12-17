@@ -52,27 +52,32 @@ impl WebsocketNetworkConnection {
             ProtocolType::WS
         }
     }
-    pub fn send(&self, message: Vec<u8>) -> SystemPinBoxFuture<Result<(), ()>> {
+    pub fn send(&self, message: Vec<u8>) -> SystemPinBoxFuture<Result<(), String>> {
         let inner = self.inner.clone();
         Box::pin(async move {
             if message.len() > MAX_MESSAGE_SIZE {
-                return Err(());
+                return Err("sending too large WS message".to_owned());
             }
-            inner.lock().ws.send_with_u8_array(&message).map_err(drop)
+            inner.lock().ws.send_with_u8_array(&message).map_err(map_to_string)
         })
     }
-    pub fn recv(&self) -> SystemPinBoxFuture<Result<Vec<u8>, ()>> {
+    pub fn recv(&self) -> SystemPinBoxFuture<Result<Vec<u8>, String)>> {
         let inner = self.inner.clone();
         Box::pin(async move {
             let out = match inner.lock().ws_stream.next().await {
                 Some(WsMessage::Binary(v)) => v,
-                _ => {
-                    trace!("websocket recv failed");
-                    return Err(());
+                Some(_) => {
+                    return Err("Unexpected WS message type".to_owned());
+                }
+                Some(Err(e)) => {
+                    return Err(|e| e.to_string());
+                }
+                None => {
+                    return Err("WS stream closed".to_owned());
                 }
             };
             if out.len() > MAX_MESSAGE_SIZE {
-                Err(())
+                Err("sending too large WS message".to_owned())
             } else {
                 Ok(out)
             }

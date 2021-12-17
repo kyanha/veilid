@@ -14,10 +14,10 @@ impl DummyNetworkConnection {
     pub fn protocol_type(&self) -> ProtocolType {
         ProtocolType::UDP
     }
-    pub fn send(&self, _message: Vec<u8>) -> SystemPinBoxFuture<Result<(), ()>> {
+    pub fn send(&self, _message: Vec<u8>) -> SystemPinBoxFuture<Result<(), String>> {
         Box::pin(async { Ok(()) })
     }
-    pub fn recv(&self) -> SystemPinBoxFuture<Result<Vec<u8>, ()>> {
+    pub fn recv(&self) -> SystemPinBoxFuture<Result<Vec<u8>, String>> {
         Box::pin(async { Ok(Vec::new()) })
     }
 }
@@ -42,7 +42,7 @@ impl NetworkConnection {
             Self::Wss(w) => w.protocol_type(),
         }
     }
-    pub fn send(&self, message: Vec<u8>) -> SystemPinBoxFuture<Result<(), ()>> {
+    pub fn send(&self, message: Vec<u8>) -> SystemPinBoxFuture<Result<(), String>> {
         match self {
             Self::Dummy(d) => d.send(message),
             Self::RawTcp(t) => t.send(message),
@@ -51,7 +51,7 @@ impl NetworkConnection {
             Self::Wss(w) => w.send(message),
         }
     }
-    pub fn recv(&self) -> SystemPinBoxFuture<Result<Vec<u8>, ()>> {
+    pub fn recv(&self) -> SystemPinBoxFuture<Result<Vec<u8>, String>> {
         match self {
             Self::Dummy(d) => d.recv(),
             Self::RawTcp(t) => t.recv(),

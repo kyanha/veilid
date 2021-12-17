@@ -5,6 +5,7 @@ mod eventual_value;
 mod eventual_value_clone;
 mod ip_addr_port;
 mod ip_extra;
+mod log_thru;
 mod single_future;
 mod single_shot_eventual;
 mod split_url;
@@ -13,6 +14,7 @@ mod tools;
 
 pub use cfg_if::*;
 pub use log::*;
+pub use log_thru::*;
 pub use parking_lot::*;
 pub use split_url::*;
 pub use static_assertions::*;

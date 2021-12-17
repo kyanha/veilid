@@ -87,22 +87,23 @@ where
             ProtocolType::WS
         }
     }
-    pub fn send(&self, message: Vec<u8>) -> SystemPinBoxFuture<Result<(), ()>> {
+
+    pub fn send(&self, message: Vec<u8>) -> SystemPinBoxFuture<Result<(), String>> {
         let inner = self.inner.clone();
 
         Box::pin(async move {
             if message.len() > MAX_MESSAGE_SIZE {
-                return Err(());
+                return Err("received too large WS message".to_owned());
             }
             let mut inner = inner.lock().await;
             inner
                 .ws_stream
                 .send(Message::binary(message))
                 .await
-                .map_err(drop)
+                .map_err(map_to_string)
         })
     }
-    pub fn recv(&self) -> SystemPinBoxFuture<Result<Vec<u8>, ()>> {
+    pub fn recv(&self) -> SystemPinBoxFuture<Result<Vec<u8>, String>> {
         let inner = self.inner.clone();
 
         Box::pin(async move {
@@ -110,13 +111,18 @@ where
 
             let out = match inner.ws_stream.next().await {
                 Some(Ok(Message::Binary(v))) => v,
-                _ => {
-                    trace!("websocket recv failed");
-                    return Err(());
+                Some(Ok(_)) => {
+                    return Err("Unexpected WS message type".to_owned());
+                }
+                Some(Err(e)) => {
+                    return Err(e.to_string());
+                }
+                None => {
+                    return Err("WS stream closed".to_owned());
                 }
             };
             if out.len() > MAX_MESSAGE_SIZE {
-                Err(())
+                Err("sending too large WS message".to_owned())
             } else {
                 Ok(out)
             }
@@ -193,17 +199,15 @@ impl WebsocketProtocolHandler {
                     && peekbuf[request_path_len - 1] == b' '));
 
         if !matches_path {
-            trace!("not websocket");
+            log_net!("not websocket");
             return Ok(false);
         }
-        trace!("found websocket");
+        log_net!("found websocket");
 
-        let ws_stream = match accept_async(ps).await {
-            Ok(s) => s,
-            Err(e) => {
-                return Err(format!("failed websockets handshake: {:?}", e));
-            }
-        };
+        let ws_stream = accept_async(ps)
+            .await
+            .map_err(map_to_string)
+            .map_err(logthru_net!("failed websockets handshake"))?;
 
         // Wrap the websocket in a NetworkConnection and register it
         let protocol_type = if self.inner.tls {

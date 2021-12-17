@@ -49,40 +49,58 @@ impl RawTcpNetworkConnection {
         ProtocolType::TCP
     }
 
-    pub fn send(&self, message: Vec<u8>) -> SystemPinBoxFuture<Result<(), ()>> {
+    pub fn send(&self, message: Vec<u8>) -> SystemPinBoxFuture<Result<(), String>> {
         let inner = self.inner.clone();
 
         Box::pin(async move {
             if message.len() > MAX_MESSAGE_SIZE {
-                return Err(());
+                return Err("sending too large TCP message".to_owned());
             }
             let len = message.len() as u16;
             let header = [b'V', b'L', len as u8, (len >> 8) as u8];
 
             let mut inner = inner.lock().await;
-            inner.stream.write_all(&header).await.map_err(drop)?;
-            inner.stream.write_all(&message).await.map_err(drop)
+            inner
+                .stream
+                .write_all(&header)
+                .await
+                .map_err(map_to_string)
+                .map_err(logthru_net!())?;
+            inner
+                .stream
+                .write_all(&message)
+                .await
+                .map_err(map_to_string)
+                .map_err(logthru_net!())
         })
     }
 
-    pub fn recv(&self) -> SystemPinBoxFuture<Result<Vec<u8>, ()>> {
+    pub fn recv(&self) -> SystemPinBoxFuture<Result<Vec<u8>, String>> {
         let inner = self.inner.clone();
 
         Box::pin(async move {
             let mut header = [0u8; 4];
             let mut inner = inner.lock().await;
 
-            inner.stream.read_exact(&mut header).await.map_err(drop)?;
+            inner
+                .stream
+                .read_exact(&mut header)
+                .await
+                .map_err(|e| format!("TCP recv error: {}", e))?;
             if header[0] != b'V' || header[1] != b'L' {
-                return Err(());
+                return Err("received invalid TCP frame header".to_owned());
             }
             let len = ((header[3] as usize) << 8) | (header[2] as usize);
             if len > MAX_MESSAGE_SIZE {
-                return Err(());
+                return Err("received too large TCP frame".to_owned());
             }
 
             let mut out: Vec<u8> = vec![0u8; len];
-            inner.stream.read_exact(&mut out).await.map_err(drop)?;
+            inner
+                .stream
+                .read_exact(&mut out)
+                .await
+                .map_err(map_to_string)?;
             Ok(out)
         })
     }
@@ -130,7 +148,8 @@ impl RawTcpProtocolHandler {
         let peeklen = stream
             .peek(&mut peekbuf)
             .await
-            .map_err(|e| format!("could not peek tcp stream: {}", e))?;
+            .map_err(map_to_string)
+            .map_err(logthru_net!("could not peek tcp stream"))?;
         assert_eq!(peeklen, PEEK_DETECT_LEN);
 
         let conn = NetworkConnection::RawTcp(RawTcpNetworkConnection::new(stream));
@@ -159,20 +178,21 @@ impl RawTcpProtocolHandler {
         // for hole-punch compatibility
         let domain = Domain::for_address(remote_socket_addr);
         let socket = Socket::new(domain, Type::STREAM, Some(Protocol::TCP))
-            .map_err(|e| format!("could not create tcp socket: {}", e))?;
+            .map_err(map_to_string)
+            .map_err(logthru_net!())?;
         if let Err(e) = socket.set_linger(None) {
-            warn!("Couldn't set TCP linger: {}", e);
+            log_net!("Couldn't set TCP linger: {}", e);
         }
         if let Err(e) = socket.set_nodelay(true) {
-            warn!("Couldn't set TCP nodelay: {}", e);
+            log_net!("Couldn't set TCP nodelay: {}", e);
         }
         if let Err(e) = socket.set_reuse_address(true) {
-            warn!("Couldn't set reuse address: {}", e);
+            log_net!("Couldn't set reuse address: {}", e);
         }
         cfg_if! {
             if #[cfg(unix)] {
                 if let Err(e) = socket.set_reuse_port(true) {
-                    warn!("Couldn't set reuse port: {}", e);
+                    log_net!("Couldn't set reuse port: {}", e);
                 }
             }
         }
@@ -181,7 +201,7 @@ impl RawTcpProtocolHandler {
         if let Some(some_local_addr) = preferred_local_address {
             let socket2_addr = socket2::SockAddr::from(some_local_addr);
             if let Err(e) = socket.bind(&socket2_addr) {
-                warn!("failed to bind TCP socket: {}", e);
+                log_net!(error "failed to bind TCP socket: {}", e);
             }
         }
 
@@ -189,14 +209,16 @@ impl RawTcpProtocolHandler {
         let remote_socket2_addr = socket2::SockAddr::from(remote_socket_addr);
         socket
             .connect(&remote_socket2_addr)
-            .map_err(|e| format!("couln't connect tcp: {}", e))?;
+            .map_err(map_to_string)
+            .map_err(logthru_net!("addr={}", remote_socket_addr))?;
         let std_stream: std::net::TcpStream = socket.into();
         let ts = TcpStream::from(std_stream);
 
         // See what local address we ended up with and turn this into a stream
         let local_address = ts
             .local_addr()
-            .map_err(|e| format!("couldn't get local address for tcp socket: {}", e))?;
+            .map_err(map_to_string)
+            .map_err(logthru_net!())?;
         let ps = AsyncPeekStream::new(ts);
         let peer_addr = PeerAddress::new(
             Address::from_socket_addr(remote_socket_addr).to_canonical(),
@@ -215,9 +237,12 @@ impl RawTcpProtocolHandler {
         Ok(conn)
     }
 
-    pub async fn send_unbound_message(data: Vec<u8>, socket_addr: SocketAddr) -> Result<(), ()> {
+    pub async fn send_unbound_message(
+        data: Vec<u8>,
+        socket_addr: SocketAddr,
+    ) -> Result<(), String> {
         if data.len() > MAX_MESSAGE_SIZE {
-            return Err(());
+            return Err("sending too large unbound TCP message".to_owned());
         }
         trace!(
             "sending unbound message of length {} to {}",
@@ -225,8 +250,10 @@ impl RawTcpProtocolHandler {
             socket_addr
         );
 
-        let mut stream = TcpStream::connect(socket_addr).await.map_err(drop)?;
-        stream.write_all(&data).await.map_err(drop)
+        let mut stream = TcpStream::connect(socket_addr)
+            .await
+            .map_err(|e| format!("{}", e))?;
+        stream.write_all(&data).await.map_err(|e| format!("{}", e))
     }
 }
 

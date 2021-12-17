@@ -1,4 +1,9 @@
 mod coders;
+mod debug;
+mod private_route;
+
+pub use debug::*;
+pub use private_route::*;
 
 use crate::dht::*;
 use crate::intf::utils::channel::*;
@@ -17,77 +22,6 @@ use routing_table::*;
 /////////////////////////////////////////////////////////////////////
 
 type OperationId = u64;
-
-#[derive(Debug, Clone, PartialOrd, PartialEq, Eq, Ord)]
-pub enum RPCError {
-    Timeout,
-    InvalidFormat,
-    Unimplemented(String),
-    Protocol(String),
-    Internal(String),
-}
-pub fn rpc_error_internal<T: AsRef<str>>(x: T) -> RPCError {
-    error!("RPCError Internal: {}", x.as_ref());
-    RPCError::Internal(x.as_ref().to_owned())
-}
-pub fn rpc_error_capnp_error(e: capnp::Error) -> RPCError {
-    error!("RPCError Protocol: {}", &e.description);
-    RPCError::Protocol(e.description)
-}
-pub fn rpc_error_capnp_notinschema(e: capnp::NotInSchema) -> RPCError {
-    error!("RPCError Protocol: not in schema: {}", &e.0);
-    RPCError::Protocol(format!("not in schema: {}", &e.0))
-}
-pub fn rpc_error_unimplemented<T: AsRef<str>>(x: T) -> RPCError {
-    error!("RPCError Unimplemented: {}", x.as_ref());
-    RPCError::Unimplemented(x.as_ref().to_owned())
-}
-
-impl fmt::Display for RPCError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            RPCError::Timeout => write!(f, "[RPCError: Timeout]"),
-            RPCError::InvalidFormat => write!(f, "[RPCError: InvalidFormat]"),
-            RPCError::Unimplemented(s) => write!(f, "[RPCError: Unimplemented({})]", s),
-            RPCError::Protocol(s) => write!(f, "[RPCError: Protocol({})]", s),
-            RPCError::Internal(s) => write!(f, "[RPCError: Internal({})]", s),
-        }
-    }
-}
-
-#[macro_export]
-macro_rules! map_error_internal {
-    ($x:expr) => {
-        |_| rpc_error_internal($x)
-    };
-}
-#[macro_export]
-macro_rules! map_error_string {
-    () => {
-        |s| rpc_error_internal(&s)
-    };
-}
-
-#[macro_export]
-macro_rules! map_error_capnp_error {
-    () => {
-        |e| rpc_error_capnp_error(e)
-    };
-}
-
-#[macro_export]
-macro_rules! map_error_capnp_notinschema {
-    () => {
-        |e| rpc_error_capnp_notinschema(e)
-    };
-}
-
-#[macro_export]
-macro_rules! map_error_panic {
-    () => {
-        |_| panic!("oops")
-    };
-}
 
 #[derive(Debug, Clone)]
 pub enum Destination {
@@ -207,7 +141,7 @@ pub struct RPCProcessorInner {
     routing_table: RoutingTable,
     node_id: key::DHTKey,
     node_id_secret: key::DHTKeySecret,
-    channel: Option<(Sender<RPCMessage>, Receiver<RPCMessage>)>,
+    send_channel: Option<Sender<RPCMessage>>,
     timeout: u64,
     max_route_hop_count: usize,
     waiting_rpc_table: BTreeMap<OperationId, EventualValue<RPCMessageReader>>,
@@ -228,7 +162,7 @@ impl RPCProcessor {
             routing_table: network_manager.routing_table(),
             node_id: key::DHTKey::default(),
             node_id_secret: key::DHTKeySecret::default(),
-            channel: None,
+            send_channel: None,
             timeout: 10000000,
             max_route_hop_count: 7,
             waiting_rpc_table: BTreeMap::new(),
@@ -325,197 +259,6 @@ impl RPCProcessor {
         }
 
         Ok(nr)
-    }
-
-    //////////////////////////////////////////////////////////////////////
-    fn new_stub_private_route<'a, T>(
-        &self,
-        dest_node_id: key::DHTKey,
-        builder: &'a mut ::capnp::message::Builder<T>,
-    ) -> Result<veilid_capnp::private_route::Reader<'a>, RPCError>
-    where
-        T: capnp::message::Allocator + 'a,
-    {
-        let mut pr = builder.init_root::<veilid_capnp::private_route::Builder>();
-
-        let mut pr_pk = pr.reborrow().init_public_key();
-        encode_public_key(&dest_node_id, &mut pr_pk)?;
-        pr.set_hop_count(0u8);
-        // leave firstHop as null
-        Ok(pr.into_reader())
-    }
-
-    fn encode_safety_route<'a>(
-        &self,
-        safety_route: &SafetyRouteSpec,
-        private_route: veilid_capnp::private_route::Reader<'a>,
-        builder: &'a mut veilid_capnp::safety_route::Builder<'a>,
-    ) -> Result<(), RPCError> {
-        // Ensure the total hop count isn't too long for our config
-        let pr_hopcount = private_route.get_hop_count() as usize;
-        let sr_hopcount = safety_route.hops.len();
-        let hopcount = 1 + sr_hopcount + pr_hopcount;
-        if hopcount > self.inner.lock().max_route_hop_count {
-            return Err(rpc_error_internal("hop count too long for route"));
-        }
-
-        // Build the safety route
-        let mut sr_pk = builder.reborrow().init_public_key();
-        encode_public_key(&safety_route.public_key, &mut sr_pk)?;
-
-        builder.set_hop_count(
-            u8::try_from(sr_hopcount)
-                .map_err(map_error_internal!("hop count too large for safety route"))?,
-        );
-
-        // Build all the hops in the safety route
-        let mut hops_builder = builder.reborrow().init_hops();
-        if sr_hopcount == 0 {
-            hops_builder
-                .set_private(private_route)
-                .map_err(map_error_internal!(
-                    "invalid private route while encoding safety route"
-                ))?;
-        } else {
-            // start last blob-to-encrypt data off as private route
-            let mut blob_data = {
-                let mut pr_message = ::capnp::message::Builder::new_default();
-                pr_message
-                    .set_root_canonical(private_route)
-                    .map_err(map_error_internal!(
-                        "invalid private route while encoding safety route"
-                    ))?;
-                let mut blob_data = builder_to_vec(pr_message)?;
-                // append the private route tag so we know how to decode it later
-                blob_data.push(1u8);
-                blob_data
-            };
-
-            // Encode each hop from inside to outside
-            // skips the outermost hop since that's entering the
-            // safety route and does not include the dialInfo
-            // (outer hop is a RouteHopData, not a RouteHop).
-            // Each loop mutates 'nonce', and 'blob_data'
-            let mut nonce = Crypto::get_random_nonce();
-            for h in (1..sr_hopcount).rev() {
-                // Get blob to encrypt for next hop
-                blob_data = {
-                    // RouteHop
-                    let mut rh_message = ::capnp::message::Builder::new_default();
-                    let mut rh_builder = rh_message.init_root::<veilid_capnp::route_hop::Builder>();
-                    let mut di_builder = rh_builder.reborrow().init_dial_info();
-                    encode_node_dial_info_single(&safety_route.hops[h].dial_info, &mut di_builder)?;
-                    // RouteHopData
-                    let mut rhd_builder = rh_builder.init_next_hop();
-                    // Add the nonce
-                    let mut rhd_nonce = rhd_builder.reborrow().init_nonce();
-                    encode_nonce(&nonce, &mut rhd_nonce);
-                    // Encrypt the previous blob ENC(nonce, DH(PKhop,SKsr))
-                    let dh_secret = self
-                        .crypto
-                        .cached_dh(
-                            &safety_route.hops[h].dial_info.node_id.key,
-                            &safety_route.secret_key,
-                        )
-                        .map_err(map_error_internal!("dh failed"))?;
-                    let enc_msg_data =
-                        Crypto::encrypt(blob_data.as_slice(), &nonce, &dh_secret, None)
-                            .map_err(map_error_internal!("encryption failed"))?;
-
-                    rhd_builder.set_blob(enc_msg_data.as_slice());
-                    let mut blob_data = builder_to_vec(rh_message)?;
-
-                    // append the route hop tag so we know how to decode it later
-                    blob_data.push(0u8);
-                    blob_data
-                };
-                // Make another nonce for the next hop
-                nonce = Crypto::get_random_nonce();
-            }
-
-            // Encode first RouteHopData
-            let mut first_rhd_builder = hops_builder.init_data();
-            let mut first_rhd_nonce = first_rhd_builder.reborrow().init_nonce();
-            encode_nonce(&nonce, &mut first_rhd_nonce);
-            let dh_secret = self
-                .crypto
-                .cached_dh(
-                    &safety_route.hops[0].dial_info.node_id.key,
-                    &safety_route.secret_key,
-                )
-                .map_err(map_error_internal!("dh failed"))?;
-            let enc_msg_data = Crypto::encrypt(blob_data.as_slice(), &nonce, &dh_secret, None)
-                .map_err(map_error_internal!("encryption failed"))?;
-
-            first_rhd_builder.set_blob(enc_msg_data.as_slice());
-        }
-
-        Ok(())
-    }
-
-    // Wrap an operation inside a route
-    fn wrap_with_route<'a>(
-        &self,
-        safety_route: Option<&SafetyRouteSpec>,
-        private_route: veilid_capnp::private_route::Reader<'a>,
-        message_data: Vec<u8>,
-    ) -> Result<Vec<u8>, RPCError> {
-        // Get stuff before we lock inner
-        let op_id = self.get_next_op_id();
-        // Encrypt routed operation
-        let nonce = Crypto::get_random_nonce();
-        let pr_pk_reader = private_route
-            .get_public_key()
-            .map_err(map_error_internal!("public key is invalid"))?;
-        let pr_pk = decode_public_key(&pr_pk_reader);
-        let stub_safety_route = SafetyRouteSpec::new();
-        let sr = safety_route.unwrap_or(&stub_safety_route);
-        let dh_secret = self
-            .crypto
-            .cached_dh(&pr_pk, &sr.secret_key)
-            .map_err(map_error_internal!("dh failed"))?;
-        let enc_msg_data = Crypto::encrypt(&message_data, &nonce, &dh_secret, None)
-            .map_err(map_error_internal!("encryption failed"))?;
-
-        // Prepare route operation
-        let route_msg = {
-            let mut route_msg = ::capnp::message::Builder::new_default();
-            let mut route_operation = route_msg.init_root::<veilid_capnp::operation::Builder>();
-
-            // Doesn't matter what this op id because there's no answer
-            // but it shouldn't conflict with any other op id either
-            route_operation.set_op_id(op_id);
-
-            // Answers don't get a 'respond'
-            let mut respond_to = route_operation.reborrow().init_respond_to();
-            respond_to.set_none(());
-
-            // Set up 'route' operation
-            let mut route = route_operation.reborrow().init_detail().init_route();
-
-            // Set the safety route we've constructed
-            let mut msg_sr = route.reborrow().init_safety_route();
-            self.encode_safety_route(sr, private_route, &mut msg_sr)?;
-
-            // Put in the encrypted operation we're routing
-            let mut msg_operation = route.init_operation();
-            msg_operation.reborrow().init_signatures(0);
-            let mut route_nonce = msg_operation.reborrow().init_nonce();
-            encode_nonce(&nonce, &mut route_nonce);
-            let data = msg_operation.reborrow().init_data(
-                enc_msg_data
-                    .len()
-                    .try_into()
-                    .map_err(map_error_internal!("data too large"))?,
-            );
-            data.copy_from_slice(enc_msg_data.as_slice());
-
-            route_msg
-        };
-
-        // Convert message to bytes and return it
-        let out = builder_to_vec(route_msg)?;
-        Ok(out)
     }
 
     // set up wait for reply
@@ -619,6 +362,8 @@ impl RPCProcessor {
         message: capnp::message::Reader<T>,
         safety_route_spec: Option<&SafetyRouteSpec>,
     ) -> Result<Option<WaitableReply>, RPCError> {
+        log_rpc!(self.get_rpc_request_debug_info(&dest, &message, &safety_route_spec));
+
         let (op_id, wants_answer, is_ping) = {
             let operation = message
                 .get_root::<veilid_capnp::operation::Reader>()
@@ -626,6 +371,7 @@ impl RPCProcessor {
             let op_id = operation.get_op_id();
             let wants_answer = self.wants_answer(&operation)?;
             let is_ping = operation.get_detail().has_info_q();
+
             (op_id, wants_answer, is_ping)
         };
 
@@ -727,7 +473,9 @@ impl RPCProcessor {
         let node_ref = match out_noderef {
             None => {
                 // resolve node
-                self.resolve_node(out_node_id).await?
+                self.resolve_node(out_node_id)
+                    .await
+                    .map_err(logthru_rpc!(error))?
             }
             Some(nr) => {
                 // got the node in the routing table already
@@ -748,6 +496,7 @@ impl RPCProcessor {
             .network_manager()
             .send_envelope(node_ref.clone(), out)
             .await
+            .map_err(logthru_rpc!(error))
             .map_err(RPCError::Internal)
         {
             // Make sure to clean up op id waiter in case of error
@@ -792,6 +541,8 @@ impl RPCProcessor {
         reply_msg: capnp::message::Reader<T>,
         safety_route_spec: Option<&SafetyRouteSpec>,
     ) -> Result<(), RPCError> {
+        log_rpc!(self.get_rpc_reply_debug_info(&request_rpcreader, &reply_msg, &safety_route_spec));
+
         //
         let out_node_id;
         let mut out_noderef: Option<NodeRef> = None;
@@ -821,7 +572,7 @@ impl RPCProcessor {
                 veilid_capnp::operation::respond_to::None(_) => {
                     // Do not respond
                     // --------------
-                    return Ok(());
+                    return Err(rpc_error_internal("no response requested"));
                 }
                 veilid_capnp::operation::respond_to::Sender(_) => {
                     // Respond to envelope source node, possibly through a relay if the request arrived that way
@@ -1329,7 +1080,6 @@ impl RPCProcessor {
     }
 
     //////////////////////////////////////////////////////////////////////
-
     async fn process_rpc_message_version_0(&self, msg: RPCMessage) -> Result<(), RPCError> {
         let reader = capnp::message::Reader::new(msg.data, Default::default());
         let rpcreader = RPCMessageReader {
@@ -1442,9 +1192,10 @@ impl RPCProcessor {
 
     async fn rpc_worker(self, receiver: Receiver<RPCMessage>) {
         while let Ok(msg) = receiver.recv().await {
-            if let Err(e) = self.process_rpc_message(msg).await {
-                error!("Couldn't process rpc message: {}", e);
-            }
+            let _ = self
+                .process_rpc_message(msg)
+                .await
+                .map_err(logthru_rpc!("couldn't process rpc message"));
         }
     }
 
@@ -1479,7 +1230,7 @@ impl RPCProcessor {
         inner.timeout = timeout;
         inner.max_route_hop_count = max_route_hop_count;
         let channel = channel(queue_size as usize);
-        inner.channel = Some(channel.clone());
+        inner.send_channel = Some(channel.0.clone());
 
         // spin up N workers
         trace!("Spinning up {} RPC workers", concurrency);
@@ -1502,8 +1253,7 @@ impl RPCProcessor {
         envelope: envelope::Envelope,
         body: Vec<u8>,
         peer_noderef: NodeRef,
-    ) -> Result<(), ()> {
-        trace!("enqueue_message: body len = {}", body.len());
+    ) -> Result<(), String> {
         let msg = RPCMessage {
             header: RPCMessageHeader {
                 timestamp: get_timestamp(),
@@ -1515,9 +1265,12 @@ impl RPCProcessor {
         };
         let send_channel = {
             let inner = self.inner.lock();
-            inner.channel.as_ref().unwrap().0.clone()
+            inner.send_channel.as_ref().unwrap().clone()
         };
-        send_channel.try_send(msg).await.map_err(drop)?;
+        send_channel
+            .try_send(msg)
+            .await
+            .map_err(|e| format!("failed to enqueue received RPC message: {:?}", e))?;
         Ok(())
     }
 

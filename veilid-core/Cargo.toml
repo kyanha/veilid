@@ -66,6 +66,7 @@ if-addrs = { path = "../external/if-addrs" }
 async_executors = { version = "^0", features = [ "async_std" ]}
 socket2 = "^0"
 bugsalot = "^0"
+chrono = "^0"
 
 # Dependencies for WASM builds only
 [target.'cfg(target_arch = "wasm32")'.dependencies]

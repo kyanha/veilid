@@ -33,13 +33,13 @@ impl NetworkConnection {
             Self::WS(w) => w.protocol_type(),
         }
     }
-    pub fn send(&self, message: Vec<u8>) -> SystemPinBoxFuture<Result<(), ()>> {
+    pub fn send(&self, message: Vec<u8>) -> SystemPinBoxFuture<Result<(), String>> {
         match self {
             Self::Dummy(d) => d.send(message),
             Self::WS(w) => w.send(message),
         }
     }
-    pub fn recv(&self) -> SystemPinBoxFuture<Result<Vec<u8>, ()>> {
+    pub fn recv(&self) -> SystemPinBoxFuture<Result<Vec<u8>, String>> {
         match self {
             Self::Dummy(d) => d.recv(),
             Self::WS(w) => w.recv(),

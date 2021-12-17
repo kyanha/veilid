@@ -30,9 +30,9 @@ impl RawUdpProtocolHandler {
         }
     }
 
-    pub async fn on_message(&self, data: &[u8], remote_addr: SocketAddr) -> Result<bool, ()> {
+    pub async fn on_message(&self, data: &[u8], remote_addr: SocketAddr) -> Result<bool, String> {
         if data.len() > MAX_MESSAGE_SIZE {
-            return Err(());
+            return Err("received too large UDP message".to_owned());
         }
 
         trace!(
@@ -52,7 +52,7 @@ impl RawUdpProtocolHandler {
             remote_addr.port(),
             ProtocolType::UDP,
         );
-        let local_socket_addr = socket.local_addr().map_err(drop)?;
+        let local_socket_addr = socket.local_addr().map_err(|e| format!("{}", e))?;
         network_manager
             .on_recv_envelope(
                 data,
@@ -61,9 +61,9 @@ impl RawUdpProtocolHandler {
             .await
     }
 
-    pub async fn send_message(&self, data: Vec<u8>, socket_addr: SocketAddr) -> Result<(), ()> {
+    pub async fn send_message(&self, data: Vec<u8>, socket_addr: SocketAddr) -> Result<(), String> {
         if data.len() > MAX_MESSAGE_SIZE {
-            return Err(());
+            return Err("sending too large UDP message".to_owned());
         }
 
         trace!(
@@ -73,18 +73,25 @@ impl RawUdpProtocolHandler {
         );
 
         let socket = self.inner.lock().socket.clone();
-        let len = socket.send_to(&data, socket_addr).await.map_err(drop)?;
+        let len = socket
+            .send_to(&data, socket_addr)
+            .await
+            .map_err(|e| format!("{}", e))?;
         if len != data.len() {
-            Err(())
+            Err("UDP partial send".to_owned())
         } else {
             Ok(())
         }
     }
 
-    pub async fn send_unbound_message(data: Vec<u8>, socket_addr: SocketAddr) -> Result<(), ()> {
+    pub async fn send_unbound_message(
+        data: Vec<u8>,
+        socket_addr: SocketAddr,
+    ) -> Result<(), String> {
         if data.len() > MAX_MESSAGE_SIZE {
-            return Err(());
+            return Err("sending too large unbound UDP message".to_owned());
         }
+        xxx continue here
         trace!(
             "sending unbound message of length {} to {}",
             data.len(),
@@ -98,10 +105,15 @@ impl RawUdpProtocolHandler {
                 SocketAddr::new(IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0)), 0)
             }
         };
-        let socket = UdpSocket::bind(local_socket_addr).await.map_err(drop)?;
-        let len = socket.send_to(&data, socket_addr).await.map_err(drop)?;
+        let socket = UdpSocket::bind(local_socket_addr)
+            .await
+            .map_err(|e| format!("{}", e))?;
+        let len = socket
+            .send_to(&data, socket_addr)
+            .await
+            .map_err(|e| format!("{}", e))?;
         if len != data.len() {
-            Err(())
+            Err("UDP partial unbound send".to_owned())
         } else {
             Ok(())
         }

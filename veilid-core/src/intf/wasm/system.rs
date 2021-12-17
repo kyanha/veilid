@@ -28,6 +28,18 @@ pub fn get_timestamp() -> u64 {
     }
 }
 
+pub fn get_timestamp_string() -> String {
+    let date = Date::now();
+    let hours = Date::get_utc_hours(date);
+    let minutes = Date::get_utc_minutes(date);
+    let seconds = Date::get_utc_seconds(date);
+    let milliseconds = Date::get_utc_milliseconds(date);
+    format!(
+        "{:02}:{:02}:{:02}.{}",
+        hours, minutes, seconds, milliseconds
+    )
+}
+
 pub fn random_bytes(dest: &mut [u8]) -> Result<(), String> {
     let len = dest.len();
     let u32len = len / 4;
