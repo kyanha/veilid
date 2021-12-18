@@ -56,28 +56,31 @@ impl WebsocketNetworkConnection {
         let inner = self.inner.clone();
         Box::pin(async move {
             if message.len() > MAX_MESSAGE_SIZE {
-                return Err("sending too large WS message".to_owned());
+                return Err("sending too large WS message".to_owned()).map_err(logthru_net!(error));
             }
-            inner.lock().ws.send_with_u8_array(&message).map_err(map_to_string)
+            inner
+                .lock()
+                .ws
+                .send_with_u8_array(&message)
+                .map_err(|_| "failed to send to websocket".to_owned())
+                .map_err(logthru_net!(error))
         })
     }
-    pub fn recv(&self) -> SystemPinBoxFuture<Result<Vec<u8>, String)>> {
+    pub fn recv(&self) -> SystemPinBoxFuture<Result<Vec<u8>, String>> {
         let inner = self.inner.clone();
         Box::pin(async move {
             let out = match inner.lock().ws_stream.next().await {
                 Some(WsMessage::Binary(v)) => v,
                 Some(_) => {
-                    return Err("Unexpected WS message type".to_owned());
-                }
-                Some(Err(e)) => {
-                    return Err(|e| e.to_string());
+                    return Err("Unexpected WS message type".to_owned())
+                        .map_err(logthru_net!(error));
                 }
                 None => {
-                    return Err("WS stream closed".to_owned());
+                    return Err("WS stream closed".to_owned()).map_err(logthru_net!(error));
                 }
             };
             if out.len() > MAX_MESSAGE_SIZE {
-                Err("sending too large WS message".to_owned())
+                Err("sending too large WS message".to_owned()).map_err(logthru_net!(error))
             } else {
                 Ok(out)
             }
@@ -99,15 +102,22 @@ impl WebsocketProtocolHandler {
         let (tls, host, port, protocol_type) = match dial_info {
             DialInfo::WS(ws) => (false, ws.host.clone(), ws.port, ProtocolType::WS),
             DialInfo::WSS(wss) => (true, wss.host.clone(), wss.port, ProtocolType::WSS),
-            _ => return Err("wrong protocol for WebsocketProtocolHandler".to_owned()),
+            _ => {
+                return Err("wrong protocol for WebsocketProtocolHandler".to_owned())
+                    .map_err(logthru_net!(error))
+            }
         };
 
-        let peer_addr = PeerAddress::new(Address::from_str(&host)?, port, protocol_type);
+        let peer_addr = PeerAddress::new(
+            Address::from_str(&host).map_err(logthru_net!(error))?,
+            port,
+            protocol_type,
+        );
 
-        let (ws, wsio) = match WsMeta::connect(url, None).await {
-            Ok(conn) => conn,
-            Err(e) => return Err(format!("couldn't connect to WS url: {}", e)),
-        };
+        let (ws, wsio) = WsMeta::connect(url, None)
+            .await
+            .map_err(map_to_string)
+            .map_err(logthru_net!(error))?;
 
         let conn = NetworkConnection::WS(WebsocketNetworkConnection::new(tls, ws, wsio));
         network_manager

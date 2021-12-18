@@ -28,7 +28,7 @@ impl Bucket {
     }
 
     pub(super) fn add_entry(&mut self, node_id: DHTKey) -> NodeRef {
-        info!("Node added: {}", node_id.encode());
+        log_rtab!("Node added: {}", node_id.encode());
 
         // Add new entry
         self.entries.insert(node_id, BucketEntry::new());
@@ -42,7 +42,7 @@ impl Bucket {
     }
 
     pub(super) fn remove_entry(&mut self, node_id: &DHTKey) {
-        info!("Node removed: {}", node_id);
+        log_rtab!("Node removed: {}", node_id);
 
         // Remove the entry
         self.entries.remove(node_id);

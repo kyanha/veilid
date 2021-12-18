@@ -215,7 +215,7 @@ impl RoutingTable {
             // transform,
             transform,
         );
-        trace!(">> find_fastest_nodes: node count = {}", out.len());
+        log_rtab!(">> find_fastest_nodes: node count = {}", out.len());
         out
     }
 
@@ -272,7 +272,7 @@ impl RoutingTable {
             // transform,
             transform,
         );
-        trace!(">> find_closest_nodes: node count = {}", out.len());
+        log_rtab!(">> find_closest_nodes: node count = {}", out.len());
         out
     }
 }

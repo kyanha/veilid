@@ -1,3 +1,5 @@
+pub use alloc::string::{String, ToString};
+
 pub fn map_to_string<X: ToString>(arg: X) -> String {
     arg.to_string()
 }
@@ -31,16 +33,16 @@ macro_rules! log_net {
         "{}",
         $text,
     )};
-    (error $fmt:literal, $($arg:expr)+) => {
-        error!(target:"net", $fmt, $($arg)+);
+    (error $fmt:literal, $($arg:expr),+) => {
+        error!(target:"net", $fmt, $($arg),+);
     };
     ($text:expr) => {trace!(
         target: "net",
         "{}",
         $text,
     )};
-    ($fmt:literal, $($arg:expr)+) => {
-        trace!(target:"net", $fmt, $($arg)+);
+    ($fmt:literal, $($arg:expr),+) => {
+        trace!(target:"net", $fmt, $($arg),+);
     }
 }
 
@@ -51,16 +53,16 @@ macro_rules! log_rpc {
         "{}",
         $text,
     )};
-    (error $fmt:literal, $($arg:expr)+) => {
-        error!(target:"rpc", $fmt, $($arg)+);
+    (error $fmt:literal, $($arg:expr),+) => {
+        error!(target:"rpc", $fmt, $($arg),+);
     };
     ($text:expr) => {trace!(
         target: "rpc",
         "{}",
         $text,
     )};
-    ($fmt:literal, $($arg:expr)+) => {
-        trace!(target:"rpc", $fmt, $($arg)+);
+    ($fmt:literal, $($arg:expr),+) => {
+        trace!(target:"rpc", $fmt, $($arg),+);
     }
 }
 
@@ -71,16 +73,16 @@ macro_rules! log_rtab {
         "{}",
         $text,
     )};
-    (error $fmt:literal, $($arg:expr)+) => {
-        error!(target:"rtab", $fmt, $($arg)+);
+    (error $fmt:literal, $($arg:expr),+) => {
+        error!(target:"rtab", $fmt, $($arg),+);
     };
     ($text:expr) => {trace!(
         target: "rtab",
         "{}",
         $text,
     )};
-    ($fmt:literal, $($arg:expr)+) => {
-        trace!(target:"rtab", $fmt, $($arg)+);
+    ($fmt:literal, $($arg:expr),+) => {
+        trace!(target:"rtab", $fmt, $($arg),+);
     }
 }
 
@@ -92,8 +94,8 @@ macro_rules! logthru_net {
     ($($level:ident)? $text:literal) => {
         logthru!($($level)? "net", $text)
     };
-    ($($level:ident)? $fmt:literal, $($arg:expr)+) => {
-        logthru!($($level)? "net", $fmt, $($arg)+)
+    ($($level:ident)? $fmt:literal, $($arg:expr),+) => {
+        logthru!($($level)? "net", $fmt, $($arg),+)
     }
 }
 #[macro_export]
@@ -104,8 +106,8 @@ macro_rules! logthru_rpc {
     ($($level:ident)? $text:literal) => {
         logthru!($($level)? "rpc", $text)
     };
-    ($($level:ident)? $fmt:literal, $($arg:expr)+) => {
-        logthru!($($level)? "rpc", $fmt, $($arg)+)
+    ($($level:ident)? $fmt:literal, $($arg:expr),+) => {
+        logthru!($($level)? "rpc", $fmt, $($arg),+)
     }
 }
 
@@ -117,8 +119,8 @@ macro_rules! logthru_rtab {
     ($($level:ident)? $text:literal) => {
         logthru!($($level)? "rtab", $text)
     };
-    ($($level:ident)? $fmt:literal, $($arg:expr)+) => {
-        logthru!($($level)? "rtab", $fmt, $($arg)+)
+    ($($level:ident)? $fmt:literal, $($arg:expr),+) => {
+        logthru!($($level)? "rtab", $fmt, $($arg),+)
     }
 }
 
@@ -142,12 +144,12 @@ macro_rules! logthru {
         );
         e__
     });
-    (error $target:literal, $fmt:literal, $($arg:expr)+) => (|e__| {
+    (error $target:literal, $fmt:literal, $($arg:expr),+) => (|e__| {
         error!(
             target: $target,
             concat!("[{}] ", $fmt),
             e__,
-            $($arg)+
+            $($arg),+
         );
         e__
     });
@@ -169,12 +171,12 @@ macro_rules! logthru {
         );
         e__
     });
-    ($target:literal, $fmt:literal, $($arg:expr)+) => (|e__| {
+    ($target:literal, $fmt:literal, $($arg:expr),+) => (|e__| {
         trace!(
             target: $target,
             concat!("[{}] ", $fmt),
             e__,
-            $($arg)+
+            $($arg),+
         );
         e__
     })

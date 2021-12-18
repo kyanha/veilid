@@ -11,10 +11,10 @@ impl DummyNetworkConnection {
     pub fn protocol_type(&self) -> ProtocolType {
         ProtocolType::UDP
     }
-    pub fn send(&self, _message: Vec<u8>) -> SystemPinBoxFuture<Result<(), ()>> {
+    pub fn send(&self, _message: Vec<u8>) -> SystemPinBoxFuture<Result<(), String>> {
         Box::pin(async { Ok(()) })
     }
-    pub fn recv(&self) -> SystemPinBoxFuture<Result<Vec<u8>, ()>> {
+    pub fn recv(&self) -> SystemPinBoxFuture<Result<Vec<u8>, String>> {
         Box::pin(async { Ok(Vec::new()) })
     }
 }

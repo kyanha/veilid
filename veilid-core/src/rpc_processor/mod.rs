@@ -98,14 +98,18 @@ where
     let wordvec = builder
         .into_reader()
         .canonicalize()
-        .map_err(map_error_capnp_error!())?;
+        .map_err(map_error_capnp_error!())
+        .map_err(logthru_rpc!())?;
     Ok(capnp::Word::words_to_bytes(wordvec.as_slice()).to_vec())
 }
 fn reader_to_vec<'a, T>(reader: capnp::message::Reader<T>) -> Result<Vec<u8>, RPCError>
 where
     T: capnp::message::ReaderSegments + 'a,
 {
-    let wordvec = reader.canonicalize().map_err(map_error_capnp_error!())?;
+    let wordvec = reader
+        .canonicalize()
+        .map_err(map_error_capnp_error!())
+        .map_err(logthru_rpc!())?;
     Ok(capnp::Word::words_to_bytes(wordvec.as_slice()).to_vec())
 }
 
@@ -222,7 +226,7 @@ impl RPCProcessor {
 
         // xxx find node but stop if we find the exact node we want
         // xxx return whatever node is closest after the timeout
-        Err(rpc_error_unimplemented("search_dht_single_key"))
+        Err(rpc_error_unimplemented("search_dht_single_key")).map_err(logthru_rpc!(error))
     }
 
     // Search the DHT for the 'count' closest nodes to a key, adding them all to the routing table if they are not there and returning their node references
@@ -234,7 +238,7 @@ impl RPCProcessor {
         _timeout: Option<u64>,
     ) -> Result<Vec<NodeRef>, RPCError> {
         // xxx return closest nodes after the timeout
-        Err(rpc_error_unimplemented("search_dht_multi_key"))
+        Err(rpc_error_unimplemented("search_dht_multi_key")).map_err(logthru_rpc!(error))
     }
 
     // Search the DHT for a specific node corresponding to a key unless we have that node in our routing table already, and return the node reference
@@ -254,8 +258,7 @@ impl RPCProcessor {
 
         if nr.node_id() != node_id {
             // found a close node, but not exact within our configured resolve_node timeout
-            error!("XXX: Timeout");
-            return Err(RPCError::Timeout);
+            return Err(RPCError::Timeout).map_err(logthru_rpc!());
         }
 
         Ok(nr)
@@ -559,7 +562,8 @@ impl RPCProcessor {
             let request_operation = request_rpcreader
                 .reader
                 .get_root::<veilid_capnp::operation::Reader>()
-                .map_err(map_error_capnp_error!())?;
+                .map_err(map_error_capnp_error!())
+                .map_err(logthru_rpc!())?;
 
             let reply_vec = reader_to_vec(reply_msg)?;
 
@@ -567,12 +571,14 @@ impl RPCProcessor {
             match request_operation
                 .get_respond_to()
                 .which()
-                .map_err(map_error_internal!("invalid request operation"))?
+                .map_err(map_error_internal!("invalid request operation"))
+                .map_err(logthru_rpc!())?
             {
                 veilid_capnp::operation::respond_to::None(_) => {
                     // Do not respond
                     // --------------
-                    return Err(rpc_error_internal("no response requested"));
+                    return Err(rpc_error_internal("no response requested"))
+                        .map_err(logthru_rpc!());
                 }
                 veilid_capnp::operation::respond_to::Sender(_) => {
                     // Respond to envelope source node, possibly through a relay if the request arrived that way
@@ -594,17 +600,20 @@ impl RPCProcessor {
                             // No private route was specified for the return
                             // but we are using a safety route, so we must create an empty private route
                             let mut pr_builder = ::capnp::message::Builder::new_default();
-                            let private_route = self.new_stub_private_route(
-                                request_rpcreader.header.envelope.get_sender_id(),
-                                &mut pr_builder,
-                            )?;
+                            let private_route = self
+                                .new_stub_private_route(
+                                    request_rpcreader.header.envelope.get_sender_id(),
+                                    &mut pr_builder,
+                                )
+                                .map_err(logthru_rpc!())?;
 
                             out = self.wrap_with_route(Some(sr), private_route, reply_vec)?;
                             // first
                             out_node_id = sr
                                 .hops
                                 .first()
-                                .ok_or_else(|| rpc_error_internal("no hop in safety route"))?
+                                .ok_or_else(|| rpc_error_internal("no hop in safety route"))
+                                .map_err(logthru_rpc!())?
                                 .dial_info
                                 .node_id
                                 .key;
@@ -618,7 +627,10 @@ impl RPCProcessor {
                     // Extract private route for reply
                     let private_route = match pr {
                         Ok(v) => v,
-                        Err(_) => return Err(rpc_error_internal("invalid private route")),
+                        Err(_) => {
+                            return Err(rpc_error_internal("invalid private route"))
+                                .map_err(logthru_rpc!())
+                        }
                     };
 
                     // Reply with 'route' operation
@@ -627,23 +639,27 @@ impl RPCProcessor {
                         None => {
                             // If no safety route, the first node is the first hop of the private route
                             if !private_route.has_first_hop() {
-                                return Err(rpc_error_internal("private route has no hops"));
+                                return Err(rpc_error_internal("private route has no hops"))
+                                    .map_err(logthru_rpc!());
                             }
                             let hop = private_route
                                 .get_first_hop()
                                 .map_err(map_error_internal!("not a valid first hop"))?;
                             decode_public_key(
                                 &hop.get_dial_info()
-                                    .map_err(map_error_internal!("not a valid dial info"))?
+                                    .map_err(map_error_internal!("not a valid dial info"))
+                                    .map_err(logthru_rpc!())?
                                     .get_node_id()
-                                    .map_err(map_error_internal!("not a valid node id"))?,
+                                    .map_err(map_error_internal!("not a valid node id"))
+                                    .map_err(logthru_rpc!())?,
                             )
                         }
                         Some(sr) => {
                             // If safety route is in use, first node is the first hop of the safety route
                             sr.hops
                                 .first()
-                                .ok_or_else(|| rpc_error_internal("no hop in safety route"))?
+                                .ok_or_else(|| rpc_error_internal("no hop in safety route"))
+                                .map_err(logthru_rpc!())?
                                 .dial_info
                                 .node_id
                                 .key
@@ -774,7 +790,8 @@ impl RPCProcessor {
             let operation = rpcreader
                 .reader
                 .get_root::<veilid_capnp::operation::Reader>()
-                .map_err(map_error_capnp_error!())?;
+                .map_err(map_error_capnp_error!())
+                .map_err(logthru_rpc!())?;
 
             // Don't bother unless we are going to answer
             if !self.wants_answer(&operation)? {
@@ -813,7 +830,8 @@ impl RPCProcessor {
             let operation = rpcreader
                 .reader
                 .get_root::<veilid_capnp::operation::Reader>()
-                .map_err(map_error_capnp_error!())?;
+                .map_err(map_error_capnp_error!())
+                .map_err(logthru_rpc!())?;
 
             // This should never want an answer
             if self.wants_answer(&operation)? {
@@ -902,11 +920,12 @@ impl RPCProcessor {
             let operation = rpcreader
                 .reader
                 .get_root::<veilid_capnp::operation::Reader>()
-                .map_err(map_error_capnp_error!())?;
+                .map_err(map_error_capnp_error!())
+                .map_err(logthru_rpc!())?;
 
             // find_node must always want an answer
             if !self.wants_answer(&operation)? {
-                return Err(RPCError::InvalidFormat);
+                return Err(RPCError::InvalidFormat).map_err(logthru_rpc!());
             }
 
             // get findNodeQ reader
@@ -916,12 +935,17 @@ impl RPCProcessor {
             };
 
             // ensure find_node peerinfo matches the envelope
-            let target_node_id =
-                decode_public_key(&fnq_reader.get_node_id().map_err(map_error_capnp_error!())?);
+            let target_node_id = decode_public_key(
+                &fnq_reader
+                    .get_node_id()
+                    .map_err(map_error_capnp_error!())
+                    .map_err(logthru_rpc!())?,
+            );
             let peer_info = decode_peer_info(
                 &fnq_reader
                     .get_peer_info()
-                    .map_err(map_error_capnp_error!())?,
+                    .map_err(map_error_capnp_error!())
+                    .map_err(logthru_rpc!())?,
             )?;
             if peer_info.node_id.key != rpcreader.header.envelope.get_sender_id() {
                 return Err(RPCError::InvalidFormat);
@@ -958,7 +982,7 @@ impl RPCProcessor {
                 // transform
                 |e| RoutingTable::transform_to_peer_info(e, peer_scope, &own_peer_info),
             );
-            trace!(">>>> Returning {} closest peers", closest_nodes.len());
+            log_rpc!(">>>> Returning {} closest peers", closest_nodes.len());
 
             // Send find_node answer
             let mut reply_msg = ::capnp::message::Builder::new_default();
@@ -1022,7 +1046,8 @@ impl RPCProcessor {
             let operation = rpcreader
                 .reader
                 .get_root::<veilid_capnp::operation::Reader>()
-                .map_err(map_error_capnp_error!())?;
+                .map_err(map_error_capnp_error!())
+                .map_err(logthru_rpc!())?;
 
             // This should never want an answer
             if self.wants_answer(&operation)? {
@@ -1072,7 +1097,8 @@ impl RPCProcessor {
             let operation = rpcreader
                 .reader
                 .get_root::<veilid_capnp::operation::Reader>()
-                .map_err(map_error_capnp_error!())?;
+                .map_err(map_error_capnp_error!())
+                .map_err(logthru_rpc!())?;
             operation.get_op_id()
         };
 
@@ -1091,7 +1117,8 @@ impl RPCProcessor {
             let operation = rpcreader
                 .reader
                 .get_root::<veilid_capnp::operation::Reader>()
-                .map_err(map_error_capnp_error!())?;
+                .map_err(map_error_capnp_error!())
+                .map_err(logthru_rpc!())?;
 
             match operation
                 .get_detail()
@@ -1300,11 +1327,13 @@ impl RPCProcessor {
         let response_operation = rpcreader
             .reader
             .get_root::<veilid_capnp::operation::Reader>()
-            .map_err(map_error_capnp_error!())?;
+            .map_err(map_error_capnp_error!())
+            .map_err(logthru_rpc!())?;
         let info_a = match response_operation
             .get_detail()
             .which()
-            .map_err(map_error_capnp_notinschema!())?
+            .map_err(map_error_capnp_notinschema!())
+            .map_err(logthru_rpc!())?
         {
             veilid_capnp::operation::detail::InfoA(a) => {
                 a.map_err(map_error_internal!("Invalid InfoA"))?
@@ -1450,11 +1479,13 @@ impl RPCProcessor {
         let response_operation = rpcreader
             .reader
             .get_root::<veilid_capnp::operation::Reader>()
-            .map_err(map_error_capnp_error!())?;
+            .map_err(map_error_capnp_error!())
+            .map_err(logthru_rpc!())?;
         let find_node_a = match response_operation
             .get_detail()
             .which()
-            .map_err(map_error_capnp_notinschema!())?
+            .map_err(map_error_capnp_notinschema!())
+            .map_err(logthru_rpc!())?
         {
             veilid_capnp::operation::detail::FindNodeA(a) => {
                 a.map_err(map_error_internal!("Invalid FindNodeA"))?

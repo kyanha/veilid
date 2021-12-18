@@ -45,8 +45,12 @@ impl Network {
         data: Vec<u8>,
     ) -> Result<Option<Vec<u8>>, String> {
         match descriptor.protocol_type() {
-            ProtocolType::UDP => return Err("no support for udp protocol".to_owned()),
-            ProtocolType::TCP => return Err("no support for tcp protocol".to_owned()),
+            ProtocolType::UDP => {
+                return Err("no support for udp protocol".to_owned()).map_err(logthru_net!(error))
+            }
+            ProtocolType::TCP => {
+                return Err("no support for tcp protocol".to_owned()).map_err(logthru_net!(error))
+            }
             ProtocolType::WS | ProtocolType::WSS => {
                 // find an existing connection in the connection table if one exists
                 let network_manager = self.inner.lock().network_manager.clone();
@@ -55,11 +59,7 @@ impl Network {
                     .get_connection(&descriptor)
                 {
                     // connection exists, send over it
-                    entry
-                        .conn
-                        .send(data)
-                        .await
-                        .map_err(|_| "failed to send ws message".to_owned())?;
+                    entry.conn.send(data).await.map_err(logthru_net!())?;
                     // Data was consumed
                     return Ok(None);
                 }
@@ -78,10 +78,16 @@ impl Network {
         let network_manager = self.inner.lock().network_manager.clone();
 
         match &dial_info {
-            DialInfo::UDP(_) => return Err("no support for UDP protocol".to_owned()),
-            DialInfo::TCP(_) => return Err("no support for TCP protocol".to_owned()),
-            DialInfo::WS(_) => Err("WS protocol does not support unbound messages".to_owned()),
-            DialInfo::WSS(_) => Err("WSS protocol does not support unbound messages".to_owned()),
+            DialInfo::UDP(_) => {
+                return Err("no support for UDP protocol".to_owned()).map_err(logthru_net!(error))
+            }
+            DialInfo::TCP(_) => {
+                return Err("no support for TCP protocol".to_owned()).map_err(logthru_net!(error))
+            }
+            DialInfo::WS(_) => Err("WS protocol does not support unbound messages".to_owned())
+                .map_err(logthru_net!(error)),
+            DialInfo::WSS(_) => Err("WSS protocol does not support unbound messages".to_owned())
+                .map_err(logthru_net!(error)),
         }
     }
     pub async fn send_data_to_dial_info(
@@ -92,19 +98,21 @@ impl Network {
         let network_manager = self.inner.lock().network_manager.clone();
 
         let conn = match &dial_info {
-            DialInfo::UDP(_) => return Err("no support for UDP protocol".to_owned()),
-            DialInfo::TCP(_) => return Err("no support for TCP protocol".to_owned()),
+            DialInfo::UDP(_) => {
+                return Err("no support for UDP protocol".to_owned()).map_err(logthru_net!(error))
+            }
+            DialInfo::TCP(_) => {
+                return Err("no support for TCP protocol".to_owned()).map_err(logthru_net!(error))
+            }
             DialInfo::WS(_) => WebsocketProtocolHandler::connect(network_manager, dial_info)
                 .await
-                .map_err(|_| "failed to connect to WS dial info".to_owned())?,
+                .map_err(logthru_net!(error))?,
             DialInfo::WSS(_) => WebsocketProtocolHandler::connect(network_manager, dial_info)
                 .await
-                .map_err(|_| "failed to connect to WSS dial info".to_owned())?,
+                .map_err(logthru_net!(error))?,
         };
 
-        conn.send(data)
-            .await
-            .map_err(|_| "failed to send data to dial info".to_owned())
+        conn.send(data).await.map_err(logthru_net!(error))
     }
 
     pub async fn send_data(&self, node_ref: NodeRef, data: Vec<u8>) -> Result<(), String> {
@@ -129,9 +137,13 @@ impl Network {
 
         // If that fails, try to make a connection or reach out to the peer via its dial info
         if let Some(di) = dial_info {
-            self.clone().send_data_to_dial_info(&di, di_data).await
+            self.clone()
+                .send_data_to_dial_info(&di, di_data)
+                .await
+                .map_err(logthru_net!(error))
         } else {
             Err("couldn't send data, no dial info or peer address".to_owned())
+                .map_err(logthru_net!(error))
         }
     }
 

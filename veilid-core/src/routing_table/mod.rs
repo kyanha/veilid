@@ -393,7 +393,7 @@ impl RoutingTable {
         if let Some(dead_node_ids) = bucket.kick(bucket_depth) {
             // Remove counts
             inner.bucket_entry_count -= dead_node_ids.len();
-            debug!("Routing table now has {} nodes", inner.bucket_entry_count);
+            log_rtab!("Routing table now has {} nodes", inner.bucket_entry_count);
 
             // Now purge the routing table inner vectors
             //let filter = |k: &DHTKey| dead_node_ids.contains(k);
@@ -431,7 +431,7 @@ impl RoutingTable {
     pub fn create_node_ref(&self, node_id: DHTKey) -> Result<NodeRef, String> {
         // Ensure someone isn't trying register this node itself
         if node_id == self.node_id() {
-            return Err("can't register own node".to_owned());
+            return Err("can't register own node".to_owned()).map_err(logthru_rtab!(error));
         }
 
         // Insert into bucket, possibly evicting the newest bucket member
@@ -448,7 +448,7 @@ impl RoutingTable {
 
                     // Update count
                     inner.bucket_entry_count += 1;
-                    debug!("Routing table now has {} nodes", inner.bucket_entry_count);
+                    log_rtab!("Routing table now has {} nodes", inner.bucket_entry_count);
                     nr
                 };
 
@@ -480,13 +480,7 @@ impl RoutingTable {
         node_id: DHTKey,
         dial_infos: &[DialInfo],
     ) -> Result<NodeRef, String> {
-        let nr = match self.create_node_ref(node_id) {
-            Err(e) => {
-                return Err(format!("Couldn't create node reference: {}", e));
-            }
-            Ok(v) => v,
-        };
-
+        let nr = self.create_node_ref(node_id)?;
         nr.operate(move |e| -> Result<(), String> {
             for di in dial_infos {
                 e.add_dial_info(di.clone())?;
@@ -505,13 +499,7 @@ impl RoutingTable {
         descriptor: ConnectionDescriptor,
         timestamp: u64,
     ) -> Result<NodeRef, String> {
-        let nr = match self.create_node_ref(node_id) {
-            Err(e) => {
-                return Err(format!("Couldn't create node reference: {}", e));
-            }
-            Ok(v) => v,
-        };
-
+        let nr = self.create_node_ref(node_id)?;
         nr.operate(move |e| {
             // set the most recent node address for connection finding and udp replies
             e.set_last_connection(descriptor, timestamp);
@@ -535,7 +523,7 @@ impl RoutingTable {
         let node_id = self.node_id();
         let rpc_processor = self.rpc_processor();
 
-        let res = match rpc_processor
+        let res = rpc_processor
             .rpc_call_find_node(
                 Destination::Direct(node_ref.clone()),
                 node_id,
@@ -543,13 +531,9 @@ impl RoutingTable {
                 RespondTo::Sender,
             )
             .await
-        {
-            Ok(v) => v,
-            Err(e) => {
-                return Err(format!("couldn't contact node at {:?}: {}", &node_ref, e));
-            }
-        };
-        trace!(
+            .map_err(map_to_string)
+            .map_err(logthru_rtab!())?;
+        log_rtab!(
             "find_self for at {:?} answered in {}ms",
             &node_ref,
             timestamp_to_secs(res.latency) * 1000.0f64
@@ -564,15 +548,14 @@ impl RoutingTable {
             }
 
             // register the node if it's new
-            let nr = match self.register_node_with_dial_info(p.node_id.key, &p.dial_infos) {
-                Ok(v) => v,
-                Err(e) => {
-                    return Err(format!(
-                        "couldn't register node {} at {:?}: {}",
-                        p.node_id.key, &p.dial_infos, e
-                    ));
-                }
-            };
+            let nr = self
+                .register_node_with_dial_info(p.node_id.key, &p.dial_infos)
+                .map_err(map_to_string)
+                .map_err(logthru_rtab!(
+                    "couldn't register node {} at {:?}",
+                    p.node_id.key,
+                    &p.dial_infos
+                ))?;
             out.push(nr);
         }
         Ok(out)
@@ -585,7 +568,7 @@ impl RoutingTable {
         // Ask bootstrap server for nodes closest to our own node
         let closest_nodes = match self.find_self(node_ref.clone()).await {
             Err(e) => {
-                error!(
+                log_rtab!(error
                     "reverse_find_node: find_self failed for {:?}: {}",
                     &node_ref, e
                 );
@@ -599,7 +582,7 @@ impl RoutingTable {
             for closest_nr in closest_nodes {
                 match self.find_self(closest_nr.clone()).await {
                     Err(e) => {
-                        error!(
+                        log_rtab!(error
                             "reverse_find_node: closest node find_self failed for {:?}: {}",
                             &closest_nr, e
                         );
@@ -617,36 +600,28 @@ impl RoutingTable {
             c.network.bootstrap.clone()
         };
 
-        debug!("--- bootstrap_task");
+        log_rtab!("--- bootstrap_task");
 
         // Map all bootstrap entries to a single key with multiple dialinfo
         let mut bsmap: BTreeMap<DHTKey, Vec<DialInfo>> = BTreeMap::new();
         for b in bootstrap {
-            let ndis = match NodeDialInfoSingle::from_str(b.as_str()) {
-                Err(_) => {
-                    return Err(format!("Invalid dial info in bootstrap entry: {}", b));
-                }
-                Ok(v) => v,
-            };
+            let ndis = NodeDialInfoSingle::from_str(b.as_str())
+                .map_err(logthru_rtab!("Invalid dial info in bootstrap entry: {}", b))?;
             let node_id = ndis.node_id.key;
             bsmap
                 .entry(node_id)
                 .or_insert_with(Vec::new)
                 .push(ndis.dial_info);
         }
-        trace!("    bootstrap list: {:?}", bsmap);
+        log_rtab!("    bootstrap list: {:?}", bsmap);
 
         // Run all bootstrap operations concurrently
         let mut unord = FuturesUnordered::new();
         for (k, v) in bsmap {
-            let nr = match self.register_node_with_dial_info(k, &v) {
-                Ok(nr) => nr,
-                Err(e) => {
-                    return Err(format!("Couldn't add bootstrap node: {}", e));
-                }
-            };
-
-            trace!("    bootstrapping {} with {:?}", k.encode(), &v);
+            let nr = self
+                .register_node_with_dial_info(k, &v)
+                .map_err(logthru_rtab!("Couldn't add bootstrap node: {}", k))?;
+            log_rtab!("    bootstrapping {} with {:?}", k.encode(), &v);
             unord.push(self.reverse_find_node(nr, true));
         }
         while unord.next().await.is_some() {}
@@ -659,7 +634,7 @@ impl RoutingTable {
     // Ask our remaining peers to give us more peers before we go
     // back to the bootstrap servers to keep us from bothering them too much
     async fn peer_minimum_refresh_task_routine(self) -> Result<(), String> {
-        trace!("--- peer_minimum_refresh task");
+        log_rtab!("--- peer_minimum_refresh task");
 
         // get list of all peers we know about, even the unreliable ones, and ask them to bootstrap too
         let noderefs = {
@@ -672,7 +647,7 @@ impl RoutingTable {
             }
             noderefs
         };
-        trace!("    refreshing with nodes: {:?}", noderefs);
+        log_rtab!("    refreshing with nodes: {:?}", noderefs);
 
         // do peer minimum search concurrently
         let mut unord = FuturesUnordered::new();
@@ -688,14 +663,14 @@ impl RoutingTable {
     // Ping each node in the routing table if they need to be pinged
     // to determine their reliability
     async fn ping_validator_task_routine(self, _last_ts: u64, cur_ts: u64) -> Result<(), String> {
-        trace!("--- ping_validator task");
+        log_rtab!("--- ping_validator task");
         let rpc = self.rpc_processor();
         let mut inner = self.inner.lock();
         for b in &mut inner.buckets {
             for (k, entry) in b.entries_mut() {
                 if entry.needs_ping(cur_ts) {
                     let nr = NodeRef::new(self.clone(), *k, entry);
-                    debug!(
+                    log_rtab!(
                         "    --- ping validating: {:?} ({})",
                         nr,
                         entry.state_debug_info(cur_ts)
@@ -709,7 +684,7 @@ impl RoutingTable {
 
     // Compute transfer statistics to determine how 'fast' a node is
     async fn rolling_transfers_task_routine(self, last_ts: u64, cur_ts: u64) -> Result<(), String> {
-        trace!("--- rolling_transfers task");
+        log_rtab!("--- rolling_transfers task");
         let inner = &mut *self.inner.lock();
 
         // Roll our own node's transfers

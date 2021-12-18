@@ -210,7 +210,7 @@ impl RawTcpProtocolHandler {
         socket
             .connect(&remote_socket2_addr)
             .map_err(map_to_string)
-            .map_err(logthru_net!("addr={}", remote_socket_addr))?;
+            .map_err(logthru_net!(error "addr={}", remote_socket_addr))?;
         let std_stream: std::net::TcpStream = socket.into();
         let ts = TcpStream::from(std_stream);
 

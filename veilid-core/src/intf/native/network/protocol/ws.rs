@@ -101,6 +101,7 @@ where
                 .send(Message::binary(message))
                 .await
                 .map_err(map_to_string)
+                .map_err(logthru_net!(error "failed to send websocket message"))
         })
     }
     pub fn recv(&self) -> SystemPinBoxFuture<Result<Vec<u8>, String>> {
@@ -112,17 +113,18 @@ where
             let out = match inner.ws_stream.next().await {
                 Some(Ok(Message::Binary(v))) => v,
                 Some(Ok(_)) => {
-                    return Err("Unexpected WS message type".to_owned());
+                    return Err("Unexpected WS message type".to_owned())
+                        .map_err(logthru_net!(error));
                 }
                 Some(Err(e)) => {
-                    return Err(e.to_string());
+                    return Err(e.to_string()).map_err(logthru_net!(error));
                 }
                 None => {
-                    return Err("WS stream closed".to_owned());
+                    return Err("WS stream closed".to_owned()).map_err(logthru_net!());
                 }
             };
             if out.len() > MAX_MESSAGE_SIZE {
-                Err("sending too large WS message".to_owned())
+                Err("sending too large WS message".to_owned()).map_err(logthru_net!(error))
             } else {
                 Ok(out)
             }
@@ -189,7 +191,10 @@ impl WebsocketProtocolHandler {
         {
             Ok(_) => (),
             Err(e) => {
-                return Err(format!("failed to peek stream: {:?}", e));
+                if e.kind() == io::ErrorKind::TimedOut {
+                    return Err(e).map_err(map_to_string).map_err(logthru_net!());
+                }
+                return Err(e).map_err(map_to_string).map_err(logthru_net!(error));
             }
         }
         // Check for websocket path
@@ -261,13 +266,16 @@ impl WebsocketProtocolHandler {
 
         let tcp_stream = TcpStream::connect(format!("{}:{}", &domain, &port))
             .await
-            .map_err(|e| format!("failed to connect tcp stream: {}", e))?;
+            .map_err(map_to_string)
+            .map_err(logthru_net!(error))?;
         let local_addr = tcp_stream
             .local_addr()
-            .map_err(|e| format!("can't get local address for tcp stream: {}", e))?;
+            .map_err(map_to_string)
+            .map_err(logthru_net!(error))?;
         let peer_socket_addr = tcp_stream
             .peer_addr()
-            .map_err(|e| format!("can't get peer address for tcp stream: {}", e))?;
+            .map_err(map_to_string)
+            .map_err(logthru_net!(error))?;
         let peer_addr = PeerAddress::new(
             Address::from_socket_addr(peer_socket_addr),
             peer_socket_addr.port(),
@@ -279,10 +287,12 @@ impl WebsocketProtocolHandler {
             let tls_stream = connector
                 .connect(domain, tcp_stream)
                 .await
-                .map_err(|e| format!("can't connect tls: {}", e))?;
+                .map_err(map_to_string)
+                .map_err(logthru_net!(error))?;
             let (ws_stream, _response) = client_async(request, tls_stream)
                 .await
-                .map_err(|e| format!("wss negotation failed: {}", e))?;
+                .map_err(map_to_string)
+                .map_err(logthru_net!(error))?;
             let conn = NetworkConnection::Wss(WebsocketNetworkConnection::new(tls, ws_stream));
             network_manager
                 .on_new_connection(
@@ -294,7 +304,8 @@ impl WebsocketProtocolHandler {
         } else {
             let (ws_stream, _response) = client_async(request, tcp_stream)
                 .await
-                .map_err(|e| format!("ws negotiate failed: {}", e))?;
+                .map_err(map_to_string)
+                .map_err(logthru_net!(error))?;
             let conn = NetworkConnection::Ws(WebsocketNetworkConnection::new(tls, ws_stream));
             network_manager
                 .on_new_connection(

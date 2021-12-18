@@ -12,14 +12,14 @@ impl Network {
     async fn request_public_address(&self, node_ref: NodeRef) -> Option<SocketAddr> {
         let routing_table = self.routing_table();
         let rpc = routing_table.rpc_processor();
-        let info_answer = match rpc.rpc_call_info(node_ref.clone()).await {
-            Err(e) => {
-                trace!("failed to get info answer from {:?}: {:?}", node_ref, e);
-                return None;
-            }
-            Ok(ia) => ia,
-        };
-        info_answer.sender_info.socket_address
+        rpc.rpc_call_info(node_ref.clone())
+            .await
+            .map_err(logthru_net!(
+                "failed to get info answer from {:?}",
+                node_ref
+            ))
+            .map(|info_answer| info_answer.sender_info.socket_address)
+            .unwrap_or(None)
     }
 
     // find fast peers with a particular address type, and ask them to tell us what our external address is
@@ -31,7 +31,7 @@ impl Network {
         let routing_table = self.routing_table();
         let peers = routing_table.get_fast_nodes_of_type(protocol_address_type);
         if peers.is_empty() {
-            trace!("no peers of type '{:?}'", protocol_address_type);
+            log_net!("no peers of type '{:?}'", protocol_address_type);
             return None;
         }
         for peer in peers {
@@ -44,7 +44,7 @@ impl Network {
                 return Some((sa, peer));
             }
         }
-        trace!("no peers responded with an external address");
+        log_net!("no peers responded with an external address");
         None
     }
 
@@ -78,19 +78,13 @@ impl Network {
     ) -> bool {
         let routing_table = self.routing_table();
         let rpc = routing_table.rpc_processor();
-        match rpc
-            .rpc_call_validate_dial_info(node_ref.clone(), dial_info, redirect, alternate_port)
+        rpc.rpc_call_validate_dial_info(node_ref.clone(), dial_info, redirect, alternate_port)
             .await
-        {
-            Err(e) => {
-                error!(
-                    "failed to send validate_dial_info to {:?}: {:?}",
-                    node_ref, e
-                );
-                false
-            }
-            Ok(val) => val,
-        }
+            .map_err(logthru_net!(
+                "failed to send validate_dial_info to {:?}",
+                node_ref
+            ))
+            .unwrap_or(false)
     }
 
     async fn try_port_mapping<I: AsRef<[SocketAddr]>>(
@@ -103,7 +97,7 @@ impl Network {
     }
 
     pub async fn update_udpv4_dialinfo_task_routine(self, _l: u64, _t: u64) -> Result<(), String> {
-        trace!("looking for udpv4 public dial info");
+        log_net!("looking for udpv4 public dial info");
         let routing_table = self.routing_table();
 
         let mut retry_count = {
@@ -148,7 +142,7 @@ impl Network {
                     break;
                 } else {
                     // UDP firewall?
-                    warn!("UDP static public dial info not reachable. UDP firewall may be blocking inbound to {:?} for {:?}",external1_dial_info, node_b);
+                    log_net!("UDP static public dial info not reachable. UDP firewall may be blocking inbound to {:?} for {:?}",external1_dial_info, node_b);
                 }
             } else {
                 // There is -some NAT-
@@ -260,7 +254,7 @@ impl Network {
     }
 
     pub async fn update_tcpv4_dialinfo_task_routine(self, _l: u64, _t: u64) -> Result<(), String> {
-        trace!("looking for tcpv4 public dial info");
+        log_net!("looking for tcpv4 public dial info");
         // xxx
         //Err("unimplemented".to_owned())
         Ok(())

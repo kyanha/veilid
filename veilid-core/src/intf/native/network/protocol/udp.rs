@@ -63,10 +63,10 @@ impl RawUdpProtocolHandler {
 
     pub async fn send_message(&self, data: Vec<u8>, socket_addr: SocketAddr) -> Result<(), String> {
         if data.len() > MAX_MESSAGE_SIZE {
-            return Err("sending too large UDP message".to_owned());
+            return Err("sending too large UDP message".to_owned()).map_err(logthru_net!(error));
         }
 
-        trace!(
+        log_net!(
             "sending UDP message of length {} to {}",
             data.len(),
             socket_addr
@@ -76,9 +76,11 @@ impl RawUdpProtocolHandler {
         let len = socket
             .send_to(&data, socket_addr)
             .await
-            .map_err(|e| format!("{}", e))?;
+            .map_err(map_to_string)
+            .map_err(logthru_net!(error "failed udp send: addr={}", socket_addr))?;
+
         if len != data.len() {
-            Err("UDP partial send".to_owned())
+            Err("UDP partial send".to_owned()).map_err(logthru_net!(error))
         } else {
             Ok(())
         }
@@ -89,10 +91,10 @@ impl RawUdpProtocolHandler {
         socket_addr: SocketAddr,
     ) -> Result<(), String> {
         if data.len() > MAX_MESSAGE_SIZE {
-            return Err("sending too large unbound UDP message".to_owned());
+            return Err("sending too large unbound UDP message".to_owned())
+                .map_err(logthru_net!(error));
         }
-        xxx continue here
-        trace!(
+        log_net!(
             "sending unbound message of length {} to {}",
             data.len(),
             socket_addr
@@ -107,13 +109,15 @@ impl RawUdpProtocolHandler {
         };
         let socket = UdpSocket::bind(local_socket_addr)
             .await
-            .map_err(|e| format!("{}", e))?;
+            .map_err(map_to_string)
+            .map_err(logthru_net!(error "failed to bind unbound udp socket"))?;
         let len = socket
             .send_to(&data, socket_addr)
             .await
-            .map_err(|e| format!("{}", e))?;
+            .map_err(map_to_string)
+            .map_err(logthru_net!(error "failed unbound udp send: addr={}", socket_addr))?;
         if len != data.len() {
-            Err("UDP partial unbound send".to_owned())
+            Err("UDP partial unbound send".to_owned()).map_err(logthru_net!(error))
         } else {
             Ok(())
         }

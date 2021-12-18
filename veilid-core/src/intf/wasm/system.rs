@@ -29,11 +29,11 @@ pub fn get_timestamp() -> u64 {
 }
 
 pub fn get_timestamp_string() -> String {
-    let date = Date::now();
-    let hours = Date::get_utc_hours(date);
-    let minutes = Date::get_utc_minutes(date);
-    let seconds = Date::get_utc_seconds(date);
-    let milliseconds = Date::get_utc_milliseconds(date);
+    let date = Date::new_0();
+    let hours = Date::get_utc_hours(&date);
+    let minutes = Date::get_utc_minutes(&date);
+    let seconds = Date::get_utc_seconds(&date);
+    let milliseconds = Date::get_utc_milliseconds(&date);
     format!(
         "{:02}:{:02}:{:02}.{}",
         hours, minutes, seconds, milliseconds

@@ -8,6 +8,9 @@
 //   Only IP address and DNS hostname host fields are supported
 
 use super::IpAddr;
+use alloc::borrow::ToOwned;
+use alloc::string::String;
+use alloc::vec::Vec;
 use core::fmt;
 use core::str::FromStr;
 

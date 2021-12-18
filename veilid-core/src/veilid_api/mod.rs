@@ -586,7 +586,7 @@ impl core::str::FromStr for NodeDialInfoSingle {
             cur_url = &cur_url[6..];
             proto = ProtocolType::WSS;
         } else {
-            return Err("unknown protocol".to_owned());
+            return Err(format!("unknown protocol: {}", url));
         }
 
         // parse out node id if we have one

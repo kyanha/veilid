@@ -663,14 +663,15 @@ impl Network {
                 let peer_socket_addr = descriptor
                     .remote
                     .to_socket_addr()
-                    .map_err(|_| "unable to get socket address".to_owned())?;
+                    .map_err(map_to_string)
+                    .map_err(logthru_net!(error))?;
                 if let Some(ph) =
                     self.find_best_udp_protocol_handler(&peer_socket_addr, &descriptor.local)
                 {
                     ph.clone()
                         .send_message(data, peer_socket_addr)
                         .await
-                        .map_err(|_| "unable to send udp message".to_owned())?;
+                        .map_err(logthru_net!())?;
                     // Data was consumed
                     return Ok(None);
                 }
@@ -683,11 +684,7 @@ impl Network {
                     .get_connection(descriptor)
                 {
                     // connection exists, send over it
-                    entry
-                        .conn
-                        .send(data)
-                        .await
-                        .map_err(|_| "failed to send tcp or ws message".to_owned())?;
+                    entry.conn.send(data).await.map_err(logthru_net!())?;
 
                     // Data was consumed
                     return Ok(None);
@@ -706,24 +703,22 @@ impl Network {
     ) -> Result<(), String> {
         match &dial_info {
             DialInfo::UDP(_) => {
-                let peer_socket_addr = dial_info
-                    .to_socket_addr()
-                    .map_err(|_| "failed to resolve dial info for UDP dial info".to_owned())?;
+                let peer_socket_addr = dial_info.to_socket_addr().map_err(logthru_net!())?;
 
                 RawUdpProtocolHandler::send_unbound_message(data, peer_socket_addr)
                     .await
-                    .map_err(|_| "failed to send unbound message to UDP dial info".to_owned())
+                    .map_err(logthru_net!())
             }
             DialInfo::TCP(_) => {
-                let peer_socket_addr = dial_info
-                    .to_socket_addr()
-                    .map_err(|_| "failed to resolve dial info for TCP dial info".to_owned())?;
+                let peer_socket_addr = dial_info.to_socket_addr().map_err(logthru_net!())?;
                 RawTcpProtocolHandler::send_unbound_message(data, peer_socket_addr)
                     .await
-                    .map_err(|_| "failed to connect to TCP dial info".to_owned())
+                    .map_err(logthru_net!())
             }
-            DialInfo::WS(_) => Err("WS protocol does not support unbound messages".to_owned()),
-            DialInfo::WSS(_) => Err("WSS protocol does not support unbound messages".to_owned()),
+            DialInfo::WS(_) => Err("WS protocol does not support unbound messages".to_owned())
+                .map_err(logthru_net!(error)),
+            DialInfo::WSS(_) => Err("WSS protocol does not support unbound messages".to_owned())
+                .map_err(logthru_net!(error)),
         }
     }
 
@@ -736,38 +731,33 @@ impl Network {
 
         let conn = match &dial_info {
             DialInfo::UDP(_) => {
-                let peer_socket_addr = dial_info
-                    .to_socket_addr()
-                    .map_err(|_| "failed to resolve dial info for UDP dial info".to_owned())?;
+                let peer_socket_addr = dial_info.to_socket_addr().map_err(logthru_net!())?;
                 if let Some(ph) = self.find_best_udp_protocol_handler(&peer_socket_addr, &None) {
                     return ph
                         .send_message(data, peer_socket_addr)
                         .await
-                        .map_err(|_| "failed to send message to UDP dial info".to_owned());
+                        .map_err(logthru_net!());
                 } else {
-                    return Err("no appropriate UDP protocol handler for dial_info".to_owned());
+                    return Err("no appropriate UDP protocol handler for dial_info".to_owned())
+                        .map_err(logthru_net!(error));
                 }
             }
             DialInfo::TCP(_) => {
-                let peer_socket_addr = dial_info
-                    .to_socket_addr()
-                    .map_err(|_| "failed to resolve dial info for TCP dial info".to_owned())?;
+                let peer_socket_addr = dial_info.to_socket_addr().map_err(logthru_net!())?;
                 let some_local_addr = self.find_best_tcp_local_address(&peer_socket_addr);
                 RawTcpProtocolHandler::connect(network_manager, some_local_addr, peer_socket_addr)
                     .await
-                    .map_err(|_| "failed to connect to TCP dial info".to_owned())?
+                    .map_err(logthru_net!())?
             }
             DialInfo::WS(_) => WebsocketProtocolHandler::connect(network_manager, dial_info)
                 .await
-                .map_err(|_| "failed to connect to WS dial info".to_owned())?,
+                .map_err(logthru_net!(error))?,
             DialInfo::WSS(_) => WebsocketProtocolHandler::connect(network_manager, dial_info)
                 .await
-                .map_err(|_| "failed to connect to WSS dial info".to_owned())?,
+                .map_err(logthru_net!(error))?,
         };
 
-        conn.send(data)
-            .await
-            .map_err(|_| "failed to send data to dial info".to_owned())
+        conn.send(data).await.map_err(logthru_net!(error))
     }
 
     pub async fn send_data(&self, node_ref: NodeRef, data: Vec<u8>) -> Result<(), String> {

@@ -1,5 +1,6 @@
 use crate::xx::*;
 use alloc::collections::VecDeque;
+use core::fmt;
 
 #[derive(Debug)]
 pub struct Channel<T> {
@@ -56,6 +57,19 @@ pub fn channel<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
 pub enum TrySendError<T> {
     Full(T),
     Disconnected(T),
+}
+
+impl<T> fmt::Display for TrySendError<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TrySendError::Full(_) => {
+                write!(f, "Full")
+            }
+            TrySendError::Disconnected(_) => {
+                write!(f, "Disconnected")
+            }
+        }
+    }
 }
 
 impl<T> Sender<T> {
