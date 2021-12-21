@@ -20,13 +20,103 @@ pub use core::str::FromStr;
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 
+#[derive(Clone, Debug, PartialOrd, PartialEq, Eq, Ord)]
+pub enum VeilidAPIError {
+    Timeout,
+    Shutdown,
+    NodeNotFound(NodeId),
+    NoDialInfo(NodeId),
+    Internal(String),
+    Unimplemented(String),
+    ParseError {
+        message: String,
+        value: String,
+    },
+    InvalidArgument {
+        context: String,
+        argument: String,
+        value: String,
+    },
+    MissingArgument {
+        context: String,
+        argument: String,
+    },
+}
+
+impl fmt::Display for VeilidAPIError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        match self {
+            VeilidAPIError::Timeout => write!(f, "VeilidAPIError::Timeout"),
+            VeilidAPIError::Shutdown => write!(f, "VeilidAPIError::Shutdown"),
+            VeilidAPIError::NodeNotFound(ni) => write!(f, "VeilidAPIError::NodeNotFound({})", ni),
+            VeilidAPIError::NoDialInfo(ni) => write!(f, "VeilidAPIError::NoDialInfo({})", ni),
+            VeilidAPIError::Internal(e) => write!(f, "VeilidAPIError::Internal({})", e),
+            VeilidAPIError::Unimplemented(e) => write!(f, "VeilidAPIError::Unimplemented({})", e),
+            VeilidAPIError::ParseError { message, value } => {
+                write!(f, "VeilidAPIError::ParseError({}: {})", message, value)
+            }
+            VeilidAPIError::InvalidArgument {
+                context,
+                argument,
+                value,
+            } => {
+                write!(
+                    f,
+                    "VeilidAPIError::InvalidArgument({}: {} = {})",
+                    context, argument, value
+                )
+            }
+            VeilidAPIError::MissingArgument { context, argument } => {
+                write!(
+                    f,
+                    "VeilidAPIError::MissingArgument({}: {})",
+                    context, argument
+                )
+            }
+        }
+    }
+}
+
+fn convert_rpc_error(x: RPCError) -> VeilidAPIError {
+    match x {
+        RPCError::Timeout => VeilidAPIError::Timeout,
+        RPCError::Unimplemented(s) => VeilidAPIError::Unimplemented(s),
+        RPCError::Internal(s) => VeilidAPIError::Internal(s),
+        RPCError::Protocol(s) => VeilidAPIError::Internal(s),
+        RPCError::InvalidFormat => VeilidAPIError::Internal("Invalid packet format".to_owned()),
+    }
+}
+
+macro_rules! map_rpc_error {
+    () => {
+        |x| convert_rpc_error(x)
+    };
+}
+
+macro_rules! parse_error {
+    ($msg:expr, $val:expr) => {
+        VeilidAPIError::ParseError {
+            message: $msg.to_string(),
+            value: $val.to_string(),
+        }
+    };
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////
+
 #[derive(Clone, Debug, Default, PartialOrd, PartialEq, Eq, Ord)]
 pub struct NodeId {
     pub key: DHTKey,
 }
 impl NodeId {
     pub fn new(key: DHTKey) -> Self {
+        assert!(key.valid);
         Self { key }
+    }
+}
+impl fmt::Display for NodeId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(f, "{}", self.key.encode())
     }
 }
 
@@ -91,33 +181,26 @@ pub enum ProtocolType {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Ord, Eq, Hash)]
-pub enum ProtocolAddressType {
+pub enum ProtocolNetworkType {
     UDPv4,
     UDPv6,
     TCPv4,
     TCPv6,
-    WS,
-    WSS,
 }
 
-#[derive(Clone, Debug, PartialEq, PartialOrd, Ord, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Ord, Eq, Hash)]
 pub enum Address {
     IPV4(Ipv4Addr),
     IPV6(Ipv6Addr),
-    Hostname(String),
+}
+
+impl Default for Address {
+    fn default() -> Self {
+        Address::IPV4(Ipv4Addr::new(0, 0, 0, 0))
+    }
 }
 
 impl Address {
-    pub fn to_canonical(&self) -> Address {
-        match self {
-            Address::IPV4(v4) => Address::IPV4(*v4),
-            Address::IPV6(v6) => match v6.to_ipv4() {
-                Some(v4) => Address::IPV4(v4),
-                None => Address::IPV6(*v6),
-            },
-            Address::Hostname(h) => Address::Hostname(h.clone()),
-        }
-    }
     pub fn from_socket_addr(sa: SocketAddr) -> Address {
         match sa {
             SocketAddr::V4(v4) => Address::IPV4(*v4.ip()),
@@ -128,77 +211,138 @@ impl Address {
         match self {
             Address::IPV4(v4) => v4.to_string(),
             Address::IPV6(v6) => v6.to_string(),
-            Address::Hostname(h) => h.clone(),
         }
     }
     pub fn address_string_with_port(&self, port: u16) -> String {
         match self {
             Address::IPV4(v4) => format!("{}:{}", v4.to_string(), port),
             Address::IPV6(v6) => format!("[{}]:{}", v6.to_string(), port),
-            Address::Hostname(h) => format!("{}:{}", h.clone(), port),
         }
     }
-    pub fn resolve(&self) -> Result<IpAddr, String> {
+    pub fn is_public(&self) -> bool {
         match self {
-            Self::IPV4(a) => Ok(IpAddr::V4(*a)),
-            Self::IPV6(a) => Ok(IpAddr::V6(*a)),
-            Self::Hostname(h) => h
-                .parse()
-                .map_err(|e| format!("Failed to parse hostname: {}", e)),
+            Address::IPV4(v4) => ipv4addr_is_global(&v4),
+            Address::IPV6(v6) => ipv6addr_is_global(&v6),
         }
     }
-    pub fn address(&self) -> Result<IpAddr, String> {
+    pub fn is_private(&self) -> bool {
         match self {
-            Self::IPV4(a) => Ok(IpAddr::V4(*a)),
-            Self::IPV6(a) => Ok(IpAddr::V6(*a)),
-            Self::Hostname(h) => Err(format!("Address not available for hostname: {}", h)),
+            Address::IPV4(v4) => ipv4addr_is_private(&v4),
+            Address::IPV6(v6) => ipv6addr_is_unicast_site_local(&v6),
         }
     }
-    pub fn to_socket_addr(&self, port: u16) -> Result<SocketAddr, String> {
-        let addr = self.address()?;
-        Ok(SocketAddr::new(addr, port))
+    pub fn to_ip_addr(&self) -> IpAddr {
+        match self {
+            Self::IPV4(a) => IpAddr::V4(*a),
+            Self::IPV6(a) => IpAddr::V6(*a),
+        }
+    }
+    pub fn to_socket_addr(&self, port: u16) -> SocketAddr {
+        SocketAddr::new(self.to_ip_addr(), port)
+    }
+    pub fn to_canonical(&self) -> Address {
+        match self {
+            Address::IPV4(v4) => Address::IPV4(*v4),
+            Address::IPV6(v6) => match v6.to_ipv4() {
+                Some(v4) => Address::IPV4(v4),
+                None => Address::IPV6(*v6),
+            },
+        }
     }
 }
 
-impl core::str::FromStr for Address {
-    type Err = String;
-    fn from_str(host: &str) -> Result<Address, String> {
+impl FromStr for Address {
+    type Err = VeilidAPIError;
+    fn from_str(host: &str) -> Result<Address, VeilidAPIError> {
         if let Ok(addr) = Ipv4Addr::from_str(host) {
             Ok(Address::IPV4(addr))
         } else if let Ok(addr) = Ipv6Addr::from_str(host) {
             Ok(Address::IPV6(addr))
-        } else if !host.is_empty() {
-            Ok(Address::Hostname(host.to_string()))
         } else {
-            Err("unable to convert address to string".to_owned())
+            Err(parse_error!("Address::from_str failed", host))
         }
     }
 }
 
-#[derive(Clone, Debug, PartialEq, PartialOrd, Ord, Eq)]
+#[derive(Copy, Default, Clone, Debug, PartialEq, PartialOrd, Ord, Eq, Hash)]
+pub struct SocketAddress {
+    address: Address,
+    port: u16,
+}
+
+impl SocketAddress {
+    pub fn new(address: Address, port: u16) -> Self {
+        Self { address, port }
+    }
+    pub fn from_socket_addr(sa: SocketAddr) -> SocketAddress {
+        Self {
+            address: Address::from_socket_addr(sa),
+            port: sa.port(),
+        }
+    }
+    pub fn address(&self) -> Address {
+        self.address
+    }
+    pub fn port(&self) -> u16 {
+        self.port
+    }
+    pub fn to_canonical(&self) -> SocketAddress {
+        SocketAddress {
+            address: self.address.to_canonical(),
+            port: self.port,
+        }
+    }
+    pub fn to_ip_addr(&self) -> IpAddr {
+        self.address.to_ip_addr()
+    }
+    pub fn to_socket_addr(&self) -> SocketAddr {
+        self.address.to_socket_addr(self.port)
+    }
+}
+
+impl fmt::Display for SocketAddress {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(f, "{}:{}", self.to_ip_addr(), self.port)
+    }
+}
+
+impl FromStr for SocketAddress {
+    type Err = VeilidAPIError;
+    fn from_str(s: &str) -> Result<SocketAddress, VeilidAPIError> {
+        let split = s.rsplit_once(':').ok_or_else(|| {
+            parse_error!("SocketAddress::from_str missing colon port separator", s)
+        })?;
+        let address = Address::from_str(split.0)?;
+        let port = u16::from_str(split.1).map_err(|e| {
+            parse_error!(
+                format!("SocketAddress::from_str failed parting port: {}", e),
+                s
+            )
+        })?;
+        Ok(SocketAddress { address, port })
+    }
+}
+
+#[derive(Clone, Default, Debug, PartialEq, PartialOrd, Ord, Eq)]
 pub struct DialInfoUDP {
-    pub address: Address,
-    pub port: u16,
+    pub socket_address: SocketAddress,
 }
 
-#[derive(Clone, Debug, PartialEq, PartialOrd, Ord, Eq)]
+#[derive(Clone, Default, Debug, PartialEq, PartialOrd, Ord, Eq)]
 pub struct DialInfoTCP {
-    pub address: Address,
-    pub port: u16,
+    pub socket_address: SocketAddress,
 }
 
-#[derive(Clone, Debug, PartialEq, PartialOrd, Ord, Eq)]
+#[derive(Clone, Default, Debug, PartialEq, PartialOrd, Ord, Eq)]
 pub struct DialInfoWS {
-    pub host: String,
-    pub port: u16,
-    pub path: String,
+    pub socket_address: SocketAddress,
+    pub request: String,
 }
 
-#[derive(Clone, Debug, PartialEq, PartialOrd, Ord, Eq)]
+#[derive(Clone, Default, Debug, PartialEq, PartialOrd, Ord, Eq)]
 pub struct DialInfoWSS {
-    pub host: String,
-    pub port: u16,
-    pub path: String,
+    pub socket_address: SocketAddress,
+    pub request: String,
 }
 
 #[derive(Clone, Debug, PartialEq, PartialOrd, Ord, Eq)]
@@ -208,39 +352,124 @@ pub enum DialInfo {
     WS(DialInfoWS),
     WSS(DialInfoWSS),
 }
+impl Default for DialInfo {
+    fn default() -> Self {
+        DialInfo::UDP(DialInfoUDP::default())
+    }
+}
+
+impl fmt::Display for DialInfo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        match self {
+            DialInfo::UDP(di) => write!(f, "udp|{}", di.socket_address),
+            DialInfo::TCP(di) => write!(f, "tcp|{}", di.socket_address),
+            DialInfo::WS(di) => write!(f, "ws|{}|{}", di.socket_address, di.request),
+            DialInfo::WSS(di) => write!(f, "wss|{}|{}", di.socket_address, di.request),
+        }
+    }
+}
+
+impl FromStr for DialInfo {
+    type Err = VeilidAPIError;
+    fn from_str(s: &str) -> Result<DialInfo, VeilidAPIError> {
+        let (proto, rest) = s.split_once('|').ok_or_else(|| {
+            parse_error!("SocketAddress::from_str missing protocol '|' separator", s)
+        })?;
+        match proto {
+            "udp" => {
+                let socket_address = SocketAddress::from_str(rest)?;
+                Ok(DialInfo::udp(socket_address))
+            }
+            "tcp" => {
+                let socket_address = SocketAddress::from_str(rest)?;
+                Ok(DialInfo::tcp(socket_address))
+            }
+            "ws" => {
+                let (sa, rest) = s.split_once('|').ok_or_else(|| {
+                    parse_error!(
+                        "SocketAddress::from_str missing socket address '|' separator",
+                        s
+                    )
+                })?;
+                let socket_address = SocketAddress::from_str(sa)?;
+                DialInfo::try_ws(socket_address, rest.to_string())
+            }
+            "wss" => {
+                let (sa, rest) = s.split_once('|').ok_or_else(|| {
+                    parse_error!(
+                        "SocketAddress::from_str missing socket address '|' separator",
+                        s
+                    )
+                })?;
+                let socket_address = SocketAddress::from_str(sa)?;
+                DialInfo::try_wss(socket_address, rest.to_string())
+            }
+        }
+    }
+}
 
 impl DialInfo {
-    pub fn udp_from_socketaddr(socketaddr: SocketAddr) -> Self {
+    pub fn udp_from_socketaddr(socket_addr: SocketAddr) -> Self {
         Self::UDP(DialInfoUDP {
-            address: Address::from_socket_addr(socketaddr).to_canonical(),
-            port: socketaddr.port(),
+            socket_address: SocketAddress::from_socket_addr(socket_addr).to_canonical(),
         })
     }
-    pub fn tcp_from_socketaddr(socketaddr: SocketAddr) -> Self {
+    pub fn tcp_from_socketaddr(socket_addr: SocketAddr) -> Self {
         Self::TCP(DialInfoTCP {
-            address: Address::from_socket_addr(socketaddr).to_canonical(),
-            port: socketaddr.port(),
+            socket_address: SocketAddress::from_socket_addr(socket_addr).to_canonical(),
         })
     }
-    pub fn udp(address: Address, port: u16) -> Self {
-        let address = address.to_canonical();
-        if let Address::Hostname(_) = address {
-            panic!("invalid address type for protocol")
+    pub fn udp(socket_address: SocketAddress) -> Self {
+        Self::UDP(DialInfoUDP {
+            socket_address: socket_address.to_canonical(),
+        })
+    }
+    pub fn tcp(socket_address: SocketAddress) -> Self {
+        Self::TCP(DialInfoTCP {
+            socket_address: socket_address.to_canonical(),
+        })
+    }
+    pub fn try_ws(socket_address: SocketAddress, url: String) -> Result<Self, VeilidAPIError> {
+        let split_url = SplitUrl::from_str(&url)
+            .map_err(|e| parse_error!(format!("unable to split WS url: {}", e), url))?;
+        if split_url.scheme != "ws" || !url.starts_with("ws://") {
+            return Err(parse_error!("incorrect scheme for WS dialinfo", url));
         }
-        Self::UDP(DialInfoUDP { address, port })
-    }
-    pub fn tcp(address: Address, port: u16) -> Self {
-        let address = address.to_canonical();
-        if let Address::Hostname(_) = address {
-            panic!("invalid address type for protocol")
+        let url_port = split_url.port.unwrap_or(80u16);
+        if url_port != socket_address.port() {
+            return Err(parse_error!(
+                "socket address port doesn't match url port",
+                url
+            ));
         }
-        Self::TCP(DialInfoTCP { address, port })
+        Ok(Self::WS(DialInfoWS {
+            socket_address: socket_address.to_canonical(),
+            request: url[5..].to_string(),
+        }))
     }
-    pub fn ws(host: String, port: u16, path: String) -> Self {
-        Self::WS(DialInfoWS { host, port, path })
-    }
-    pub fn wss(host: String, port: u16, path: String) -> Self {
-        Self::WSS(DialInfoWSS { host, port, path })
+    pub fn try_wss(socket_address: SocketAddress, url: String) -> Result<Self, VeilidAPIError> {
+        let split_url = SplitUrl::from_str(&url)
+            .map_err(|e| parse_error!(format!("unable to split WSS url: {}", e), url))?;
+        if split_url.scheme != "wss" || !url.starts_with("wss://") {
+            return Err(parse_error!("incorrect scheme for WSS dialinfo", url));
+        }
+        let url_port = split_url.port.unwrap_or(443u16);
+        if url_port != socket_address.port() {
+            return Err(parse_error!(
+                "socket address port doesn't match url port",
+                url
+            ));
+        }
+        if !Address::from_str(&split_url.host).is_err() {
+            return Err(parse_error!(
+                "WSS url can not use address format, only hostname format",
+                url
+            ));
+        }
+        Ok(Self::WSS(DialInfoWSS {
+            socket_address: socket_address.to_canonical(),
+            request: url[6..].to_string(),
+        }))
     }
     pub fn protocol_type(&self) -> ProtocolType {
         match self {
@@ -250,234 +479,79 @@ impl DialInfo {
             Self::WSS(_) => ProtocolType::WSS,
         }
     }
-
-    pub fn protocol_address_type(&self) -> ProtocolAddressType {
+    pub fn protocol_network_type(&self) -> ProtocolNetworkType {
         match self {
-            Self::UDP(di) => match di.address {
-                Address::IPV4(_) => ProtocolAddressType::UDPv4,
-                Address::IPV6(_) => ProtocolAddressType::UDPv6,
-                Address::Hostname(_) => panic!("invalid address type for protocol"),
+            Self::UDP(di) => match di.socket_address.address() {
+                Address::IPV4(_) => ProtocolNetworkType::UDPv4,
+                Address::IPV6(_) => ProtocolNetworkType::UDPv6,
             },
-            Self::TCP(di) => match di.address {
-                Address::IPV4(_) => ProtocolAddressType::TCPv4,
-                Address::IPV6(_) => ProtocolAddressType::TCPv6,
-                Address::Hostname(_) => panic!("invalid address type for protocol"),
+            Self::TCP(di) => match di.socket_address.address() {
+                Address::IPV4(_) => ProtocolNetworkType::TCPv4,
+                Address::IPV6(_) => ProtocolNetworkType::TCPv6,
             },
-            Self::WS(_) => ProtocolAddressType::WS,
-            Self::WSS(_) => ProtocolAddressType::WSS,
-        }
-    }
-
-    pub fn try_udp_v4(&self) -> Option<SocketAddrV4> {
-        match self {
-            Self::UDP(v) => match v.address.to_socket_addr(v.port).ok() {
-                Some(SocketAddr::V4(v4)) => Some(v4),
-                _ => None,
+            Self::WS(di) => match di.socket_address.address() {
+                Address::IPV4(_) => ProtocolNetworkType::TCPv4,
+                Address::IPV6(_) => ProtocolNetworkType::TCPv6,
             },
-            _ => None,
-        }
-    }
-
-    pub fn try_udp_v6(&self) -> Option<SocketAddrV6> {
-        match self {
-            Self::UDP(v) => match v.address.to_socket_addr(v.port).ok() {
-                Some(SocketAddr::V6(v6)) => Some(v6),
-                _ => None,
+            Self::WSS(di) => match di.socket_address.address() {
+                Address::IPV4(_) => ProtocolNetworkType::TCPv4,
+                Address::IPV6(_) => ProtocolNetworkType::TCPv6,
             },
-            _ => None,
         }
     }
-
-    pub fn try_tcp_v4(&self) -> Option<SocketAddrV4> {
+    pub fn socket_address(&self) -> SocketAddress {
         match self {
-            Self::TCP(v) => match v.address.to_socket_addr(v.port).ok() {
-                Some(SocketAddr::V4(v4)) => Some(v4),
-                _ => None,
-            },
-            _ => None,
+            Self::UDP(di) => di.socket_address,
+            Self::TCP(di) => di.socket_address,
+            Self::WS(di) => di.socket_address,
+            Self::WSS(di) => di.socket_address,
         }
     }
-
-    pub fn try_tcp_v6(&self) -> Option<SocketAddrV6> {
+    pub fn to_ip_addr(&self) -> IpAddr {
         match self {
-            Self::TCP(v) => match v.address.to_socket_addr(v.port).ok() {
-                Some(SocketAddr::V6(v6)) => Some(v6),
-                _ => None,
-            },
-            _ => None,
-        }
-    }
-
-    pub fn try_ws(&self) -> Option<String> {
-        match self {
-            Self::WS(v) => Some(v.host.clone()),
-            _ => None,
-        }
-    }
-
-    pub fn try_wss(&self) -> Option<String> {
-        match self {
-            Self::WSS(v) => Some(v.host.clone()),
-            _ => None,
-        }
-    }
-
-    pub fn address_string(&self) -> String {
-        match self {
-            Self::UDP(di) => di.address.address_string(),
-            Self::TCP(di) => di.address.address_string(),
-            Self::WS(di) => di.host.clone(),
-            Self::WSS(di) => di.host.clone(),
-        }
-    }
-    pub fn address_string_with_port(&self) -> String {
-        match self {
-            Self::UDP(di) => di.address.address_string_with_port(di.port),
-            Self::TCP(di) => di.address.address_string_with_port(di.port),
-            Self::WS(di) => format!("{}:{}", di.host.clone(), di.port),
-            Self::WSS(di) => format!("{}:{}", di.host.clone(), di.port),
-        }
-    }
-    pub fn all_but_path(&self) -> String {
-        match self {
-            Self::UDP(di) => format!("udp://{}", di.address.address_string_with_port(di.port)),
-            Self::TCP(di) => format!("tcp://{}", di.address.address_string_with_port(di.port)),
-            Self::WS(di) => format!("ws://{}:{}", di.host.clone(), di.port),
-            Self::WSS(di) => format!("wss://{}:{}", di.host.clone(), di.port),
-        }
-    }
-
-    pub fn to_url_string(&self, user: Option<String>) -> String {
-        let user_string = match user {
-            Some(u) => format!("{}@", u),
-            None => "".to_owned(),
-        };
-        match self {
-            Self::UDP(di) => format!(
-                "udp://{}{}",
-                user_string,
-                di.address.address_string_with_port(di.port)
-            ),
-            Self::TCP(di) => format!(
-                "tcp://{}{}",
-                user_string,
-                di.address.address_string_with_port(di.port)
-            ),
-            Self::WS(di) => format!(
-                "ws://{}{}:{}{}",
-                user_string,
-                di.host.clone(),
-                di.port,
-                prepend_slash(di.path.clone())
-            ),
-            Self::WSS(di) => format!(
-                "wss://{}{}:{}{}",
-                user_string,
-                di.host.clone(),
-                di.port,
-                prepend_slash(di.path.clone())
-            ),
-        }
-    }
-
-    pub fn resolve(&self) -> Result<IpAddr, String> {
-        match self {
-            Self::UDP(di) => {
-                let addr = di.address.resolve()?;
-                Ok(addr)
-            }
-            Self::TCP(di) => {
-                let addr = di.address.resolve()?;
-                Ok(addr)
-            }
-            Self::WS(di) => {
-                let addr: IpAddr = di
-                    .host
-                    .parse()
-                    .map_err(|e| format!("Failed to parse WS host '{}': {}", di.host, e))?;
-                Ok(addr)
-            }
-            Self::WSS(di) => {
-                let addr: IpAddr = di
-                    .host
-                    .parse()
-                    .map_err(|e| format!("Failed to parse WSS host '{}': {}", di.host, e))?;
-                Ok(addr)
-            }
-        }
-    }
-    pub fn address(&self) -> Result<IpAddr, String> {
-        match self {
-            Self::UDP(di) => di.address.address(),
-            Self::TCP(di) => di.address.address(),
-            Self::WS(_) => Err("Address not available for WS protocol".to_owned()),
-            Self::WSS(_) => Err("Address not available for WSS protocol".to_owned()),
+            Self::UDP(di) => di.socket_address.to_ip_addr(),
+            Self::TCP(di) => di.socket_address.to_ip_addr(),
+            Self::WS(di) => di.socket_address.to_ip_addr(),
+            Self::WSS(di) => di.socket_address.to_ip_addr(),
         }
     }
     pub fn port(&self) -> u16 {
         match self {
-            Self::UDP(di) => di.port,
-            Self::TCP(di) => di.port,
-            Self::WS(di) => di.port,
-            Self::WSS(di) => di.port,
+            Self::UDP(di) => di.socket_address.port,
+            Self::TCP(di) => di.socket_address.port,
+            Self::WS(di) => di.socket_address.port,
+            Self::WSS(di) => di.socket_address.port,
         }
     }
-    pub fn path(&self) -> Result<String, String> {
+    pub fn to_socket_addr(&self) -> SocketAddr {
         match self {
-            Self::UDP(_) => Err("path not available for udp protocol".to_owned()),
-            Self::TCP(_) => Err("path not available for tcp protocol".to_owned()),
-            Self::WS(di) => Ok(di.path.clone()),
-            Self::WSS(di) => Ok(di.path.clone()),
+            Self::UDP(di) => di.socket_address.to_socket_addr(),
+            Self::TCP(di) => di.socket_address.to_socket_addr(),
+            Self::WS(di) => di.socket_address.to_socket_addr(),
+            Self::WSS(di) => di.socket_address.to_socket_addr(),
         }
     }
-    pub fn to_socket_addr(&self) -> Result<SocketAddr, String> {
+    pub fn request(&self) -> Option<String> {
         match self {
-            Self::UDP(di) => Ok(SocketAddr::new(di.address.address()?, di.port)),
-            Self::TCP(di) => Ok(SocketAddr::new(di.address.address()?, di.port)),
-            Self::WS(_) => Err("Can not directly convert WS hostname to socket addr".to_owned()),
-            Self::WSS(_) => Err("Can not directly convert WSS hostname to socket addr".to_owned()),
+            Self::UDP(_) => None,
+            Self::TCP(_) => None,
+            Self::WS(di) => Some(format!("ws://{}", di.request)),
+            Self::WSS(di) => Some(format!("wss://{}", di.request)),
         }
     }
-
-    pub fn is_public(&self) -> Result<bool, String> {
-        let addr = self
-            .resolve()
-            .map_err(|_| "failed to resolve address".to_owned())?;
-        Ok(ipaddr_is_global(&addr))
+    pub fn is_public(&self) -> bool {
+        self.socket_address().address().is_public()
     }
 
-    pub fn is_private(&self) -> Result<bool, String> {
-        let addr = self
-            .resolve()
-            .map_err(|_| "failed to resolve address".to_owned())?;
-        Ok(match addr {
-            IpAddr::V4(a) => ipv4addr_is_private(&a),
-            IpAddr::V6(a) => ipv6addr_is_unicast_site_local(&a),
-        })
+    pub fn is_private(&self) -> bool {
+        self.socket_address().address().is_private()
     }
-    pub fn is_valid(&self) -> Result<bool, String> {
-        Ok(self.is_public()? || self.is_private()?)
-    }
-    pub fn is_loopback(&self) -> Result<bool, String> {
-        let addr = self
-            .resolve()
-            .map_err(|_| "failed to resolve address".to_owned())?;
-        Ok(ipaddr_is_loopback(&addr))
-    }
-}
 
-impl ToString for DialInfo {
-    fn to_string(&self) -> String {
-        self.to_url_string(None)
-    }
-}
-
-impl Default for DialInfo {
-    fn default() -> Self {
-        Self::UDP(DialInfoUDP {
-            address: Address::IPV4(Ipv4Addr::new(0, 0, 0, 0)),
-            port: 0u16,
-        })
+    pub fn is_valid(&self) -> bool {
+        let socket_address = self.socket_address();
+        let address = socket_address.address();
+        let port = socket_address.port();
+        (address.is_public() || address.is_private()) && port > 0
     }
 }
 
@@ -498,37 +572,40 @@ pub struct PeerInfo {
 
 #[derive(Clone, Debug, PartialEq, PartialOrd, Eq, Ord, Hash)]
 pub struct PeerAddress {
-    pub address: Address,
-    pub port: u16,
+    pub socket_address: SocketAddress,
     pub protocol_type: ProtocolType,
 }
 
 impl PeerAddress {
-    pub fn new(address: Address, port: u16, protocol_type: ProtocolType) -> Self {
+    pub fn new(socket_address: SocketAddress, protocol_type: ProtocolType) -> Self {
         Self {
-            address,
-            port,
+            socket_address,
             protocol_type,
         }
     }
 
-    pub fn to_socket_addr(&self) -> Result<SocketAddr, String> {
-        self.address.to_socket_addr(self.port)
+    pub fn to_socket_addr(&self) -> SocketAddr {
+        self.socket_address.to_socket_addr()
     }
-    pub fn protocol_address_type(&self) -> ProtocolAddressType {
+
+    pub fn protocol_network_type(&self) -> ProtocolNetworkType {
         match self.protocol_type {
-            ProtocolType::UDP => match self.address {
-                Address::IPV4(_) => ProtocolAddressType::UDPv4,
-                Address::IPV6(_) => ProtocolAddressType::UDPv6,
-                Address::Hostname(_) => panic!("invalid address type for protocol"),
+            ProtocolType::UDP => match self.socket_address.address() {
+                Address::IPV4(_) => ProtocolNetworkType::UDPv4,
+                Address::IPV6(_) => ProtocolNetworkType::UDPv6,
             },
-            ProtocolType::TCP => match self.address {
-                Address::IPV4(_) => ProtocolAddressType::TCPv4,
-                Address::IPV6(_) => ProtocolAddressType::TCPv6,
-                Address::Hostname(_) => panic!("invalid address type for protocol"),
+            ProtocolType::TCP => match self.socket_address.address() {
+                Address::IPV4(_) => ProtocolNetworkType::TCPv4,
+                Address::IPV6(_) => ProtocolNetworkType::TCPv6,
             },
-            ProtocolType::WS => ProtocolAddressType::WS,
-            ProtocolType::WSS => ProtocolAddressType::WSS,
+            ProtocolType::WS => match self.socket_address.address() {
+                Address::IPV4(_) => ProtocolNetworkType::TCPv4,
+                Address::IPV6(_) => ProtocolNetworkType::TCPv6,
+            },
+            ProtocolType::WSS => match self.socket_address.address() {
+                Address::IPV4(_) => ProtocolNetworkType::TCPv4,
+                Address::IPV6(_) => ProtocolNetworkType::TCPv6,
+            },
         }
     }
 }
@@ -555,101 +632,48 @@ impl ConnectionDescriptor {
     pub fn protocol_type(&self) -> ProtocolType {
         self.remote.protocol_type
     }
-    pub fn protocol_address_type(&self) -> ProtocolAddressType {
-        self.remote.protocol_address_type()
+    pub fn protocol_network_type(&self) -> ProtocolNetworkType {
+        self.remote.protocol_network_type()
     }
 }
 
 //////////////////////////////////////////////////////////////////////////
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, PartialOrd, Ord)]
 pub struct NodeDialInfoSingle {
     pub node_id: NodeId,
     pub dial_info: DialInfo,
 }
 
-impl core::str::FromStr for NodeDialInfoSingle {
-    type Err = String;
-    fn from_str(url: &str) -> Result<NodeDialInfoSingle, String> {
-        let mut cur_url = url;
-        let proto;
-        if url.starts_with("udp://") {
-            cur_url = &cur_url[6..];
-            proto = ProtocolType::UDP;
-        } else if url.starts_with("tcp://") {
-            cur_url = &cur_url[6..];
-            proto = ProtocolType::TCP;
-        } else if url.starts_with("ws://") {
-            cur_url = &cur_url[5..];
-            proto = ProtocolType::WS;
-        } else if url.starts_with("wss://") {
-            cur_url = &cur_url[6..];
-            proto = ProtocolType::WSS;
-        } else {
-            return Err(format!("unknown protocol: {}", url));
-        }
-
-        // parse out node id if we have one
-        let node_id = match cur_url.find('@') {
-            Some(x) => {
-                let n = NodeId::new(DHTKey::try_decode(&cur_url[0..x])?);
-                cur_url = &cur_url[x + 1..];
-                n
-            }
-            None => {
-                return Err("NodeDialInfoSingle is missing the node id".to_owned());
-            }
-        };
-
-        // parse out address
-        let address = match cur_url.rfind(':') {
-            Some(x) => {
-                let mut h = &cur_url[0..x];
-                cur_url = &cur_url[x + 1..];
-
-                match proto {
-                    ProtocolType::WS | ProtocolType::WSS => Address::Hostname(h.to_string()),
-                    _ => {
-                        // peel off square brackets on ipv6 address
-                        if x >= 2 && &h[0..1] == "[" && &h[(h.len() - 1)..] == "]" {
-                            h = &h[1..(h.len() - 1)];
-                        }
-                        Address::from_str(h)?
-                    }
-                }
-            }
-            None => {
-                return Err("NodeDialInfoSingle is missing the port".to_owned());
-            }
-        };
-
-        // parse out port
-        let pathstart = cur_url.find('/').unwrap_or(cur_url.len());
-        let port =
-            u16::from_str(&cur_url[0..pathstart]).map_err(|e| format!("port is invalid: {}", e))?;
-        cur_url = &cur_url[pathstart..];
-
-        // build NodeDialInfoSingle
-        Ok(NodeDialInfoSingle {
-            node_id,
-            dial_info: match proto {
-                ProtocolType::UDP => DialInfo::udp(address, port),
-                ProtocolType::TCP => DialInfo::tcp(address, port),
-                ProtocolType::WS => {
-                    DialInfo::ws(address.address_string(), port, cur_url.to_string())
-                }
-                ProtocolType::WSS => {
-                    DialInfo::wss(address.address_string(), port, cur_url.to_string())
-                }
-            },
-        })
+impl fmt::Display for NodeDialInfoSingle {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(f, "{}@{}", self.node_id, self.dial_info)
     }
 }
 
-impl ToString for NodeDialInfoSingle {
-    fn to_string(&self) -> String {
-        self.dial_info
-            .to_url_string(Some(self.node_id.key.encode()))
+impl FromStr for NodeDialInfoSingle {
+    type Err = VeilidAPIError;
+    fn from_str(s: &str) -> Result<NodeDialInfoSingle, VeilidAPIError> {
+        // split out node id from the dial info
+        let (node_id_str, rest) = s.split_once('@').ok_or_else(|| {
+            parse_error!(
+                "NodeDialInfoSingle::from_str missing @ node id separator",
+                s
+            )
+        })?;
+
+        // parse out node id
+        let node_id = NodeId::new(DHTKey::try_decode(node_id_str).map_err(|e| {
+            parse_error!(
+                format!("NodeDialInfoSingle::from_str couldn't parse node id: {}", e),
+                s
+            )
+        })?);
+        // parse out dial info
+        let dial_info = DialInfo::from_str(rest)?;
+
+        // return completed NodeDialInfoSingle
+        Ok(NodeDialInfoSingle { node_id, dial_info })
     }
 }
 
@@ -703,41 +727,6 @@ cfg_if! {
         pub type ValueChangeCallback =
             Arc<dyn Fn(ValueKey, Vec<u8>) -> SystemPinBoxFuture<()> + Send + Sync + 'static>;
     }
-}
-
-#[derive(Clone, Debug, PartialOrd, PartialEq, Eq, Ord)]
-pub enum VeilidAPIError {
-    Timeout,
-    Shutdown,
-    NodeNotFound(NodeId),
-    NoDialInfo(NodeId),
-    Internal(String),
-    Unimplemented(String),
-    InvalidArgument {
-        context: String,
-        argument: String,
-        value: String,
-    },
-    MissingArgument {
-        context: String,
-        argument: String,
-    },
-}
-
-fn convert_rpc_error(x: RPCError) -> VeilidAPIError {
-    match x {
-        RPCError::Timeout => VeilidAPIError::Timeout,
-        RPCError::Unimplemented(s) => VeilidAPIError::Unimplemented(s),
-        RPCError::Internal(s) => VeilidAPIError::Internal(s),
-        RPCError::Protocol(s) => VeilidAPIError::Internal(s),
-        RPCError::InvalidFormat => VeilidAPIError::Internal("Invalid packet format".to_owned()),
-    }
-}
-
-macro_rules! map_rpc_error {
-    () => {
-        |x| convert_rpc_error(x)
-    };
 }
 
 #[derive(Clone, Debug, PartialOrd, PartialEq, Eq, Ord)]

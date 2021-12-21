@@ -6,6 +6,7 @@ pub mod ws;
 use super::listener_state::*;
 use crate::veilid_api::ProtocolType;
 use crate::xx::*;
+use socket2::{Domain, Protocol, Socket, Type};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DummyNetworkConnection {}
@@ -60,4 +61,58 @@ impl NetworkConnection {
             Self::Wss(w) => w.recv(),
         }
     }
+}
+
+pub fn new_shared_udp_socket(local_address: SocketAddr) -> Result<socket2::Socket, String> {
+    let domain = Domain::for_address(local_address);
+    let socket = Socket::new(domain, Type::DGRAM, Some(Protocol::UDP))
+        .map_err(|e| format!("Couldn't create UDP socket: {}", e))?;
+
+    if let Err(e) = socket.set_reuse_address(true) {
+        log_net!(error "Couldn't set reuse address: {}", e);
+    }
+    cfg_if! {
+        if #[cfg(unix)] {
+            if let Err(e) = socket.set_reuse_port(true) {
+                log_net!(error "Couldn't set reuse port: {}", e);
+            }
+        }
+    }
+
+    let socket2_addr = socket2::SockAddr::from(local_address);
+    socket
+        .bind(&socket2_addr)
+        .map_err(|e| format!("failed to bind UDP socket: {}", e))?;
+
+    Ok(socket)
+}
+
+pub fn new_shared_tcp_socket(local_address: SocketAddr) -> Result<socket2::Socket, String> {
+    let domain = Domain::for_address(local_address);
+    let socket = Socket::new(domain, Type::STREAM, Some(Protocol::TCP))
+        .map_err(map_to_string)
+        .map_err(logthru_net!())?;
+    if let Err(e) = socket.set_linger(None) {
+        log_net!(error "Couldn't set TCP linger: {}", e);
+    }
+    if let Err(e) = socket.set_nodelay(true) {
+        log_net!(error "Couldn't set TCP nodelay: {}", e);
+    }
+    if let Err(e) = socket.set_reuse_address(true) {
+        log_net!(error "Couldn't set reuse address: {}", e);
+    }
+    cfg_if! {
+        if #[cfg(unix)] {
+            if let Err(e) = socket.set_reuse_port(true) {
+                log_net!(error "Couldn't set reuse port: {}", e);
+            }
+        }
+    }
+
+    let socket2_addr = socket2::SockAddr::from(local_address);
+    if let Err(e) = socket.bind(&socket2_addr) {
+        log_net!(error "failed to bind TCP socket: {}", e);
+    }
+
+    Ok(socket)
 }

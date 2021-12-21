@@ -25,7 +25,7 @@ impl DialInfoEntry {
         self.resolved_address
     }
 
-    pub fn resolve(&mut self) -> Result<IpAddr, String> {
+    pub fn resolve(&mut self) -> Result<Vec<IpAddr, String> {
         let addr = match self.dial_info.resolve() {
             Ok(a) => a,
             Err(_) => return Err("failed to resolve address".to_owned()),

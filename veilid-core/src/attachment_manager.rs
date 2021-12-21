@@ -5,6 +5,7 @@ use crate::network_manager::*;
 use crate::xx::*;
 use crate::*;
 use core::convert::TryFrom;
+use core::fmt;
 
 state_machine! {
     derive(Debug, PartialEq, Eq, Clone, Copy)
@@ -65,9 +66,9 @@ state_machine! {
     },
 }
 
-impl ToString for AttachmentState {
-    fn to_string(&self) -> String {
-        match self {
+impl fmt::Display for AttachmentState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        let out = match self {
             AttachmentState::Attaching => "attaching".to_owned(),
             AttachmentState::AttachedWeak => "attached_weak".to_owned(),
             AttachmentState::AttachedGood => "attached_good".to_owned(),
@@ -76,7 +77,8 @@ impl ToString for AttachmentState {
             AttachmentState::OverAttached => "over_attached".to_owned(),
             AttachmentState::Detaching => "detaching".to_owned(),
             AttachmentState::Detached => "detached".to_owned(),
-        }
+        };
+        write!(f, "{}", out)
     }
 }
 

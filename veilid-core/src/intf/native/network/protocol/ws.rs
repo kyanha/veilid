@@ -244,19 +244,21 @@ impl WebsocketProtocolHandler {
 
     pub async fn connect(
         network_manager: NetworkManager,
+        local_address: SocketAddr,
         dial_info: &DialInfo,
     ) -> Result<NetworkConnection, String> {
+        // Split dial info up
         let (tls, request, domain, port, protocol_type) = match &dial_info {
             DialInfo::WS(di) => (
                 false,
-                di.path.clone(),
+                format!("ws://{}:{}/{}", di.host, di.port, di.path),
                 di.host.clone(),
                 di.port,
                 ProtocolType::WS,
             ),
             DialInfo::WSS(di) => (
                 true,
-                di.path.clone(),
+                format!("wss://{}:{}/{}", di.host, di.port, di.path),
                 di.host.clone(),
                 di.port,
                 ProtocolType::WSS,
@@ -264,24 +266,29 @@ impl WebsocketProtocolHandler {
             _ => panic!("invalid dialinfo for WS/WSS protocol"),
         };
 
-        let tcp_stream = TcpStream::connect(format!("{}:{}", &domain, &port))
-            .await
+        // Resolve remote address
+        let remote_ip_addr = dial_info.resolve()?;
+        let remote_socket_addr = SocketAddr::new(remote_ip_addr, port);
+
+        // Make a shared socket
+        let socket = new_shared_tcp_socket(local_address)?;
+
+        // Connect to the remote address
+        let remote_socket2_addr = socket2::SockAddr::from(remote_socket_addr);
+        socket
+            .connect(&remote_socket2_addr)
             .map_err(map_to_string)
-            .map_err(logthru_net!(error))?;
-        let local_addr = tcp_stream
+            .map_err(logthru_net!(error "addr={}", remote_socket_addr))?;
+        let std_stream: std::net::TcpStream = socket.into();
+        let tcp_stream = TcpStream::from(std_stream);
+
+        // See what local address we ended up with
+        let actual_local_addr = tcp_stream
             .local_addr()
             .map_err(map_to_string)
-            .map_err(logthru_net!(error))?;
-        let peer_socket_addr = tcp_stream
-            .peer_addr()
-            .map_err(map_to_string)
-            .map_err(logthru_net!(error))?;
-        let peer_addr = PeerAddress::new(
-            Address::from_socket_addr(peer_socket_addr),
-            peer_socket_addr.port(),
-            protocol_type,
-        );
+            .map_err(logthru_net!())?;
 
+        // Negotiate TLS if this is WSS
         if tls {
             let connector = TlsConnector::default();
             let tls_stream = connector
@@ -294,9 +301,18 @@ impl WebsocketProtocolHandler {
                 .map_err(map_to_string)
                 .map_err(logthru_net!(error))?;
             let conn = NetworkConnection::Wss(WebsocketNetworkConnection::new(tls, ws_stream));
+
+            // Make the connection descriptor peer address
+            let peer_addr = PeerAddress::new(
+                Address::from_socket_addr(remote_socket_addr),
+                port,
+                ProtocolType::WSS,
+            );
+
+            // Register the WSS connection
             network_manager
                 .on_new_connection(
-                    ConnectionDescriptor::new(peer_addr, local_addr),
+                    ConnectionDescriptor::new(peer_addr, actual_local_addr),
                     conn.clone(),
                 )
                 .await?;
@@ -307,9 +323,18 @@ impl WebsocketProtocolHandler {
                 .map_err(map_to_string)
                 .map_err(logthru_net!(error))?;
             let conn = NetworkConnection::Ws(WebsocketNetworkConnection::new(tls, ws_stream));
+
+            // Make the connection descriptor peer address
+            let peer_addr = PeerAddress::new(
+                Address::from_socket_addr(remote_socket_addr),
+                port,
+                ProtocolType::WS,
+            );
+
+            // Register the WS connection
             network_manager
                 .on_new_connection(
-                    ConnectionDescriptor::new(peer_addr, local_addr),
+                    ConnectionDescriptor::new(peer_addr, actual_local_addr),
                     conn.clone(),
                 )
                 .await?;

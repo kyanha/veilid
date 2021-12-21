@@ -60,16 +60,12 @@ struct Address {
     union {
         ipv4                @0  :AddressIPV4;
         ipv6                @1  :AddressIPV6;
-        hostname            @2  :Text;
     }
 }
 
 struct SocketAddress {
-    union {
-        ipv4                @0  :AddressIPV4;
-        ipv6                @1  :AddressIPV6;
-    }
-    port                    @2  :UInt16;
+    address                 @0  :Address;
+    port                    @1  :UInt16;
 }
 
 enum ProtocolKind {
@@ -80,25 +76,21 @@ enum ProtocolKind {
 }
 
 struct DialInfoUDP {
-    address                 @0  :Address;
-    port                    @1  :UInt16;
+    socketAddress           @0  :SocketAddress;
 }
 
 struct DialInfoTCP {
-    address                 @0  :Address;
-    port                    @1  :UInt16;
+    socketAddress           @0  :SocketAddress;
 }
 
 struct DialInfoWS {
-    host                    @0  :Text;
-    port                    @1  :UInt16;
-    path                    @2  :Text;
+    socketAddress           @0  :SocketAddress;
+    request                 @1  :Text;
 }
 
 struct DialInfoWSS {
-    host                    @0  :Text;
-    port                    @1  :UInt16;
-    path                    @2  :Text;
+    socketAddress           @0  :SocketAddress;
+    request                 @1  :Text;
 }
 
 struct DialInfo {

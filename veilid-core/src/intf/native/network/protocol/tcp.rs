@@ -6,7 +6,6 @@ use crate::*;
 use async_std::net::*;
 use async_std::prelude::*;
 use async_std::sync::Mutex as AsyncMutex;
-use socket2::{Domain, Protocol, Socket, Type};
 use std::fmt;
 
 struct RawTcpNetworkConnectionInner {
@@ -170,40 +169,11 @@ impl RawTcpProtocolHandler {
 
     pub async fn connect(
         network_manager: NetworkManager,
-        preferred_local_address: Option<SocketAddr>,
+        local_address: SocketAddr,
         remote_socket_addr: SocketAddr,
     ) -> Result<NetworkConnection, String> {
-        // Make a low level socket that can connect to the remote socket address
-        // and attempt to reuse the local address that our listening socket uses
-        // for hole-punch compatibility
-        let domain = Domain::for_address(remote_socket_addr);
-        let socket = Socket::new(domain, Type::STREAM, Some(Protocol::TCP))
-            .map_err(map_to_string)
-            .map_err(logthru_net!())?;
-        if let Err(e) = socket.set_linger(None) {
-            log_net!("Couldn't set TCP linger: {}", e);
-        }
-        if let Err(e) = socket.set_nodelay(true) {
-            log_net!("Couldn't set TCP nodelay: {}", e);
-        }
-        if let Err(e) = socket.set_reuse_address(true) {
-            log_net!("Couldn't set reuse address: {}", e);
-        }
-        cfg_if! {
-            if #[cfg(unix)] {
-                if let Err(e) = socket.set_reuse_port(true) {
-                    log_net!("Couldn't set reuse port: {}", e);
-                }
-            }
-        }
-
-        // Try to bind it to the preferred local address
-        if let Some(some_local_addr) = preferred_local_address {
-            let socket2_addr = socket2::SockAddr::from(some_local_addr);
-            if let Err(e) = socket.bind(&socket2_addr) {
-                log_net!(error "failed to bind TCP socket: {}", e);
-            }
-        }
+        // Make a shared socket
+        let socket = new_shared_tcp_socket(local_address)?;
 
         // Connect to the remote address
         let remote_socket2_addr = socket2::SockAddr::from(remote_socket_addr);
