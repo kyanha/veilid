@@ -482,9 +482,7 @@ impl RoutingTable {
     ) -> Result<NodeRef, String> {
         let nr = self.create_node_ref(node_id)?;
         nr.operate(move |e| -> Result<(), String> {
-            for di in dial_infos {
-                e.add_dial_info(di.clone())?;
-            }
+            e.update_dial_info(dial_infos);
             Ok(())
         })?;
 

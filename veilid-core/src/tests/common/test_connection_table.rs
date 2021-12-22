@@ -11,53 +11,48 @@ pub async fn test_add_get_remove() {
     let c3 = NetworkConnection::Dummy(DummyNetworkConnection {});
 
     let a1 = ConnectionDescriptor::new_no_local(PeerAddress::new(
-        Address::IPV4(Ipv4Addr::new(127, 0, 0, 1)),
-        8080,
+        SocketAddress::new(Address::IPV4(Ipv4Addr::new(127, 0, 0, 1)), 8080),
         ProtocolType::TCP,
     ));
     let a2 = ConnectionDescriptor::new_no_local(PeerAddress::new(
-        Address::IPV4(Ipv4Addr::new(127, 0, 0, 1)),
-        8080,
+        SocketAddress::new(Address::IPV4(Ipv4Addr::new(127, 0, 0, 1)), 8080),
         ProtocolType::TCP,
     ));
     let a3 = ConnectionDescriptor::new(
         PeerAddress::new(
-            Address::IPV6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)),
-            8090,
+            SocketAddress::new(Address::IPV6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)), 8090),
             ProtocolType::TCP,
         ),
-        SocketAddr::V6(SocketAddrV6::new(
+        SocketAddress::from_socket_addr(SocketAddr::V6(SocketAddrV6::new(
             Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1),
             8080,
             0,
             0,
-        )),
+        ))),
     );
     let a4 = ConnectionDescriptor::new(
         PeerAddress::new(
-            Address::IPV6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)),
-            8090,
+            SocketAddress::new(Address::IPV6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)), 8090),
             ProtocolType::TCP,
         ),
-        SocketAddr::V6(SocketAddrV6::new(
+        SocketAddress::from_socket_addr(SocketAddr::V6(SocketAddrV6::new(
             Ipv6Addr::new(1, 0, 0, 0, 0, 0, 0, 1),
             8080,
             0,
             0,
-        )),
+        ))),
     );
     let a5 = ConnectionDescriptor::new(
         PeerAddress::new(
-            Address::Hostname("example.com".to_owned()),
-            8090,
+            SocketAddress::new(Address::IPV6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)), 8090),
             ProtocolType::WSS,
         ),
-        SocketAddr::V6(SocketAddrV6::new(
+        SocketAddress::from_socket_addr(SocketAddr::V6(SocketAddrV6::new(
             Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1),
             8080,
             0,
             0,
-        )),
+        ))),
     );
 
     assert_eq!(a1, a2);

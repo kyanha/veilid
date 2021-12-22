@@ -42,6 +42,17 @@ impl NetworkClass {
     }
 }
 
+#[derive(Copy, Clone, Debug, Default)]
+pub struct ProtocolConfig {
+    pub udp_enabled: bool,
+    pub tcp_connect: bool,
+    pub tcp_listen: bool,
+    pub ws_connect: bool,
+    pub ws_listen: bool,
+    pub wss_connect: bool,
+    pub wss_listen: bool,
+}
+
 // Things we get when we start up and go away when we shut down
 // Routing table is not in here because we want it to survive a network shutdown/startup restart
 #[derive(Clone)]
@@ -381,11 +392,20 @@ impl NetworkManager {
     }
 
     // Return what network class we are in
-    pub fn get_network_class(&self) -> NetworkClass {
+    pub fn get_network_class(&self) -> Option<NetworkClass> {
         if let Some(components) = &self.inner.lock().components {
             components.net.get_network_class()
         } else {
-            NetworkClass::Invalid
+            None
+        }
+    }
+
+    // Return what protocols we have enabled
+    pub fn get_protocol_config(&self) -> Option<ProtocolConfig> {
+        if let Some(components) = &self.inner.lock().components {
+            components.net.get_protocol_config()
+        } else {
+            None
         }
     }
 

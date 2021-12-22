@@ -39,13 +39,11 @@ pub const PEEK_DETECT_LEN: usize = 64;
 struct NetworkInner {
     routing_table: RoutingTable,
     network_manager: NetworkManager,
+    network_started: bool,
     network_needs_restart: bool,
-    udp_listen: bool,
+    protocol_config: Option<ProtocolConfig>,
     udp_static_public_dialinfo: bool,
-    tcp_listen: bool,
     tcp_static_public_dialinfo: bool,
-    ws_listen: bool,
-    wss_listen: bool,
     network_class: Option<NetworkClass>,
     join_handles: Vec<JoinHandle<()>>,
     listener_states: BTreeMap<SocketAddr, Arc<RwLock<ListenerState>>>,
@@ -81,13 +79,11 @@ impl Network {
         NetworkInner {
             routing_table: network_manager.routing_table(),
             network_manager,
+            network_started: false,
             network_needs_restart: false,
-            udp_listen: false,
+            protocol_config: None,
             udp_static_public_dialinfo: false,
-            tcp_listen: false,
             tcp_static_public_dialinfo: false,
-            ws_listen: false,
-            wss_listen: false,
             network_class: None,
             join_handles: Vec::new(),
             listener_states: BTreeMap::new(),
@@ -681,14 +677,11 @@ impl Network {
         match descriptor.protocol_type() {
             ProtocolType::UDP => {
                 // send over the best udp socket we have bound since UDP is not connection oriented
-                let peer_socket_addr = descriptor
-                    .remote
-                    .to_socket_addr()
-                    .map_err(map_to_string)
-                    .map_err(logthru_net!(error))?;
-                if let Some(ph) =
-                    self.find_best_udp_protocol_handler(&peer_socket_addr, &descriptor.local)
-                {
+                let peer_socket_addr = descriptor.remote.to_socket_addr();
+                if let Some(ph) = self.find_best_udp_protocol_handler(
+                    &peer_socket_addr,
+                    &descriptor.local.map(|sa| sa.to_socket_addr()),
+                ) {
                     ph.clone()
                         .send_message(data, peer_socket_addr)
                         .await
@@ -724,14 +717,13 @@ impl Network {
     ) -> Result<(), String> {
         match &dial_info {
             DialInfo::UDP(_) => {
-                let peer_socket_addr = dial_info.to_socket_addr().map_err(logthru_net!())?;
-
+                let peer_socket_addr = dial_info.to_socket_addr();
                 RawUdpProtocolHandler::send_unbound_message(data, peer_socket_addr)
                     .await
                     .map_err(logthru_net!())
             }
             DialInfo::TCP(_) => {
-                let peer_socket_addr = dial_info.to_socket_addr().map_err(logthru_net!())?;
+                let peer_socket_addr = dial_info.to_socket_addr();
                 RawTcpProtocolHandler::send_unbound_message(data, peer_socket_addr)
                     .await
                     .map_err(logthru_net!())
@@ -752,7 +744,7 @@ impl Network {
 
         let conn = match &dial_info {
             DialInfo::UDP(_) => {
-                let peer_socket_addr = dial_info.to_socket_addr().map_err(logthru_net!())?;
+                let peer_socket_addr = dial_info.to_socket_addr();
                 if let Some(ph) = self.find_best_udp_protocol_handler(&peer_socket_addr, &None) {
                     return ph
                         .send_message(data, peer_socket_addr)
@@ -764,7 +756,7 @@ impl Network {
                 }
             }
             DialInfo::TCP(_) => {
-                let peer_socket_addr = dial_info.to_socket_addr().map_err(logthru_net!())?;
+                let peer_socket_addr = dial_info.to_socket_addr();
                 let local_addr =
                     self.get_preferred_local_address(self.inner.lock().tcp_port, &peer_socket_addr);
                 RawTcpProtocolHandler::connect(network_manager, local_addr, peer_socket_addr)
@@ -772,22 +764,20 @@ impl Network {
                     .map_err(logthru_net!())?
             }
             DialInfo::WS(_) => {
-                let remote_ip_addr = dial_info.resolve()?;
-
+                let peer_socket_addr = dial_info.to_socket_addr();
                 let local_addr =
                     self.get_preferred_local_address(self.inner.lock().ws_port, &peer_socket_addr);
-
                 WebsocketProtocolHandler::connect(network_manager, local_addr, dial_info)
                     .await
                     .map_err(logthru_net!(error))?
             }
             DialInfo::WSS(_) => {
+                let peer_socket_addr = dial_info.to_socket_addr();
                 let local_addr =
-                self.get_preferred_local_address(self.inner.lock().ws_port, &peer_socket_addr);
-
-                WebsocketProtocolHandler::connect(network_manager, dial_info)
-                .await
-                .map_err(logthru_net!(error))?,
+                    self.get_preferred_local_address(self.inner.lock().wss_port, &peer_socket_addr);
+                WebsocketProtocolHandler::connect(network_manager, local_addr, dial_info)
+                    .await
+                    .map_err(logthru_net!(error))?
             }
         };
 
@@ -865,7 +855,7 @@ impl Network {
         } else {
             // Register local dial info as public if it is publicly routable
             for x in &dial_infos {
-                if x.is_public().unwrap_or(false) {
+                if x.is_global() {
                     routing_table.register_global_dial_info(
                         x.clone(),
                         Some(NetworkClass::Server),
@@ -875,7 +865,6 @@ impl Network {
                 }
             }
         }
-        self.inner.lock().udp_listen = true;
         self.inner.lock().udp_static_public_dialinfo = static_public;
         Ok(())
     }
@@ -904,8 +893,8 @@ impl Network {
         for (a, p) in addresses {
             // Pick out WS port for outbound connections (they will all be the same)
             self.inner.lock().ws_port = p;
-
-            let di = DialInfo::ws(a.address_string(), p, path.clone());
+xxx continue here
+            let di = DialInfo::try_ws(a.address_string(), p, path.clone());
             dial_infos.push(di.clone());
             routing_table.register_local_dial_info(di, DialInfoOrigin::Static);
         }
@@ -930,7 +919,6 @@ impl Network {
             );
         }
 
-        self.inner.lock().ws_listen = true;
         Ok(())
     }
 
@@ -990,7 +978,6 @@ impl Network {
             return Err("WSS URL must be specified due to TLS requirements".to_owned());
         }
 
-        self.inner.lock().wss_listen = true;
         Ok(())
     }
 
@@ -1044,7 +1031,7 @@ impl Network {
         } else {
             // Register local dial info as public if it is publicly routable
             for x in &dial_infos {
-                if x.is_public().unwrap_or(false) {
+                if x.is_global() {
                     routing_table.register_global_dial_info(
                         x.clone(),
                         Some(NetworkClass::Server),
@@ -1055,10 +1042,13 @@ impl Network {
             }
         }
 
-        self.inner.lock().tcp_listen = true;
         self.inner.lock().tcp_static_public_dialinfo = static_public;
 
         Ok(())
+    }
+
+    pub fn get_protocol_config(&self) -> Option<ProtocolConfig> {
+        self.inner.lock().protocol_config.clone()
     }
 
     pub async fn startup(&self) -> Result<(), String> {
@@ -1068,36 +1058,38 @@ impl Network {
         // initialize interfaces
         self.inner.lock().interfaces.refresh()?;
 
-        // get network config
-        let (enabled_udp, connect_tcp, listen_tcp, connect_ws, listen_ws, connect_wss, listen_wss) = {
+        // get protocol config
+        let protocol_config = {
             let c = self.config.get();
-            (
-                c.network.protocol.udp.enabled && c.capabilities.protocol_udp,
-                c.network.protocol.tcp.connect && c.capabilities.protocol_connect_tcp,
-                c.network.protocol.tcp.listen && c.capabilities.protocol_accept_tcp,
-                c.network.protocol.ws.connect && c.capabilities.protocol_connect_ws,
-                c.network.protocol.ws.listen && c.capabilities.protocol_accept_ws,
-                c.network.protocol.wss.connect && c.capabilities.protocol_connect_wss,
-                c.network.protocol.wss.listen && c.capabilities.protocol_accept_wss,
-            )
+            ProtocolConfig {
+                udp_enabled: c.network.protocol.udp.enabled && c.capabilities.protocol_udp,
+                tcp_connect: c.network.protocol.tcp.connect && c.capabilities.protocol_connect_tcp,
+                tcp_listen: c.network.protocol.tcp.listen && c.capabilities.protocol_accept_tcp,
+                ws_connect: c.network.protocol.ws.connect && c.capabilities.protocol_connect_ws,
+                ws_listen: c.network.protocol.ws.listen && c.capabilities.protocol_accept_ws,
+                wss_connect: c.network.protocol.wss.connect && c.capabilities.protocol_connect_wss,
+                wss_listen: c.network.protocol.wss.listen && c.capabilities.protocol_accept_wss,
+            }
         };
+        self.inner.lock().protocol_config = Some(protocol_config);
 
         // start listeners
-        if enabled_udp {
+        if protocol_config.udp_enabled {
             self.start_udp_listeners().await?;
             self.create_udp_outbound_sockets().await?;
         }
-        if listen_ws {
+        if protocol_config.ws_listen {
             self.start_ws_listeners().await?;
         }
-        if listen_wss {
+        if protocol_config.wss_listen {
             self.start_wss_listeners().await?;
         }
-        if listen_tcp {
+        if protocol_config.tcp_listen {
             self.start_tcp_listeners().await?;
         }
 
         info!("network started");
+        self.inner.lock().network_started = true;
         Ok(())
     }
 
@@ -1123,13 +1115,17 @@ impl Network {
     }
 
     //////////////////////////////////////////
-    pub fn get_network_class(&self) -> NetworkClass {
+    pub fn get_network_class(&self) -> Option<NetworkClass> {
         let inner = self.inner.lock();
         let routing_table = inner.routing_table.clone();
 
+        if !inner.network_started {
+            return None;
+        }
+
         // If we've fixed the network class, return it rather than calculating it
-        if let Some(network_class) = inner.network_class {
-            return network_class;
+        if inner.network_class.is_some() {
+            return inner.network_class;
         }
 
         // Go through our public dialinfo and see what our best network class is
@@ -1141,7 +1137,7 @@ impl Network {
                 }
             }
         }
-        network_class
+        Some(network_class)
     }
 
     //////////////////////////////////////////
@@ -1149,18 +1145,19 @@ impl Network {
     pub async fn tick(&self) -> Result<(), String> {
         let (
             routing_table,
-            udp_listen,
+            protocol_config,
             udp_static_public_dialinfo,
-            tcp_listen,
             tcp_static_public_dialinfo,
             network_class,
         ) = {
             let inner = self.inner.lock();
             (
                 inner.network_manager.routing_table(),
-                inner.udp_listen,
+                inner
+                    .protocol_config
+                    .clone()
+                    .unwrap_or_else(|| ProtocolConfig::default()),
                 inner.udp_static_public_dialinfo,
-                inner.tcp_listen,
                 inner.tcp_static_public_dialinfo,
                 inner.network_class.unwrap_or(NetworkClass::Invalid),
             )
@@ -1171,7 +1168,7 @@ impl Network {
         // If we can have public dialinfo, or we haven't figured out our network class yet,
         // and we're active for UDP, we should attempt to get our public dialinfo sorted out
         // and assess our network class if we haven't already
-        if udp_listen
+        if protocol_config.udp_enabled
             && !udp_static_public_dialinfo
             && (network_class.inbound_capable() || network_class == NetworkClass::Invalid)
         {
@@ -1189,7 +1186,7 @@ impl Network {
         }
 
         // Same but for TCPv4
-        if tcp_listen
+        if protocol_config.tcp_enabled
             && !tcp_static_public_dialinfo
             && (network_class.inbound_capable() || network_class == NetworkClass::Invalid)
         {

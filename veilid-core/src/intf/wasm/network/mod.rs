@@ -12,12 +12,15 @@ pub use protocol::*;
 struct NetworkInner {
     network_manager: NetworkManager,
     stop_network: Eventual,
+    network_started: bool,
     network_needs_restart: bool,
+    protocol_config: Option<ProtocolConfig>,
     //join_handle: TryJoin?
 }
 
 #[derive(Clone)]
 pub struct Network {
+    config: VeilidConfig,
     inner: Arc<Mutex<NetworkInner>>,
 }
 
@@ -26,13 +29,15 @@ impl Network {
         NetworkInner {
             network_manager,
             stop_network: Eventual::new(),
+            network_started: false,
             network_needs_restart: false,
-            //join_handle: None,
+            protocol_config: None, //join_handle: None,
         }
     }
 
     pub fn new(network_manager: NetworkManager) -> Self {
         Self {
+            config: network_manager.config(),
             inner: Arc::new(Mutex::new(Self::new_inner(network_manager))),
         }
     }
@@ -150,10 +155,21 @@ impl Network {
     /////////////////////////////////////////////////////////////////
 
     pub async fn startup(&self) -> Result<(), String> {
-        //let network_manager = self.inner.lock().network_manager.clone();
-        //let config_shared = network_manager.core().config();
-        //let config = config_shared.get();
+        // get protocol config
+        self.inner.lock().protocol_config = Some({
+            let c = self.config.get();
+            ProtocolConfig {
+                udp_enabled: false, //c.network.protocol.udp.enabled && c.capabilities.protocol_udp,
+                tcp_connect: false, //c.network.protocol.tcp.connect && c.capabilities.protocol_connect_tcp,
+                tcp_listen: false, //c.network.protocol.tcp.listen && c.capabilities.protocol_accept_tcp,
+                ws_connect: c.network.protocol.ws.connect && c.capabilities.protocol_connect_ws,
+                ws_listen: c.network.protocol.ws.listen && c.capabilities.protocol_accept_ws,
+                wss_connect: c.network.protocol.wss.connect && c.capabilities.protocol_connect_wss,
+                wss_listen: c.network.protocol.wss.listen && c.capabilities.protocol_accept_wss,
+            }
+        });
 
+        self.inner.lock().network_started = true;
         Ok(())
     }
 
@@ -179,9 +195,16 @@ impl Network {
     }
 
     //////////////////////////////////////////
-    pub fn get_network_class(&self) -> NetworkClass {
+    pub fn get_network_class(&self) -> Option<NetworkClass> {
         // xxx eventually detect tor browser?
-        return NetworkClass::WebApp;
+        return if self.inner.lock().network_started {
+            Some(NetworkClass::WebApp)
+        } else {
+            None
+        };
+    }
+    pub fn get_protocol_config(&self) -> Option<ProtocolConfig> {
+        self.inner.lock().protocol_config.clone()
     }
 
     //////////////////////////////////////////

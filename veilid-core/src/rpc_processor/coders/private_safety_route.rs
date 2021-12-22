@@ -51,7 +51,7 @@ pub fn encode_route_hop_data(
             .blob
             .len()
             .try_into()
-            .map_err(map_error_internal!("invalid blob length in route hop data"))?,
+            .map_err(map_error_protocol!("invalid blob length in route hop data"))?,
     );
     blob_builder.copy_from_slice(route_hop_data.blob.as_slice());
     Ok(())
@@ -120,13 +120,13 @@ pub fn decode_route_hop_data(
         &reader
             .reborrow()
             .get_nonce()
-            .map_err(map_error_internal!("invalid nonce in route hop data"))?,
+            .map_err(map_error_protocol!("invalid nonce in route hop data"))?,
     );
 
     let blob = reader
         .reborrow()
         .get_blob()
-        .map_err(map_error_internal!("invalid blob in route hop data"))?
+        .map_err(map_error_protocol!("invalid blob in route hop data"))?
         .to_vec();
 
     Ok(RouteHopData { nonce, blob })
@@ -137,13 +137,13 @@ pub fn decode_route_hop(reader: &veilid_capnp::route_hop::Reader) -> Result<Rout
         &reader
             .reborrow()
             .get_dial_info()
-            .map_err(map_error_internal!("invalid dial info in route hop"))?,
+            .map_err(map_error_protocol!("invalid dial info in route hop"))?,
     )?;
 
     let next_hop = if reader.has_next_hop() {
         let rhd_reader = reader
             .get_next_hop()
-            .map_err(map_error_internal!("invalid next hop in route hop"))?;
+            .map_err(map_error_protocol!("invalid next hop in route hop"))?;
         Some(decode_route_hop_data(&rhd_reader)?)
     } else {
         None
@@ -161,13 +161,13 @@ pub fn decode_private_route(
     let public_key = decode_public_key(
         &reader
             .get_public_key()
-            .map_err(map_error_internal!("invalid public key in private route"))?,
+            .map_err(map_error_protocol!("invalid public key in private route"))?,
     );
     let hop_count = reader.get_hop_count();
     let hops = if reader.has_first_hop() {
         let rh_reader = reader
             .get_first_hop()
-            .map_err(map_error_internal!("invalid first hop in private route"))?;
+            .map_err(map_error_protocol!("invalid first hop in private route"))?;
         Some(decode_route_hop(&rh_reader)?)
     } else {
         None
@@ -186,7 +186,7 @@ pub fn decode_safety_route(
     let public_key = decode_public_key(
         &reader
             .get_public_key()
-            .map_err(map_error_internal!("invalid public key in safety route"))?,
+            .map_err(map_error_protocol!("invalid public key in safety route"))?,
     );
     let hop_count = reader.get_hop_count();
     let hops = match reader.get_hops().which() {
@@ -197,7 +197,7 @@ pub fn decode_safety_route(
             SafetyRouteHops::Private(decode_private_route(&pr_reader)?)
         }
         _ => {
-            return Err(rpc_error_internal("invalid hops in safety route"));
+            return Err(rpc_error_protocol("invalid hops in safety route"));
         }
     };
 

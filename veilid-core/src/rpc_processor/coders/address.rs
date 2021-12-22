@@ -35,14 +35,6 @@ pub fn encode_address(
                     .expect("slice with incorrect length"),
             ));
         }
-        Address::Hostname(h) => {
-            let mut tb = builder.reborrow().init_hostname(
-                h.len()
-                    .try_into()
-                    .map_err(map_error_internal!("hostname too long"))?,
-            );
-            tb.push_str(h.as_str());
-        }
     };
     Ok(())
 }
@@ -63,7 +55,6 @@ pub fn decode_address(reader: &veilid_capnp::address::Reader) -> Result<Address,
                 v6b2[1], v6b2[2], v6b2[3], v6b3[0], v6b3[1], v6b3[2], v6b3[3],
             ])))
         }
-        Ok(veilid_capnp::address::Which::Hostname(Ok(tr))) => Ok(Address::Hostname(tr.to_owned())),
-        _ => Err(rpc_error_internal("invalid address type")),
+        _ => Err(rpc_error_protocol("invalid address type")),
     }
 }

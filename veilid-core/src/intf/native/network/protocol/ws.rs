@@ -221,11 +221,8 @@ impl WebsocketProtocolHandler {
             ProtocolType::WS
         };
 
-        let peer_addr = PeerAddress::new(
-            Address::from_socket_addr(socket_addr),
-            socket_addr.port(),
-            protocol_type,
-        );
+        let peer_addr =
+            PeerAddress::new(SocketAddress::from_socket_addr(socket_addr), protocol_type);
 
         let conn = NetworkConnection::WsAccepted(WebsocketNetworkConnection::new(
             self.inner.tls,
@@ -235,7 +232,10 @@ impl WebsocketProtocolHandler {
             .network_manager
             .clone()
             .on_new_connection(
-                ConnectionDescriptor::new(peer_addr, self.inner.local_address),
+                ConnectionDescriptor::new(
+                    peer_addr,
+                    SocketAddress::from_socket_addr(self.inner.local_address),
+                ),
                 conn,
             )
             .await?;
@@ -248,27 +248,20 @@ impl WebsocketProtocolHandler {
         dial_info: &DialInfo,
     ) -> Result<NetworkConnection, String> {
         // Split dial info up
-        let (tls, request, domain, port, protocol_type) = match &dial_info {
-            DialInfo::WS(di) => (
-                false,
-                format!("ws://{}:{}/{}", di.host, di.port, di.path),
-                di.host.clone(),
-                di.port,
-                ProtocolType::WS,
-            ),
-            DialInfo::WSS(di) => (
-                true,
-                format!("wss://{}:{}/{}", di.host, di.port, di.path),
-                di.host.clone(),
-                di.port,
-                ProtocolType::WSS,
-            ),
+        let (tls, protocol_type, scheme) = match &dial_info {
+            DialInfo::WS(_) => (false, ProtocolType::WS, "ws"),
+            DialInfo::WSS(_) => (true, ProtocolType::WSS, "wss"),
             _ => panic!("invalid dialinfo for WS/WSS protocol"),
         };
+        let request = dial_info.request().unwrap();
+        let split_url = SplitUrl::from_str(&request)?;
+        if split_url.scheme != scheme {
+            return Err("invalid websocket url scheme".to_string());
+        }
+        let domain = split_url.host.clone();
 
         // Resolve remote address
-        let remote_ip_addr = dial_info.resolve()?;
-        let remote_socket_addr = SocketAddr::new(remote_ip_addr, port);
+        let remote_socket_addr = dial_info.to_socket_addr();
 
         // Make a shared socket
         let socket = new_shared_tcp_socket(local_address)?;
@@ -304,15 +297,17 @@ impl WebsocketProtocolHandler {
 
             // Make the connection descriptor peer address
             let peer_addr = PeerAddress::new(
-                Address::from_socket_addr(remote_socket_addr),
-                port,
+                SocketAddress::from_socket_addr(remote_socket_addr),
                 ProtocolType::WSS,
             );
 
             // Register the WSS connection
             network_manager
                 .on_new_connection(
-                    ConnectionDescriptor::new(peer_addr, actual_local_addr),
+                    ConnectionDescriptor::new(
+                        peer_addr,
+                        SocketAddress::from_socket_addr(actual_local_addr),
+                    ),
                     conn.clone(),
                 )
                 .await?;
@@ -326,15 +321,17 @@ impl WebsocketProtocolHandler {
 
             // Make the connection descriptor peer address
             let peer_addr = PeerAddress::new(
-                Address::from_socket_addr(remote_socket_addr),
-                port,
+                SocketAddress::from_socket_addr(remote_socket_addr),
                 ProtocolType::WS,
             );
 
             // Register the WS connection
             network_manager
                 .on_new_connection(
-                    ConnectionDescriptor::new(peer_addr, actual_local_addr),
+                    ConnectionDescriptor::new(
+                        peer_addr,
+                        SocketAddress::from_socket_addr(actual_local_addr),
+                    ),
                     conn.clone(),
                 )
                 .await?;

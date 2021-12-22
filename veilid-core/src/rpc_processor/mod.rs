@@ -779,7 +779,7 @@ impl RPCProcessor {
                 .peer_noderef
                 .operate(|entry| match entry.last_connection() {
                     None => None,
-                    Some(c) => c.remote.to_socket_addr().ok(),
+                    Some(c) => Some(c.remote.to_socket_addr()),
                 });
         SenderInfo { socket_address }
     }
@@ -955,7 +955,7 @@ impl RPCProcessor {
             let address_filter = self.config.get().network.address_filter;
             if address_filter {
                 for di in &peer_info.dial_infos {
-                    if !di.is_public().map_err(map_error_string!())? {
+                    if !di.is_global() {
                         // non-public address causes rejection
                         return Err(RPCError::InvalidFormat);
                     }
@@ -1508,7 +1508,7 @@ impl RPCProcessor {
             // reject attempts to include non-public addresses in results
             if address_filter {
                 for di in &peer_info.dial_infos {
-                    if !di.is_public().map_err(map_error_string!())? {
+                    if !di.is_global() {
                         // non-public address causes rejection
                         return Err(RPCError::InvalidFormat);
                     }

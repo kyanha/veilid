@@ -15,7 +15,7 @@ pub fn encode_peer_info(
             .dial_infos
             .len()
             .try_into()
-            .map_err(map_error_internal!("too many dial infos in peer info"))?,
+            .map_err(map_error_protocol!("too many dial infos in peer info"))?,
     );
 
     for idx in 0..peer_info.dial_infos.len() {
@@ -38,7 +38,7 @@ pub fn decode_peer_info(reader: &veilid_capnp::peer_info::Reader) -> Result<Peer
         dil_reader
             .len()
             .try_into()
-            .map_err(map_error_internal!("too many dial infos"))?,
+            .map_err(map_error_protocol!("too many dial infos"))?,
     );
     for di in dil_reader.iter() {
         dial_infos.push(decode_dial_info(&di)?)

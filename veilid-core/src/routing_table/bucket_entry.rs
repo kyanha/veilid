@@ -31,7 +31,7 @@ pub struct BucketEntry {
     pub(super) ref_count: u32,
     min_max_version: Option<(u8, u8)>,
     last_connection: Option<(ConnectionDescriptor, u64)>,
-    dial_info_entries: VecDeque<DialInfoEntry>,
+    dial_infos: Vec<DialInfo>,
     stats_accounting: StatsAccounting,
     peer_stats: PeerStats,
 }
@@ -43,7 +43,7 @@ impl BucketEntry {
             ref_count: 0,
             min_max_version: None,
             last_connection: None,
-            dial_info_entries: VecDeque::new(),
+            dial_infos: Vec::new(),
             stats_accounting: StatsAccounting::new(),
             peer_stats: PeerStats {
                 time_added: now,
@@ -56,145 +56,48 @@ impl BucketEntry {
         }
     }
 
-    pub fn add_dial_info(&mut self, dial_info: DialInfo) -> Result<(), String> {
-        let mut idx: Option<usize> = None;
-        for i in 0..self.dial_info_entries.len() {
-            if self.dial_info_entries[i].dial_info() == &dial_info {
-                idx = Some(i);
-                break;
-            }
-        }
-        match idx {
-            None => {
-                self.dial_info_entries
-                    .push_front(DialInfoEntry::try_new(dial_info)?);
-            }
-            Some(idx) => {
-                let die = self.dial_info_entries.remove(idx).unwrap();
-                self.dial_info_entries.push_front(die);
-            }
-        }
-        Ok(())
+    pub fn update_dial_infos(&mut self, dial_infos: &[DialInfo]) {
+        self.dial_infos = dial_infos.to_vec();
+        self.dial_infos.sort();
     }
 
-    pub fn best_dial_info(&self) -> Option<DialInfo> {
-        self.dial_info_entries
-            .front()
-            .map(|die| die.dial_info().clone())
-    }
-
-    pub fn filtered_dial_info<F>(&self, filter: F) -> Option<DialInfo>
+    pub fn first_filtered_dial_info<F>(&self, filter: F) -> Option<DialInfo>
     where
-        F: Fn(&DialInfoEntry) -> bool,
+        F: Fn(&DialInfo) -> bool,
     {
-        for die in &self.dial_info_entries {
-            if filter(die) {
-                return Some(die.dial_info().clone());
+        for di in &self.dial_infos {
+            if filter(di) {
+                return Some(di.clone());
             }
         }
         None
     }
-
-    pub fn dial_info_entries_as_ref(&self) -> &VecDeque<DialInfoEntry> {
-        &self.dial_info_entries
+    pub fn all_filtered_dial_infos<F>(&self, filter: F) -> Vec<DialInfo>
+    where
+        F: Fn(&DialInfo) -> bool,
+    {
+        let ret = Vec::new();
+        for di in &self.dial_infos {
+            if filter(di) {
+                ret.push(di.clone());
+            }
+        }
+        ret
     }
 
-    pub fn dial_info(&self) -> Vec<DialInfo> {
-        self.dial_info_entries
-            .iter()
-            .map(|e| e.dial_info().clone())
-            .collect()
-    }
-
-    pub fn global_dial_info(&self) -> Vec<DialInfo> {
-        self.dial_info_entries
-            .iter()
-            .filter_map(|e| {
-                if e.is_public() {
-                    Some(e.dial_info().clone())
-                } else {
-                    None
-                }
-            })
-            .collect()
-    }
-
-    pub fn global_dial_info_for_protocol(&self, protocol_type: ProtocolType) -> Vec<DialInfo> {
-        self.dial_info_entries
-            .iter()
-            .filter_map(|e| {
-                if e.dial_info().protocol_type() != protocol_type {
-                    None
-                } else if e.is_public() {
-                    Some(e.dial_info().clone())
-                } else {
-                    None
-                }
-            })
-            .collect()
-    }
-
-    pub fn local_dial_info(&self) -> Vec<DialInfo> {
-        self.dial_info_entries
-            .iter()
-            .filter_map(|e| {
-                if e.is_private() {
-                    Some(e.dial_info().clone())
-                } else {
-                    None
-                }
-            })
-            .collect()
-    }
-
-    pub fn local_dial_info_for_protocol(&mut self, protocol_type: ProtocolType) -> Vec<DialInfo> {
-        self.dial_info_entries
-            .iter_mut()
-            .filter_map(|e| {
-                if e.dial_info().protocol_type() != protocol_type {
-                    None
-                } else if e.is_private() {
-                    Some(e.dial_info().clone())
-                } else {
-                    None
-                }
-            })
-            .collect()
+    pub fn dial_infos(&self) -> &[DialInfo] {
+        &self.dial_infos.clone()
     }
 
     pub fn get_peer_info(&self, key: DHTKey, scope: PeerScope) -> PeerInfo {
         PeerInfo {
             node_id: NodeId::new(key),
-            dial_infos: match scope {
-                PeerScope::All => self.dial_info(),
-                PeerScope::Global => self.global_dial_info(),
-                PeerScope::Local => self.local_dial_info(),
-            },
+            dial_infos: self.all_filtered_dial_infos(|di| di.matches_peer_scope(scope)),
         }
     }
 
     pub fn set_last_connection(&mut self, last_connection: ConnectionDescriptor, timestamp: u64) {
         self.last_connection = Some((last_connection, timestamp));
-
-        // sort the dialinfoentries by the last peer address if we have a match
-        // if one particular peer address is being used and matches a dialinfoentry
-        // then we should prefer it
-        for i in 0..self.dial_info_entries.len() {
-            let die = &mut self.dial_info_entries[i];
-
-            // see if we have a matching address
-            if RoutingTable::dial_info_peer_address_match(
-                die.dial_info(),
-                &self.last_connection.as_ref().unwrap().0.remote,
-            ) {
-                // push the most recent dialinfo to the front
-                let dies = &mut self.dial_info_entries;
-                let die = dies.remove(i).unwrap();
-                dies.push_front(die);
-
-                break;
-            }
-        }
     }
 
     pub fn last_connection(&self) -> Option<ConnectionDescriptor> {

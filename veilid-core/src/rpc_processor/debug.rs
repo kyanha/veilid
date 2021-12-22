@@ -12,8 +12,12 @@ pub fn rpc_error_internal<T: AsRef<str>>(x: T) -> RPCError {
     error!("RPCError Internal: {}", x.as_ref());
     RPCError::Internal(x.as_ref().to_owned())
 }
+pub fn rpc_error_protocol<T: AsRef<str>>(x: T) -> RPCError {
+    error!("RPCError Protocol: {}", x.as_ref());
+    RPCError::Protocol(x.as_ref().to_owned())
+}
 pub fn rpc_error_capnp_error(e: capnp::Error) -> RPCError {
-    error!("RPCError Protocol: {}", &e.description);
+    error!("RPCError Protocol: capnp error: {}", &e.description);
     RPCError::Protocol(e.description)
 }
 pub fn rpc_error_capnp_notinschema(e: capnp::NotInSchema) -> RPCError {
@@ -44,12 +48,17 @@ macro_rules! map_error_internal {
     };
 }
 #[macro_export]
+macro_rules! map_error_protocol {
+    ($x:expr) => {
+        |_| rpc_error_protocol($x)
+    };
+}
+#[macro_export]
 macro_rules! map_error_string {
     () => {
         |s| rpc_error_internal(&s)
     };
 }
-
 #[macro_export]
 macro_rules! map_error_capnp_error {
     () => {

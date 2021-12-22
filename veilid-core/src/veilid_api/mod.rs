@@ -155,7 +155,7 @@ impl BlockId {
 
 #[derive(Clone, Debug, PartialEq, PartialOrd, Ord, Eq, Hash, Default)]
 pub struct SenderInfo {
-    pub socket_address: Option<SocketAddr>,
+    pub socket_address: Option<SocketAddress>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -173,6 +173,8 @@ pub struct NodeInfo {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Ord, Eq, Hash)]
+// The derived ordering here is the order of preference, lower is preferred for connections
+// Must match DialInfo order
 pub enum ProtocolType {
     UDP,
     TCP,
@@ -181,11 +183,9 @@ pub enum ProtocolType {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Ord, Eq, Hash)]
-pub enum ProtocolNetworkType {
-    UDPv4,
-    UDPv6,
-    TCPv4,
-    TCPv6,
+pub enum AddressType {
+    IPV4,
+    IPV6,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Ord, Eq, Hash)]
@@ -207,6 +207,12 @@ impl Address {
             SocketAddr::V6(v6) => Address::IPV6(*v6.ip()),
         }
     }
+    pub fn address_type(&self) -> AddressType {
+        match self {
+            Address::IPV4(v4) => AddressType::IPV4,
+            Address::IPV6(v6) => AddressType::IPV6,
+        }
+    }
     pub fn address_string(&self) -> String {
         match self {
             Address::IPV4(v4) => v4.to_string(),
@@ -219,13 +225,13 @@ impl Address {
             Address::IPV6(v6) => format!("[{}]:{}", v6.to_string(), port),
         }
     }
-    pub fn is_public(&self) -> bool {
+    pub fn is_global(&self) -> bool {
         match self {
             Address::IPV4(v4) => ipv4addr_is_global(&v4),
             Address::IPV6(v6) => ipv6addr_is_global(&v6),
         }
     }
-    pub fn is_private(&self) -> bool {
+    pub fn is_local(&self) -> bool {
         match self {
             Address::IPV4(v4) => ipv4addr_is_private(&v4),
             Address::IPV6(v6) => ipv6addr_is_unicast_site_local(&v6),
@@ -282,6 +288,9 @@ impl SocketAddress {
     }
     pub fn address(&self) -> Address {
         self.address
+    }
+    pub fn address_type(&self) -> AddressType {
+        self.address.address_type()
     }
     pub fn port(&self) -> u16 {
         self.port
@@ -346,6 +355,8 @@ pub struct DialInfoWSS {
 }
 
 #[derive(Clone, Debug, PartialEq, PartialOrd, Ord, Eq)]
+// The derived ordering here is the order of preference, lower is preferred for connections
+// Must match ProtocolType order
 pub enum DialInfo {
     UDP(DialInfoUDP),
     TCP(DialInfoTCP),
@@ -479,25 +490,8 @@ impl DialInfo {
             Self::WSS(_) => ProtocolType::WSS,
         }
     }
-    pub fn protocol_network_type(&self) -> ProtocolNetworkType {
-        match self {
-            Self::UDP(di) => match di.socket_address.address() {
-                Address::IPV4(_) => ProtocolNetworkType::UDPv4,
-                Address::IPV6(_) => ProtocolNetworkType::UDPv6,
-            },
-            Self::TCP(di) => match di.socket_address.address() {
-                Address::IPV4(_) => ProtocolNetworkType::TCPv4,
-                Address::IPV6(_) => ProtocolNetworkType::TCPv6,
-            },
-            Self::WS(di) => match di.socket_address.address() {
-                Address::IPV4(_) => ProtocolNetworkType::TCPv4,
-                Address::IPV6(_) => ProtocolNetworkType::TCPv6,
-            },
-            Self::WSS(di) => match di.socket_address.address() {
-                Address::IPV4(_) => ProtocolNetworkType::TCPv4,
-                Address::IPV6(_) => ProtocolNetworkType::TCPv6,
-            },
-        }
+    pub fn address_type(&self) -> AddressType {
+        self.socket_address().address_type()
     }
     pub fn socket_address(&self) -> SocketAddress {
         match self {
@@ -539,19 +533,24 @@ impl DialInfo {
             Self::WSS(di) => Some(format!("wss://{}", di.request)),
         }
     }
-    pub fn is_public(&self) -> bool {
-        self.socket_address().address().is_public()
+    pub fn is_global(&self) -> bool {
+        self.socket_address().address().is_global()
     }
-
-    pub fn is_private(&self) -> bool {
-        self.socket_address().address().is_private()
+    pub fn is_local(&self) -> bool {
+        self.socket_address().address().is_local()
     }
-
     pub fn is_valid(&self) -> bool {
         let socket_address = self.socket_address();
         let address = socket_address.address();
         let port = socket_address.port();
-        (address.is_public() || address.is_private()) && port > 0
+        (address.is_global() || address.is_local()) && port > 0
+    }
+    pub fn matches_peer_scope(&self, scope: PeerScope) -> bool {
+        match scope {
+            PeerScope::All => true,
+            PeerScope::Global => self.is_global(),
+            PeerScope::Local => self.is_local(),
+        }
     }
 }
 
@@ -579,7 +578,7 @@ pub struct PeerAddress {
 impl PeerAddress {
     pub fn new(socket_address: SocketAddress, protocol_type: ProtocolType) -> Self {
         Self {
-            socket_address,
+            socket_address: socket_address.to_canonical(),
             protocol_type,
         }
     }
@@ -588,36 +587,19 @@ impl PeerAddress {
         self.socket_address.to_socket_addr()
     }
 
-    pub fn protocol_network_type(&self) -> ProtocolNetworkType {
-        match self.protocol_type {
-            ProtocolType::UDP => match self.socket_address.address() {
-                Address::IPV4(_) => ProtocolNetworkType::UDPv4,
-                Address::IPV6(_) => ProtocolNetworkType::UDPv6,
-            },
-            ProtocolType::TCP => match self.socket_address.address() {
-                Address::IPV4(_) => ProtocolNetworkType::TCPv4,
-                Address::IPV6(_) => ProtocolNetworkType::TCPv6,
-            },
-            ProtocolType::WS => match self.socket_address.address() {
-                Address::IPV4(_) => ProtocolNetworkType::TCPv4,
-                Address::IPV6(_) => ProtocolNetworkType::TCPv6,
-            },
-            ProtocolType::WSS => match self.socket_address.address() {
-                Address::IPV4(_) => ProtocolNetworkType::TCPv4,
-                Address::IPV6(_) => ProtocolNetworkType::TCPv6,
-            },
-        }
+    pub fn address_type(&self) -> AddressType {
+        self.socket_address.address_type()
     }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ConnectionDescriptor {
     pub remote: PeerAddress,
-    pub local: Option<SocketAddr>,
+    pub local: Option<SocketAddress>,
 }
 
 impl ConnectionDescriptor {
-    pub fn new(remote: PeerAddress, local: SocketAddr) -> Self {
+    pub fn new(remote: PeerAddress, local: SocketAddress) -> Self {
         Self {
             remote,
             local: Some(local),
@@ -632,8 +614,8 @@ impl ConnectionDescriptor {
     pub fn protocol_type(&self) -> ProtocolType {
         self.remote.protocol_type
     }
-    pub fn protocol_network_type(&self) -> ProtocolNetworkType {
-        self.remote.protocol_network_type()
+    pub fn address_type(&self) -> AddressType {
+        self.remote.address_type()
     }
 }
 
@@ -1074,7 +1056,7 @@ impl VeilidAPI {
 
         let answer = node_ref.operate(|e| SearchDHTAnswer {
             node_id: NodeId::new(node_ref.node_id()),
-            dial_info: e.dial_info(),
+            dial_info: e.dial_infos().to_vec(),
         });
 
         Ok(answer)
@@ -1104,7 +1086,7 @@ impl VeilidAPI {
         for nr in node_refs {
             let a = nr.operate(|e| SearchDHTAnswer {
                 node_id: NodeId::new(nr.node_id()),
-                dial_info: e.dial_info(),
+                dial_info: e.dial_infos().to_vec(),
             });
             answer.push(a);
         }

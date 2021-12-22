@@ -110,17 +110,20 @@ impl LeaseManager {
         if inner.max_server_signal_leases == 0 {
             return false;
         }
-        let network_class = inner.network_manager.get_network_class();
-        match network_class {
-            NetworkClass::Server => true,
-            NetworkClass::Mapped => true,
-            NetworkClass::FullNAT => true,
-            NetworkClass::AddressRestrictedNAT => false,
-            NetworkClass::PortRestrictedNAT => false,
-            NetworkClass::OutboundOnly => false,
-            NetworkClass::WebApp => false,
-            NetworkClass::TorWebApp => false,
-            NetworkClass::Invalid => false,
+        if let Some(network_class) = inner.network_manager.get_network_class() {
+            match network_class {
+                NetworkClass::Server => true,
+                NetworkClass::Mapped => true,
+                NetworkClass::FullNAT => true,
+                NetworkClass::AddressRestrictedNAT => false,
+                NetworkClass::PortRestrictedNAT => false,
+                NetworkClass::OutboundOnly => false,
+                NetworkClass::WebApp => false,
+                NetworkClass::TorWebApp => false,
+                NetworkClass::Invalid => false,
+            }
+        } else {
+            false
         }
     }
     pub fn server_will_provide_signal_lease(&self) -> bool {
@@ -152,17 +155,20 @@ impl LeaseManager {
         if inner.max_server_signal_leases == 0 {
             return false;
         }
-        let network_class = inner.network_manager.get_network_class();
-        match network_class {
-            NetworkClass::Server => true,
-            NetworkClass::Mapped => true,
-            NetworkClass::FullNAT => true,
-            NetworkClass::AddressRestrictedNAT => false,
-            NetworkClass::PortRestrictedNAT => false,
-            NetworkClass::OutboundOnly => false,
-            NetworkClass::WebApp => false,
-            NetworkClass::TorWebApp => false,
-            NetworkClass::Invalid => false,
+        if let Some(network_class) = inner.network_manager.get_network_class() {
+            match network_class {
+                NetworkClass::Server => true,
+                NetworkClass::Mapped => true,
+                NetworkClass::FullNAT => true,
+                NetworkClass::AddressRestrictedNAT => false,
+                NetworkClass::PortRestrictedNAT => false,
+                NetworkClass::OutboundOnly => false,
+                NetworkClass::WebApp => false,
+                NetworkClass::TorWebApp => false,
+                NetworkClass::Invalid => false,
+            }
+        } else {
+            false
         }
         // xxx: also depends on network strength / bandwidth availability?
     }

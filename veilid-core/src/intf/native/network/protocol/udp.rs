@@ -48,15 +48,17 @@ impl RawUdpProtocolHandler {
         };
 
         let peer_addr = PeerAddress::new(
-            Address::from_socket_addr(remote_addr),
-            remote_addr.port(),
+            SocketAddress::from_socket_addr(remote_addr),
             ProtocolType::UDP,
         );
         let local_socket_addr = socket.local_addr().map_err(|e| format!("{}", e))?;
         network_manager
             .on_recv_envelope(
                 data,
-                &ConnectionDescriptor::new(peer_addr, local_socket_addr),
+                &ConnectionDescriptor::new(
+                    peer_addr,
+                    SocketAddress::from_socket_addr(local_socket_addr),
+                ),
             )
             .await
     }

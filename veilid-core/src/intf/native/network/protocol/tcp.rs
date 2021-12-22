@@ -153,8 +153,7 @@ impl RawTcpProtocolHandler {
 
         let conn = NetworkConnection::RawTcp(RawTcpNetworkConnection::new(stream));
         let peer_addr = PeerAddress::new(
-            Address::from_socket_addr(socket_addr).to_canonical(),
-            socket_addr.port(),
+            SocketAddress::from_socket_addr(socket_addr),
             ProtocolType::TCP,
         );
         let (network_manager, local_address) = {
@@ -162,7 +161,13 @@ impl RawTcpProtocolHandler {
             (inner.network_manager.clone(), inner.local_address)
         };
         network_manager
-            .on_new_connection(ConnectionDescriptor::new(peer_addr, local_address), conn)
+            .on_new_connection(
+                ConnectionDescriptor::new(
+                    peer_addr,
+                    SocketAddress::from_socket_addr(local_address),
+                ),
+                conn,
+            )
             .await?;
         Ok(true)
     }
@@ -191,8 +196,7 @@ impl RawTcpProtocolHandler {
             .map_err(logthru_net!())?;
         let ps = AsyncPeekStream::new(ts);
         let peer_addr = PeerAddress::new(
-            Address::from_socket_addr(remote_socket_addr).to_canonical(),
-            remote_socket_addr.port(),
+            SocketAddress::from_socket_addr(remote_socket_addr),
             ProtocolType::TCP,
         );
 
@@ -200,7 +204,10 @@ impl RawTcpProtocolHandler {
         let conn = NetworkConnection::RawTcp(RawTcpNetworkConnection::new(ps));
         network_manager
             .on_new_connection(
-                ConnectionDescriptor::new(peer_addr, local_address),
+                ConnectionDescriptor::new(
+                    peer_addr,
+                    SocketAddress::from_socket_addr(local_address),
+                ),
                 conn.clone(),
             )
             .await?;

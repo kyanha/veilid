@@ -6,40 +6,40 @@ use rpc_processor::*;
 pub fn decode_dial_info(reader: &veilid_capnp::dial_info::Reader) -> Result<DialInfo, RPCError> {
     match reader.reborrow().which() {
         Ok(veilid_capnp::dial_info::Which::Udp(Ok(udp))) => {
-            let address_reader = udp
-                .get_address()
-                .map_err(map_error_internal!("missing udp address"))?;
-            let address = decode_address(&address_reader)?;
-            let port = udp.get_port();
-            Ok(DialInfo::udp(address, port))
+            let socket_address_reader = udp
+                .get_socket_address()
+                .map_err(map_error_protocol!("missing UDP socketAddress"))?;
+            let socket_address = decode_socket_address(&socket_address_reader)?;
+            Ok(DialInfo::udp(socket_address))
         }
         Ok(veilid_capnp::dial_info::Which::Tcp(Ok(tcp))) => {
-            let address_reader = tcp
-                .get_address()
-                .map_err(map_error_internal!("missing tcp address"))?;
-            let address = decode_address(&address_reader)?;
-            let port = tcp.get_port();
-            Ok(DialInfo::tcp(address, port))
+            let socket_address_reader = tcp
+                .get_socket_address()
+                .map_err(map_error_protocol!("missing TCP socketAddress"))?;
+            let socket_address = decode_socket_address(&socket_address_reader)?;
+            Ok(DialInfo::tcp(socket_address))
         }
         Ok(veilid_capnp::dial_info::Which::Ws(Ok(ws))) => {
-            let host = ws
-                .get_host()
-                .map_err(map_error_internal!("missing ws host"))?;
-            let port = ws.get_port();
-            let path = ws
-                .get_path()
-                .map_err(map_error_internal!("missing ws path"))?;
-            Ok(DialInfo::ws(host.to_owned(), port, path.to_owned()))
+            let socket_address_reader = ws
+                .get_socket_address()
+                .map_err(map_error_protocol!("missing WS socketAddress"))?;
+            let socket_address = decode_socket_address(&socket_address_reader)?;
+            let request = ws
+                .get_request()
+                .map_err(map_error_protocol!("missing WS request"))?;
+            DialInfo::try_ws(socket_address, request.to_owned())
+                .map_err(map_error_protocol!("invalid WS dial info"))
         }
         Ok(veilid_capnp::dial_info::Which::Wss(Ok(wss))) => {
-            let host = wss
-                .get_host()
-                .map_err(map_error_internal!("missing wss host"))?;
-            let port = wss.get_port();
-            let path = wss
-                .get_path()
-                .map_err(map_error_internal!("missing wss path"))?;
-            Ok(DialInfo::wss(host.to_owned(), port, path.to_owned()))
+            let socket_address_reader = wss
+                .get_socket_address()
+                .map_err(map_error_protocol!("missing WSS socketAddress"))?;
+            let socket_address = decode_socket_address(&socket_address_reader)?;
+            let request = wss
+                .get_request()
+                .map_err(map_error_protocol!("missing WSS request"))?;
+            DialInfo::try_wss(socket_address, request.to_owned())
+                .map_err(map_error_protocol!("invalid WSS dial info"))
         }
         _ => Err(rpc_error_internal("invalid dial info type")),
     }
@@ -52,49 +52,45 @@ pub fn encode_dial_info(
     match dial_info {
         DialInfo::UDP(udp) => {
             let mut di_udp_builder = builder.reborrow().init_udp();
-            encode_address(&udp.address, &mut di_udp_builder.reborrow().init_address())?;
-            di_udp_builder.set_port(udp.port);
+            encode_socket_address(
+                &udp.socket_address,
+                &mut di_udp_builder.reborrow().init_socket_address(),
+            )?;
         }
         DialInfo::TCP(tcp) => {
             let mut di_tcp_builder = builder.reborrow().init_tcp();
-            encode_address(&tcp.address, &mut di_tcp_builder.reborrow().init_address())?;
-            di_tcp_builder.set_port(tcp.port);
+            encode_socket_address(
+                &tcp.socket_address,
+                &mut di_tcp_builder.reborrow().init_socket_address(),
+            )?;
         }
         DialInfo::WS(ws) => {
             let mut di_ws_builder = builder.reborrow().init_ws();
-            let mut hostb = di_ws_builder.reborrow().init_host(
-                ws.host
+            encode_socket_address(
+                &ws.socket_address,
+                &mut di_ws_builder.reborrow().init_socket_address(),
+            )?;
+            let mut requestb = di_ws_builder.init_request(
+                ws.request
                     .len()
                     .try_into()
-                    .map_err(map_error_internal!("host too long"))?,
+                    .map_err(map_error_protocol!("request too long"))?,
             );
-            hostb.push_str(ws.host.as_str());
-            di_ws_builder.set_port(ws.port);
-            let mut pathb = di_ws_builder.init_path(
-                ws.path
-                    .len()
-                    .try_into()
-                    .map_err(map_error_internal!("path too long"))?,
-            );
-            pathb.push_str(ws.path.as_str());
+            requestb.push_str(ws.request.as_str());
         }
         DialInfo::WSS(wss) => {
             let mut di_wss_builder = builder.reborrow().init_wss();
-            let mut hostb = di_wss_builder.reborrow().init_host(
-                wss.host
+            encode_socket_address(
+                &wss.socket_address,
+                &mut di_wss_builder.reborrow().init_socket_address(),
+            )?;
+            let mut requestb = di_wss_builder.init_request(
+                wss.request
                     .len()
                     .try_into()
-                    .map_err(map_error_internal!("host too long"))?,
+                    .map_err(map_error_protocol!("request too long"))?,
             );
-            hostb.push_str(wss.host.as_str());
-            di_wss_builder.set_port(wss.port);
-            let mut pathb = di_wss_builder.init_path(
-                wss.path
-                    .len()
-                    .try_into()
-                    .map_err(map_error_internal!("path too long"))?,
-            );
-            pathb.push_str(wss.path.as_str());
+            requestb.push_str(wss.request.as_str());
         }
     };
     Ok(())
