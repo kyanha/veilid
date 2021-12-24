@@ -27,12 +27,6 @@ pub enum NetworkConnection {
 }
 
 impl NetworkConnection {
-    pub fn protocol_type(&self) -> ProtocolType {
-        match self {
-            Self::Dummy(d) => d.protocol_type(),
-            Self::WS(w) => w.protocol_type(),
-        }
-    }
     pub fn send(&self, message: Vec<u8>) -> SystemPinBoxFuture<Result<(), String>> {
         match self {
             Self::Dummy(d) => d.send(message),

@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 mod debug;
 pub use debug::*;
 
@@ -209,8 +211,8 @@ impl Address {
     }
     pub fn address_type(&self) -> AddressType {
         match self {
-            Address::IPV4(v4) => AddressType::IPV4,
-            Address::IPV6(v6) => AddressType::IPV6,
+            Address::IPV4(_) => AddressType::IPV4,
+            Address::IPV6(_) => AddressType::IPV6,
         }
     }
     pub fn address_string(&self) -> String {
@@ -227,14 +229,14 @@ impl Address {
     }
     pub fn is_global(&self) -> bool {
         match self {
-            Address::IPV4(v4) => ipv4addr_is_global(&v4),
-            Address::IPV6(v6) => ipv6addr_is_global(&v6),
+            Address::IPV4(v4) => ipv4addr_is_global(v4),
+            Address::IPV6(v6) => ipv6addr_is_global(v6),
         }
     }
     pub fn is_local(&self) -> bool {
         match self {
-            Address::IPV4(v4) => ipv4addr_is_private(&v4),
-            Address::IPV6(v6) => ipv6addr_is_unicast_site_local(&v6),
+            Address::IPV4(v4) => ipv4addr_is_private(v4),
+            Address::IPV6(v6) => ipv6addr_is_unicast_site_local(v6),
         }
     }
     pub fn to_ip_addr(&self) -> IpAddr {
@@ -334,29 +336,41 @@ pub struct DialInfoFilter {
 }
 
 impl DialInfoFilter {
-    pub fn new_empty() -> Self {
+    pub fn all() -> Self {
         Self {
             peer_scope: PeerScope::All,
             protocol_type: None,
             address_type: None,
         }
     }
-    pub fn with_protocol_type(protocol_type: ProtocolType) -> Self {
+    pub fn global() -> Self {
         Self {
-            peer_scope: PeerScope::All,
-            protocol_type: Some(protocol_type),
+            peer_scope: PeerScope::Global,
+            protocol_type: None,
             address_type: None,
         }
     }
-    pub fn with_protocol_type_and_address_type(
-        protocol_type: ProtocolType,
-        address_type: AddressType,
-    ) -> Self {
+    pub fn local() -> Self {
         Self {
-            peer_scope: PeerScope::All,
-            protocol_type: Some(protocol_type),
-            address_type: Some(address_type),
+            peer_scope: PeerScope::Local,
+            protocol_type: None,
+            address_type: None,
         }
+    }
+    pub fn scoped(peer_scope: PeerScope) -> Self {
+        Self {
+            peer_scope,
+            protocol_type: None,
+            address_type: None,
+        }
+    }
+    pub fn with_protocol_type(mut self, protocol_type: ProtocolType) -> Self {
+        self.protocol_type = Some(protocol_type);
+        self
+    }
+    pub fn with_address_type(mut self, address_type: AddressType) -> Self {
+        self.address_type = Some(address_type);
+        self
     }
     pub fn is_empty(&self) -> bool {
         self.peer_scope == PeerScope::All
@@ -377,6 +391,10 @@ impl fmt::Debug for DialInfoFilter {
         }
         write!(f, "[{}]", out)
     }
+}
+
+pub trait MatchesDialInfoFilter {
+    fn matches_filter(&self, filter: &DialInfoFilter) -> bool;
 }
 
 #[derive(Clone, Default, Debug, PartialEq, PartialOrd, Ord, Eq)]
@@ -430,9 +448,9 @@ impl fmt::Display for DialInfo {
 impl FromStr for DialInfo {
     type Err = VeilidAPIError;
     fn from_str(s: &str) -> Result<DialInfo, VeilidAPIError> {
-        let (proto, rest) = s.split_once('|').ok_or_else(|| {
-            parse_error!("SocketAddress::from_str missing protocol '|' separator", s)
-        })?;
+        let (proto, rest) = s
+            .split_once('|')
+            .ok_or_else(|| parse_error!("DialInfo::from_str missing protocol '|' separator", s))?;
         match proto {
             "udp" => {
                 let socket_address = SocketAddress::from_str(rest)?;
@@ -444,24 +462,19 @@ impl FromStr for DialInfo {
             }
             "ws" => {
                 let (sa, rest) = s.split_once('|').ok_or_else(|| {
-                    parse_error!(
-                        "SocketAddress::from_str missing socket address '|' separator",
-                        s
-                    )
+                    parse_error!("DialInfo::from_str missing socket address '|' separator", s)
                 })?;
                 let socket_address = SocketAddress::from_str(sa)?;
                 DialInfo::try_ws(socket_address, rest.to_string())
             }
             "wss" => {
                 let (sa, rest) = s.split_once('|').ok_or_else(|| {
-                    parse_error!(
-                        "SocketAddress::from_str missing socket address '|' separator",
-                        s
-                    )
+                    parse_error!("DialInfo::from_str missing socket address '|' separator", s)
                 })?;
                 let socket_address = SocketAddress::from_str(sa)?;
                 DialInfo::try_wss(socket_address, rest.to_string())
             }
+            _ => Err(parse_error!("DialInfo::from_str has invalid scheme", s)),
         }
     }
 }
@@ -518,7 +531,7 @@ impl DialInfo {
                 url
             ));
         }
-        if !Address::from_str(&split_url.host).is_err() {
+        if Address::from_str(&split_url.host).is_ok() {
             return Err(parse_error!(
                 "WSS url can not use address format, only hostname format",
                 url
@@ -599,22 +612,6 @@ impl DialInfo {
             PeerScope::Local => self.is_local(),
         }
     }
-    pub fn matches_filter(&self, filter: &DialInfoFilter) -> bool {
-        if !self.matches_peer_scope(filter.peer_scope) {
-            return false;
-        }
-        if let Some(pt) = filter.protocol_type {
-            if self.protocol_type() != pt {
-                return false;
-            }
-        }
-        if let Some(at) = filter.address_type {
-            if self.address_type() != at {
-                return false;
-            }
-        }
-        true
-    }
     pub fn make_filter(&self, scoped: bool) -> DialInfoFilter {
         DialInfoFilter {
             peer_scope: if scoped {
@@ -631,6 +628,25 @@ impl DialInfo {
             protocol_type: Some(self.protocol_type()),
             address_type: Some(self.address_type()),
         }
+    }
+}
+
+impl MatchesDialInfoFilter for DialInfo {
+    fn matches_filter(&self, filter: &DialInfoFilter) -> bool {
+        if !self.matches_peer_scope(filter.peer_scope) {
+            return false;
+        }
+        if let Some(pt) = filter.protocol_type {
+            if self.protocol_type() != pt {
+                return false;
+            }
+        }
+        if let Some(at) = filter.address_type {
+            if self.address_type() != at {
+                return false;
+            }
+        }
+        true
     }
 }
 
@@ -709,7 +725,10 @@ impl ConnectionDescriptor {
             PeerScope::Local => self.remote.socket_address.address().is_local(),
         }
     }
-    pub fn matches_filter(&self, filter: &DialInfoFilter) -> bool {
+}
+
+impl MatchesDialInfoFilter for ConnectionDescriptor {
+    fn matches_filter(&self, filter: &DialInfoFilter) -> bool {
         if !self.matches_peer_scope(filter.peer_scope) {
             return false;
         }
@@ -1093,18 +1112,11 @@ impl VeilidAPI {
     }
 
     // wait for state change
-    // xxx: this should not use 'sleep', perhaps this function should be eliminated anyway
-    // xxx: it should really only be used for test anyway, and there is probably a better way to do this regardless
-    // xxx: that doesn't wait forever and can time out
+    // xxx: should have optional timeout
     pub async fn wait_for_state(&self, state: VeilidState) -> Result<(), VeilidAPIError> {
-        loop {
-            intf::sleep(500).await;
-            match state {
-                VeilidState::Attachment(cs) => {
-                    if self.attachment_manager()?.get_state() == cs {
-                        break;
-                    }
-                }
+        match state {
+            VeilidState::Attachment(cs) => {
+                self.attachment_manager()?.wait_for_state(cs).await;
             }
         }
         Ok(())

@@ -76,7 +76,7 @@ impl BucketEntry {
     where
         F: Fn(&DialInfo) -> bool,
     {
-        let ret = Vec::new();
+        let mut ret = Vec::new();
         for di in &self.dial_infos {
             if filter(di) {
                 ret.push(di.clone());
@@ -86,7 +86,7 @@ impl BucketEntry {
     }
 
     pub fn dial_infos(&self) -> &[DialInfo] {
-        &self.dial_infos.clone()
+        &self.dial_infos
     }
 
     pub fn get_peer_info(&self, key: DHTKey, scope: PeerScope) -> PeerInfo {

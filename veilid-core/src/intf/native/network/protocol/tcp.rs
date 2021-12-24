@@ -44,10 +44,6 @@ impl RawTcpNetworkConnection {
 }
 
 impl RawTcpNetworkConnection {
-    pub fn protocol_type(&self) -> ProtocolType {
-        ProtocolType::TCP
-    }
-
     pub fn send(&self, message: Vec<u8>) -> SystemPinBoxFuture<Result<(), String>> {
         let inner = self.inner.clone();
 

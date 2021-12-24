@@ -45,13 +45,6 @@ impl WebsocketNetworkConnection {
 }
 
 impl WebsocketNetworkConnection {
-    pub fn protocol_type(&self) -> ProtocolType {
-        if self.tls {
-            ProtocolType::WSS
-        } else {
-            ProtocolType::WS
-        }
-    }
     pub fn send(&self, message: Vec<u8>) -> SystemPinBoxFuture<Result<(), String>> {
         let inner = self.inner.clone();
         Box::pin(async move {

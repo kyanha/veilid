@@ -4,17 +4,14 @@ pub mod wrtc;
 pub mod ws;
 
 use super::listener_state::*;
-use crate::veilid_api::ProtocolType;
 use crate::xx::*;
+use crate::*;
 use socket2::{Domain, Protocol, Socket, Type};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DummyNetworkConnection {}
 
 impl DummyNetworkConnection {
-    pub fn protocol_type(&self) -> ProtocolType {
-        ProtocolType::UDP
-    }
     pub fn send(&self, _message: Vec<u8>) -> SystemPinBoxFuture<Result<(), String>> {
         Box::pin(async { Ok(()) })
     }
@@ -34,15 +31,6 @@ pub enum NetworkConnection {
 }
 
 impl NetworkConnection {
-    pub fn protocol_type(&self) -> ProtocolType {
-        match self {
-            Self::Dummy(d) => d.protocol_type(),
-            Self::RawTcp(t) => t.protocol_type(),
-            Self::WsAccepted(w) => w.protocol_type(),
-            Self::Ws(w) => w.protocol_type(),
-            Self::Wss(w) => w.protocol_type(),
-        }
-    }
     pub fn send(&self, message: Vec<u8>) -> SystemPinBoxFuture<Result<(), String>> {
         match self {
             Self::Dummy(d) => d.send(message),

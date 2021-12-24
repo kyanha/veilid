@@ -867,23 +867,23 @@ impl RPCProcessor {
         if redirect {
             let routing_table = self.routing_table();
             let filter = dial_info.make_filter(true);
-            let peers = routing_table.get_fast_nodes_filtered(&filter);
+            let peers = routing_table.find_fast_nodes_filtered(&filter);
             if peers.is_empty() {
                 return Err(rpc_error_internal(format!(
                     "no peers matching filter '{:?}'",
                     filter
                 )));
             }
-
             for peer in peers {
                 // See if this peer will validate dial info
-                if !peer.operate(|e| {
+                let will_validate_dial_info = peer.operate(|e: &mut BucketEntry| {
                     if let Some(ni) = &e.peer_stats().node_info {
                         ni.will_validate_dial_info
                     } else {
                         true
                     }
-                }) {
+                });
+                if !will_validate_dial_info {
                     continue;
                 }
                 // Make a copy of the request, without the redirect flag

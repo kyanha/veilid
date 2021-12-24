@@ -185,8 +185,7 @@ impl Network {
         let routing_table = network_manager.routing_table();
 
         // Drop all dial info
-        routing_table.clear_local_dial_info();
-        routing_table.clear_global_dial_info();
+        routing_table.clear_dial_info_details();
 
         // Cancels all async background tasks by dropping join handles
         *self.inner.lock() = Self::new_inner(network_manager);

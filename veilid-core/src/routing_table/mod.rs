@@ -37,13 +37,18 @@ pub struct DialInfoDetail {
     pub timestamp: u64,
 }
 
+impl MatchesDialInfoFilter for DialInfoDetail {
+    fn matches_filter(&self, filter: &DialInfoFilter) -> bool {
+        self.dial_info.matches_filter(filter)
+    }
+}
+
 struct RoutingTableInner {
     network_manager: NetworkManager,
     node_id: DHTKey,
     node_id_secret: DHTKeySecret,
     buckets: Vec<Bucket>,
-    local_dial_info: Vec<DialInfoDetail>,
-    global_dial_info: Vec<DialInfoDetail>,
+    dial_info_details: Vec<DialInfoDetail>,
     bucket_entry_count: usize,
     // Waiters
     eventual_changed_dial_info: Eventual,
@@ -75,8 +80,7 @@ impl RoutingTable {
             node_id: DHTKey::default(),
             node_id_secret: DHTKeySecret::default(),
             buckets: Vec::new(),
-            local_dial_info: Vec::new(),
-            global_dial_info: Vec::new(),
+            dial_info_details: Vec::new(),
             bucket_entry_count: 0,
             eventual_changed_dial_info: Eventual::new(),
             stats_accounting: StatsAccounting::new(),
@@ -150,125 +154,71 @@ impl RoutingTable {
     }
 
     pub fn has_local_dial_info(&self) -> bool {
-        let inner = self.inner.lock();
-        !inner.local_dial_info.is_empty()
+        self.first_filtered_dial_info_detail(&DialInfoFilter::local())
+            .is_some()
+    }
+
+    pub fn has_global_dial_info(&self) -> bool {
+        self.first_filtered_dial_info_detail(&DialInfoFilter::global())
+            .is_some()
+    }
+
+    pub fn global_dial_info_details(&self) -> Vec<DialInfoDetail> {
+        self.all_filtered_dial_info_details(&DialInfoFilter::global())
     }
 
     pub fn local_dial_info_details(&self) -> Vec<DialInfoDetail> {
-        let inner = self.inner.lock();
-        inner.local_dial_info.clone()
+        self.all_filtered_dial_info_details(&DialInfoFilter::local())
     }
 
-    pub fn first_filtered_local_dial_info_details<F>(&self, filter: F) -> Option<DialInfoDetail>
-    where
-        F: Fn(&DialInfoDetail) -> bool,
-    {
+    pub fn first_filtered_dial_info_detail(
+        &self,
+        filter: &DialInfoFilter,
+    ) -> Option<DialInfoDetail> {
         let inner = self.inner.lock();
-        for did in &inner.local_dial_info {
-            if filter(did) {
+        for did in &inner.dial_info_details {
+            if did.matches_filter(filter) {
                 return Some(did.clone());
             }
         }
         None
     }
-    pub fn all_filtered_local_dial_info_details<F>(&self, filter: F) -> Vec<DialInfoDetail>
-    where
-        F: Fn(&DialInfoDetail) -> bool,
-    {
+    pub fn all_filtered_dial_info_details(&self, filter: &DialInfoFilter) -> Vec<DialInfoDetail> {
         let inner = self.inner.lock();
-        let ret = Vec::new();
-        for did in &inner.local_dial_info {
-            if filter(did) {
+        let mut ret = Vec::new();
+        for did in &inner.dial_info_details {
+            if did.matches_filter(filter) {
                 ret.push(did.clone());
             }
         }
         ret
     }
 
-    pub fn register_local_dial_info(&self, dial_info: DialInfo, origin: DialInfoOrigin) {
+    pub fn register_dial_info(
+        &self,
+        dial_info: DialInfo,
+        origin: DialInfoOrigin,
+        network_class: Option<NetworkClass>,
+    ) {
         let timestamp = get_timestamp();
         let mut inner = self.inner.lock();
 
-        inner.local_dial_info.push(DialInfoDetail {
+        inner.dial_info_details.push(DialInfoDetail {
             dial_info: dial_info.clone(),
             origin,
-            network_class: None,
+            network_class,
             timestamp,
         });
 
         info!(
-            "Local Dial Info: {}",
-            NodeDialInfoSingle {
-                node_id: NodeId::new(inner.node_id),
-                dial_info
-            }
-            .to_string(),
-        );
-        debug!("    Origin: {:?}", origin);
-
-        Self::trigger_changed_dial_info(&mut *inner);
-    }
-
-    pub fn clear_local_dial_info(&self) {
-        let mut inner = self.inner.lock();
-        inner.local_dial_info.clear();
-        Self::trigger_changed_dial_info(&mut *inner);
-    }
-
-    pub fn has_global_dial_info(&self) -> bool {
-        let inner = self.inner.lock();
-        !inner.global_dial_info.is_empty()
-    }
-
-    pub fn global_dial_info_details(&self) -> Vec<DialInfoDetail> {
-        let inner = self.inner.lock();
-        inner.global_dial_info.clone()
-    }
-
-    pub fn first_filtered_global_dial_info_details<F>(&self, filter: F) -> Option<DialInfoDetail>
-    where
-        F: Fn(&DialInfoDetail) -> bool,
-    {
-        let inner = self.inner.lock();
-        for did in &inner.global_dial_info {
-            if filter(did) {
-                return Some(did.clone());
-            }
-        }
-        None
-    }
-    pub fn all_filtered_global_dial_info_details<F>(&self, filter: F) -> Vec<DialInfoDetail>
-    where
-        F: Fn(&DialInfoDetail) -> bool,
-    {
-        let inner = self.inner.lock();
-        let ret = Vec::new();
-        for did in &inner.global_dial_info {
-            if filter(did) {
-                ret.push(did.clone());
-            }
-        }
-        ret
-    }
-
-    pub fn register_global_dial_info(
-        &self,
-        dial_info: DialInfo,
-        network_class: Option<NetworkClass>,
-        origin: DialInfoOrigin,
-    ) {
-        let ts = get_timestamp();
-        let mut inner = self.inner.lock();
-
-        inner.global_dial_info.push(DialInfoDetail {
-            dial_info: dial_info.clone(),
-            origin,
-            network_class,
-            timestamp: ts,
-        });
-
-        info!(
-            "Global Dial Info: {}",
+            "{}Dial Info: {}",
+            if dial_info.is_local() {
+                "Local "
+            } else if dial_info.is_global() {
+                "Global "
+            } else {
+                "Other "
+            },
             NodeDialInfoSingle {
                 node_id: NodeId::new(inner.node_id),
                 dial_info
@@ -277,12 +227,13 @@ impl RoutingTable {
         );
         debug!("    Origin: {:?}", origin);
         debug!("    Network Class: {:?}", network_class);
+
         Self::trigger_changed_dial_info(&mut *inner);
     }
 
-    pub fn clear_global_dial_info(&self) {
+    pub fn clear_dial_info_details(&self) {
         let mut inner = self.inner.lock();
-        inner.global_dial_info.clear();
+        inner.dial_info_details.clear();
         Self::trigger_changed_dial_info(&mut *inner);
     }
 

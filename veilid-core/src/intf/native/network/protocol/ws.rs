@@ -80,14 +80,6 @@ where
         }
     }
 
-    pub fn protocol_type(&self) -> ProtocolType {
-        if self.tls {
-            ProtocolType::WSS
-        } else {
-            ProtocolType::WS
-        }
-    }
-
     pub fn send(&self, message: Vec<u8>) -> SystemPinBoxFuture<Result<(), String>> {
         let inner = self.inner.clone();
 
@@ -248,9 +240,9 @@ impl WebsocketProtocolHandler {
         dial_info: &DialInfo,
     ) -> Result<NetworkConnection, String> {
         // Split dial info up
-        let (tls, protocol_type, scheme) = match &dial_info {
-            DialInfo::WS(_) => (false, ProtocolType::WS, "ws"),
-            DialInfo::WSS(_) => (true, ProtocolType::WSS, "wss"),
+        let (tls, scheme) = match &dial_info {
+            DialInfo::WS(_) => (false, "ws"),
+            DialInfo::WSS(_) => (true, "wss"),
             _ => panic!("invalid dialinfo for WS/WSS protocol"),
         };
         let request = dial_info.request().unwrap();

@@ -8,10 +8,11 @@ use crate::*;
 pub type FilterType = Box<dyn Fn(&(&DHTKey, Option<&mut BucketEntry>)) -> bool>;
 
 impl RoutingTable {
-    // Retrieve the fastest nodes in the routing table with a particular kind of protocol address type
+    // Retrieve the fastest nodes in the routing table with a particular kind of protocol and address type
     // Returns noderefs are are scoped to that address type only
-    pub fn get_fast_nodes_filtered(&self, dial_info_filter: &DialInfoFilter) -> Vec<NodeRef> {
-        let dial_info_filter = dial_info_filter.clone();
+    pub fn find_fast_nodes_filtered(&self, dial_info_filter: &DialInfoFilter) -> Vec<NodeRef> {
+        let dial_info_filter1 = dial_info_filter.clone();
+        let dial_info_filter2 = dial_info_filter.clone();
         self.find_fastest_nodes(
             // filter
             Some(Box::new(
@@ -20,7 +21,7 @@ impl RoutingTable {
                         .1
                         .as_ref()
                         .unwrap()
-                        .first_filtered_dial_info(|di| di.matches_filter(&dial_info_filter))
+                        .first_filtered_dial_info(|di| di.matches_filter(&dial_info_filter1))
                         .is_some()
                 },
             )),
@@ -30,27 +31,22 @@ impl RoutingTable {
                     self.clone(),
                     *e.0,
                     e.1.as_mut().unwrap(),
-                    dial_info_filter.clone(),
+                    dial_info_filter2.clone(),
                 )
             },
         )
     }
 
     pub fn get_own_peer_info(&self, scope: PeerScope) -> PeerInfo {
-        let dial_infos = match scope {
-            PeerScope::All => {
-                let mut divec = self.global_dial_info_details();
-                divec.append(&mut self.local_dial_info_details());
-                divec.dedup();
-                divec
-            }
-            PeerScope::Global => self.global_dial_info_details(),
-            PeerScope::Local => self.local_dial_info_details(),
-        };
+        let filter = DialInfoFilter::scoped(scope);
 
         PeerInfo {
             node_id: NodeId::new(self.node_id()),
-            dial_infos: dial_infos.iter().map(|x| x.dial_info.clone()).collect(),
+            dial_infos: self
+                .all_filtered_dial_info_details(&filter)
+                .iter()
+                .map(|did| did.dial_info.clone())
+                .collect(),
         }
     }
 
