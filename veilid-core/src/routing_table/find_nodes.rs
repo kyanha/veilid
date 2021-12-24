@@ -10,42 +10,18 @@ pub type FilterType = Box<dyn Fn(&(&DHTKey, Option<&mut BucketEntry>)) -> bool>;
 impl RoutingTable {
     // Retrieve the fastest nodes in the routing table with a particular kind of protocol address type
     // Returns noderefs are are scoped to that address type only
-    pub fn get_fast_nodes_of_type(
-        &self,
-        protocol_address_type: ProtocolAddressType,
-    ) -> Vec<NodeRef> {
+    pub fn get_fast_nodes_filtered(&self, dial_info_filter: &DialInfoFilter) -> Vec<NodeRef> {
+        let dial_info_filter = dial_info_filter.clone();
         self.find_fastest_nodes(
             // filter
             Some(Box::new(
                 move |params: &(&DHTKey, Option<&mut BucketEntry>)| {
-                    // Only interested in nodes with node info
-                    if let Some(node_info) = &params.1.as_ref().unwrap().peer_stats().node_info {
-                        // Will the node validate dial info?
-                        // and does it have a UDPv4, public scope, dial info?
-                        if node_info.will_validate_dial_info
-                            && params
-                                .1
-                                .as_ref()
-                                .unwrap()
-                                .dial_info_entries_as_ref()
-                                .iter()
-                                .find_map(|die| {
-                                    if die.matches_peer_scope(PeerScope::Global)
-                                        && die.dial_info().protocol_address_type()
-                                            == protocol_address_type
-                                    {
-                                        Some(())
-                                    } else {
-                                        None
-                                    }
-                                })
-                                .is_some()
-                        {
-                            // If so return true and include this node
-                            return true;
-                        }
-                    }
-                    false
+                    params
+                        .1
+                        .as_ref()
+                        .unwrap()
+                        .first_filtered_dial_info(|di| di.matches_filter(&dial_info_filter))
+                        .is_some()
                 },
             )),
             // transform
@@ -54,7 +30,7 @@ impl RoutingTable {
                     self.clone(),
                     *e.0,
                     e.1.as_mut().unwrap(),
-                    protocol_address_type,
+                    dial_info_filter.clone(),
                 )
             },
         )
@@ -63,13 +39,13 @@ impl RoutingTable {
     pub fn get_own_peer_info(&self, scope: PeerScope) -> PeerInfo {
         let dial_infos = match scope {
             PeerScope::All => {
-                let mut divec = self.global_dial_info();
-                divec.append(&mut self.local_dial_info());
+                let mut divec = self.global_dial_info_details();
+                divec.append(&mut self.local_dial_info_details());
                 divec.dedup();
                 divec
             }
-            PeerScope::Global => self.global_dial_info(),
-            PeerScope::Local => self.local_dial_info(),
+            PeerScope::Global => self.global_dial_info_details(),
+            PeerScope::Local => self.local_dial_info_details(),
         };
 
         PeerInfo {

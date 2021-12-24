@@ -53,6 +53,25 @@ pub struct ProtocolConfig {
     pub wss_listen: bool,
 }
 
+impl ProtocolConfig {
+    pub fn is_protocol_type_connect_enabled(&self, protocol_type: ProtocolType) -> bool {
+        match protocol_type {
+            ProtocolType::UDP => self.udp_enabled,
+            ProtocolType::TCP => self.tcp_connect,
+            ProtocolType::WS => self.ws_connect,
+            ProtocolType::WSS => self.wss_connect,
+        }
+    }
+    pub fn is_protocol_type_listen_enabled(&self, protocol_type: ProtocolType) -> bool {
+        match protocol_type {
+            ProtocolType::UDP => self.udp_enabled,
+            ProtocolType::TCP => self.tcp_listen,
+            ProtocolType::WS => self.ws_listen,
+            ProtocolType::WSS => self.wss_listen,
+        }
+    }
+}
+
 // Things we get when we start up and go away when we shut down
 // Routing table is not in here because we want it to survive a network shutdown/startup restart
 #[derive(Clone)]

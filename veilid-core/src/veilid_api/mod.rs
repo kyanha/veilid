@@ -311,24 +311,71 @@ impl SocketAddress {
 
 impl fmt::Display for SocketAddress {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(f, "{}:{}", self.to_ip_addr(), self.port)
+        write!(f, "{}", self.to_socket_addr())
     }
 }
 
 impl FromStr for SocketAddress {
     type Err = VeilidAPIError;
     fn from_str(s: &str) -> Result<SocketAddress, VeilidAPIError> {
-        let split = s.rsplit_once(':').ok_or_else(|| {
-            parse_error!("SocketAddress::from_str missing colon port separator", s)
-        })?;
-        let address = Address::from_str(split.0)?;
-        let port = u16::from_str(split.1).map_err(|e| {
-            parse_error!(
-                format!("SocketAddress::from_str failed parting port: {}", e),
-                s
-            )
-        })?;
-        Ok(SocketAddress { address, port })
+        let sa = SocketAddr::from_str(s)
+            .map_err(|e| parse_error!("Failed to parse SocketAddress", e))?;
+        Ok(SocketAddress::from_socket_addr(sa))
+    }
+}
+
+//////////////////////////////////////////////////////////////////
+
+#[derive(Clone, Default, PartialEq, Eq, PartialOrd, Ord)]
+pub struct DialInfoFilter {
+    pub peer_scope: PeerScope,
+    pub protocol_type: Option<ProtocolType>,
+    pub address_type: Option<AddressType>,
+}
+
+impl DialInfoFilter {
+    pub fn new_empty() -> Self {
+        Self {
+            peer_scope: PeerScope::All,
+            protocol_type: None,
+            address_type: None,
+        }
+    }
+    pub fn with_protocol_type(protocol_type: ProtocolType) -> Self {
+        Self {
+            peer_scope: PeerScope::All,
+            protocol_type: Some(protocol_type),
+            address_type: None,
+        }
+    }
+    pub fn with_protocol_type_and_address_type(
+        protocol_type: ProtocolType,
+        address_type: AddressType,
+    ) -> Self {
+        Self {
+            peer_scope: PeerScope::All,
+            protocol_type: Some(protocol_type),
+            address_type: Some(address_type),
+        }
+    }
+    pub fn is_empty(&self) -> bool {
+        self.peer_scope == PeerScope::All
+            && self.protocol_type.is_none()
+            && self.address_type.is_none()
+    }
+}
+
+impl fmt::Debug for DialInfoFilter {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        let mut out = String::new();
+        out += &format!("{:?}", self.peer_scope);
+        if let Some(pt) = self.protocol_type {
+            out += &format!("+{:?}", pt);
+        }
+        if let Some(at) = self.address_type {
+            out += &format!("+{:?}", at);
+        }
+        write!(f, "[{}]", out)
     }
 }
 
@@ -552,15 +599,53 @@ impl DialInfo {
             PeerScope::Local => self.is_local(),
         }
     }
+    pub fn matches_filter(&self, filter: &DialInfoFilter) -> bool {
+        if !self.matches_peer_scope(filter.peer_scope) {
+            return false;
+        }
+        if let Some(pt) = filter.protocol_type {
+            if self.protocol_type() != pt {
+                return false;
+            }
+        }
+        if let Some(at) = filter.address_type {
+            if self.address_type() != at {
+                return false;
+            }
+        }
+        true
+    }
+    pub fn make_filter(&self, scoped: bool) -> DialInfoFilter {
+        DialInfoFilter {
+            peer_scope: if scoped {
+                if self.is_global() {
+                    PeerScope::Global
+                } else if self.is_local() {
+                    PeerScope::Local
+                } else {
+                    PeerScope::All
+                }
+            } else {
+                PeerScope::All
+            },
+            protocol_type: Some(self.protocol_type()),
+            address_type: Some(self.address_type()),
+        }
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub enum PeerScope {
     All,
     Global,
     Local,
+}
+impl Default for PeerScope {
+    fn default() -> Self {
+        PeerScope::All
+    }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -616,6 +701,29 @@ impl ConnectionDescriptor {
     }
     pub fn address_type(&self) -> AddressType {
         self.remote.address_type()
+    }
+    pub fn matches_peer_scope(&self, scope: PeerScope) -> bool {
+        match scope {
+            PeerScope::All => true,
+            PeerScope::Global => self.remote.socket_address.address().is_global(),
+            PeerScope::Local => self.remote.socket_address.address().is_local(),
+        }
+    }
+    pub fn matches_filter(&self, filter: &DialInfoFilter) -> bool {
+        if !self.matches_peer_scope(filter.peer_scope) {
+            return false;
+        }
+        if let Some(pt) = filter.protocol_type {
+            if self.protocol_type() != pt {
+                return false;
+            }
+        }
+        if let Some(at) = filter.address_type {
+            if self.address_type() != at {
+                return false;
+            }
+        }
+        true
     }
 }
 

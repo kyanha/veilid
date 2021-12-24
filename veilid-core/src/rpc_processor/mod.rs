@@ -219,7 +219,7 @@ impl RPCProcessor {
         if let Some(nr) = routing_table.lookup_node_ref(node_id) {
             // ensure we have dial_info for the entry already,
             // if not, we should do the find_node anyway
-            if nr.operate(|e| e.best_dial_info().is_some()) {
+            if !nr.operate(|e| e.dial_infos().is_empty()) {
                 return Ok(nr);
             }
         }
@@ -712,16 +712,20 @@ impl RPCProcessor {
 
     fn can_validate_dial_info(&self) -> bool {
         let nman = self.network_manager();
-        match nman.get_network_class() {
-            NetworkClass::Server => true,
-            NetworkClass::Mapped => true,
-            NetworkClass::FullNAT => true,
-            NetworkClass::AddressRestrictedNAT => false,
-            NetworkClass::PortRestrictedNAT => false,
-            NetworkClass::OutboundOnly => false,
-            NetworkClass::WebApp => false,
-            NetworkClass::TorWebApp => false,
-            NetworkClass::Invalid => false,
+        if let Some(nc) = nman.get_network_class() {
+            match nc {
+                NetworkClass::Server => true,
+                NetworkClass::Mapped => true,
+                NetworkClass::FullNAT => true,
+                NetworkClass::AddressRestrictedNAT => false,
+                NetworkClass::PortRestrictedNAT => false,
+                NetworkClass::OutboundOnly => false,
+                NetworkClass::WebApp => false,
+                NetworkClass::TorWebApp => false,
+                NetworkClass::Invalid => false,
+            }
+        } else {
+            false
         }
     }
 
@@ -779,7 +783,7 @@ impl RPCProcessor {
                 .peer_noderef
                 .operate(|entry| match entry.last_connection() {
                     None => None,
-                    Some(c) => Some(c.remote.to_socket_addr()),
+                    Some(c) => Some(c.remote.socket_address),
                 });
         SenderInfo { socket_address }
     }
@@ -862,16 +866,26 @@ impl RPCProcessor {
         // Redirect this request if we are asked to
         if redirect {
             let routing_table = self.routing_table();
-            let protocol_address_type = dial_info.protocol_address_type();
-            let peers = routing_table.get_fast_nodes_of_type(protocol_address_type);
+            let filter = dial_info.make_filter(true);
+            let peers = routing_table.get_fast_nodes_filtered(&filter);
             if peers.is_empty() {
                 return Err(rpc_error_internal(format!(
-                    "no peers of type '{:?}'",
-                    protocol_address_type
+                    "no peers matching filter '{:?}'",
+                    filter
                 )));
             }
 
             for peer in peers {
+                // See if this peer will validate dial info
+                if !peer.operate(|e| {
+                    if let Some(ni) = &e.peer_stats().node_info {
+                        ni.will_validate_dial_info
+                    } else {
+                        true
+                    }
+                }) {
+                    continue;
+                }
                 // Make a copy of the request, without the redirect flag
                 let vdi_msg_reader = {
                     let mut vdi_msg = ::capnp::message::Builder::new_default();

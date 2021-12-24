@@ -394,13 +394,14 @@ impl Network {
 
     /////////////////////////////////////////////////////////////////
 
+    // TCP listener that multiplexes ports so multiple protocols can exist on a single port
     async fn start_tcp_listener(
         &self,
         address: String,
         is_tls: bool,
         new_tcp_protocol_handler: Box<NewTcpProtocolHandler>,
-    ) -> Result<Vec<(Address, u16)>, String> {
-        let mut out = Vec::<(Address, u16)>::new();
+    ) -> Result<Vec<SocketAddress>, String> {
+        let mut out = Vec::<SocketAddress>::new();
         // convert to socketaddrs
         let mut sockaddrs = address
             .to_socket_addrs()
@@ -442,7 +443,7 @@ impl Network {
 
             // Return local dial infos we listen on
             for ldi_addr in ldi_addrs {
-                out.push((Address::from_socket_addr(ldi_addr), ldi_addr.port()));
+                out.push(SocketAddress::from_socket_addr(ldi_addr));
             }
         }
 
@@ -613,27 +614,6 @@ impl Network {
 
     /////////////////////////////////////////////////////////////////
 
-    fn match_socket_addr(
-        inner: &NetworkInner,
-        listen_socket_addr: &SocketAddr,
-        peer_socket_addr: &SocketAddr,
-    ) -> bool {
-        let ldi_addrs = Self::translate_unspecified_address(inner, listen_socket_addr);
-        // xxx POSSIBLE CONCERN (verify this?)
-        // xxx will need to be reworked to search routing table information if we
-        // xxx allow systems to be dual homed with multiple interfaces eventually
-        // xxx to ensure the socket on the appropriate interface is chosen
-        // xxx this may not be necessary if the kernel automatically picks the right interface
-        // xxx it may do that. need to verify that though
-        for local_addr in &ldi_addrs {
-            if mem::discriminant(local_addr) == mem::discriminant(peer_socket_addr) {
-                return true;
-            }
-        }
-
-        false
-    }
-
     fn find_best_udp_protocol_handler(
         &self,
         peer_socket_addr: &SocketAddr,
@@ -785,7 +765,7 @@ impl Network {
     }
 
     pub async fn send_data(&self, node_ref: NodeRef, data: Vec<u8>) -> Result<(), String> {
-        let dial_info = node_ref.dial_info();
+        let dial_info = node_ref.best_dial_info();
         let descriptor = node_ref.last_connection();
 
         // First try to send data to the last socket we've seen this peer on
@@ -880,7 +860,7 @@ impl Network {
             )
         };
         trace!("WS: starting listener at {:?}", listen_address);
-        let addresses = self
+        let socket_addresses = self
             .start_tcp_listener(
                 listen_address.clone(),
                 false,
@@ -890,33 +870,44 @@ impl Network {
         trace!("WS: listener started");
 
         let mut dial_infos: Vec<DialInfo> = Vec::new();
-        for (a, p) in addresses {
+        for socket_address in socket_addresses {
             // Pick out WS port for outbound connections (they will all be the same)
-            self.inner.lock().ws_port = p;
-xxx continue here
-            let di = DialInfo::try_ws(a.address_string(), p, path.clone());
+            self.inner.lock().ws_port = socket_address.port();
+            // Build local dial info request url
+            let local_url = format!("ws://{}/{}", socket_address, path);
+            // Create local dial info
+            let di = DialInfo::try_ws(socket_address, local_url)
+                .map_err(map_to_string)
+                .map_err(logthru_net!(error))?;
             dial_infos.push(di.clone());
             routing_table.register_local_dial_info(di, DialInfoOrigin::Static);
         }
 
         // Add static public dialinfo if it's configured
         if let Some(url) = url.as_ref() {
-            let split_url = SplitUrl::from_str(url)?;
+            let mut split_url = SplitUrl::from_str(url)?;
             if split_url.scheme.to_ascii_lowercase() != "ws" {
                 return Err("WS URL must use 'ws://' scheme".to_owned());
             }
-            routing_table.register_global_dial_info(
-                DialInfo::ws(
-                    split_url.host,
-                    split_url.port.unwrap_or(80),
-                    split_url
-                        .path
-                        .map(|p| p.to_string())
-                        .unwrap_or_else(|| "/".to_string()),
-                ),
-                Some(NetworkClass::Server),
-                DialInfoOrigin::Static,
-            );
+            split_url.scheme = "ws".to_owned();
+
+            // Resolve static public hostnames
+            let global_socket_addrs = split_url
+                .host
+                .to_socket_addrs()
+                .await
+                .map_err(map_to_string)
+                .map_err(logthru_net!(error))?;
+
+            for gsa in global_socket_addrs {
+                routing_table.register_global_dial_info(
+                    DialInfo::try_ws(SocketAddress::from_socket_addr(gsa), url.clone())
+                        .map_err(map_to_string)
+                        .map_err(logthru_net!(error))?,
+                    Some(NetworkClass::Server),
+                    DialInfoOrigin::Static,
+                );
+            }
         }
 
         Ok(())
@@ -932,7 +923,7 @@ xxx continue here
             )
         };
         trace!("WSS: starting listener at {}", listen_address);
-        let addresses = self
+        let socket_addresses = self
             .start_tcp_listener(
                 listen_address.clone(),
                 true,
@@ -947,33 +938,40 @@ xxx continue here
         // This is not the case with unencrypted websockets, which can be specified solely by an IP address
         //
         // let mut dial_infos: Vec<DialInfo> = Vec::new();
-        for (_, p) in addresses {
-            // Pick out WS port for outbound connections (they will all be the same)
-            self.inner.lock().wss_port = p;
+        for socket_address in socket_addresses {
+            // Pick out WSS port for outbound connections (they will all be the same)
+            self.inner.lock().wss_port = socket_address.port();
 
-            //     let di = DialInfo::wss(a.address_string(), p, path.clone());
-            //     dial_infos.push(di.clone());
-            //     routing_table.register_local_dial_info(di, DialInfoOrigin::Static);
+            // Don't register local dial info because TLS won't allow that anyway without a local CA
+            // and we aren't doing that yet at all today.
         }
 
         // Add static public dialinfo if it's configured
         if let Some(url) = url.as_ref() {
-            let split_url = SplitUrl::from_str(url)?;
+            // Add static public dialinfo if it's configured
+            let mut split_url = SplitUrl::from_str(url)?;
             if split_url.scheme.to_ascii_lowercase() != "wss" {
                 return Err("WSS URL must use 'wss://' scheme".to_owned());
             }
-            routing_table.register_global_dial_info(
-                DialInfo::wss(
-                    split_url.host,
-                    split_url.port.unwrap_or(443),
-                    split_url
-                        .path
-                        .map(|p| p.to_string())
-                        .unwrap_or_else(|| "/".to_string()),
-                ),
-                Some(NetworkClass::Server),
-                DialInfoOrigin::Static,
-            );
+            split_url.scheme = "wss".to_owned();
+
+            // Resolve static public hostnames
+            let global_socket_addrs = split_url
+                .host
+                .to_socket_addrs()
+                .await
+                .map_err(map_to_string)
+                .map_err(logthru_net!(error))?;
+
+            for gsa in global_socket_addrs {
+                routing_table.register_global_dial_info(
+                    DialInfo::try_wss(SocketAddress::from_socket_addr(gsa), url.clone())
+                        .map_err(map_to_string)
+                        .map_err(logthru_net!(error))?,
+                    Some(NetworkClass::Server),
+                    DialInfoOrigin::Static,
+                );
+            }
         } else {
             return Err("WSS URL must be specified due to TLS requirements".to_owned());
         }
@@ -991,7 +989,7 @@ xxx continue here
             )
         };
         trace!("TCP: starting listener at {}", &listen_address);
-        let addresses = self
+        let socket_addresses = self
             .start_tcp_listener(
                 listen_address.clone(),
                 false,
@@ -1001,11 +999,11 @@ xxx continue here
         trace!("TCP: listener started");
 
         let mut dial_infos: Vec<DialInfo> = Vec::new();
-        for (a, p) in addresses {
+        for socket_address in socket_addresses {
             // Pick out TCP port for outbound connections (they will all be the same)
-            self.inner.lock().tcp_port = p;
+            self.inner.lock().tcp_port = socket_address.port();
 
-            let di = DialInfo::tcp(a.to_canonical(), p);
+            let di = DialInfo::tcp(socket_address);
             dial_infos.push(di.clone());
             routing_table.register_local_dial_info(di, DialInfoOrigin::Static);
         }
@@ -1128,10 +1126,10 @@ xxx continue here
             return inner.network_class;
         }
 
-        // Go through our public dialinfo and see what our best network class is
+        // Go through our global dialinfo and see what our best network class is
         let mut network_class = NetworkClass::Invalid;
-        for x in routing_table.global_dial_info() {
-            if let Some(nc) = x.network_class {
+        for did in routing_table.global_dial_info_details() {
+            if let Some(nc) = did.network_class {
                 if nc < network_class {
                     network_class = nc;
                 }
@@ -1172,9 +1170,13 @@ xxx continue here
             && !udp_static_public_dialinfo
             && (network_class.inbound_capable() || network_class == NetworkClass::Invalid)
         {
+            let filter = DialInfoFilter::with_protocol_type_and_address_type(
+                ProtocolType::UDP,
+                AddressType::IPV4,
+            );
             let need_udpv4_dialinfo = routing_table
-                .global_dial_info_for_protocol_address_type(ProtocolAddressType::UDPv4)
-                .is_empty();
+                .first_filtered_global_dial_info_details(|d| d.dial_info.matches_filter(&filter))
+                .is_none();
             if need_udpv4_dialinfo {
                 // If we have no public UDPv4 dialinfo, then we need to run a NAT check
                 // ensure the singlefuture is running for this
@@ -1186,13 +1188,17 @@ xxx continue here
         }
 
         // Same but for TCPv4
-        if protocol_config.tcp_enabled
+        if protocol_config.tcp_listen
             && !tcp_static_public_dialinfo
             && (network_class.inbound_capable() || network_class == NetworkClass::Invalid)
         {
+            let filter = DialInfoFilter::with_protocol_type_and_address_type(
+                ProtocolType::TCP,
+                AddressType::IPV4,
+            );
             let need_tcpv4_dialinfo = routing_table
-                .global_dial_info_for_protocol_address_type(ProtocolAddressType::TCPv4)
-                .is_empty();
+                .first_filtered_global_dial_info_details(|d| d.dial_info.matches_filter(&filter))
+                .is_none();
             if need_tcpv4_dialinfo {
                 // If we have no public TCPv4 dialinfo, then we need to run a NAT check
                 // ensure the singlefuture is running for this

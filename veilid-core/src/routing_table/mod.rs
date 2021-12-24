@@ -1,7 +1,6 @@
 mod bucket;
 mod bucket_entry;
 mod debug;
-mod dial_info_entry;
 mod find_nodes;
 mod node_ref;
 mod stats_accounting;
@@ -12,12 +11,10 @@ use crate::network_manager::*;
 use crate::rpc_processor::*;
 use crate::xx::*;
 use crate::*;
-use alloc::collections::VecDeque;
 use alloc::str::FromStr;
 use bucket::*;
 pub use bucket_entry::*;
 pub use debug::*;
-pub use dial_info_entry::*;
 pub use find_nodes::*;
 use futures_util::stream::{FuturesUnordered, StreamExt};
 pub use node_ref::*;
@@ -157,42 +154,35 @@ impl RoutingTable {
         !inner.local_dial_info.is_empty()
     }
 
-    pub fn local_dial_info(&self) -> Vec<DialInfoDetail> {
+    pub fn local_dial_info_details(&self) -> Vec<DialInfoDetail> {
         let inner = self.inner.lock();
         inner.local_dial_info.clone()
     }
 
-    pub fn local_dial_info_for_protocol(&self, protocol_type: ProtocolType) -> Vec<DialInfoDetail> {
+    pub fn first_filtered_local_dial_info_details<F>(&self, filter: F) -> Option<DialInfoDetail>
+    where
+        F: Fn(&DialInfoDetail) -> bool,
+    {
         let inner = self.inner.lock();
-        inner
-            .local_dial_info
-            .iter()
-            .filter_map(|di| {
-                if di.dial_info.protocol_type() != protocol_type {
-                    None
-                } else {
-                    Some(di.clone())
-                }
-            })
-            .collect()
+        for did in &inner.local_dial_info {
+            if filter(did) {
+                return Some(did.clone());
+            }
+        }
+        None
     }
-
-    pub fn local_dial_info_for_protocol_address_type(
-        &self,
-        protocol_address_type: ProtocolAddressType,
-    ) -> Vec<DialInfoDetail> {
+    pub fn all_filtered_local_dial_info_details<F>(&self, filter: F) -> Vec<DialInfoDetail>
+    where
+        F: Fn(&DialInfoDetail) -> bool,
+    {
         let inner = self.inner.lock();
-        inner
-            .local_dial_info
-            .iter()
-            .filter_map(|di| {
-                if di.dial_info.protocol_address_type() != protocol_address_type {
-                    None
-                } else {
-                    Some(di.clone())
-                }
-            })
-            .collect()
+        let ret = Vec::new();
+        for did in &inner.local_dial_info {
+            if filter(did) {
+                ret.push(did.clone());
+            }
+        }
+        ret
     }
 
     pub fn register_local_dial_info(&self, dial_info: DialInfo, origin: DialInfoOrigin) {
@@ -230,44 +220,35 @@ impl RoutingTable {
         !inner.global_dial_info.is_empty()
     }
 
-    pub fn global_dial_info(&self) -> Vec<DialInfoDetail> {
+    pub fn global_dial_info_details(&self) -> Vec<DialInfoDetail> {
         let inner = self.inner.lock();
         inner.global_dial_info.clone()
     }
 
-    pub fn global_dial_info_for_protocol(
-        &self,
-        protocol_type: ProtocolType,
-    ) -> Vec<DialInfoDetail> {
+    pub fn first_filtered_global_dial_info_details<F>(&self, filter: F) -> Option<DialInfoDetail>
+    where
+        F: Fn(&DialInfoDetail) -> bool,
+    {
         let inner = self.inner.lock();
-        inner
-            .global_dial_info
-            .iter()
-            .filter_map(|di| {
-                if di.dial_info.protocol_type() != protocol_type {
-                    None
-                } else {
-                    Some(di.clone())
-                }
-            })
-            .collect()
+        for did in &inner.global_dial_info {
+            if filter(did) {
+                return Some(did.clone());
+            }
+        }
+        None
     }
-    pub fn global_dial_info_for_protocol_address_type(
-        &self,
-        protocol_address_type: ProtocolAddressType,
-    ) -> Vec<DialInfoDetail> {
+    pub fn all_filtered_global_dial_info_details<F>(&self, filter: F) -> Vec<DialInfoDetail>
+    where
+        F: Fn(&DialInfoDetail) -> bool,
+    {
         let inner = self.inner.lock();
-        inner
-            .global_dial_info
-            .iter()
-            .filter_map(|di| {
-                if di.dial_info.protocol_address_type() != protocol_address_type {
-                    None
-                } else {
-                    Some(di.clone())
-                }
-            })
-            .collect()
+        let ret = Vec::new();
+        for did in &inner.global_dial_info {
+            if filter(did) {
+                ret.push(did.clone());
+            }
+        }
+        ret
     }
 
     pub fn register_global_dial_info(
@@ -287,7 +268,7 @@ impl RoutingTable {
         });
 
         info!(
-            "Public Dial Info: {}",
+            "Global Dial Info: {}",
             NodeDialInfoSingle {
                 node_id: NodeId::new(inner.node_id),
                 dial_info
@@ -354,34 +335,6 @@ impl RoutingTable {
 
     pub async fn terminate(&self) {
         *self.inner.lock() = Self::new_inner(self.network_manager());
-    }
-
-    // Just match address and port to help sort dialinfoentries for buckets
-    // because inbound connections will not have dialinfo associated with them
-    // but should have ip addresses if they have changed
-    fn dial_info_peer_address_match(dial_info: &DialInfo, peer_addr: &PeerAddress) -> bool {
-        match dial_info {
-            DialInfo::UDP(_) => {
-                peer_addr.protocol_type == ProtocolType::UDP
-                    && peer_addr.port == dial_info.port()
-                    && peer_addr.address.address_string() == dial_info.address_string()
-            }
-            DialInfo::TCP(_) => {
-                peer_addr.protocol_type == ProtocolType::TCP
-                    && peer_addr.port == dial_info.port()
-                    && peer_addr.address.address_string() == dial_info.address_string()
-            }
-            DialInfo::WS(_) => {
-                peer_addr.protocol_type == ProtocolType::WS
-                    && peer_addr.port == dial_info.port()
-                    && peer_addr.address.address_string() == dial_info.address_string()
-            }
-            DialInfo::WSS(_) => {
-                peer_addr.protocol_type == ProtocolType::WSS
-                    && peer_addr.port == dial_info.port()
-                    && peer_addr.address.address_string() == dial_info.address_string()
-            }
-        }
     }
 
     // Attempt to settle buckets and remove entries down to the desired number
@@ -482,7 +435,7 @@ impl RoutingTable {
     ) -> Result<NodeRef, String> {
         let nr = self.create_node_ref(node_id)?;
         nr.operate(move |e| -> Result<(), String> {
-            e.update_dial_info(dial_infos);
+            e.update_dial_infos(dial_infos);
             Ok(())
         })?;
 
@@ -604,6 +557,7 @@ impl RoutingTable {
         let mut bsmap: BTreeMap<DHTKey, Vec<DialInfo>> = BTreeMap::new();
         for b in bootstrap {
             let ndis = NodeDialInfoSingle::from_str(b.as_str())
+                .map_err(map_to_string)
                 .map_err(logthru_rtab!("Invalid dial info in bootstrap entry: {}", b))?;
             let node_id = ndis.node_id.key;
             bsmap

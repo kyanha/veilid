@@ -9,7 +9,7 @@ use async_std::net::*;
 
 impl Network {
     // Ask for a public address check from a particular noderef
-    async fn request_public_address(&self, node_ref: NodeRef) -> Option<SocketAddr> {
+    async fn request_public_address(&self, node_ref: NodeRef) -> Option<SocketAddress> {
         let routing_table = self.routing_table();
         let rpc = routing_table.rpc_processor();
         rpc.rpc_call_info(node_ref.clone())
@@ -22,6 +22,7 @@ impl Network {
             .unwrap_or(None)
     }
 
+    xxx convert to filter
     // find fast peers with a particular address type, and ask them to tell us what our external address is
     async fn discover_external_address(
         &self,

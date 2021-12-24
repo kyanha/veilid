@@ -5,9 +5,7 @@ use alloc::fmt;
 pub struct NodeRef {
     routing_table: RoutingTable,
     node_id: DHTKey,
-    // Filters
-    protocol_type: Option<ProtocolType>,
-    address_type: Option<AddressType>,
+    dial_info_filter: DialInfoFilter,
 }
 
 impl NodeRef {
@@ -16,23 +14,20 @@ impl NodeRef {
         Self {
             routing_table,
             node_id: key,
-            protocol_type: None,
-            address_type: None,
+            dial_info_filter: DialInfoFilter::default(),
         }
     }
     pub fn new_filtered(
         routing_table: RoutingTable,
         key: DHTKey,
         entry: &mut BucketEntry,
-        protocol_type: Option<ProtocolType>,
-        address_type: Option<AddressType>,
+        dial_info_filter: DialInfoFilter,
     ) -> Self {
         entry.ref_count += 1;
         Self {
             routing_table,
             node_id: key,
-            protocol_type,
-            address_type,
+            dial_info_filter,
         }
     }
 
@@ -40,20 +35,8 @@ impl NodeRef {
         self.node_id
     }
 
-    pub fn protocol_type(&self) -> Option<ProtocolType> {
-        self.protocol_type
-    }
-
-    pub fn set_protocol_type(&mut self, protocol_type: Option<ProtocolType>) {
-        self.protocol_type = protocol_type;
-    }
-
-    pub fn address_type(&self) -> Option<AddressType> {
-        self.address_type
-    }
-
-    pub fn set_address_type(&mut self, address_type: Option<AddressType>) {
-        self.address_type = address_type;
+    pub fn dial_info_filter(&self) -> DialInfoFilter {
+        self.dial_info_filter.clone()
     }
 
     pub fn operate<T, F>(&self, f: F) -> T
@@ -63,28 +46,39 @@ impl NodeRef {
         self.routing_table.operate_on_bucket_entry(self.node_id, f)
     }
 
-    xxx fix the notion of 'best dial info' to sort by capability and udp/tcp/ws/wss preference order
-    pub fn dial_info(&self) -> Option<DialInfo> {
-        if self.protocol_type || self. {
-            None => self.operate(|e| e.best_dial_info()),
-            Some(pat) => self.operate(|e| {
-                e.filtered_dial_info(|die| die.dial_info().protocol_address_type() == pat)
-            }),
+    // Returns the best dial info to attempt a connection to this node
+    pub fn best_dial_info(&self) -> Option<DialInfo> {
+        let nm = self.routing_table.network_manager();
+        let protocol_config = nm.get_protocol_config();
+        if protocol_config.is_none() {
+            return None;
         }
+        let protocol_config = protocol_config.unwrap();
+
+        self.operate(|e| {
+            e.first_filtered_dial_info(|di| {
+                // Does it match the dial info filter
+                if !di.matches_filter(&self.dial_info_filter) {
+                    return false;
+                }
+                // Filter out dial infos that don't match our protocol config
+                // for outbound connections. This routine filters on 'connect' settings
+                // to ensure we connect using only the protocols we have enabled.
+                protocol_config.is_protocol_type_connect_enabled(di.protocol_type())
+            })
+        })
     }
     pub fn last_connection(&self) -> Option<ConnectionDescriptor> {
         match self.operate(|e| e.last_connection()) {
             None => None,
             Some(c) => {
-                if let Some(protocol_address_type) = self.protocol_address_type {
-                    if c.remote.protocol_address_type() == protocol_address_type {
-                        Some(c)
-                    } else {
-                        None
-                    }
-                } else {
-                    Some(c)
+                if !c.matches_filter(&self.dial_info_filter) {
+                    return None;
                 }
+                // We don't filter this out by protocol config because if a connection
+                // succeeded, it's allowed to persist and be used for communication
+                // regardless of any other configuration
+                Some(c)
             }
         }
     }
@@ -98,17 +92,18 @@ impl Clone for NodeRef {
         Self {
             routing_table: self.routing_table.clone(),
             node_id: self.node_id,
-            protocol_address_type: self.protocol_address_type,
+            dial_info_filter: self.dial_info_filter.clone(),
         }
     }
 }
 
 impl fmt::Debug for NodeRef {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.protocol_address_type {
-            None => write!(f, "{}", self.node_id.encode()),
-            Some(pat) => write!(f, "{}#{:?}", self.node_id.encode(), pat),
+        let out = format!("{}", self.node_id.encode());
+        if !self.dial_info_filter.is_empty() {
+            out += &format!("{:?}", self.dial_info_filter);
         }
+        write!(f, "{}", out)
     }
 }
 
