@@ -121,7 +121,7 @@ impl Network {
     }
 
     pub async fn send_data(&self, node_ref: NodeRef, data: Vec<u8>) -> Result<(), String> {
-        let dial_info = node_ref.dial_info();
+        let dial_info = node_ref.best_dial_info();
         let descriptor = node_ref.last_connection();
 
         // First try to send data to the last socket we've seen this peer on

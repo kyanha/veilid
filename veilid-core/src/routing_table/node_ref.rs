@@ -35,9 +35,9 @@ impl NodeRef {
         self.node_id
     }
 
-    pub fn dial_info_filter(&self) -> DialInfoFilter {
-        self.dial_info_filter.clone()
-    }
+    // pub fn dial_info_filter(&self) -> DialInfoFilter {
+    //     self.dial_info_filter.clone()
+    // }
 
     pub fn operate<T, F>(&self, f: F) -> T
     where

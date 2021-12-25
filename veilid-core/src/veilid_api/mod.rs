@@ -585,6 +585,14 @@ impl DialInfo {
             Self::WSS(di) => di.socket_address.to_socket_addr(),
         }
     }
+    pub fn to_peer_address(&self) -> PeerAddress {
+        match self {
+            Self::UDP(di) => PeerAddress::new(di.socket_address, ProtocolType::UDP),
+            Self::TCP(di) => PeerAddress::new(di.socket_address, ProtocolType::TCP),
+            Self::WS(di) => PeerAddress::new(di.socket_address, ProtocolType::WS),
+            Self::WSS(di) => PeerAddress::new(di.socket_address, ProtocolType::WSS),
+        }
+    }
     pub fn request(&self) -> Option<String> {
         match self {
             Self::UDP(_) => None,

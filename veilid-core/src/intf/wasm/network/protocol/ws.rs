@@ -91,21 +91,29 @@ impl WebsocketProtocolHandler {
         network_manager: NetworkManager,
         dial_info: &DialInfo,
     ) -> Result<NetworkConnection, String> {
-        let url = dial_info.to_url_string(None);
-        let (tls, host, port, protocol_type) = match dial_info {
-            DialInfo::WS(ws) => (false, ws.host.clone(), ws.port, ProtocolType::WS),
-            DialInfo::WSS(wss) => (true, wss.host.clone(), wss.port, ProtocolType::WSS),
+        let url = dial_info
+            .request()
+            .ok_or_else(|| format!("missing url in websocket dialinfo: {:?}", dial_info))?;
+        let split_url = SplitUrl::from_str(&url)?;
+        let tls = match dial_info {
+            DialInfo::WS(ws) => {
+                if split_url.scheme.to_ascii_lowercase() != "ws" {
+                    return Err(format!("wrong scheme for WS websocket url: {}", url));
+                }
+                false
+            }
+            DialInfo::WSS(wss) => {
+                if split_url.scheme.to_ascii_lowercase() != "wss" {
+                    return Err(format!("wrong scheme for WSS websocket url: {}", url));
+                }
+                true
+            }
             _ => {
                 return Err("wrong protocol for WebsocketProtocolHandler".to_owned())
                     .map_err(logthru_net!(error))
             }
         };
-
-        let peer_addr = PeerAddress::new(
-            Address::from_str(&host).map_err(logthru_net!(error))?,
-            port,
-            protocol_type,
-        );
+        let peer_addr = dial_info.to_peer_address();
 
         let (ws, wsio) = WsMeta::connect(url, None)
             .await
