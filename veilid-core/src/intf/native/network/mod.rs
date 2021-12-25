@@ -468,7 +468,7 @@ impl Network {
 
             // Create protocol handler
             let udpv4_handler =
-                RawUdpProtocolHandler::new(inner.network_manager.clone(), socket_arc.clone());
+                RawUdpProtocolHandler::new(inner.network_manager.clone(), socket_arc);
 
             inner.outbound_udpv4_protocol_handler = Some(udpv4_handler);
         }
@@ -485,7 +485,7 @@ impl Network {
 
             // Create protocol handler
             let udpv6_handler =
-                RawUdpProtocolHandler::new(inner.network_manager.clone(), socket_arc.clone());
+                RawUdpProtocolHandler::new(inner.network_manager.clone(), socket_arc);
 
             inner.outbound_udpv6_protocol_handler = Some(udpv6_handler);
         }
