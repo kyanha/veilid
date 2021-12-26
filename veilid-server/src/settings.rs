@@ -66,7 +66,7 @@ core:
             validate_dial_info_receipt_time: 5000000
         upnp: false
         natpmp: false
-        address_filter: true
+        enable_local_peer_scope: false
         restricted_nat_retries: 3
         tls:
             certificate_path: "/etc/veilid/server.crt"
@@ -425,7 +425,7 @@ pub struct Network {
     pub dht: Dht,
     pub upnp: bool,
     pub natpmp: bool,
-    pub address_filter: bool,
+    pub enable_local_peer_scope: bool,
     pub restricted_nat_retries: u32,
     pub tls: Tls,
     pub application: Application,
@@ -688,7 +688,9 @@ impl Settings {
                 )),
                 "network.upnp" => Ok(Box::new(inner.core.network.upnp)),
                 "network.natpmp" => Ok(Box::new(inner.core.network.natpmp)),
-                "network.address_filter" => Ok(Box::new(inner.core.network.address_filter)),
+                "network.enable_local_peer_scope" => {
+                    Ok(Box::new(inner.core.network.enable_local_peer_scope))
+                }
                 "network.restricted_nat_retries" => {
                     Ok(Box::new(inner.core.network.restricted_nat_retries))
                 }
@@ -981,7 +983,7 @@ mod tests {
         //
         assert_eq!(s.core.network.upnp, false);
         assert_eq!(s.core.network.natpmp, false);
-        assert_eq!(s.core.network.address_filter, true);
+        assert_eq!(s.core.network.enable_local_peer_scope, false);
         assert_eq!(s.core.network.restricted_nat_retries, 3u32);
         //
         assert_eq!(

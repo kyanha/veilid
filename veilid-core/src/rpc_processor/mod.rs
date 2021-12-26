@@ -966,8 +966,8 @@ impl RPCProcessor {
             }
 
             // filter out attempts to pass non-public addresses in for peers
-            let address_filter = self.config.get().network.address_filter;
-            if address_filter {
+            let enable_local_peer_scope = self.config.get().network.enable_local_peer_scope;
+            if !enable_local_peer_scope {
                 for di in &peer_info.dial_infos {
                     if !di.is_global() {
                         // non-public address causes rejection
@@ -983,7 +983,7 @@ impl RPCProcessor {
                 .map_err(map_error_string!())?;
 
             // find N nodes closest to the target node in our routing table
-            let peer_scope = if address_filter {
+            let peer_scope = if !enable_local_peer_scope {
                 PeerScope::Global
             } else {
                 PeerScope::All
@@ -1454,7 +1454,7 @@ impl RPCProcessor {
         safety_route: Option<&SafetyRouteSpec>,
         respond_to: RespondTo,
     ) -> Result<FindNodeAnswer, RPCError> {
-        let address_filter = self.config.get().network.address_filter;
+        let enable_local_peer_scope = self.config.get().network.enable_local_peer_scope;
         let find_node_q_msg = {
             let mut find_node_q_msg = ::capnp::message::Builder::new_default();
             let mut question = find_node_q_msg.init_root::<veilid_capnp::operation::Builder>();
@@ -1467,11 +1467,13 @@ impl RPCProcessor {
             encode_public_key(&key, &mut node_id_builder)?;
             let mut peer_info_builder = fnq.reborrow().init_peer_info();
 
-            let own_peer_info = self.routing_table().get_own_peer_info(if address_filter {
-                PeerScope::Global
-            } else {
-                PeerScope::All
-            });
+            let own_peer_info =
+                self.routing_table()
+                    .get_own_peer_info(if !enable_local_peer_scope {
+                        PeerScope::Global
+                    } else {
+                        PeerScope::All
+                    });
             if own_peer_info.dial_infos.is_empty() {
                 return Err(rpc_error_internal("No valid public dial info for own node"));
             }
@@ -1520,7 +1522,7 @@ impl RPCProcessor {
             let peer_info = decode_peer_info(&p)?;
 
             // reject attempts to include non-public addresses in results
-            if address_filter {
+            if !enable_local_peer_scope {
                 for di in &peer_info.dial_infos {
                     if !di.is_global() {
                         // non-public address causes rejection

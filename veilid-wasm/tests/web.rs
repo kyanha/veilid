@@ -62,7 +62,7 @@ fn init_callbacks() {
             case "network.dht.validate_dial_info_receipt_time": return 5000000;
             case "network.upnp": return false;
             case "network.natpmp": return false;
-            case "network.address_filter": return true;
+            case "network.enable_local_peer_scope": return false;
             case "network.restricted_nat_retries": return 3;
             case "network.tls.certificate_path": return "";
             case "network.tls.private_key_path": return "";

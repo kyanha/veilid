@@ -3,4 +3,4 @@ core:
   network:
     dht:
       min_peer_count: 1
-    address_filter: false
+    enable_local_peer_scope: true

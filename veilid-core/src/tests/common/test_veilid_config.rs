@@ -184,7 +184,7 @@ pub fn config_callback(key: String) -> Result<Box<dyn core::any::Any>, String> {
         "network.dht.validate_dial_info_receipt_time" => Ok(Box::new(5000000u64)),
         "network.upnp" => Ok(Box::new(false)),
         "network.natpmp" => Ok(Box::new(false)),
-        "network.address_filter" => Ok(Box::new(true)),
+        "network.enable_local_peer_scope" => Ok(Box::new(false)),
         "network.restricted_nat_retries" => Ok(Box::new(3u32)),
         "network.tls.certificate_path" => Ok(Box::new(get_certfile_path())),
         "network.tls.private_key_path" => Ok(Box::new(get_keyfile_path())),
@@ -279,7 +279,7 @@ pub async fn test_config() {
 
     assert_eq!(inner.network.upnp, false);
     assert_eq!(inner.network.natpmp, false);
-    assert_eq!(inner.network.address_filter, true);
+    assert_eq!(inner.network.enable_local_peer_scope, false);
     assert_eq!(inner.network.restricted_nat_retries, 3u32);
     assert_eq!(inner.network.tls.certificate_path, get_certfile_path());
     assert_eq!(inner.network.tls.private_key_path, get_keyfile_path());

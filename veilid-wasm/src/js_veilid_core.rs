@@ -119,7 +119,7 @@ impl JsVeilidCore {
             "network.dht.validate_dial_info_receipt_time" => Self::value_to_u64(val),
             "network.upnp" => Self::value_to_bool(val),
             "network.natpmp" => Self::value_to_bool(val),
-            "network.address_filter" => Self::value_to_bool(val),
+            "network.enable_local_peer_scope" => Self::value_to_bool(val),
             "network.restricted_nat_retries" => Self::value_to_u32(val),
             "network.tls.certificate_path" => Self::value_to_string(val),
             "network.tls.private_key_path" => Self::value_to_string(val),
