@@ -156,6 +156,7 @@ pub struct RPCProcessorInner {
 pub struct RPCProcessor {
     crypto: Crypto,
     config: VeilidConfig,
+    default_peer_scope: PeerScope,
     inner: Arc<Mutex<RPCProcessorInner>>,
 }
 
@@ -177,6 +178,16 @@ impl RPCProcessor {
         Self {
             crypto: network_manager.crypto(),
             config: network_manager.config(),
+            default_peer_scope: if !network_manager
+                .config()
+                .get()
+                .network
+                .enable_local_peer_scope
+            {
+                PeerScope::Global
+            } else {
+                PeerScope::All
+            },
             inner: Arc::new(Mutex::new(Self::new_inner(network_manager))),
         }
     }
@@ -201,6 +212,19 @@ impl RPCProcessor {
 
     fn get_next_op_id(&self) -> OperationId {
         get_random_u64()
+    }
+
+    fn filter_peer_scope(&self, peer_info: &PeerInfo) -> bool {
+        // reject attempts to include non-public addresses in results
+        if self.default_peer_scope == PeerScope::Global {
+            for di in &peer_info.dial_infos {
+                if !di.is_global() {
+                    // non-public address causes rejection
+                    return false;
+                }
+            }
+        }
+        true
     }
 
     //////////////////////////////////////////////////////////////////////
@@ -966,14 +990,8 @@ impl RPCProcessor {
             }
 
             // filter out attempts to pass non-public addresses in for peers
-            let enable_local_peer_scope = self.config.get().network.enable_local_peer_scope;
-            if !enable_local_peer_scope {
-                for di in &peer_info.dial_infos {
-                    if !di.is_global() {
-                        // non-public address causes rejection
-                        return Err(RPCError::InvalidFormat);
-                    }
-                }
+            if !self.filter_peer_scope(&peer_info) {
+                return Err(RPCError::InvalidFormat);
             }
 
             // add node information for the requesting node to our routing table
@@ -983,18 +1001,15 @@ impl RPCProcessor {
                 .map_err(map_error_string!())?;
 
             // find N nodes closest to the target node in our routing table
-            let peer_scope = if !enable_local_peer_scope {
-                PeerScope::Global
-            } else {
-                PeerScope::All
-            };
-            let own_peer_info = routing_table.get_own_peer_info(peer_scope);
+            let own_peer_info = routing_table.get_own_peer_info(self.default_peer_scope);
             let closest_nodes = routing_table.find_closest_nodes(
                 target_node_id,
                 // filter
                 None,
                 // transform
-                |e| RoutingTable::transform_to_peer_info(e, peer_scope, &own_peer_info),
+                |e| {
+                    RoutingTable::transform_to_peer_info(e, self.default_peer_scope, &own_peer_info)
+                },
             );
             log_rpc!(">>>> Returning {} closest peers", closest_nodes.len());
 
@@ -1454,7 +1469,6 @@ impl RPCProcessor {
         safety_route: Option<&SafetyRouteSpec>,
         respond_to: RespondTo,
     ) -> Result<FindNodeAnswer, RPCError> {
-        let enable_local_peer_scope = self.config.get().network.enable_local_peer_scope;
         let find_node_q_msg = {
             let mut find_node_q_msg = ::capnp::message::Builder::new_default();
             let mut question = find_node_q_msg.init_root::<veilid_capnp::operation::Builder>();
@@ -1467,13 +1481,9 @@ impl RPCProcessor {
             encode_public_key(&key, &mut node_id_builder)?;
             let mut peer_info_builder = fnq.reborrow().init_peer_info();
 
-            let own_peer_info =
-                self.routing_table()
-                    .get_own_peer_info(if !enable_local_peer_scope {
-                        PeerScope::Global
-                    } else {
-                        PeerScope::All
-                    });
+            let own_peer_info = self
+                .routing_table()
+                .get_own_peer_info(self.default_peer_scope);
             if own_peer_info.dial_infos.is_empty() {
                 return Err(rpc_error_internal("No valid public dial info for own node"));
             }
@@ -1521,14 +1531,8 @@ impl RPCProcessor {
         for p in peers_reader.iter() {
             let peer_info = decode_peer_info(&p)?;
 
-            // reject attempts to include non-public addresses in results
-            if !enable_local_peer_scope {
-                for di in &peer_info.dial_infos {
-                    if !di.is_global() {
-                        // non-public address causes rejection
-                        return Err(RPCError::InvalidFormat);
-                    }
-                }
+            if !self.filter_peer_scope(&peer_info) {
+                return Err(RPCError::InvalidFormat);
             }
 
             peers.push(peer_info);
