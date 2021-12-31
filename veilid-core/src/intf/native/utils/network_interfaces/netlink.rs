@@ -68,21 +68,19 @@ impl PlatformSupportNetlink {
         self.default_route_interfaces.clear();
         let mut routesv4 = self.handle.route().get(IpVersion::V4).execute();
         while let Some(routev4) = routesv4.try_next().await.unwrap_or_default() {
-            if let Some(index) = routev4.input_interface() {
-                if let Some((dest, prefix)) = routev4.destination_prefix() {
-                    if prefix == 0 && dest.is_unspecified() {
-                        self.default_route_interfaces.insert(index);
-                    }
+            if let Some(index) = routev4.output_interface() {
+                //println!("*** ipv4 route: {:#?}", routev4);
+                if routev4.header.destination_prefix_length == 0 {
+                    self.default_route_interfaces.insert(index);
                 }
             }
         }
         let mut routesv6 = self.handle.route().get(IpVersion::V6).execute();
         while let Some(routev6) = routesv6.try_next().await.unwrap_or_default() {
-            if let Some(index) = routev6.input_interface() {
-                if let Some((dest, prefix)) = routev6.destination_prefix() {
-                    if prefix == 0 && dest.is_unspecified() {
-                        self.default_route_interfaces.insert(index);
-                    }
+            if let Some(index) = routev6.output_interface() {
+                //println!("*** ipv6 route: {:#?}", routev6);
+                if routev6.header.destination_prefix_length == 0 {
+                    self.default_route_interfaces.insert(index);
                 }
             }
         }

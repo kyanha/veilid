@@ -1,5 +1,6 @@
 use crate::xx::*;
 use crate::*;
+use core::fmt;
 mod tools;
 
 cfg_if::cfg_if! {
@@ -109,13 +110,28 @@ impl InterfaceAddress {
     }
 }
 
-#[derive(PartialEq, Eq, Clone, Debug)]
+#[derive(PartialEq, Eq, Clone)]
 pub struct NetworkInterface {
     pub name: String,
     pub flags: InterfaceFlags,
     pub addrs: Vec<InterfaceAddress>,
 }
 
+impl fmt::Debug for NetworkInterface {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("NetworkInterface")
+            .field("name", &self.name)
+            .field("flags", &self.flags)
+            .field("addrs", &self.addrs)
+            .finish()?;
+        if f.alternate() {
+            writeln!(f)?;
+            writeln!(f, "// primary_ipv4: {:?}", self.primary_ipv4())?;
+            writeln!(f, "// primary_ipv6: {:?}", self.primary_ipv6())?;
+        }
+        Ok(())
+    }
+}
 #[allow(dead_code)]
 impl NetworkInterface {
     pub fn new(name: String, flags: InterfaceFlags) -> Self {
@@ -171,10 +187,28 @@ impl NetworkInterface {
     }
 }
 
-#[derive(PartialEq, Eq, Clone, Debug)]
+#[derive(PartialEq, Eq, Clone)]
 pub struct NetworkInterfaces {
     valid: bool,
     interfaces: BTreeMap<String, NetworkInterface>,
+}
+
+impl fmt::Debug for NetworkInterfaces {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("NetworkInterfaces")
+            .field("valid", &self.valid)
+            .field("interfaces", &self.interfaces)
+            .finish()?;
+        if f.alternate() {
+            writeln!(f)?;
+            writeln!(
+                f,
+                "// default_route_addresses: {:?}",
+                self.default_route_addresses()
+            )?;
+        }
+        Ok(())
+    }
 }
 
 #[allow(dead_code)]
@@ -205,12 +239,31 @@ impl NetworkInterfaces {
 
         self.valid = true;
 
-        Ok(last_interfaces != self.interfaces)
+        let changed = last_interfaces != self.interfaces;
+        if changed {
+            trace!("NetworkInterfaces refreshed: {:#?}?", self);
+        }
+        Ok(changed)
     }
     pub fn len(&self) -> usize {
         self.interfaces.len()
     }
     pub fn iter(&self) -> std::collections::btree_map::Iter<String, NetworkInterface> {
         self.interfaces.iter()
+    }
+
+    pub fn default_route_addresses(&self) -> Vec<IpAddr> {
+        let mut out = Vec::new();
+        for intf in self.interfaces.values() {
+            if intf.is_running() && intf.has_default_route() && !intf.is_loopback() {
+                if let Some(pipv4) = intf.primary_ipv4() {
+                    out.push(IpAddr::V4(pipv4));
+                }
+                if let Some(pipv6) = intf.primary_ipv6() {
+                    out.push(IpAddr::V6(pipv6));
+                }
+            }
+        }
+        out
     }
 }
