@@ -7,9 +7,6 @@
 [submodule "external/cursive-flexi-logger-view"]
 	path = external/cursive-flexi-logger-view
 	url = ../cursive-flexi-logger-view.git
-[submodule "external/if-addrs"]
-	path = external/if-addrs
-	url = ../if-addrs.git
 [submodule "external/keyring-rs"]
 	path = external/keyring-rs
 	url = ../keyring-rs.git

@@ -1661,14 +1661,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "if-addrs"
-version = "0.7.0"
-dependencies = [
- "libc",
- "winapi",
-]
-
-[[package]]
 name = "ifstructs"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3775,7 +3767,6 @@ dependencies = [
  "getrandom 0.2.3",
  "hashbrown",
  "hex",
- "if-addrs",
  "ifstructs",
  "jni",
  "jni-sys",

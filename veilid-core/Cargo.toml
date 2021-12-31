@@ -62,7 +62,6 @@ keyvaluedb-sqlite = { path = "../external/keyvaluedb/keyvaluedb-sqlite" }
 data-encoding = { version = "^2" }
 serde = { version = "^1", features = ["derive" ] }
 serde_cbor = { version = "^0" }
-if-addrs = { path = "../external/if-addrs" }
 async_executors = { version = "^0", features = [ "async_std" ]}
 socket2 = "^0"
 bugsalot = "^0"
