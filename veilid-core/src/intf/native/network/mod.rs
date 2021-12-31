@@ -1061,7 +1061,9 @@ impl Network {
         info!("starting network");
 
         // initialize interfaces
-        self.inner.lock().interfaces.refresh()?;
+        let mut interfaces = NetworkInterfaces::new();
+        interfaces.refresh().await?;
+        self.inner.lock().interfaces = interfaces;
 
         // get protocol config
         let protocol_config = {

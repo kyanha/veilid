@@ -125,6 +125,8 @@ cfg_if! {
                 cb.add_filter_ignore_str("async_std");
                 cb.add_filter_ignore_str("async_io");
                 cb.add_filter_ignore_str("polling");
+                cb.add_filter_ignore_str("netlink_proto");
+                cb.add_filter_ignore_str("netlink_sys");
                 TestLogger::init(LevelFilter::Trace, cb.build()).unwrap();
             });
         }

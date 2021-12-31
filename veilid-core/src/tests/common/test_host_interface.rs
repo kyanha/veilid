@@ -542,13 +542,14 @@ cfg_if! {
             let mut interfaces = intf::utils::network_interfaces::NetworkInterfaces::new();
             let count = 100;
             for _ in 0..count {
-                if let Err(e) = interfaces.refresh() {
+                if let Err(e) = interfaces.refresh().await {
                     error!("error refreshing interfaces: {}", e);
                 }
             }
             let t2 = intf::get_timestamp();
             let tdiff = ((t2 - t1) as f64)/1000000.0f64;
             info!("running network interface test with {} iterations took {} seconds", count, tdiff);
+            info!("interfaces: {:#?}", interfaces)
         }
     }
 }

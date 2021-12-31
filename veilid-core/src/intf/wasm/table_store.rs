@@ -80,6 +80,7 @@ impl TableStore {
         let db = Database::open(table_name.clone(), column_count)
             .await
             .map_err(|e| format!("failed to open tabledb at: {} ({})", table_name, e))?;
+        info!("opened table store '{}' with table name '{:?}' with {} columns", name, table_name, column_count);
 
         let table_db = TableDB::new(table_name.clone(), self.clone(), db);
 

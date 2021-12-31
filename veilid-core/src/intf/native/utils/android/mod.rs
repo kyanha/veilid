@@ -1,6 +1,8 @@
-mod android_get_if_addrs;
+// xxx : support for android older than API 24, if we need it someday
+//mod android_get_if_addrs;
+//pub use android_get_if_addrs::*;
+
 mod get_directories;
-pub use android_get_if_addrs::*;
 pub use get_directories::*;
 
 use crate::xx::*;

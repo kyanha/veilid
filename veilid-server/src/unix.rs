@@ -196,6 +196,7 @@ pub async fn main() -> Result<(), String> {
     cb.add_filter_ignore_str("rustls");
     cb.add_filter_ignore_str("async_tungstenite");
     cb.add_filter_ignore_str("tungstenite");
+    cb.add_filter_ignore_str("netlink_proto");
 
     if settingsr.logging.terminal.enabled {
         logs.push(TermLogger::new(
