@@ -78,7 +78,7 @@ impl RPCProcessor {
                     let mut rh_message = ::capnp::message::Builder::new_default();
                     let mut rh_builder = rh_message.init_root::<veilid_capnp::route_hop::Builder>();
                     let mut di_builder = rh_builder.reborrow().init_dial_info();
-                    encode_node_dial_info_single(&safety_route.hops[h].dial_info, &mut di_builder)?;
+                    encode_node_dial_info(&safety_route.hops[h].dial_info, &mut di_builder)?;
                     // RouteHopData
                     let mut rhd_builder = rh_builder.init_next_hop();
                     // Add the nonce

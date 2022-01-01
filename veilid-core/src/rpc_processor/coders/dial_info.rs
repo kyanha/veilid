@@ -70,13 +70,17 @@ pub fn encode_dial_info(
                 &ws.socket_address,
                 &mut di_ws_builder.reborrow().init_socket_address(),
             )?;
+            let request = dial_info
+                .request()
+                .ok_or_else(|| rpc_error_internal("no request for WS dialinfo"))?;
+
             let mut requestb = di_ws_builder.init_request(
-                ws.request
+                request
                     .len()
                     .try_into()
                     .map_err(map_error_protocol!("request too long"))?,
             );
-            requestb.push_str(ws.request.as_str());
+            requestb.push_str(request.as_str());
         }
         DialInfo::WSS(wss) => {
             let mut di_wss_builder = builder.reborrow().init_wss();
@@ -84,13 +88,17 @@ pub fn encode_dial_info(
                 &wss.socket_address,
                 &mut di_wss_builder.reborrow().init_socket_address(),
             )?;
+            let request = dial_info
+                .request()
+                .ok_or_else(|| rpc_error_internal("no request for WSS dialinfo"))?;
+
             let mut requestb = di_wss_builder.init_request(
-                wss.request
+                request
                     .len()
                     .try_into()
                     .map_err(map_error_protocol!("request too long"))?,
             );
-            requestb.push_str(wss.request.as_str());
+            requestb.push_str(request.as_str());
         }
     };
     Ok(())

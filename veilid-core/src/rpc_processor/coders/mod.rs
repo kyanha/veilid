@@ -1,6 +1,6 @@
 mod address;
 mod dial_info;
-mod node_dial_info_single;
+mod node_dial_info;
 mod node_info;
 mod nonce;
 mod peer_info;
@@ -11,7 +11,7 @@ mod socket_address;
 
 pub use address::*;
 pub use dial_info::*;
-pub use node_dial_info_single::*;
+pub use node_dial_info::*;
 pub use node_info::*;
 pub use nonce::*;
 pub use peer_info::*;

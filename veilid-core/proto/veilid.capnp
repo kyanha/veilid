@@ -102,7 +102,7 @@ struct DialInfo {
     }
 }
 
-struct NodeDialInfoSingle {
+struct NodeDialInfo {
     nodeId                  @0  :NodeID;                # node id
     dialInfo                @1  :DialInfo;              # how to get to the node
 }
@@ -119,7 +119,7 @@ struct RouteHopData {
 }
 
 struct RouteHop {
-    dialInfo                @0  :NodeDialInfoSingle;    # dial info for this hop
+    dialInfo                @0  :NodeDialInfo;    # dial info for this hop
     nextHop                 @1  :RouteHopData;          # Optional: next hop in encrypted blob 
                                                         # Null means no next hop, at destination (only used in private route, safety routes must enclose a stub private route)
 }

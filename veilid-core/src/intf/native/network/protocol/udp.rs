@@ -30,6 +30,17 @@ impl RawUdpProtocolHandler {
         }
     }
 
+    pub async fn receive_loop(self) {
+        let mut data = vec![0u8; 65536];
+        let socket = self.inner.lock().socket.clone();
+        while let Ok((size, socket_addr)) = socket.recv_from(&mut data).await {
+            // XXX: Limit the number of packets from the same IP address?
+            trace!("UDP packet from: {}", socket_addr);
+
+            let _processed = self.clone().on_message(&data[..size], socket_addr).await;
+        }
+    }
+
     pub async fn on_message(&self, data: &[u8], remote_addr: SocketAddr) -> Result<bool, String> {
         if data.len() > MAX_MESSAGE_SIZE {
             return Err("received too large UDP message".to_owned());

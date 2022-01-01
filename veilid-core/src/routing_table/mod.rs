@@ -219,7 +219,7 @@ impl RoutingTable {
             } else {
                 "Other "
             },
-            NodeDialInfoSingle {
+            NodeDialInfo {
                 node_id: NodeId::new(inner.node_id),
                 dial_info
             }
@@ -507,7 +507,7 @@ impl RoutingTable {
         // Map all bootstrap entries to a single key with multiple dialinfo
         let mut bsmap: BTreeMap<DHTKey, Vec<DialInfo>> = BTreeMap::new();
         for b in bootstrap {
-            let ndis = NodeDialInfoSingle::from_str(b.as_str())
+            let ndis = NodeDialInfo::from_str(b.as_str())
                 .map_err(map_to_string)
                 .map_err(logthru_rtab!("Invalid dial info in bootstrap entry: {}", b))?;
             let node_id = ndis.node_id.key;

@@ -13,7 +13,7 @@ pub struct RouteHopData {
 
 #[derive(Clone, Debug)]
 pub struct RouteHop {
-    pub dial_info: NodeDialInfoSingle,
+    pub dial_info: NodeDialInfo,
     pub next_hop: Option<RouteHopData>,
 }
 
@@ -61,7 +61,7 @@ pub fn encode_route_hop(
     route_hop: &RouteHop,
     builder: &mut veilid_capnp::route_hop::Builder,
 ) -> Result<(), RPCError> {
-    encode_node_dial_info_single(
+    encode_node_dial_info(
         &route_hop.dial_info,
         &mut builder.reborrow().init_dial_info(),
     )?;
@@ -133,7 +133,7 @@ pub fn decode_route_hop_data(
 }
 
 pub fn decode_route_hop(reader: &veilid_capnp::route_hop::Reader) -> Result<RouteHop, RPCError> {
-    let dial_info = decode_node_dial_info_single(
+    let dial_info = decode_node_dial_info(
         &reader
             .reborrow()
             .get_dial_info()

@@ -61,7 +61,7 @@ def read_until_local_dial_info(proc, proto):
         if idx != -1:
             idx += len(local_dial_info_str)
             di = ln[idx:]
-            if di.startswith(proto):
+            if b"@"+bytes(proto)+b"|" in di:
                 return di.decode("utf-8").strip()
 
     return None
@@ -95,7 +95,7 @@ def main():
                         help='specify subnode index to wait for the debugger')
     parser.add_argument("--config-file", type=str,
                         help='configuration file to specify for the bootstrap node')
-    parser.add_argument("--protocol", type=bytes, default=b"udp",
+    parser.add_argument("--protocol", type=str, default="udp",
                         help='default protocol to choose for dial info')
     args = parser.parse_args()
 
@@ -110,7 +110,6 @@ def main():
         veilid_server_exe = veilid_server_exe_debug
 
     base_args = [veilid_server_exe]
-    base_args.append("--attach=true")
     if args.log_info:
         pass
     elif args.log_trace:
@@ -131,7 +130,10 @@ def main():
         main_args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     print(">>> MAIN NODE PID={}".format(main_proc.pid))
 
-    main_di = read_until_local_dial_info(main_proc, args.protocol)
+    main_di = read_until_local_dial_info(
+        main_proc, bytes(args.protocol, 'utf-8'))
+
+    print(">>> MAIN DIAL INFO={}".format(main_di))
 
     threads.append(
         tee(b"Veilid-0: ", main_proc.stdout, open("/tmp/veilid-0-out", "wb"),

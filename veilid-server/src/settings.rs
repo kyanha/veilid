@@ -19,7 +19,7 @@ daemon: false
 client_api:
     enabled: true
     listen_address: "localhost:5959"
-auto_attach: false
+auto_attach: true
 logging: 
     terminal:
         enabled: true
@@ -223,6 +223,46 @@ impl<'de> serde::Deserialize<'de> for ParsedUrl {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct ParsedNodeDialInfo {
+    pub node_dial_info_string: String,
+    pub node_dial_info: veilid_core::NodeDialInfo,
+}
+
+// impl ParsedNodeDialInfo {
+//     pub fn offset_port(&mut self, offset: u16) -> Result<(), ()> {
+//         // Bump port on dial_info
+//         self.node_dial_info
+//             .dial_info
+//             .set_port(self.node_dial_info.dial_info.port() + 1);
+//         self.node_dial_info_string = self.node_dial_info.to_string();
+//         Ok(())
+//     }
+// }
+
+impl FromStr for ParsedNodeDialInfo {
+    type Err = veilid_core::VeilidAPIError;
+    fn from_str(
+        node_dial_info_string: &str,
+    ) -> Result<ParsedNodeDialInfo, veilid_core::VeilidAPIError> {
+        let node_dial_info = veilid_core::NodeDialInfo::from_str(node_dial_info_string)?;
+        Ok(Self {
+            node_dial_info_string: node_dial_info_string.to_owned(),
+            node_dial_info,
+        })
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for ParsedNodeDialInfo {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        ParsedNodeDialInfo::from_str(s.as_str()).map_err(serde::de::Error::custom)
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub struct NamedSocketAddrs {
     pub name: String,
@@ -420,7 +460,7 @@ pub struct Network {
     pub connection_initial_timeout: u64,
     pub node_id: veilid_core::DHTKey,
     pub node_id_secret: veilid_core::DHTKeySecret,
-    pub bootstrap: Vec<ParsedUrl>,
+    pub bootstrap: Vec<ParsedNodeDialInfo>,
     pub rpc: Rpc,
     pub dht: Dht,
     pub upnp: bool,
@@ -634,7 +674,7 @@ impl Settings {
                         .bootstrap
                         .clone()
                         .into_iter()
-                        .map(|e| e.urlstring)
+                        .map(|e| e.node_dial_info_string)
                         .collect::<Vec<String>>(),
                 )),
                 "network.rpc.concurrency" => Ok(Box::new(inner.core.network.rpc.concurrency)),
@@ -933,7 +973,7 @@ mod tests {
                 .unwrap()
                 .collect::<Vec<SocketAddr>>()
         );
-        assert_eq!(s.auto_attach, false);
+        assert_eq!(s.auto_attach, true);
         assert_eq!(s.logging.terminal.enabled, true);
         assert_eq!(s.logging.terminal.level, LogLevel::Info);
         assert_eq!(s.logging.file.enabled, false);

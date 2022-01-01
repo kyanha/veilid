@@ -577,6 +577,14 @@ impl DialInfo {
             Self::WSS(di) => di.socket_address.port,
         }
     }
+    pub fn set_port(&mut self, port: u16) {
+        match self {
+            Self::UDP(di) => di.socket_address.port = port,
+            Self::TCP(di) => di.socket_address.port = port,
+            Self::WS(di) => di.socket_address.port = port,
+            Self::WSS(di) => di.socket_address.port = port,
+        }
+    }
     pub fn to_socket_addr(&self) -> SocketAddr {
         match self {
             Self::UDP(di) => di.socket_address.to_socket_addr(),
@@ -757,40 +765,37 @@ impl MatchesDialInfoFilter for ConnectionDescriptor {
 //////////////////////////////////////////////////////////////////////////
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, PartialOrd, Ord)]
-pub struct NodeDialInfoSingle {
+pub struct NodeDialInfo {
     pub node_id: NodeId,
     pub dial_info: DialInfo,
 }
 
-impl fmt::Display for NodeDialInfoSingle {
+impl fmt::Display for NodeDialInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         write!(f, "{}@{}", self.node_id, self.dial_info)
     }
 }
 
-impl FromStr for NodeDialInfoSingle {
+impl FromStr for NodeDialInfo {
     type Err = VeilidAPIError;
-    fn from_str(s: &str) -> Result<NodeDialInfoSingle, VeilidAPIError> {
+    fn from_str(s: &str) -> Result<NodeDialInfo, VeilidAPIError> {
         // split out node id from the dial info
-        let (node_id_str, rest) = s.split_once('@').ok_or_else(|| {
-            parse_error!(
-                "NodeDialInfoSingle::from_str missing @ node id separator",
-                s
-            )
-        })?;
+        let (node_id_str, rest) = s
+            .split_once('@')
+            .ok_or_else(|| parse_error!("NodeDialInfo::from_str missing @ node id separator", s))?;
 
         // parse out node id
         let node_id = NodeId::new(DHTKey::try_decode(node_id_str).map_err(|e| {
             parse_error!(
-                format!("NodeDialInfoSingle::from_str couldn't parse node id: {}", e),
+                format!("NodeDialInfo::from_str couldn't parse node id: {}", e),
                 s
             )
         })?);
         // parse out dial info
         let dial_info = DialInfo::from_str(rest)?;
 
-        // return completed NodeDialInfoSingle
-        Ok(NodeDialInfoSingle { node_id, dial_info })
+        // return completed NodeDialInfo
+        Ok(NodeDialInfo { node_id, dial_info })
     }
 }
 
@@ -890,7 +895,7 @@ pub struct PartialTunnel {
 
 #[derive(Clone, Debug, Default)]
 pub struct RouteHopSpec {
-    pub dial_info: NodeDialInfoSingle,
+    pub dial_info: NodeDialInfo,
 }
 
 #[derive(Clone, Debug, Default)]

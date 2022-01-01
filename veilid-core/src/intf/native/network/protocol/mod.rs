@@ -72,6 +72,8 @@ pub fn new_shared_udp_socket(local_address: SocketAddr) -> Result<socket2::Socke
         .bind(&socket2_addr)
         .map_err(|e| format!("failed to bind UDP socket: {}", e))?;
 
+    log_net!("created shared udp socket on {:?}", &local_address);
+
     Ok(socket)
 }
 
