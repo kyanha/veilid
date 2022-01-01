@@ -134,7 +134,7 @@ impl RawTcpProtocolHandler {
         }
     }
 
-    pub async fn on_accept_async(
+    async fn on_accept_async(
         self,
         stream: AsyncPeekStream,
         socket_addr: SocketAddr,
@@ -181,7 +181,12 @@ impl RawTcpProtocolHandler {
         socket
             .connect(&remote_socket2_addr)
             .map_err(map_to_string)
-            .map_err(logthru_net!(error "addr={}", remote_socket_addr))?;
+            .map_err(logthru_net!(error "local_address={} remote_addr={}", local_address, remote_socket_addr))?;
+        log_net!(
+            "tcp connect successful: local_address={} remote_addr={}",
+            local_address,
+            remote_socket_addr
+        );
         let std_stream: std::net::TcpStream = socket.into();
         let ts = TcpStream::from(std_stream);
 
@@ -189,7 +194,7 @@ impl RawTcpProtocolHandler {
         let local_address = ts
             .local_addr()
             .map_err(map_to_string)
-            .map_err(logthru_net!())?;
+            .map_err(logthru_net!("could not get local address from TCP stream"))?;
         let ps = AsyncPeekStream::new(ts);
         let peer_addr = PeerAddress::new(
             SocketAddress::from_socket_addr(remote_socket_addr),
@@ -225,7 +230,7 @@ impl RawTcpProtocolHandler {
 
         let mut stream = TcpStream::connect(socket_addr)
             .await
-            .map_err(|e| format!("{}", e))?;
+            .map_err(|e| format!("failed to connect TCP for unbound message: {}", e))?;
         stream.write_all(&data).await.map_err(|e| format!("{}", e))
     }
 }

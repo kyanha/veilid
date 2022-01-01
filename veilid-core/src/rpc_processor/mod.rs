@@ -945,9 +945,12 @@ impl RPCProcessor {
         // Possibly from an alternate port
         let network_manager = self.network_manager();
         network_manager
-            .send_direct_receipt(dial_info, rcpt_data, alternate_port)
+            .send_direct_receipt(&dial_info, rcpt_data, alternate_port)
             .await
-            .map_err(map_error_string!())?;
+            .map_err(map_error_string!())
+            .map_err(
+                logthru_net!(error "failed to send direct receipt to dial info: {}, alternate_port={}", dial_info, alternate_port),
+            )?;
 
         Ok(())
     }

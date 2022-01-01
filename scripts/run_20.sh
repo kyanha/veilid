@@ -1,4 +1,4 @@
 #!/bin/bash
-exec ./run_local_test.py 20 --config-file ./local-test.yml $1
+exec ./run_local_test.py 20 --config-file ./local-test.yml $@
 
 

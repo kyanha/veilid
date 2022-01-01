@@ -542,7 +542,7 @@ impl NetworkManager {
     // Called by the RPC handler when we want to issue an direct receipt
     pub async fn send_direct_receipt<B: AsRef<[u8]>>(
         &self,
-        dial_info: DialInfo,
+        dial_info: &DialInfo,
         rcpt_data: B,
         alternate_port: bool,
     ) -> Result<(), String> {
@@ -553,11 +553,11 @@ impl NetworkManager {
         // Send receipt directly
         if alternate_port {
             self.net()
-                .send_data_unbound_to_dial_info(&dial_info, rcpt_data.as_ref().to_vec())
+                .send_data_unbound_to_dial_info(dial_info, rcpt_data.as_ref().to_vec())
                 .await
         } else {
             self.net()
-                .send_data_to_dial_info(&dial_info, rcpt_data.as_ref().to_vec())
+                .send_data_to_dial_info(dial_info, rcpt_data.as_ref().to_vec())
                 .await
         }
     }

@@ -81,7 +81,7 @@ pub fn new_shared_tcp_socket(local_address: SocketAddr) -> Result<socket2::Socke
     let domain = Domain::for_address(local_address);
     let socket = Socket::new(domain, Type::STREAM, Some(Protocol::TCP))
         .map_err(map_to_string)
-        .map_err(logthru_net!())?;
+        .map_err(logthru_net!("failed to create TCP socket"))?;
     if let Err(e) = socket.set_linger(None) {
         log_net!(error "Couldn't set TCP linger: {}", e);
     }
@@ -100,9 +100,11 @@ pub fn new_shared_tcp_socket(local_address: SocketAddr) -> Result<socket2::Socke
     }
 
     let socket2_addr = socket2::SockAddr::from(local_address);
-    if let Err(e) = socket.bind(&socket2_addr) {
-        log_net!(error "failed to bind TCP socket: {}", e);
-    }
+    socket
+        .bind(&socket2_addr)
+        .map_err(|e| format!("failed to bind TCP socket: {}", e))?;
+
+    log_net!("created shared tcp socket on {:?}", &local_address);
 
     Ok(socket)
 }

@@ -15,7 +15,7 @@ pub enum BumpPortType {
 pub fn tcp_port_available(addr: &SocketAddr) -> bool {
     cfg_if! {
         if #[cfg(target_arch = "wasm32")] {
-            false
+            true
         } else {
             match TcpListener::bind(addr) {
                 Ok(_) => true,
@@ -28,7 +28,7 @@ pub fn tcp_port_available(addr: &SocketAddr) -> bool {
 pub fn udp_port_available(addr: &SocketAddr) -> bool {
     cfg_if! {
         if #[cfg(target_arch = "wasm32")] {
-            false
+            true
         } else {
             match UdpSocket::bind(addr) {
                 Ok(_) => true,
