@@ -4,7 +4,7 @@ use crate::xx::*;
 use crate::*;
 
 pub async fn test_add_get_remove() {
-    let table = ConnectionTable::new();
+    let mut table = ConnectionTable::new();
 
     let c1 = NetworkConnection::Dummy(DummyNetworkConnection {});
     let c2 = NetworkConnection::Dummy(DummyNetworkConnection {});

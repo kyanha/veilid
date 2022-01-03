@@ -1,5 +1,30 @@
 use super::*;
+use crate::connection_manager::*;
+use crate::intf::*;
 use utils::clone_stream::*;
+
+use async_tls::TlsAcceptor;
+
+/////////////////////////////////////////////////////////////////
+
+#[derive(Clone)]
+pub struct ListenerState {
+    pub protocol_handlers: Vec<Box<dyn ProtocolAcceptHandler + 'static>>,
+    pub tls_protocol_handlers: Vec<Box<dyn ProtocolAcceptHandler + 'static>>,
+    pub tls_acceptor: Option<TlsAcceptor>,
+}
+
+impl ListenerState {
+    pub fn new() -> Self {
+        Self {
+            protocol_handlers: Vec::new(),
+            tls_protocol_handlers: Vec::new(),
+            tls_acceptor: None,
+        }
+    }
+}
+
+/////////////////////////////////////////////////////////////////
 
 impl Network {
     fn get_or_create_tls_acceptor(&self) -> Result<TlsAcceptor, String> {
@@ -20,46 +45,44 @@ impl Network {
         tls_acceptor: &TlsAcceptor,
         stream: AsyncPeekStream,
         addr: SocketAddr,
-        protocol_handlers: &[Box<dyn TcpProtocolHandler>],
+        protocol_handlers: &[Box<dyn ProtocolAcceptHandler>],
         tls_connection_initial_timeout: u64,
-    ) {
-        match tls_acceptor.accept(stream).await {
-            Ok(ts) => {
-                let ps = AsyncPeekStream::new(CloneStream::new(ts));
-                let mut first_packet = [0u8; PEEK_DETECT_LEN];
+    ) -> Result<Option<NetworkConnection>, String> {
+        let ts = tls_acceptor
+            .accept(stream)
+            .await
+            .map_err(map_to_string)
+            .map_err(logthru_net!(debug "TLS stream failed handshake"))?;
+        let ps = AsyncPeekStream::new(CloneStream::new(ts));
+        let mut first_packet = [0u8; PEEK_DETECT_LEN];
 
-                // Try the handlers but first get a chunk of data for them to process
-                // Don't waste more than N seconds getting it though, in case someone
-                // is trying to DoS us with a bunch of connections or something
-                // read a chunk of the stream
-                match io::timeout(
-                    Duration::from_micros(tls_connection_initial_timeout),
-                    ps.peek_exact(&mut first_packet),
-                )
-                .await
-                {
-                    Ok(()) => (),
-                    Err(_) => return,
-                }
-                self.clone().try_handlers(ps, addr, protocol_handlers).await;
-            }
-            Err(e) => {
-                debug!("TLS stream failed handshake: {}", e);
-            }
-        }
+        // Try the handlers but first get a chunk of data for them to process
+        // Don't waste more than N seconds getting it though, in case someone
+        // is trying to DoS us with a bunch of connections or something
+        // read a chunk of the stream
+        io::timeout(
+            Duration::from_micros(tls_connection_initial_timeout),
+            ps.peek_exact(&mut first_packet),
+        )
+        .await
+        .map_err(map_to_string)
+        .map_err(logthru_net!())?;
+
+        self.try_handlers(ps, addr, protocol_handlers).await
     }
 
     async fn try_handlers(
         &self,
         stream: AsyncPeekStream,
         addr: SocketAddr,
-        protocol_handlers: &[Box<dyn TcpProtocolHandler>],
-    ) {
+        protocol_handlers: &[Box<dyn ProtocolAcceptHandler>],
+    ) -> Result<Option<NetworkConnection>, String> {
         for ah in protocol_handlers.iter() {
-            if ah.on_accept(stream.clone(), addr).await == Ok(true) {
-                return;
+            if let Some(nc) = ah.on_accept(stream.clone(), addr).await? {
+                return Ok(Some(nc));
             }
         }
+        Ok(None)
     }
 
     async fn spawn_socket_listener(&self, addr: SocketAddr) -> Result<(), String> {
@@ -73,7 +96,7 @@ impl Network {
         };
 
         // Create a reusable socket with no linger time, and no delay
-        let socket = new_shared_tcp_socket(addr)?;
+        let socket = new_bound_shared_tcp_socket(addr)?;
         // Listen on the socket
         socket
             .listen(128)
@@ -94,6 +117,7 @@ impl Network {
 
         // Spawn the socket task
         let this = self.clone();
+        let connection_manager = self.connection_manager();
 
         ////////////////////////////////////////////////////////////
         let jh = spawn(async move {
@@ -104,10 +128,7 @@ impl Network {
                 .for_each_concurrent(None, |tcp_stream| async {
                     let tcp_stream = tcp_stream.unwrap();
                     let listener_state = listener_state.clone();
-                    // match tcp_stream.set_nodelay(true) {
-                    //     Ok(_) => (),
-                    //     _ => continue,
-                    // };
+                    let connection_manager = connection_manager.clone();
 
                     // Limit the number of connections from the same IP address
                     // and the number of total connections
@@ -129,7 +150,6 @@ impl Network {
                     let mut first_packet = [0u8; PEEK_DETECT_LEN];
 
                     // read a chunk of the stream
-                    trace!("reading chunk");
                     if io::timeout(
                         Duration::from_micros(connection_initial_timeout),
                         ps.peek_exact(&mut first_packet),
@@ -143,26 +163,35 @@ impl Network {
                     }
 
                     // Run accept handlers on accepted stream
-                    trace!("packet ready");
+
                     // Check is this could be TLS
                     let ls = listener_state.read().clone();
-                    if ls.tls_acceptor.is_some() && first_packet[0] == 0x16 {
-                        trace!("trying TLS");
-                        this.clone()
-                            .try_tls_handlers(
-                                ls.tls_acceptor.as_ref().unwrap(),
-                                ps,
-                                addr,
-                                &ls.tls_protocol_handlers,
-                                tls_connection_initial_timeout,
-                            )
-                            .await;
+                    let conn = if ls.tls_acceptor.is_some() && first_packet[0] == 0x16 {
+                        this.try_tls_handlers(
+                            ls.tls_acceptor.as_ref().unwrap(),
+                            ps,
+                            addr,
+                            &ls.tls_protocol_handlers,
+                            tls_connection_initial_timeout,
+                        )
+                        .await
                     } else {
-                        trace!("not TLS");
-                        this.clone()
-                            .try_handlers(ps, addr, &ls.protocol_handlers)
-                            .await;
-                    }
+                        this.try_handlers(ps, addr, &ls.protocol_handlers).await
+                    };
+                    let conn = match conn {
+                        Ok(Some(c)) => c,
+                        Ok(None) => {
+                            // No protocol handlers matched? drop it.
+                            return;
+                        }
+                        Err(_) => {
+                            // Failed to negotiate connection? drop it.
+                            return;
+                        }
+                    };
+
+                    // Register the new connection in the connection manager
+                    connection_manager.on_new_connection(conn).await;
                 })
                 .await;
             trace!("exited incoming loop for {}", addr);
@@ -189,7 +218,7 @@ impl Network {
         &self,
         address: String,
         is_tls: bool,
-        new_tcp_protocol_handler: Box<NewTcpProtocolHandler>,
+        new_protocol_accept_handler: Box<NewProtocolAcceptHandler>,
     ) -> Result<Vec<SocketAddress>, String> {
         let mut out = Vec::<SocketAddress>::new();
         // convert to socketaddrs
@@ -218,17 +247,19 @@ impl Network {
                 }
                 ls.write()
                     .tls_protocol_handlers
-                    .push(new_tcp_protocol_handler(
-                        self.inner.lock().network_manager.clone(),
+                    .push(new_protocol_accept_handler(
+                        self.connection_manager(),
                         true,
                         addr,
                     ));
             } else {
-                ls.write().protocol_handlers.push(new_tcp_protocol_handler(
-                    self.inner.lock().network_manager.clone(),
-                    false,
-                    addr,
-                ));
+                ls.write()
+                    .protocol_handlers
+                    .push(new_protocol_accept_handler(
+                        self.connection_manager(),
+                        false,
+                        addr,
+                    ));
             }
 
             // Return local dial infos we listen on

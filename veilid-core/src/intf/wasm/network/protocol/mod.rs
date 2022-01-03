@@ -8,14 +8,17 @@ use crate::xx::*;
 pub struct DummyNetworkConnection {}
 
 impl DummyNetworkConnection {
-    pub fn protocol_type(&self) -> ProtocolType {
-        ProtocolType::UDP
+    pub fn connection_descriptor(&self) -> ConnectionDescriptor {
+        ConnectionDescriptor::new_no_local(PeerAddress::new(
+            SocketAddress::default(),
+            ProtocolType::UDP,
+        ))
     }
-    pub fn send(&self, _message: Vec<u8>) -> SystemPinBoxFuture<Result<(), String>> {
-        Box::pin(async { Ok(()) })
+    pub async fn send(&self, _message: Vec<u8>) -> Result<(), String> {
+        Ok(())
     }
-    pub fn recv(&self) -> SystemPinBoxFuture<Result<Vec<u8>, String>> {
-        Box::pin(async { Ok(Vec::new()) })
+    pub async fn recv(&self) -> Result<Vec<u8>, String> {
+        Ok(Vec::new())
     }
 }
 
@@ -27,16 +30,33 @@ pub enum NetworkConnection {
 }
 
 impl NetworkConnection {
-    pub fn send(&self, message: Vec<u8>) -> SystemPinBoxFuture<Result<(), String>> {
-        match self {
-            Self::Dummy(d) => d.send(message),
-            Self::WS(w) => w.send(message),
+    pub async fn connect(
+        local_address: Option<SocketAddr>,
+        dial_info: DialInfo,
+    ) -> Result<NetworkConnection, String> {
+        match dial_info.protocol_type() {
+            ProtocolType::UDP => {
+                panic!("Should not connect to UDP dialinfo");
+            }
+            ProtocolType::TCP => {
+                panic!("TCP dial info is not support on WASM targets");
+            }
+            ProtocolType::WS | ProtocolType::WSS => {
+                ws::WebsocketProtocolHandler::connect(local_address, dial_info).await
+            }
         }
     }
-    pub fn recv(&self) -> SystemPinBoxFuture<Result<Vec<u8>, String>> {
+        
+    pub async fn send(&self, message: Vec<u8>) -> Result<(), String> {
         match self {
-            Self::Dummy(d) => d.recv(),
-            Self::WS(w) => w.recv(),
+            Self::Dummy(d) => d.send(message).await,
+            Self::WS(w) => w.send(message).await,
+        }
+    }
+    pub async fn recv(&self) -> Result<Vec<u8>, String> {
+        match self {
+            Self::Dummy(d) => d.recv().await,
+            Self::WS(w) => w.recv().await,
         }
     }
 }

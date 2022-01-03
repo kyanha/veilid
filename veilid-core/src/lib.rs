@@ -7,6 +7,7 @@ extern crate alloc;
 
 mod attachment_manager;
 mod callback_state_machine;
+mod connection_manager;
 mod connection_table;
 mod dht;
 mod intf;

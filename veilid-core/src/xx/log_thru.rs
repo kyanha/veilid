@@ -153,6 +153,33 @@ macro_rules! logthru {
         );
         e__
     });
+    // debug
+    (debug $target:literal) => (|e__| {
+        debug!(
+            target: $target,
+            "[{}]",
+            e__,
+        );
+        e__
+    });
+    (debug $target:literal, $text:literal) => (|e__| {
+        debug!(
+            target: $target,
+            "[{}] {}",
+            e__,
+            $text
+        );
+        e__
+    });
+    (debug $target:literal, $fmt:literal, $($arg:expr),+) => (|e__| {
+        debug!(
+            target: $target,
+            concat!("[{}] ", $fmt),
+            e__,
+            $($arg),+
+        );
+        e__
+    });
     // trace
     ($target:literal) => (|e__| {
         trace!(

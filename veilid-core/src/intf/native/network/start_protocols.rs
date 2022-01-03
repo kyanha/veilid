@@ -78,7 +78,7 @@ impl Network {
             .start_tcp_listener(
                 listen_address.clone(),
                 false,
-                Box::new(|n, t, a| Box::new(WebsocketProtocolHandler::new(n, t, a))),
+                Box::new(|c, t, a| Box::new(WebsocketProtocolHandler::new(c, t, a))),
             )
             .await?;
         trace!("WS: listener started");

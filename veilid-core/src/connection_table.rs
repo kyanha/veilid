@@ -30,42 +30,22 @@ impl PartialEq for ConnectionTableEntry {
 }
 
 #[derive(Debug)]
-pub struct ConnectionTableInner {
+pub struct ConnectionTable {
     conn_by_addr: BTreeMap<ConnectionDescriptor, ConnectionTableEntry>,
 }
 
-#[derive(Clone)]
-pub struct ConnectionTable {
-    inner: Arc<Mutex<ConnectionTableInner>>,
-}
-impl core::fmt::Debug for ConnectionTable {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("ConnectionTable")
-            .field("inner", &*self.inner.lock())
-            .finish()
-    }
-}
-
-impl Default for ConnectionTable {
-    fn default() -> Self {
-        Self::new()
-    }
-}
 impl ConnectionTable {
     pub fn new() -> Self {
         Self {
-            inner: Arc::new(Mutex::new(ConnectionTableInner {
-                conn_by_addr: BTreeMap::new(),
-            })),
+            conn_by_addr: BTreeMap::new(),
         }
     }
 
     pub fn add_connection(
-        &self,
-        descriptor: ConnectionDescriptor,
+        &mut self,
         conn: NetworkConnection,
     ) -> Result<ConnectionTableEntry, String> {
-        trace!("descriptor: {:?}", descriptor);
+        let descriptor = conn.connection_descriptor();
 
         assert_ne!(
             descriptor.protocol_type(),
@@ -73,8 +53,7 @@ impl ConnectionTable {
             "Only connection oriented protocols go in the table!"
         );
 
-        let mut inner = self.inner.lock();
-        if inner.conn_by_addr.contains_key(&descriptor) {
+        if self.conn_by_addr.contains_key(&descriptor) {
             return Err(format!(
                 "Connection already added to table: {:?}",
                 descriptor
@@ -90,7 +69,7 @@ impl ConnectionTable {
             last_message_recv_time: None,
             stopper: Eventual::new(),
         };
-        let res = inner.conn_by_addr.insert(descriptor, entry.clone());
+        let res = self.conn_by_addr.insert(descriptor, entry.clone());
         assert!(res.is_none());
         Ok(entry)
     }
@@ -99,27 +78,19 @@ impl ConnectionTable {
         &self,
         descriptor: &ConnectionDescriptor,
     ) -> Option<ConnectionTableEntry> {
-        let inner = self.inner.lock();
-        inner.conn_by_addr.get(descriptor).cloned()
+        self.conn_by_addr.get(descriptor).cloned()
     }
 
     pub fn connection_count(&self) -> usize {
-        let inner = self.inner.lock();
-        inner.conn_by_addr.len()
+        self.conn_by_addr.len()
     }
 
     pub fn remove_connection(
-        &self,
+        &mut self,
         descriptor: &ConnectionDescriptor,
     ) -> Result<ConnectionTableEntry, String> {
-        trace!("descriptor: {:?}", descriptor);
-
-        let mut inner = self.inner.lock();
-
-        let res = inner.conn_by_addr.remove(descriptor);
-        match res {
-            Some(v) => Ok(v),
-            None => Err(format!("Connection not in table: {:?}", descriptor)),
-        }
+        self.conn_by_addr
+            .remove(descriptor)
+            .ok_or_else(|| format!("Connection not in table: {:?}", descriptor))
     }
 }

@@ -1,7 +1,7 @@
 use crate::xx::*;
 use async_std::io::{Read, ReadExt, Result, Write};
+use core::pin::Pin;
 use core::task::{Context, Poll};
-use std::pin::Pin;
 
 ////////
 ///

@@ -1,7 +1,8 @@
 use super::*;
+use crate::connection_manager::*;
 use crate::intf::native::utils::async_peek_stream::*;
 use crate::intf::*;
-use crate::network_manager::{NetworkManager, MAX_MESSAGE_SIZE};
+use crate::network_manager::MAX_MESSAGE_SIZE;
 use crate::*;
 use async_std::io;
 use async_std::net::*;
@@ -32,6 +33,7 @@ where
     T: io::Read + io::Write + Send + Unpin + 'static,
 {
     tls: bool,
+    connection_descriptor: ConnectionDescriptor,
     inner: Arc<AsyncMutex<WebSocketNetworkConnectionInner<T>>>,
 }
 
@@ -42,6 +44,7 @@ where
     fn clone(&self) -> Self {
         Self {
             tls: self.tls,
+            connection_descriptor: self.connection_descriptor.clone(),
             inner: self.inner.clone(),
         }
     }
@@ -61,7 +64,9 @@ where
     T: io::Read + io::Write + Send + Unpin + 'static,
 {
     fn eq(&self, other: &Self) -> bool {
-        self.tls == other.tls && Arc::as_ptr(&self.inner) == Arc::as_ptr(&other.inner)
+        self.tls == other.tls
+            && self.connection_descriptor == other.connection_descriptor
+            && Arc::as_ptr(&self.inner) == Arc::as_ptr(&other.inner)
     }
 }
 
@@ -71,56 +76,56 @@ impl<T> WebsocketNetworkConnection<T>
 where
     T: io::Read + io::Write + Send + Unpin + 'static,
 {
-    pub fn new(tls: bool, ws_stream: WebSocketStream<T>) -> Self {
+    pub fn new(
+        tls: bool,
+        connection_descriptor: ConnectionDescriptor,
+        ws_stream: WebSocketStream<T>,
+    ) -> Self {
         Self {
             tls,
+            connection_descriptor,
             inner: Arc::new(AsyncMutex::new(WebSocketNetworkConnectionInner {
                 ws_stream,
             })),
         }
     }
 
-    pub fn send(&self, message: Vec<u8>) -> SystemPinBoxFuture<Result<(), String>> {
-        let inner = self.inner.clone();
-
-        Box::pin(async move {
-            if message.len() > MAX_MESSAGE_SIZE {
-                return Err("received too large WS message".to_owned());
-            }
-            let mut inner = inner.lock().await;
-            inner
-                .ws_stream
-                .send(Message::binary(message))
-                .await
-                .map_err(map_to_string)
-                .map_err(logthru_net!(error "failed to send websocket message"))
-        })
+    pub fn connection_descriptor(&self) -> ConnectionDescriptor {
+        self.connection_descriptor.clone()
     }
-    pub fn recv(&self) -> SystemPinBoxFuture<Result<Vec<u8>, String>> {
-        let inner = self.inner.clone();
 
-        Box::pin(async move {
-            let mut inner = inner.lock().await;
+    pub async fn send(&self, message: Vec<u8>) -> Result<(), String> {
+        if message.len() > MAX_MESSAGE_SIZE {
+            return Err("received too large WS message".to_owned());
+        }
+        let mut inner = self.inner.lock().await;
+        inner
+            .ws_stream
+            .send(Message::binary(message))
+            .await
+            .map_err(map_to_string)
+            .map_err(logthru_net!(error "failed to send websocket message"))
+    }
+    pub async fn recv(&self) -> Result<Vec<u8>, String> {
+        let mut inner = self.inner.lock().await;
 
-            let out = match inner.ws_stream.next().await {
-                Some(Ok(Message::Binary(v))) => v,
-                Some(Ok(_)) => {
-                    return Err("Unexpected WS message type".to_owned())
-                        .map_err(logthru_net!(error));
-                }
-                Some(Err(e)) => {
-                    return Err(e.to_string()).map_err(logthru_net!(error));
-                }
-                None => {
-                    return Err("WS stream closed".to_owned()).map_err(logthru_net!());
-                }
-            };
-            if out.len() > MAX_MESSAGE_SIZE {
-                Err("sending too large WS message".to_owned()).map_err(logthru_net!(error))
-            } else {
-                Ok(out)
+        let out = match inner.ws_stream.next().await {
+            Some(Ok(Message::Binary(v))) => v,
+            Some(Ok(_)) => {
+                return Err("Unexpected WS message type".to_owned()).map_err(logthru_net!(error));
             }
-        })
+            Some(Err(e)) => {
+                return Err(e.to_string()).map_err(logthru_net!(error));
+            }
+            None => {
+                return Err("WS stream closed".to_owned()).map_err(logthru_net!());
+            }
+        };
+        if out.len() > MAX_MESSAGE_SIZE {
+            Err("sending too large WS message".to_owned()).map_err(logthru_net!(error))
+        } else {
+            Ok(out)
+        }
     }
 }
 
@@ -128,7 +133,7 @@ where
 ///
 struct WebsocketProtocolHandlerInner {
     tls: bool,
-    network_manager: NetworkManager,
+    connection_manager: ConnectionManager,
     local_address: SocketAddr,
     request_path: Vec<u8>,
     connection_initial_timeout: u64,
@@ -137,13 +142,17 @@ struct WebsocketProtocolHandlerInner {
 #[derive(Clone)]
 pub struct WebsocketProtocolHandler
 where
-    Self: TcpProtocolHandler,
+    Self: ProtocolAcceptHandler,
 {
     inner: Arc<WebsocketProtocolHandlerInner>,
 }
 impl WebsocketProtocolHandler {
-    pub fn new(network_manager: NetworkManager, tls: bool, local_address: SocketAddr) -> Self {
-        let config = network_manager.config();
+    pub fn new(
+        connection_manager: ConnectionManager,
+        tls: bool,
+        local_address: SocketAddr,
+    ) -> Self {
+        let config = connection_manager.config();
         let c = config.get();
         let path = if tls {
             format!("GET {}", c.network.protocol.ws.path.trim_end_matches('/'))
@@ -158,7 +167,7 @@ impl WebsocketProtocolHandler {
 
         let inner = WebsocketProtocolHandlerInner {
             tls,
-            network_manager,
+            connection_manager,
             local_address,
             request_path: path.as_bytes().to_vec(),
             connection_initial_timeout,
@@ -172,7 +181,7 @@ impl WebsocketProtocolHandler {
         self,
         ps: AsyncPeekStream,
         socket_addr: SocketAddr,
-    ) -> Result<bool, String> {
+    ) -> Result<Option<NetworkConnection>, String> {
         let request_path_len = self.inner.request_path.len() + 2;
         let mut peekbuf: Vec<u8> = vec![0u8; request_path_len];
         match io::timeout(
@@ -197,7 +206,7 @@ impl WebsocketProtocolHandler {
 
         if !matches_path {
             log_net!("not websocket");
-            return Ok(false);
+            return Ok(None);
         }
         log_net!("found websocket");
 
@@ -218,26 +227,19 @@ impl WebsocketProtocolHandler {
 
         let conn = NetworkConnection::WsAccepted(WebsocketNetworkConnection::new(
             self.inner.tls,
+            ConnectionDescriptor::new(
+                peer_addr,
+                SocketAddress::from_socket_addr(self.inner.local_address),
+            ),
             ws_stream,
         ));
-        self.inner
-            .network_manager
-            .clone()
-            .on_new_connection(
-                ConnectionDescriptor::new(
-                    peer_addr,
-                    SocketAddress::from_socket_addr(self.inner.local_address),
-                ),
-                conn,
-            )
-            .await?;
-        Ok(true)
+
+        Ok(Some(conn))
     }
 
     pub async fn connect(
-        network_manager: NetworkManager,
-        local_address: SocketAddr,
-        dial_info: &DialInfo,
+        local_address: Option<SocketAddr>,
+        dial_info: DialInfo,
     ) -> Result<NetworkConnection, String> {
         // Split dial info up
         let (tls, scheme) = match &dial_info {
@@ -256,14 +258,17 @@ impl WebsocketProtocolHandler {
         let remote_socket_addr = dial_info.to_socket_addr();
 
         // Make a shared socket
-        let socket = new_shared_tcp_socket(local_address)?;
+        let socket = match local_address {
+            Some(a) => new_bound_shared_tcp_socket(a)?,
+            None => new_unbound_shared_tcp_socket(Domain::for_address(remote_socket_addr))?,
+        };
 
         // Connect to the remote address
         let remote_socket2_addr = socket2::SockAddr::from(remote_socket_addr);
         socket
             .connect(&remote_socket2_addr)
             .map_err(map_to_string)
-            .map_err(logthru_net!(error "local_address={} remote_socket_addr={}", local_address, remote_socket_addr))?;
+            .map_err(logthru_net!(error "local_address={:?} remote_socket_addr={}", local_address, remote_socket_addr))?;
         let std_stream: std::net::TcpStream = socket.into();
         let tcp_stream = TcpStream::from(std_stream);
 
@@ -273,6 +278,11 @@ impl WebsocketProtocolHandler {
             .map_err(map_to_string)
             .map_err(logthru_net!())?;
 
+        // Make our connection descriptor
+        let connection_descriptor = ConnectionDescriptor {
+            local: Some(SocketAddress::from_socket_addr(actual_local_addr)),
+            remote: dial_info.to_peer_address(),
+        };
         // Negotiate TLS if this is WSS
         if tls {
             let connector = TlsConnector::default();
@@ -285,59 +295,32 @@ impl WebsocketProtocolHandler {
                 .await
                 .map_err(map_to_string)
                 .map_err(logthru_net!(error))?;
-            let conn = NetworkConnection::Wss(WebsocketNetworkConnection::new(tls, ws_stream));
 
-            // Make the connection descriptor peer address
-            let peer_addr = PeerAddress::new(
-                SocketAddress::from_socket_addr(remote_socket_addr),
-                ProtocolType::WSS,
-            );
-
-            // Register the WSS connection
-            network_manager
-                .on_new_connection(
-                    ConnectionDescriptor::new(
-                        peer_addr,
-                        SocketAddress::from_socket_addr(actual_local_addr),
-                    ),
-                    conn.clone(),
-                )
-                .await?;
-            Ok(conn)
+            Ok(NetworkConnection::Wss(WebsocketNetworkConnection::new(
+                tls,
+                connection_descriptor,
+                ws_stream,
+            )))
         } else {
             let (ws_stream, _response) = client_async(request, tcp_stream)
                 .await
                 .map_err(map_to_string)
                 .map_err(logthru_net!(error))?;
-            let conn = NetworkConnection::Ws(WebsocketNetworkConnection::new(tls, ws_stream));
-
-            // Make the connection descriptor peer address
-            let peer_addr = PeerAddress::new(
-                SocketAddress::from_socket_addr(remote_socket_addr),
-                ProtocolType::WS,
-            );
-
-            // Register the WS connection
-            network_manager
-                .on_new_connection(
-                    ConnectionDescriptor::new(
-                        peer_addr,
-                        SocketAddress::from_socket_addr(actual_local_addr),
-                    ),
-                    conn.clone(),
-                )
-                .await?;
-            Ok(conn)
+            Ok(NetworkConnection::Ws(WebsocketNetworkConnection::new(
+                tls,
+                connection_descriptor,
+                ws_stream,
+            )))
         }
     }
 }
 
-impl TcpProtocolHandler for WebsocketProtocolHandler {
+impl ProtocolAcceptHandler for WebsocketProtocolHandler {
     fn on_accept(
         &self,
         stream: AsyncPeekStream,
         peer_addr: SocketAddr,
-    ) -> SystemPinBoxFuture<Result<bool, String>> {
+    ) -> SystemPinBoxFuture<Result<Option<NetworkConnection>, String>> {
         Box::pin(self.clone().on_accept_async(stream, peer_addr))
     }
 }

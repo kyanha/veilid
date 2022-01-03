@@ -68,7 +68,7 @@ impl Network {
         let mut port = inner.udp_port;
         // v4
         let socket_addr_v4 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), port);
-        if let Ok(socket) = new_shared_udp_socket(socket_addr_v4) {
+        if let Ok(socket) = new_bound_shared_udp_socket(socket_addr_v4) {
             // Pull the port if we randomly bound, so v6 can be on the same port
             port = socket
                 .local_addr()
@@ -91,7 +91,7 @@ impl Network {
         //v6
         let socket_addr_v6 =
             SocketAddr::new(IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0)), port);
-        if let Ok(socket) = new_shared_udp_socket(socket_addr_v6) {
+        if let Ok(socket) = new_bound_shared_udp_socket(socket_addr_v6) {
             // Make an async UdpSocket from the socket2 socket
             let std_udp_socket: std::net::UdpSocket = socket.into();
             let udp_socket = UdpSocket::from(std_udp_socket);
@@ -111,7 +111,7 @@ impl Network {
         log_net!("create_udp_inbound_socket on {:?}", &addr);
 
         // Create a reusable socket
-        let socket = new_shared_udp_socket(addr)?;
+        let socket = new_bound_shared_udp_socket(addr)?;
 
         // Make an async UdpSocket from the socket2 socket
         let std_udp_socket: std::net::UdpSocket = socket.into();

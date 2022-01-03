@@ -3,7 +3,6 @@ pub mod udp;
 pub mod wrtc;
 pub mod ws;
 
-use super::listener_state::*;
 use crate::xx::*;
 use crate::*;
 use socket2::{Domain, Protocol, Socket, Type};
@@ -12,11 +11,17 @@ use socket2::{Domain, Protocol, Socket, Type};
 pub struct DummyNetworkConnection {}
 
 impl DummyNetworkConnection {
-    pub fn send(&self, _message: Vec<u8>) -> SystemPinBoxFuture<Result<(), String>> {
-        Box::pin(async { Ok(()) })
+    pub fn connection_descriptor(&self) -> ConnectionDescriptor {
+        ConnectionDescriptor::new_no_local(PeerAddress::new(
+            SocketAddress::default(),
+            ProtocolType::UDP,
+        ))
     }
-    pub fn recv(&self) -> SystemPinBoxFuture<Result<Vec<u8>, String>> {
-        Box::pin(async { Ok(Vec::new()) })
+    pub async fn send(&self, _message: Vec<u8>) -> Result<(), String> {
+        Ok(())
+    }
+    pub async fn recv(&self) -> Result<Vec<u8>, String> {
+        Ok(Vec::new())
     }
 }
 
@@ -31,28 +36,53 @@ pub enum NetworkConnection {
 }
 
 impl NetworkConnection {
-    pub fn send(&self, message: Vec<u8>) -> SystemPinBoxFuture<Result<(), String>> {
-        match self {
-            Self::Dummy(d) => d.send(message),
-            Self::RawTcp(t) => t.send(message),
-            Self::WsAccepted(w) => w.send(message),
-            Self::Ws(w) => w.send(message),
-            Self::Wss(w) => w.send(message),
+    pub async fn connect(
+        local_address: Option<SocketAddr>,
+        dial_info: DialInfo,
+    ) -> Result<NetworkConnection, String> {
+        match dial_info.protocol_type() {
+            ProtocolType::UDP => {
+                panic!("Should not connect to UDP dialinfo");
+            }
+            ProtocolType::TCP => {
+                tcp::RawTcpProtocolHandler::connect(local_address, dial_info).await
+            }
+            ProtocolType::WS | ProtocolType::WSS => {
+                ws::WebsocketProtocolHandler::connect(local_address, dial_info).await
+            }
         }
     }
-    pub fn recv(&self) -> SystemPinBoxFuture<Result<Vec<u8>, String>> {
+
+    pub fn connection_descriptor(&self) -> ConnectionDescriptor {
         match self {
-            Self::Dummy(d) => d.recv(),
-            Self::RawTcp(t) => t.recv(),
-            Self::WsAccepted(w) => w.recv(),
-            Self::Ws(w) => w.recv(),
-            Self::Wss(w) => w.recv(),
+            Self::Dummy(d) => d.connection_descriptor(),
+            Self::RawTcp(t) => t.connection_descriptor(),
+            Self::WsAccepted(w) => w.connection_descriptor(),
+            Self::Ws(w) => w.connection_descriptor(),
+            Self::Wss(w) => w.connection_descriptor(),
+        }
+    }
+    pub async fn send(&self, message: Vec<u8>) -> Result<(), String> {
+        match self {
+            Self::Dummy(d) => d.send(message).await,
+            Self::RawTcp(t) => t.send(message).await,
+            Self::WsAccepted(w) => w.send(message).await,
+            Self::Ws(w) => w.send(message).await,
+            Self::Wss(w) => w.send(message).await,
+        }
+    }
+    pub async fn recv(&self) -> Result<Vec<u8>, String> {
+        match self {
+            Self::Dummy(d) => d.recv().await,
+            Self::RawTcp(t) => t.recv().await,
+            Self::WsAccepted(w) => w.recv().await,
+            Self::Ws(w) => w.recv().await,
+            Self::Wss(w) => w.recv().await,
         }
     }
 }
 
-pub fn new_shared_udp_socket(local_address: SocketAddr) -> Result<socket2::Socket, String> {
-    let domain = Domain::for_address(local_address);
+pub fn new_unbound_shared_udp_socket(domain: Domain) -> Result<socket2::Socket, String> {
     let socket = Socket::new(domain, Type::DGRAM, Some(Protocol::UDP))
         .map_err(|e| format!("Couldn't create UDP socket: {}", e))?;
 
@@ -66,7 +96,12 @@ pub fn new_shared_udp_socket(local_address: SocketAddr) -> Result<socket2::Socke
             }
         }
     }
+    Ok(socket)
+}
 
+pub fn new_bound_shared_udp_socket(local_address: SocketAddr) -> Result<socket2::Socket, String> {
+    let domain = Domain::for_address(local_address);
+    let socket = new_unbound_shared_udp_socket(domain)?;
     let socket2_addr = socket2::SockAddr::from(local_address);
     socket
         .bind(&socket2_addr)
@@ -77,8 +112,7 @@ pub fn new_shared_udp_socket(local_address: SocketAddr) -> Result<socket2::Socke
     Ok(socket)
 }
 
-pub fn new_shared_tcp_socket(local_address: SocketAddr) -> Result<socket2::Socket, String> {
-    let domain = Domain::for_address(local_address);
+pub fn new_unbound_shared_tcp_socket(domain: Domain) -> Result<socket2::Socket, String> {
     let socket = Socket::new(domain, Type::STREAM, Some(Protocol::TCP))
         .map_err(map_to_string)
         .map_err(logthru_net!("failed to create TCP socket"))?;
@@ -98,13 +132,18 @@ pub fn new_shared_tcp_socket(local_address: SocketAddr) -> Result<socket2::Socke
             }
         }
     }
+    Ok(socket)
+}
+
+pub fn new_bound_shared_tcp_socket(local_address: SocketAddr) -> Result<socket2::Socket, String> {
+    let domain = Domain::for_address(local_address);
+
+    let socket = new_unbound_shared_tcp_socket(domain)?;
 
     let socket2_addr = socket2::SockAddr::from(local_address);
     socket
         .bind(&socket2_addr)
         .map_err(|e| format!("failed to bind TCP socket: {}", e))?;
-
-    log_net!("created shared tcp socket on {:?}", &local_address);
 
     Ok(socket)
 }

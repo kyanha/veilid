@@ -1,8 +1,6 @@
 use crate::*;
-use connection_table::*;
+use connection_manager::*;
 use dht::*;
-use futures_util::future::{select, Either};
-use futures_util::stream::{FuturesUnordered, StreamExt};
 use intf::*;
 use lease_manager::*;
 use receipt_manager::*;
@@ -11,8 +9,6 @@ use rpc_processor::RPCProcessor;
 use xx::*;
 
 ////////////////////////////////////////////////////////////////////////////////////////
-
-const CONNECTION_PROCESSOR_CHANNEL_SIZE: usize = 128usize;
 
 pub const MAX_MESSAGE_SIZE: usize = MAX_ENVELOPE_SIZE;
 
@@ -77,7 +73,7 @@ impl ProtocolConfig {
 #[derive(Clone)]
 struct NetworkComponents {
     net: Network,
-    connection_table: ConnectionTable,
+    connection_manager: ConnectionManager,
     rpc_processor: RPCProcessor,
     lease_manager: LeaseManager,
     receipt_manager: ReceiptManager,
@@ -88,8 +84,6 @@ pub struct NetworkManagerInner {
     routing_table: Option<RoutingTable>,
     components: Option<NetworkComponents>,
     network_class: Option<NetworkClass>,
-    connection_processor_jh: Option<JoinHandle<()>>,
-    connection_add_channel_tx: Option<utils::channel::Sender<SystemPinBoxFuture<()>>>,
 }
 
 #[derive(Clone)]
@@ -106,8 +100,6 @@ impl NetworkManager {
             routing_table: None,
             components: None,
             network_class: None,
-            connection_processor_jh: None,
-            connection_add_channel_tx: None,
         }
     }
 
@@ -161,13 +153,13 @@ impl NetworkManager {
             .receipt_manager
             .clone()
     }
-    pub fn connection_table(&self) -> ConnectionTable {
+    pub fn connection_manager(&self) -> ConnectionManager {
         self.inner
             .lock()
             .components
             .as_ref()
             .unwrap()
-            .connection_table
+            .connection_manager
             .clone()
     }
 
@@ -194,13 +186,13 @@ impl NetworkManager {
 
         // Create network components
         let net = Network::new(self.clone());
-        let connection_table = ConnectionTable::new();
+        let connection_manager = ConnectionManager::new(self.clone());
         let rpc_processor = RPCProcessor::new(self.clone());
         let lease_manager = LeaseManager::new(self.clone());
         let receipt_manager = ReceiptManager::new(self.clone());
         self.inner.lock().components = Some(NetworkComponents {
             net: net.clone(),
-            connection_table: connection_table.clone(),
+            connection_manager: connection_manager.clone(),
             rpc_processor: rpc_processor.clone(),
             lease_manager: lease_manager.clone(),
             receipt_manager: receipt_manager.clone(),
@@ -211,13 +203,7 @@ impl NetworkManager {
         lease_manager.startup().await?;
         receipt_manager.startup().await?;
         net.startup().await?;
-
-        // Run connection processing task
-        let cac = utils::channel::channel(CONNECTION_PROCESSOR_CHANNEL_SIZE); // xxx move to config
-        self.inner.lock().connection_add_channel_tx = Some(cac.0);
-        let rx = cac.1.clone();
-        let this = self.clone();
-        self.inner.lock().connection_processor_jh = Some(spawn(this.connection_processor(rx)));
+        connection_manager.startup().await;
 
         trace!("NetworkManager::internal_startup end");
 
@@ -234,16 +220,11 @@ impl NetworkManager {
 
     pub async fn shutdown(&self) {
         trace!("NetworkManager::shutdown begin");
-        let components = {
-            let mut inner = self.inner.lock();
-            // Drop/cancel the connection processing task first
-            inner.connection_processor_jh = None;
-            inner.connection_add_channel_tx = None;
-            inner.components.clone()
-        };
 
         // Shutdown network components if they started up
+        let components = self.inner.lock().components.clone();
         if let Some(components) = components {
+            components.connection_manager.shutdown().await;
             components.net.shutdown().await;
             components.receipt_manager.shutdown().await;
             components.lease_manager.shutdown().await;
@@ -290,124 +271,6 @@ impl NetworkManager {
         receipt_manager.tick().await?;
 
         Ok(())
-    }
-
-    // Called by low-level protocol handlers when any connection-oriented protocol connection appears
-    // either from incoming or outgoing connections. Registers connection in the connection table for later access
-    // and spawns a message processing loop for the connection
-    pub async fn on_new_connection(
-        &self,
-        descriptor: ConnectionDescriptor,
-        conn: NetworkConnection,
-    ) -> Result<(), String> {
-        let tx = self
-            .inner
-            .lock()
-            .connection_add_channel_tx
-            .as_ref()
-            .ok_or_else(fn_string!("connection channel isn't open yet"))?
-            .clone();
-        let this = self.clone();
-        let receiver_loop_future = Self::process_connection(this, descriptor, conn);
-        tx.try_send(receiver_loop_future)
-            .await
-            .map_err(map_to_string)
-            .map_err(logthru_net!(error "failed to start receiver loop"))
-    }
-
-    // Connection receiver loop
-    fn process_connection(
-        this: NetworkManager,
-        descriptor: ConnectionDescriptor,
-        conn: NetworkConnection,
-    ) -> SystemPinBoxFuture<()> {
-        Box::pin(async move {
-            // Add new connections to the table
-            let entry = match this
-                .connection_table()
-                .add_connection(descriptor.clone(), conn.clone())
-            {
-                Ok(e) => e,
-                Err(err) => {
-                    error!(target: "net", "{}", err);
-                    return;
-                }
-            };
-
-            //
-            let exit_value: Result<Vec<u8>, ()> = Err(());
-
-            loop {
-                let res = match select(
-                    entry.stopper.clone().instance_clone(exit_value.clone()),
-                    conn.clone().recv(),
-                )
-                .await
-                {
-                    Either::Left((_x, _b)) => break,
-                    Either::Right((y, _a)) => y,
-                };
-                let message = match res {
-                    Ok(v) => v,
-                    Err(_) => break,
-                };
-                match this.on_recv_envelope(message.as_slice(), &descriptor).await {
-                    Ok(_) => (),
-                    Err(e) => {
-                        error!("{}", e);
-                        break;
-                    }
-                };
-            }
-
-            if let Err(err) = this.connection_table().remove_connection(&descriptor) {
-                error!("{}", err);
-            }
-        })
-    }
-
-    // Process connection oriented sockets in the background
-    // This never terminates and must have its task cancelled once started
-    async fn connection_processor(self, rx: utils::channel::Receiver<SystemPinBoxFuture<()>>) {
-        let mut connection_futures: FuturesUnordered<SystemPinBoxFuture<()>> =
-            FuturesUnordered::new();
-        loop {
-            // Either process an existing connection, or receive a new one to add to our list
-            match select(connection_futures.next(), Box::pin(rx.recv())).await {
-                Either::Left((x, _)) => {
-                    // Processed some connection to completion, or there are none left
-                    match x {
-                        Some(()) => {
-                            // Processed some connection to completion
-                        }
-                        None => {
-                            // No connections to process, wait for one
-                            match rx.recv().await {
-                                Ok(v) => {
-                                    connection_futures.push(v);
-                                }
-                                Err(e) => {
-                                    error!("connection processor error: {:?}", e);
-                                    // xxx: do something here??
-                                }
-                            };
-                        }
-                    }
-                }
-                Either::Right((x, _)) => {
-                    // Got a new connection future
-                    match x {
-                        Ok(v) => {
-                            connection_futures.push(v);
-                        }
-                        Err(e) => {
-                            error!("connection processor error: {:?}", e);
-                            // xxx: do something here??
-                        }
-                    };
-                }
-            }
-        }
     }
 
     // Return what network class we are in
