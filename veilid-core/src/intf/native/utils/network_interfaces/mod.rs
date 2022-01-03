@@ -24,6 +24,7 @@ pub enum IfAddr {
     V6(Ifv6Addr),
 }
 
+#[allow(dead_code)]
 impl IfAddr {
     pub fn ip(&self) -> IpAddr {
         match *self {

@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 pub fn convert_to_unsigned_4(x: [i8; 4]) -> [u8; 4] {
     let mut out: [u8; 4] = [0u8; 4];
     for i in 0..4 {

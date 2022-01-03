@@ -8,9 +8,8 @@ use futures_util::stream::{FuturesUnordered, StreamExt};
 
 const CONNECTION_PROCESSOR_CHANNEL_SIZE: usize = 128usize;
 
-type ProtocolConnectHandler = fn(Option<SocketAddr>, DialInfo) -> Result<NetworkConnection, String>;
-
-type ProtocolConnectorMap = BTreeMap<ProtocolType, ProtocolConnectHandler>;
+///////////////////////////////////////////////////////////
+// Accept
 
 cfg_if! {
     if #[cfg(not(target_arch = "wasm32"))] {
@@ -44,9 +43,35 @@ cfg_if! {
         }
 
         pub type NewProtocolAcceptHandler =
-            dyn Fn(ConnectionManager, bool, SocketAddr) -> Box<dyn ProtocolAcceptHandler> + Send;
+            dyn Fn(VeilidConfig, bool, SocketAddr) -> Box<dyn ProtocolAcceptHandler> + Send;
     }
 }
+
+///////////////////////////////////////////////////////////
+// Dummy network connection for testing
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DummyNetworkConnection {
+    descriptor: ConnectionDescriptor,
+}
+
+impl DummyNetworkConnection {
+    pub fn new(descriptor: ConnectionDescriptor) -> Self {
+        Self { descriptor }
+    }
+    pub fn connection_descriptor(&self) -> ConnectionDescriptor {
+        self.descriptor.clone()
+    }
+    pub async fn send(&self, _message: Vec<u8>) -> Result<(), String> {
+        Ok(())
+    }
+    pub async fn recv(&self) -> Result<Vec<u8>, String> {
+        Ok(Vec::new())
+    }
+}
+
+///////////////////////////////////////////////////////////
+// Connection manager
 
 pub struct ConnectionManagerInner {
     network_manager: NetworkManager,
@@ -94,10 +119,6 @@ impl ConnectionManager {
         self.inner.lock().network_manager.clone()
     }
 
-    pub fn config(&self) -> VeilidConfig {
-        self.network_manager().config()
-    }
-
     pub async fn startup(&self) {
         let cac = utils::channel::channel(CONNECTION_PROCESSOR_CHANNEL_SIZE); // xxx move to config
         self.inner.lock().connection_add_channel_tx = Some(cac.0);
@@ -136,6 +157,38 @@ impl ConnectionManager {
             .await
             .map_err(map_to_string)
             .map_err(logthru_net!(error "failed to start receiver loop"))
+    }
+
+    pub async fn get_or_create_connection(
+        &self,
+        local_addr: Option<SocketAddr>,
+        dial_info: DialInfo,
+    ) -> Result<NetworkConnection, String> {
+        let peer_address = dial_info.to_peer_address();
+        let descriptor = match local_addr {
+            Some(la) => {
+                ConnectionDescriptor::new(peer_address, SocketAddress::from_socket_addr(la))
+            }
+            None => ConnectionDescriptor::new_no_local(peer_address),
+        };
+
+        // If connection exists, then return it
+        if let Some(conn) = self
+            .inner
+            .lock()
+            .connection_table
+            .get_connection(&descriptor)
+            .map(|e| e.conn)
+        {
+            return Ok(conn);
+        }
+
+        // If not, attempt new connection
+        let conn = NetworkConnection::connect(local_addr, dial_info).await?;
+
+        self.on_new_connection(conn.clone()).await?;
+
+        Ok(conn)
     }
 
     // Connection receiver loop

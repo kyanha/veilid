@@ -134,8 +134,8 @@ impl Network {
                     // and the number of total connections
                     let addr = match tcp_stream.peer_addr() {
                         Ok(addr) => addr,
-                        Err(err) => {
-                            error!("failed to get peer address: {}", err);
+                        Err(e) => {
+                            error!("failed to get peer address: {}", e);
                             return;
                         }
                     };
@@ -191,7 +191,9 @@ impl Network {
                     };
 
                     // Register the new connection in the connection manager
-                    connection_manager.on_new_connection(conn).await;
+                    if let Err(e) = connection_manager.on_new_connection(conn).await {
+                        error!("failed to register new connection: {}", e);
+                    }
                 })
                 .await;
             trace!("exited incoming loop for {}", addr);
@@ -248,7 +250,7 @@ impl Network {
                 ls.write()
                     .tls_protocol_handlers
                     .push(new_protocol_accept_handler(
-                        self.connection_manager(),
+                        self.network_manager().config(),
                         true,
                         addr,
                     ));
@@ -256,7 +258,7 @@ impl Network {
                 ls.write()
                     .protocol_handlers
                     .push(new_protocol_accept_handler(
-                        self.connection_manager(),
+                        self.network_manager().config(),
                         false,
                         addr,
                     ));

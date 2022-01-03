@@ -261,13 +261,13 @@ impl Network {
         match &dial_info {
             DialInfo::UDP(_) => {
                 let peer_socket_addr = dial_info.to_socket_addr();
-                RawUdpProtocolHandler::send_unbound_message(data, peer_socket_addr)
+                RawUdpProtocolHandler::send_unbound_message(peer_socket_addr, data)
                     .await
                     .map_err(logthru_net!())
             }
             DialInfo::TCP(_) => {
                 let peer_socket_addr = dial_info.to_socket_addr();
-                RawTcpProtocolHandler::send_unbound_message(data, peer_socket_addr)
+                RawTcpProtocolHandler::send_unbound_message(peer_socket_addr, data)
                     .await
                     .map_err(logthru_net!())
             }
@@ -278,78 +278,40 @@ impl Network {
         }
     }
 
-    // Initiate a new low-level protocol connection to a node
-    pub async fn connect_to_dial_info(
-        &self,
-        local_addr: Option<SocketAddr>,
-        dial_info: &DialInfo,
-    ) -> Result<NetworkConnection, String> {
-        let connection_manager = self.connection_manager();
-        let peer_socket_addr = dial_info.to_socket_addr();
-
-        Ok(match &dial_info {
-            DialInfo::UDP(_) => {
-                panic!("Do not attempt to connect to UDP dial info")
-            }
-            DialInfo::TCP(_) => {
-                let local_addr =
-                    self.get_preferred_local_address(self.inner.lock().tcp_port, &peer_socket_addr);
-                RawTcpProtocolHandler::connect(connection_manager, local_addr, dial_info)
-                    .await
-                    .map_err(logthru_net!())?
-            }
-            DialInfo::WS(_) => {
-                let local_addr =
-                    self.get_preferred_local_address(self.inner.lock().ws_port, &peer_socket_addr);
-                WebsocketProtocolHandler::connect(connection_manager, local_addr, dial_info)
-                    .await
-                    .map_err(logthru_net!(error))?
-            }
-            DialInfo::WSS(_) => {
-                let local_addr =
-                    self.get_preferred_local_address(self.inner.lock().wss_port, &peer_socket_addr);
-                WebsocketProtocolHandler::connect(connection_manager, local_addr, dial_info)
-                    .await
-                    .map_err(logthru_net!(error))?
-            }
-        })
-    }
-
     async fn send_data_to_existing_connection(
         &self,
         descriptor: &ConnectionDescriptor,
         data: Vec<u8>,
     ) -> Result<Option<Vec<u8>>, String> {
-        match descriptor.protocol_type() {
-            ProtocolType::UDP => {
-                // send over the best udp socket we have bound since UDP is not connection oriented
-                let peer_socket_addr = descriptor.remote.to_socket_addr();
-                if let Some(ph) = self.find_best_udp_protocol_handler(
-                    &peer_socket_addr,
-                    &descriptor.local.map(|sa| sa.to_socket_addr()),
-                ) {
-                    ph.clone()
-                        .send_message(data, peer_socket_addr)
-                        .await
-                        .map_err(logthru_net!())?;
-                    // Data was consumed
-                    return Ok(None);
-                }
-            }
-            ProtocolType::TCP | ProtocolType::WS | ProtocolType::WSS => {
-                // find an existing connection in the connection table if one exists
-                if let Some(conn) = self.connection_manager().get_connection(descriptor) {
-                    // connection exists, send over it
-                    conn.send(data).await.map_err(logthru_net!())?;
-
-                    // Data was consumed
-                    return Ok(None);
-                }
+        // Handle connectionless protocol
+        if descriptor.protocol_type() == ProtocolType::UDP {
+            // send over the best udp socket we have bound since UDP is not connection oriented
+            let peer_socket_addr = descriptor.remote.to_socket_addr();
+            if let Some(ph) = self.find_best_udp_protocol_handler(
+                &peer_socket_addr,
+                &descriptor.local.map(|sa| sa.to_socket_addr()),
+            ) {
+                ph.clone()
+                    .send_message(data, peer_socket_addr)
+                    .await
+                    .map_err(logthru_net!())?;
+                // Data was consumed
+                return Ok(None);
             }
         }
-        // connection or local socket didn't exist, we'll need to use dialinfo to create one
-        // Pass the data back out so we don't own it any more
-        Ok(Some(data))
+
+        // Handle connection-oriented protocols
+        if let Some(conn) = self.connection_manager().get_connection(descriptor) {
+            // connection exists, send over it
+            conn.send(data).await.map_err(logthru_net!())?;
+
+            // Data was consumed
+            Ok(None)
+        } else {
+            // Connection or didn't exist
+            // Pass the data back out so we don't own it any more
+            Ok(Some(data))
+        }
     }
 
     // Send data directly to a dial info, possibly without knowing which node it is going to
@@ -372,7 +334,11 @@ impl Network {
         }
 
         // Handle connection-oriented protocols
-        let conn = self.connect_to_dial_info(dial_info).await?;
+        let local_addr = self.get_preferred_local_address(dial_info);
+        let conn = self
+            .connection_manager()
+            .get_or_create_connection(Some(local_addr), dial_info.clone())
+            .await?;
 
         conn.send(data).await.map_err(logthru_net!(error))
     }
@@ -405,25 +371,7 @@ impl Network {
             .ok_or_else(|| "couldn't send data, no dial info or peer address".to_owned())?;
 
         // Handle connectionless protocol
-        if dial_info.protocol_type() == ProtocolType::UDP {
-            let peer_socket_addr = dial_info.to_socket_addr();
-            if let Some(ph) = self.find_best_udp_protocol_handler(&peer_socket_addr, &None) {
-                return ph
-                    .send_message(data, peer_socket_addr)
-                    .await
-                    .map_err(logthru_net!());
-            }
-            return Err("no appropriate UDP protocol handler for dial_info".to_owned())
-                .map_err(logthru_net!(error));
-        }
-
-        // Handle connection-oriented protocols
-        let local_addr = self.get_preferred_local_address(&dial_info);
-        let conn = self
-            .connection_manager()
-            .get_or_create_connection(dial_info, Some(local_addr)); xxx implement this and pass thru to NetworkConnection::connect
-
-        conn.send(data).await.map_err(logthru_net!(error))
+        self.send_data_to_dial_info(&dial_info, data).await
     }
 
     /////////////////////////////////////////////////////////////////

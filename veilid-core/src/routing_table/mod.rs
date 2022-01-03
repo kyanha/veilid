@@ -245,6 +245,7 @@ impl RoutingTable {
             .instance_empty();
         inst.await;
     }
+
     fn trigger_changed_dial_info(inner: &mut RoutingTableInner) {
         let mut new_eventual = Eventual::new();
         core::mem::swap(&mut inner.eventual_changed_dial_info, &mut new_eventual);

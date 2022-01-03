@@ -1,5 +1,4 @@
 use super::*;
-use crate::connection_manager::*;
 use crate::intf::native::utils::async_peek_stream::*;
 use crate::intf::*;
 use crate::network_manager::MAX_MESSAGE_SIZE;
@@ -104,7 +103,6 @@ impl RawTcpNetworkConnection {
 ///
 
 struct RawTcpProtocolHandlerInner {
-    connection_manager: ConnectionManager,
     local_address: SocketAddr,
 }
 
@@ -117,22 +115,13 @@ where
 }
 
 impl RawTcpProtocolHandler {
-    fn new_inner(
-        connection_manager: ConnectionManager,
-        local_address: SocketAddr,
-    ) -> RawTcpProtocolHandlerInner {
-        RawTcpProtocolHandlerInner {
-            connection_manager,
-            local_address,
-        }
+    fn new_inner(local_address: SocketAddr) -> RawTcpProtocolHandlerInner {
+        RawTcpProtocolHandlerInner { local_address }
     }
 
-    pub fn new(connection_manager: ConnectionManager, local_address: SocketAddr) -> Self {
+    pub fn new(local_address: SocketAddr) -> Self {
         Self {
-            inner: Arc::new(Mutex::new(Self::new_inner(
-                connection_manager,
-                local_address,
-            ))),
+            inner: Arc::new(Mutex::new(Self::new_inner(local_address))),
         }
     }
 
@@ -153,10 +142,7 @@ impl RawTcpProtocolHandler {
             SocketAddress::from_socket_addr(socket_addr),
             ProtocolType::TCP,
         );
-        let (network_manager, local_address) = {
-            let inner = self.inner.lock();
-            (inner.connection_manager.clone(), inner.local_address)
-        };
+        let local_address = self.inner.lock().local_address;
         let conn = NetworkConnection::RawTcp(RawTcpNetworkConnection::new(
             stream,
             ConnectionDescriptor::new(peer_addr, SocketAddress::from_socket_addr(local_address)),
@@ -194,12 +180,8 @@ impl RawTcpProtocolHandler {
             .map_err(map_to_string)
             .map_err(logthru_net!("could not get local address from TCP stream"))?;
         let ps = AsyncPeekStream::new(ts);
-        let peer_addr = PeerAddress::new(
-            SocketAddress::from_socket_addr(remote_socket_addr),
-            ProtocolType::TCP,
-        );
 
-        // Wrap the stream in a network connection and register it
+        // Wrap the stream in a network connection and return it
         let conn = NetworkConnection::RawTcp(RawTcpNetworkConnection::new(
             ps,
             ConnectionDescriptor {
@@ -211,8 +193,8 @@ impl RawTcpProtocolHandler {
     }
 
     pub async fn send_unbound_message(
-        data: Vec<u8>,
         socket_addr: SocketAddr,
+        data: Vec<u8>,
     ) -> Result<(), String> {
         if data.len() > MAX_MESSAGE_SIZE {
             return Err("sending too large unbound TCP message".to_owned());

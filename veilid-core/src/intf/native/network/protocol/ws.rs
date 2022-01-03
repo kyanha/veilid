@@ -1,5 +1,4 @@
 use super::*;
-use crate::connection_manager::*;
 use crate::intf::native::utils::async_peek_stream::*;
 use crate::intf::*;
 use crate::network_manager::MAX_MESSAGE_SIZE;
@@ -133,7 +132,6 @@ where
 ///
 struct WebsocketProtocolHandlerInner {
     tls: bool,
-    connection_manager: ConnectionManager,
     local_address: SocketAddr,
     request_path: Vec<u8>,
     connection_initial_timeout: u64,
@@ -147,12 +145,7 @@ where
     inner: Arc<WebsocketProtocolHandlerInner>,
 }
 impl WebsocketProtocolHandler {
-    pub fn new(
-        connection_manager: ConnectionManager,
-        tls: bool,
-        local_address: SocketAddr,
-    ) -> Self {
-        let config = connection_manager.config();
+    pub fn new(config: VeilidConfig, tls: bool, local_address: SocketAddr) -> Self {
         let c = config.get();
         let path = if tls {
             format!("GET {}", c.network.protocol.ws.path.trim_end_matches('/'))
@@ -167,7 +160,6 @@ impl WebsocketProtocolHandler {
 
         let inner = WebsocketProtocolHandlerInner {
             tls,
-            connection_manager,
             local_address,
             request_path: path.as_bytes().to_vec(),
             connection_initial_timeout,
@@ -312,6 +304,23 @@ impl WebsocketProtocolHandler {
                 ws_stream,
             )))
         }
+    }
+
+    pub async fn send_unbound_message(dial_info: &DialInfo, data: Vec<u8>) -> Result<(), String> {
+        if data.len() > MAX_MESSAGE_SIZE {
+            return Err("sending too large unbound WS message".to_owned());
+        }
+        trace!(
+            "sending unbound websocket message of length {} to {}",
+            data.len(),
+            dial_info,
+        );
+
+        let conn = Self::connect(None, dial_info.clone())
+            .await
+            .map_err(|e| format!("failed to connect websocket for unbound message: {}", e))?;
+
+        conn.send(data).await
     }
 }
 

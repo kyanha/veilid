@@ -125,4 +125,21 @@ impl WebsocketProtocolHandler {
 
         Ok(NetworkConnection::WS(WebsocketNetworkConnection::new(tls, connection_descriptor, wsio)))
     }
+
+    pub async fn send_unbound_message(dial_info: &DialInfo, data: Vec<u8>) -> Result<(), String> {
+        if data.len() > MAX_MESSAGE_SIZE {
+            return Err("sending too large unbound WS message".to_owned());
+        }
+        trace!(
+            "sending unbound websocket message of length {} to {}",
+            data.len(),
+            dial_info,
+        );
+
+        let conn = Self::connect(None, dial_info.clone())
+            .await
+            .map_err(|e| format!("failed to connect websocket for unbound message: {}", e))?;
+
+        conn.send(data).await
+    }
 }

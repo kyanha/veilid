@@ -21,6 +21,7 @@ impl Network {
             ////////////////////////////////////////////////////////////
             // Run thread task to process stream of messages
             let this = self.clone();
+
             let jh = spawn(async move {
                 trace!("UDP listener task spawned");
 
@@ -41,8 +42,26 @@ impl Network {
 
                 // Spawn a local async task for each socket
                 let mut protocol_handlers_unordered = stream::FuturesUnordered::new();
+                let network_manager = this.network_manager();
+
                 for ph in protocol_handlers {
-                    let jh = spawn_local(ph.clone().receive_loop());
+                    let network_manager = network_manager.clone();
+                    let jh = spawn_local(async move {
+                        let mut data = vec![0u8; 65536];
+
+                        while let Ok((size, descriptor)) = ph.recv_message(&mut data).await {
+                            // XXX: Limit the number of packets from the same IP address?
+                            log_net!("UDP packet: {:?}", descriptor);
+
+                            if let Err(e) = network_manager
+                                .on_recv_envelope(&data[..size], &descriptor)
+                                .await
+                            {
+                                log_net!(error "failed to process received udp envelope: {}", e);
+                            }
+                        }
+                    });
+
                     protocol_handlers_unordered.push(jh);
                 }
                 // Now we wait for any join handle to exit,
@@ -83,8 +102,7 @@ impl Network {
             let socket_arc = Arc::new(udp_socket);
 
             // Create protocol handler
-            let udpv4_handler =
-                RawUdpProtocolHandler::new(inner.network_manager.clone(), socket_arc);
+            let udpv4_handler = RawUdpProtocolHandler::new(socket_arc);
 
             inner.outbound_udpv4_protocol_handler = Some(udpv4_handler);
         }
@@ -98,8 +116,7 @@ impl Network {
             let socket_arc = Arc::new(udp_socket);
 
             // Create protocol handler
-            let udpv6_handler =
-                RawUdpProtocolHandler::new(inner.network_manager.clone(), socket_arc);
+            let udpv6_handler = RawUdpProtocolHandler::new(socket_arc);
 
             inner.outbound_udpv6_protocol_handler = Some(udpv6_handler);
         }
@@ -119,8 +136,7 @@ impl Network {
         let socket_arc = Arc::new(udp_socket);
 
         // Create protocol handler
-        let protocol_handler =
-            RawUdpProtocolHandler::new(self.inner.lock().network_manager.clone(), socket_arc);
+        let protocol_handler = RawUdpProtocolHandler::new(socket_arc);
 
         // Create message_handler records
         self.inner

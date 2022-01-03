@@ -1,10 +1,9 @@
 use crate::intf::*;
-use crate::network_manager::{NetworkManager, MAX_MESSAGE_SIZE};
+use crate::network_manager::MAX_MESSAGE_SIZE;
 use crate::*;
 use async_std::net::*;
 
 struct RawUdpProtocolHandlerInner {
-    network_manager: NetworkManager,
     socket: Arc<UdpSocket>,
 }
 
@@ -14,64 +13,44 @@ pub struct RawUdpProtocolHandler {
 }
 
 impl RawUdpProtocolHandler {
-    fn new_inner(
-        network_manager: NetworkManager,
-        socket: Arc<UdpSocket>,
-    ) -> RawUdpProtocolHandlerInner {
-        RawUdpProtocolHandlerInner {
-            network_manager,
-            socket,
-        }
+    fn new_inner(socket: Arc<UdpSocket>) -> RawUdpProtocolHandlerInner {
+        RawUdpProtocolHandlerInner { socket }
     }
 
-    pub fn new(network_manager: NetworkManager, socket: Arc<UdpSocket>) -> Self {
+    pub fn new(socket: Arc<UdpSocket>) -> Self {
         Self {
-            inner: Arc::new(Mutex::new(Self::new_inner(network_manager, socket))),
+            inner: Arc::new(Mutex::new(Self::new_inner(socket))),
         }
     }
 
-    pub async fn receive_loop(self) {
-        let mut data = vec![0u8; 65536];
+    pub async fn recv_message(
+        &self,
+        data: &mut [u8],
+    ) -> Result<(usize, ConnectionDescriptor), String> {
         let socket = self.inner.lock().socket.clone();
-        while let Ok((size, socket_addr)) = socket.recv_from(&mut data).await {
-            // XXX: Limit the number of packets from the same IP address?
-            trace!("UDP packet from: {}", socket_addr);
+        let (size, remote_addr) = socket.recv_from(data).await.map_err(map_to_string)?;
 
-            let _processed = self.clone().on_message(&data[..size], socket_addr).await;
-        }
-    }
-
-    pub async fn on_message(&self, data: &[u8], remote_addr: SocketAddr) -> Result<bool, String> {
-        if data.len() > MAX_MESSAGE_SIZE {
+        if size > MAX_MESSAGE_SIZE {
             return Err("received too large UDP message".to_owned());
         }
 
         trace!(
             "receiving UDP message of length {} from {}",
-            data.len(),
+            size,
             remote_addr
         );
 
         // Process envelope
-        let (network_manager, socket) = {
-            let inner = self.inner.lock();
-            (inner.network_manager.clone(), inner.socket.clone())
-        };
-
         let peer_addr = PeerAddress::new(
             SocketAddress::from_socket_addr(remote_addr),
             ProtocolType::UDP,
         );
-        let local_socket_addr = socket.local_addr().map_err(|e| format!("{}", e))?;
-        network_manager
-            .on_recv_envelope(
-                data,
-                &ConnectionDescriptor::new(
-                    peer_addr,
-                    SocketAddress::from_socket_addr(local_socket_addr),
-                ),
-            )
-            .await
+        let local_socket_addr = socket.local_addr().map_err(map_to_string)?;
+        let descriptor = ConnectionDescriptor::new(
+            peer_addr,
+            SocketAddress::from_socket_addr(local_socket_addr),
+        );
+        Ok((size, descriptor))
     }
 
     pub async fn send_message(&self, data: Vec<u8>, socket_addr: SocketAddr) -> Result<(), String> {
@@ -100,8 +79,8 @@ impl RawUdpProtocolHandler {
     }
 
     pub async fn send_unbound_message(
-        data: Vec<u8>,
         socket_addr: SocketAddr,
+        data: Vec<u8>,
     ) -> Result<(), String> {
         if data.len() > MAX_MESSAGE_SIZE {
             return Err("sending too large unbound UDP message".to_owned())

@@ -3,27 +3,10 @@ pub mod udp;
 pub mod wrtc;
 pub mod ws;
 
+use crate::connection_manager::*;
 use crate::xx::*;
 use crate::*;
 use socket2::{Domain, Protocol, Socket, Type};
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DummyNetworkConnection {}
-
-impl DummyNetworkConnection {
-    pub fn connection_descriptor(&self) -> ConnectionDescriptor {
-        ConnectionDescriptor::new_no_local(PeerAddress::new(
-            SocketAddress::default(),
-            ProtocolType::UDP,
-        ))
-    }
-    pub async fn send(&self, _message: Vec<u8>) -> Result<(), String> {
-        Ok(())
-    }
-    pub async fn recv(&self) -> Result<Vec<u8>, String> {
-        Ok(Vec::new())
-    }
-}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum NetworkConnection {
@@ -49,6 +32,29 @@ impl NetworkConnection {
             }
             ProtocolType::WS | ProtocolType::WSS => {
                 ws::WebsocketProtocolHandler::connect(local_address, dial_info).await
+            }
+        }
+    }
+    pub async fn send_unbound_message(
+        &self,
+        dial_info: &DialInfo,
+        data: Vec<u8>,
+    ) -> Result<(), String> {
+        match dial_info.protocol_type() {
+            ProtocolType::UDP => {
+                let peer_socket_addr = dial_info.to_socket_addr();
+                udp::RawUdpProtocolHandler::send_unbound_message(peer_socket_addr, data)
+                    .await
+                    .map_err(logthru_net!())
+            }
+            ProtocolType::TCP => {
+                let peer_socket_addr = dial_info.to_socket_addr();
+                tcp::RawTcpProtocolHandler::send_unbound_message(peer_socket_addr, data)
+                    .await
+                    .map_err(logthru_net!())
+            }
+            ProtocolType::WS | ProtocolType::WSS => {
+                ws::WebsocketProtocolHandler::send_unbound_message(dial_info, data).await
             }
         }
     }

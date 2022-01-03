@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 #![allow(clippy::absurd_extreme_comparisons)]
 use super::envelope::{MAX_VERSION, MIN_VERSION};
 use super::key::*;

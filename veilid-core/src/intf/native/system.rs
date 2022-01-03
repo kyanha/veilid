@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::xx::*;
 pub use async_executors::JoinHandle;
 use async_executors::{AsyncStd, LocalSpawnHandleExt, SpawnHandleExt};
