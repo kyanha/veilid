@@ -431,7 +431,7 @@ impl NetworkManager {
     pub async fn on_recv_envelope(
         &self,
         data: &[u8],
-        descriptor: &ConnectionDescriptor,
+        descriptor: ConnectionDescriptor,
     ) -> Result<bool, String> {
         // Is this an out-of-band receipt instead of an envelope?
         if data[0..4] == *RECEIPT_MAGIC {
@@ -522,11 +522,7 @@ impl NetworkManager {
 
         // Cache the envelope information in the routing table
         let source_noderef = routing_table
-            .register_node_with_existing_connection(
-                envelope.get_sender_id(),
-                descriptor.clone(),
-                ts,
-            )
+            .register_node_with_existing_connection(envelope.get_sender_id(), descriptor, ts)
             .map_err(|e| format!("node id registration failed: {}", e))?;
         source_noderef.operate(|e| e.set_min_max_version(envelope.get_min_max_version()));
 

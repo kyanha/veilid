@@ -801,14 +801,10 @@ impl RPCProcessor {
     }
 
     fn generate_sender_info(&self, rpcreader: &RPCMessageReader) -> SenderInfo {
-        let socket_address =
-            rpcreader
-                .header
-                .peer_noderef
-                .operate(|entry| match entry.last_connection() {
-                    None => None,
-                    Some(c) => Some(c.remote.socket_address),
-                });
+        let socket_address = rpcreader
+            .header
+            .peer_noderef
+            .operate(|entry| entry.last_connection().map(|c| c.remote.socket_address));
         SenderInfo { socket_address }
     }
 

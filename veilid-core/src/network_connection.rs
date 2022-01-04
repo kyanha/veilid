@@ -48,8 +48,8 @@ cfg_if! {
 pub struct DummyNetworkConnection {}
 
 impl DummyNetworkConnection {
-    pub fn new(descriptor: ConnectionDescriptor) -> NetworkConnection {
-        NetworkConnection::from_protocol(descriptor, ProtocolNetworkConnection::Dummy(Self {}))
+    pub fn close(&self) -> Result<(), String> {
+        Ok(())
     }
     pub fn send(&self, _message: Vec<u8>) -> Result<(), String> {
         Ok(())
@@ -73,7 +73,6 @@ struct NetworkConnectionInner {
 struct NetworkConnectionArc {
     descriptor: ConnectionDescriptor,
     established_time: u64,
-    stopper: Eventual,
     inner: AsyncMutex<NetworkConnectionInner>,
 }
 
@@ -81,6 +80,13 @@ struct NetworkConnectionArc {
 pub struct NetworkConnection {
     arc: Arc<NetworkConnectionArc>,
 }
+impl PartialEq for NetworkConnection {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::as_ptr(&self.arc) == Arc::as_ptr(&other.arc)
+    }
+}
+
+impl Eq for NetworkConnection {}
 
 impl NetworkConnection {
     fn new_inner(protocol_connection: ProtocolNetworkConnection) -> NetworkConnectionInner {
@@ -101,6 +107,13 @@ impl NetworkConnection {
         }
     }
 
+    pub fn dummy(descriptor: ConnectionDescriptor) -> Self {
+        NetworkConnection::from_protocol(
+            descriptor,
+            ProtocolNetworkConnection::Dummy(DummyNetworkConnection {}),
+        )
+    }
+
     pub fn from_protocol(
         descriptor: ConnectionDescriptor,
         protocol_connection: ProtocolNetworkConnection,
@@ -119,6 +132,11 @@ impl NetworkConnection {
 
     pub fn connection_descriptor(&self) -> ConnectionDescriptor {
         self.arc.descriptor
+    }
+
+    pub async fn close(&self) -> Result<(), String> {
+        let mut inner = self.arc.inner.lock().await;
+        inner.protocol_connection.close().await
     }
 
     pub async fn send(&self, message: Vec<u8>) -> Result<(), String> {

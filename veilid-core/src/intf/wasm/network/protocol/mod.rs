@@ -8,7 +8,7 @@ use crate::xx::*;
 #[derive(Debug)]
 pub enum ProtocolNetworkConnection {
     Dummy(DummyNetworkConnection),
-    WS(ws::WebsocketNetworkConnection),
+    Ws(ws::WebsocketNetworkConnection),
     //WebRTC(wrtc::WebRTCNetworkConnection),
 }
 
@@ -46,18 +46,23 @@ impl ProtocolNetworkConnection {
             }
         }
     }
-
+    pub async fn close(&mut self) -> Result<(), String> {
+        match self {
+            Self::Dummy(d) => d.close(),
+            Self::Ws(w) => w.close().await,
+        }
+    }
     pub async fn send(&mut self, message: Vec<u8>) -> Result<(), String> {
         match self {
             Self::Dummy(d) => d.send(message),
-            Self::WS(w) => w.send(message),
+            Self::Ws(w) => w.send(message).await,
         }
     }
 
     pub async fn recv(&mut self) -> Result<Vec<u8>, String> {
         match self {
             Self::Dummy(d) => d.recv(),
-            Self::WS(w) => w.recv(),
+            Self::Ws(w) => w.recv().await,
         }
     }
 }

@@ -89,7 +89,7 @@ impl ConnectionManager {
         inner.connection_table.get_connection(descriptor)
     }
 
-    // Internal routine to register new connection
+    // Internal routine to register new connection atomically
     async fn on_new_connection_internal(
         &self,
         mut inner: AsyncMutexGuard<'_, ConnectionManagerInner>,
@@ -136,18 +136,14 @@ impl ConnectionManager {
         // If connection exists, then return it
         let inner = self.arc.inner.lock().await;
 
-        if let Some(conn) = inner
-            .connection_table
-            .get_connection(&descriptor)
-            .map(|e| e.conn)
-        {
+        if let Some(conn) = inner.connection_table.get_connection(&descriptor) {
             return Ok(conn);
         }
 
         // If not, attempt new connection
         let conn = NetworkConnection::connect(local_addr, dial_info).await?;
 
-        self.on_new_connection_internal(inner, conn).await;
+        self.on_new_connection_internal(inner, conn.clone()).await?;
 
         Ok(conn)
     }
@@ -160,41 +156,31 @@ impl ConnectionManager {
         let network_manager = this.network_manager();
         Box::pin(async move {
             //
-            let exit_value: Result<Vec<u8>, ()> = Err(());
             let descriptor = conn.connection_descriptor();
             loop {
-                let res = match select(
-                    entry.stopper.clone().instance_clone(exit_value.clone()),
-                    Box::pin(conn.clone().recv()),
-                )
-                .await
-                {
-                    Either::Left((_x, _b)) => break,
-                    Either::Right((y, _a)) => y,
-                };
+                let res = conn.clone().recv().await;
                 let message = match res {
                     Ok(v) => v,
                     Err(_) => break,
                 };
-                match network_manager
-                    .on_recv_envelope(message.as_slice(), &descriptor)
+                if let Err(e) = network_manager
+                    .on_recv_envelope(message.as_slice(), descriptor)
                     .await
                 {
-                    Ok(_) => (),
-                    Err(e) => {
-                        error!("{}", e);
-                        break;
-                    }
-                };
+                    log_net!(error e);
+                    break;
+                }
             }
 
-            if let Err(err) = this
+            if let Err(e) = this
+                .arc
                 .inner
                 .lock()
+                .await
                 .connection_table
                 .remove_connection(&descriptor)
             {
-                error!("{}", err);
+                log_net!(error e);
             }
         })
     }

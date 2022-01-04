@@ -3,16 +3,16 @@ use crate::intf::native::utils::async_peek_stream::*;
 use crate::intf::*;
 use crate::network_manager::MAX_MESSAGE_SIZE;
 use crate::*;
+use alloc::sync::Arc;
 use async_std::io;
 use async_std::net::*;
 use async_tls::TlsConnector;
 use async_tungstenite::tungstenite::protocol::Message;
 use async_tungstenite::{accept_async, client_async, WebSocketStream};
+use core::fmt;
+use core::time::Duration;
 use futures_util::sink::SinkExt;
 use futures_util::stream::StreamExt;
-use std::fmt;
-use std::sync::Arc;
-use std::time::Duration;
 
 pub type WebSocketNetworkConnectionAccepted = WebsocketNetworkConnection<AsyncPeekStream>;
 pub type WebsocketNetworkConnectionWSS =
@@ -66,6 +66,16 @@ where
                 ws_stream,
             })),
         }
+    }
+
+    pub async fn close(&self) -> Result<(), String> {
+        let mut inner = self.inner.lock().await;
+        inner
+            .ws_stream
+            .close(None)
+            .await
+            .map_err(map_to_string)
+            .map_err(logthru_net!(error "failed to close websocket"))
     }
 
     pub async fn send(&self, message: Vec<u8>) -> Result<(), String> {

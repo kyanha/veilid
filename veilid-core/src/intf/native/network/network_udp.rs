@@ -54,7 +54,7 @@ impl Network {
                             log_net!("UDP packet: {:?}", descriptor);
 
                             if let Err(e) = network_manager
-                                .on_recv_envelope(&data[..size], &descriptor)
+                                .on_recv_envelope(&data[..size], descriptor)
                                 .await
                             {
                                 log_net!(error "failed to process received udp envelope: {}", e);

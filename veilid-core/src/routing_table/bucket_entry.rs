@@ -101,7 +101,7 @@ impl BucketEntry {
     }
 
     pub fn last_connection(&self) -> Option<ConnectionDescriptor> {
-        self.last_connection.as_ref().map(|x| x.0.clone())
+        self.last_connection.as_ref().map(|x| x.0)
     }
 
     pub fn set_min_max_version(&mut self, min_max_version: (u8, u8)) {

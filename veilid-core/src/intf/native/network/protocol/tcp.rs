@@ -3,9 +3,9 @@ use crate::intf::native::utils::async_peek_stream::*;
 use crate::intf::*;
 use crate::network_manager::MAX_MESSAGE_SIZE;
 use crate::*;
-use async_std::net::*;
-use async_std::prelude::*;
-use std::fmt;
+use async_std::net::TcpStream;
+use core::fmt;
+use futures_util::{AsyncReadExt, AsyncWriteExt};
 
 pub struct RawTcpNetworkConnection {
     stream: AsyncPeekStream,
@@ -20,6 +20,14 @@ impl fmt::Debug for RawTcpNetworkConnection {
 impl RawTcpNetworkConnection {
     pub fn new(stream: AsyncPeekStream) -> Self {
         Self { stream }
+    }
+
+    pub async fn close(&mut self) -> Result<(), String> {
+        self.stream
+            .close()
+            .await
+            .map_err(map_to_string)
+            .map_err(logthru_net!())
     }
 
     pub async fn send(&mut self, message: Vec<u8>) -> Result<(), String> {
@@ -183,7 +191,7 @@ impl ProtocolAcceptHandler for RawTcpProtocolHandler {
         &self,
         stream: AsyncPeekStream,
         peer_addr: SocketAddr,
-    ) -> SystemPinBoxFuture<Result<Option<NetworkConnection>, String>> {
+    ) -> SystemPinBoxFuture<core::result::Result<Option<NetworkConnection>, String>> {
         Box::pin(self.clone().on_accept_async(stream, peer_addr))
     }
 }
