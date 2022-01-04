@@ -13,6 +13,9 @@ cfg_if! {
     }
 }
 
+/// Runs a single-future background processing task, attempting to run it once every 'tick period' microseconds.
+/// If the prior tick is still running, it will allow it to finish, and do another tick when the timer comes around again.
+/// One should attempt to make tasks short-lived things that run in less than the tick period if you want things to happen with regular periodicity.
 pub struct TickTask {
     last_timestamp_us: AtomicU64,
     tick_period_us: u64,

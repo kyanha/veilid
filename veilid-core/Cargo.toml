@@ -86,20 +86,21 @@ serde_cbor = { version = "^0", default-features = false, features = ["alloc"] }
 getrandom = { version = "^0", features = ["js"] }
 ws_stream_wasm = "^0"
 async_executors = { version = "^0", features = [ "bindgen" ]}
+async-lock = "^0"
 
 # Configuration for WASM32 'web-sys' crate
 [target.'cfg(target_arch = "wasm32")'.dependencies.web-sys]
 version = "^0"
 features = [
-#  'Document',
-#  'Element',
-#  'HtmlElement',
-#  'Node',
-  'IdbFactory',
-  'IdbOpenDbRequest',
-  'Storage',
-  'Location',
-  'Window',
+    # 'Document',
+    # 'Element',
+    # 'HtmlElement',
+    # 'Node',
+    'IdbFactory',
+    'IdbOpenDbRequest',
+    'Storage',
+    'Location',
+    'Window',
 ]
 
 # Dependencies for Android

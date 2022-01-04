@@ -227,6 +227,12 @@ dependencies = [
 
 [[package]]
 name = "async-lock"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1ab86ee898bb6d5d0118270acaa8536c59885231ca6f653b4c35a148f8ee6235"
+
+[[package]]
+name = "async-lock"
 version = "2.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e6a8ea61bf9947a1007c5cada31e647dbc77b103c679858150003ba697ea798b"
@@ -270,7 +276,7 @@ dependencies = [
  "async-channel",
  "async-global-executor",
  "async-io",
- "async-lock",
+ "async-lock 2.4.0",
  "async-process",
  "crossbeam-utils",
  "futures-channel",
@@ -3743,6 +3749,7 @@ version = "0.1.0"
 dependencies = [
  "android_logger",
  "anyhow",
+ "async-lock 0.1.0",
  "async-std",
  "async-tls",
  "async-tungstenite 0.16.0",

@@ -1,6 +1,6 @@
 use super::*;
-use crate::connection_manager::*;
 use crate::intf::*;
+use crate::network_connection::*;
 use utils::clone_stream::*;
 
 use async_tls::TlsAcceptor;

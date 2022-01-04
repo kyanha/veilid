@@ -1,6 +1,5 @@
-use crate::connection_manager::*;
 use crate::connection_table::*;
-use crate::intf::*;
+use crate::network_connection::*;
 use crate::xx::*;
 use crate::*;
 
@@ -49,11 +48,11 @@ pub async fn test_add_get_remove() {
         ))),
     );
 
-    let c1 = NetworkConnection::Dummy(DummyNetworkConnection::new(a1.clone()));
-    let c2 = NetworkConnection::Dummy(DummyNetworkConnection::new(a2.clone()));
-    let c3 = NetworkConnection::Dummy(DummyNetworkConnection::new(a3.clone()));
-    let c4 = NetworkConnection::Dummy(DummyNetworkConnection::new(a4.clone()));
-    let c5 = NetworkConnection::Dummy(DummyNetworkConnection::new(a5));
+    let c1 = DummyNetworkConnection::new(a1.clone());
+    let c2 = DummyNetworkConnection::new(a2.clone());
+    let c3 = DummyNetworkConnection::new(a3.clone());
+    let c4 = DummyNetworkConnection::new(a4.clone());
+    let c5 = DummyNetworkConnection::new(a5);
 
     assert_eq!(a1, c2.connection_descriptor());
     assert_ne!(a3, c4.connection_descriptor());

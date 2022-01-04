@@ -13,6 +13,8 @@ where
     join_handle: Option<JoinHandle<T>>,
 }
 
+/// Spawns a single background processing task idempotently, possibly returning the return value of the previously executed background task
+/// This does not queue, just ensures that no more than a single copy of the task is running at a time, but allowing tasks to be retriggered
 #[derive(Debug, Clone)]
 pub struct SingleFuture<T>
 where

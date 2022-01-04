@@ -3,13 +3,13 @@ pub mod udp;
 pub mod wrtc;
 pub mod ws;
 
-use crate::connection_manager::*;
+use crate::network_connection::*;
 use crate::xx::*;
 use crate::*;
 use socket2::{Domain, Protocol, Socket, Type};
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum NetworkConnection {
+#[derive(Debug)]
+pub enum ProtocolNetworkConnection {
     Dummy(DummyNetworkConnection),
     RawTcp(tcp::RawTcpNetworkConnection),
     WsAccepted(ws::WebSocketNetworkConnectionAccepted),
@@ -18,7 +18,7 @@ pub enum NetworkConnection {
     //WebRTC(wrtc::WebRTCNetworkConnection),
 }
 
-impl NetworkConnection {
+impl ProtocolNetworkConnection {
     pub async fn connect(
         local_address: Option<SocketAddr>,
         dial_info: DialInfo,
@@ -35,11 +35,8 @@ impl NetworkConnection {
             }
         }
     }
-    pub async fn send_unbound_message(
-        &self,
-        dial_info: &DialInfo,
-        data: Vec<u8>,
-    ) -> Result<(), String> {
+
+    pub async fn send_unbound_message(dial_info: &DialInfo, data: Vec<u8>) -> Result<(), String> {
         match dial_info.protocol_type() {
             ProtocolType::UDP => {
                 let peer_socket_addr = dial_info.to_socket_addr();
@@ -59,27 +56,18 @@ impl NetworkConnection {
         }
     }
 
-    pub fn connection_descriptor(&self) -> ConnectionDescriptor {
+    pub async fn send(&mut self, message: Vec<u8>) -> Result<(), String> {
         match self {
-            Self::Dummy(d) => d.connection_descriptor(),
-            Self::RawTcp(t) => t.connection_descriptor(),
-            Self::WsAccepted(w) => w.connection_descriptor(),
-            Self::Ws(w) => w.connection_descriptor(),
-            Self::Wss(w) => w.connection_descriptor(),
-        }
-    }
-    pub async fn send(&self, message: Vec<u8>) -> Result<(), String> {
-        match self {
-            Self::Dummy(d) => d.send(message).await,
+            Self::Dummy(d) => d.send(message),
             Self::RawTcp(t) => t.send(message).await,
             Self::WsAccepted(w) => w.send(message).await,
             Self::Ws(w) => w.send(message).await,
             Self::Wss(w) => w.send(message).await,
         }
     }
-    pub async fn recv(&self) -> Result<Vec<u8>, String> {
+    pub async fn recv(&mut self) -> Result<Vec<u8>, String> {
         match self {
-            Self::Dummy(d) => d.recv().await,
+            Self::Dummy(d) => d.recv(),
             Self::RawTcp(t) => t.recv().await,
             Self::WsAccepted(w) => w.recv().await,
             Self::Ws(w) => w.recv().await,

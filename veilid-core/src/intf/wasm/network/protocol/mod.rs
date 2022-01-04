@@ -5,14 +5,14 @@ use crate::connection_manager::*;
 use crate::veilid_api::ProtocolType;
 use crate::xx::*;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum NetworkConnection {
+#[derive(Debug)]
+pub enum ProtocolNetworkConnection {
     Dummy(DummyNetworkConnection),
     WS(ws::WebsocketNetworkConnection),
     //WebRTC(wrtc::WebRTCNetworkConnection),
 }
 
-impl NetworkConnection {
+impl ProtocolNetworkConnection {
     pub async fn connect(
         local_address: Option<SocketAddr>,
         dial_info: DialInfo,
@@ -31,7 +31,6 @@ impl NetworkConnection {
     }
 
     pub async fn send_unbound_message(
-        &self,
         dial_info: &DialInfo,
         data: Vec<u8>,
     ) -> Result<(), String> {
@@ -48,17 +47,17 @@ impl NetworkConnection {
         }
     }
 
-    pub async fn send(&self, message: Vec<u8>) -> Result<(), String> {
+    pub async fn send(&mut self, message: Vec<u8>) -> Result<(), String> {
         match self {
-            Self::Dummy(d) => d.send(message).await,
-            Self::WS(w) => w.send(message).await,
+            Self::Dummy(d) => d.send(message),
+            Self::WS(w) => w.send(message),
         }
     }
 
-    pub async fn recv(&self) -> Result<Vec<u8>, String> {
+    pub async fn recv(&mut self) -> Result<Vec<u8>, String> {
         match self {
-            Self::Dummy(d) => d.recv().await,
-            Self::WS(w) => w.recv().await,
+            Self::Dummy(d) => d.recv(),
+            Self::WS(w) => w.recv(),
         }
     }
 }

@@ -12,6 +12,7 @@ mod connection_table;
 mod dht;
 mod intf;
 mod lease_manager;
+mod network_connection;
 mod network_manager;
 mod receipt_manager;
 mod routing_table;

@@ -5,79 +5,46 @@ use crate::network_manager::MAX_MESSAGE_SIZE;
 use crate::*;
 use async_std::net::*;
 use async_std::prelude::*;
-use async_std::sync::Mutex as AsyncMutex;
 use std::fmt;
 
-struct RawTcpNetworkConnectionInner {
-    stream: AsyncPeekStream,
-}
-
-#[derive(Clone)]
 pub struct RawTcpNetworkConnection {
-    inner: Arc<AsyncMutex<RawTcpNetworkConnectionInner>>,
-    connection_descriptor: ConnectionDescriptor,
+    stream: AsyncPeekStream,
 }
 
 impl fmt::Debug for RawTcpNetworkConnection {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("RawTCPNetworkConnection")
-            .field("connection_descriptor", &self.connection_descriptor)
-            .finish()
+        f.debug_struct("RawTCPNetworkConnection").finish()
     }
 }
-
-impl PartialEq for RawTcpNetworkConnection {
-    fn eq(&self, other: &Self) -> bool {
-        Arc::as_ptr(&self.inner) == Arc::as_ptr(&other.inner)
-    }
-}
-
-impl Eq for RawTcpNetworkConnection {}
 
 impl RawTcpNetworkConnection {
-    fn new_inner(stream: AsyncPeekStream) -> RawTcpNetworkConnectionInner {
-        RawTcpNetworkConnectionInner { stream }
+    pub fn new(stream: AsyncPeekStream) -> Self {
+        Self { stream }
     }
 
-    pub fn new(stream: AsyncPeekStream, connection_descriptor: ConnectionDescriptor) -> Self {
-        Self {
-            inner: Arc::new(AsyncMutex::new(Self::new_inner(stream))),
-            connection_descriptor,
-        }
-    }
-
-    pub fn connection_descriptor(&self) -> ConnectionDescriptor {
-        self.connection_descriptor.clone()
-    }
-
-    pub async fn send(&self, message: Vec<u8>) -> Result<(), String> {
+    pub async fn send(&mut self, message: Vec<u8>) -> Result<(), String> {
         if message.len() > MAX_MESSAGE_SIZE {
             return Err("sending too large TCP message".to_owned());
         }
         let len = message.len() as u16;
         let header = [b'V', b'L', len as u8, (len >> 8) as u8];
 
-        let mut inner = self.inner.lock().await;
-        inner
-            .stream
+        self.stream
             .write_all(&header)
             .await
             .map_err(map_to_string)
             .map_err(logthru_net!())?;
-        inner
-            .stream
+        self.stream
             .write_all(&message)
             .await
             .map_err(map_to_string)
             .map_err(logthru_net!())
     }
 
-    pub async fn recv(&self) -> Result<Vec<u8>, String> {
+    pub async fn recv(&mut self) -> Result<Vec<u8>, String> {
         let mut header = [0u8; 4];
-        let mut inner = self.inner.lock().await;
 
-        inner
-            .stream
+        self.stream
             .read_exact(&mut header)
             .await
             .map_err(|e| format!("TCP recv error: {}", e))?;
@@ -90,8 +57,7 @@ impl RawTcpNetworkConnection {
         }
 
         let mut out: Vec<u8> = vec![0u8; len];
-        inner
-            .stream
+        self.stream
             .read_exact(&mut out)
             .await
             .map_err(map_to_string)?;
@@ -143,10 +109,10 @@ impl RawTcpProtocolHandler {
             ProtocolType::TCP,
         );
         let local_address = self.inner.lock().local_address;
-        let conn = NetworkConnection::RawTcp(RawTcpNetworkConnection::new(
-            stream,
+        let conn = NetworkConnection::from_protocol(
             ConnectionDescriptor::new(peer_addr, SocketAddress::from_socket_addr(local_address)),
-        ));
+            ProtocolNetworkConnection::RawTcp(RawTcpNetworkConnection::new(stream)),
+        );
 
         Ok(Some(conn))
     }
@@ -182,13 +148,13 @@ impl RawTcpProtocolHandler {
         let ps = AsyncPeekStream::new(ts);
 
         // Wrap the stream in a network connection and return it
-        let conn = NetworkConnection::RawTcp(RawTcpNetworkConnection::new(
-            ps,
+        let conn = NetworkConnection::from_protocol(
             ConnectionDescriptor {
                 local: Some(SocketAddress::from_socket_addr(actual_local_address)),
                 remote: dial_info.to_peer_address(),
             },
-        ));
+            ProtocolNetworkConnection::RawTcp(RawTcpNetworkConnection::new(ps)),
+        );
         Ok(conn)
     }
 

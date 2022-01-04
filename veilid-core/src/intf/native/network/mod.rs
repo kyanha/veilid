@@ -301,7 +301,7 @@ impl Network {
         }
 
         // Handle connection-oriented protocols
-        if let Some(conn) = self.connection_manager().get_connection(descriptor) {
+        if let Some(conn) = self.connection_manager().get_connection(descriptor).await {
             // connection exists, send over it
             conn.send(data).await.map_err(logthru_net!())?;
 

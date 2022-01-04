@@ -14,7 +14,6 @@ struct WebsocketNetworkConnectionInner {
 #[derive(Clone)]
 pub struct WebsocketNetworkConnection {
     tls: bool,
-    connection_descriptor: ConnectionDescriptor,
     inner: Arc<Mutex<WebsocketNetworkConnectionInner>>,
 }
 
@@ -24,20 +23,11 @@ impl fmt::Debug for WebsocketNetworkConnection {
     }
 }
 
-impl PartialEq for WebsocketNetworkConnection {
-    fn eq(&self, other: &Self) -> bool {
-        self.tls == other.tls && Arc::as_ptr(&self.inner) == Arc::as_ptr(&other.inner)
-    }
-}
-
-impl Eq for WebsocketNetworkConnection {}
-
 impl WebsocketNetworkConnection {
-    pub fn new(tls: bool, connection_descriptor: ConnectionDescriptor, ws_stream: WsStream) -> Self {
+    pub fn new(tls: bool, ws_stream: WsStream) -> Self {
         let ws = ws_stream.wrapped().clone();
         Self {
             tls,
-            connection_descriptor,
             inner: Arc::new(Mutex::new(WebsocketNetworkConnectionInner {
                 ws_stream,
                 ws,
@@ -45,11 +35,10 @@ impl WebsocketNetworkConnection {
         }
     }
 
-    pub fn connection_descriptor(&self) -> ConnectionDescriptor {
-        self.connection_descriptor.clone()
-    }
+xxx convert this to async and use stream api not low level websocket
+xxx implement close() everywhere and skip using eventual for loop shutdown
 
-    pub async fn send(&self, message: Vec<u8>) -> Result<(), String> {
+    pub fn send(&self, message: Vec<u8>) -> Result<(), String> {
         if message.len() > MAX_MESSAGE_SIZE {
             return Err("sending too large WS message".to_owned()).map_err(logthru_net!(error));
         }
@@ -60,7 +49,7 @@ impl WebsocketNetworkConnection {
             .map_err(|_| "failed to send to websocket".to_owned())
             .map_err(logthru_net!(error))
     }
-    pub async fn recv(&self) -> Result<Vec<u8>, String> {
+    pub fn recv(&self) -> Result<Vec<u8>, String> {
         let out = match self.inner.lock().ws_stream.next().await {
             Some(WsMessage::Binary(v)) => v,
             Some(_) => {
@@ -123,7 +112,7 @@ impl WebsocketProtocolHandler {
             remote: dial_info.to_peer_address(),
         };
 
-        Ok(NetworkConnection::WS(WebsocketNetworkConnection::new(tls, connection_descriptor, wsio)))
+        Ok(NetworkConnection::from_protocol(descriptor,ProtocolNetworkConnection::WS(WebsocketNetworkConnection::new(tls, wsio))))
     }
 
     pub async fn send_unbound_message(dial_info: &DialInfo, data: Vec<u8>) -> Result<(), String> {

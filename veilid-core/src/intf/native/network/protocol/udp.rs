@@ -3,32 +3,21 @@ use crate::network_manager::MAX_MESSAGE_SIZE;
 use crate::*;
 use async_std::net::*;
 
-struct RawUdpProtocolHandlerInner {
+#[derive(Clone)]
+pub struct RawUdpProtocolHandler {
     socket: Arc<UdpSocket>,
 }
 
-#[derive(Clone)]
-pub struct RawUdpProtocolHandler {
-    inner: Arc<Mutex<RawUdpProtocolHandlerInner>>,
-}
-
 impl RawUdpProtocolHandler {
-    fn new_inner(socket: Arc<UdpSocket>) -> RawUdpProtocolHandlerInner {
-        RawUdpProtocolHandlerInner { socket }
-    }
-
     pub fn new(socket: Arc<UdpSocket>) -> Self {
-        Self {
-            inner: Arc::new(Mutex::new(Self::new_inner(socket))),
-        }
+        Self { socket }
     }
 
     pub async fn recv_message(
         &self,
         data: &mut [u8],
     ) -> Result<(usize, ConnectionDescriptor), String> {
-        let socket = self.inner.lock().socket.clone();
-        let (size, remote_addr) = socket.recv_from(data).await.map_err(map_to_string)?;
+        let (size, remote_addr) = self.socket.recv_from(data).await.map_err(map_to_string)?;
 
         if size > MAX_MESSAGE_SIZE {
             return Err("received too large UDP message".to_owned());
@@ -45,7 +34,7 @@ impl RawUdpProtocolHandler {
             SocketAddress::from_socket_addr(remote_addr),
             ProtocolType::UDP,
         );
-        let local_socket_addr = socket.local_addr().map_err(map_to_string)?;
+        let local_socket_addr = self.socket.local_addr().map_err(map_to_string)?;
         let descriptor = ConnectionDescriptor::new(
             peer_addr,
             SocketAddress::from_socket_addr(local_socket_addr),
@@ -64,8 +53,8 @@ impl RawUdpProtocolHandler {
             socket_addr
         );
 
-        let socket = self.inner.lock().socket.clone();
-        let len = socket
+        let len = self
+            .socket
             .send_to(&data, socket_addr)
             .await
             .map_err(map_to_string)

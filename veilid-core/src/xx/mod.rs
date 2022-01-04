@@ -45,6 +45,8 @@ cfg_if! {
         pub use core::sync::atomic::{Ordering, AtomicBool};
         pub use alloc::sync::{Arc, Weak};
         pub use core::ops::{FnOnce, FnMut, Fn};
+        pub use async_lock::Mutex as AsyncMutex;
+        pub use async_lock::MutexGuard as AsyncMutexGuard;
         pub use no_std_net::{ SocketAddr, SocketAddrV4, SocketAddrV6, ToSocketAddrs, IpAddr, Ipv4Addr, Ipv6Addr };
         pub type SystemPinBoxFuture<T> = PinBox<dyn Future<Output = T> + 'static>;
         pub type SystemPinBoxFutureLifetime<'a, T> = PinBox<dyn Future<Output = T> + 'a>;
@@ -65,6 +67,8 @@ cfg_if! {
         pub use std::ops::{FnOnce, FnMut, Fn};
         pub use async_std::future::Future;
         pub use async_std::pin::Pin;
+        pub use async_std::sync::Mutex as AsyncMutex;
+        pub use async_std::sync::MutexGuard as AsyncMutexGuard;
         pub use std::net::{ SocketAddr, SocketAddrV4, SocketAddrV6, ToSocketAddrs, IpAddr, Ipv4Addr, Ipv6Addr };
         pub type SystemPinBoxFuture<T> = PinBox<dyn Future<Output = T> + Send + 'static>;
         pub type SystemPinBoxFutureLifetime<'a, T> = PinBox<dyn Future<Output = T> + Send + 'a>;

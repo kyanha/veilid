@@ -686,7 +686,7 @@ pub struct PeerInfo {
     pub dial_infos: Vec<DialInfo>,
 }
 
-#[derive(Clone, Debug, PartialEq, PartialOrd, Eq, Ord, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Eq, Ord, Hash)]
 pub struct PeerAddress {
     pub socket_address: SocketAddress,
     pub protocol_type: ProtocolType,
@@ -709,7 +709,7 @@ impl PeerAddress {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ConnectionDescriptor {
     pub remote: PeerAddress,
     pub local: Option<SocketAddress>,
