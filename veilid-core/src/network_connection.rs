@@ -73,6 +73,7 @@ struct NetworkConnectionInner {
 struct NetworkConnectionArc {
     descriptor: ConnectionDescriptor,
     established_time: u64,
+    stopper: Eventual,
     inner: AsyncMutex<NetworkConnectionInner>,
 }
 
