@@ -59,37 +59,37 @@ pub async fn test_add_get_remove() {
     assert_ne!(a4, c5.connection_descriptor());
 
     assert_eq!(table.connection_count(), 0);
-    assert_eq!(table.get_connection(&a1), None);
+    assert_eq!(table.get_connection(a1), None);
     table.add_connection(c1.clone()).unwrap();
 
     assert_eq!(table.connection_count(), 1);
-    assert_err!(table.remove_connection(&a3));
-    assert_err!(table.remove_connection(&a4));
+    assert_err!(table.remove_connection(a3));
+    assert_err!(table.remove_connection(a4));
     assert_eq!(table.connection_count(), 1);
-    assert_eq!(table.get_connection(&a1), Some(c1.clone()));
-    assert_eq!(table.get_connection(&a1), Some(c1.clone()));
+    assert_eq!(table.get_connection(a1), Some(c1.clone()));
+    assert_eq!(table.get_connection(a1), Some(c1.clone()));
     assert_eq!(table.connection_count(), 1);
     assert_err!(table.add_connection(c1.clone()));
     assert_err!(table.add_connection(c2.clone()));
     assert_eq!(table.connection_count(), 1);
-    assert_eq!(table.get_connection(&a1), Some(c1.clone()));
-    assert_eq!(table.get_connection(&a1), Some(c1.clone()));
+    assert_eq!(table.get_connection(a1), Some(c1.clone()));
+    assert_eq!(table.get_connection(a1), Some(c1.clone()));
     assert_eq!(table.connection_count(), 1);
-    assert_eq!(table.remove_connection(&a2), Ok(c1.clone()));
+    assert_eq!(table.remove_connection(a2), Ok(c1.clone()));
     assert_eq!(table.connection_count(), 0);
-    assert_err!(table.remove_connection(&a2));
+    assert_err!(table.remove_connection(a2));
     assert_eq!(table.connection_count(), 0);
-    assert_eq!(table.get_connection(&a2), None);
-    assert_eq!(table.get_connection(&a1), None);
+    assert_eq!(table.get_connection(a2), None);
+    assert_eq!(table.get_connection(a1), None);
     assert_eq!(table.connection_count(), 0);
     table.add_connection(c1.clone()).unwrap();
     assert_err!(table.add_connection(c2));
     table.add_connection(c3.clone()).unwrap();
     table.add_connection(c4.clone()).unwrap();
     assert_eq!(table.connection_count(), 3);
-    assert_eq!(table.remove_connection(&a2), Ok(c1));
-    assert_eq!(table.remove_connection(&a3), Ok(c3));
-    assert_eq!(table.remove_connection(&a4), Ok(c4));
+    assert_eq!(table.remove_connection(a2), Ok(c1));
+    assert_eq!(table.remove_connection(a3), Ok(c3));
+    assert_eq!(table.remove_connection(a4), Ok(c4));
     assert_eq!(table.connection_count(), 0);
 }
 

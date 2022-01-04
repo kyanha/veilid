@@ -941,7 +941,7 @@ impl RPCProcessor {
         // Possibly from an alternate port
         let network_manager = self.network_manager();
         network_manager
-            .send_direct_receipt(&dial_info, rcpt_data, alternate_port)
+            .send_direct_receipt(dial_info.clone(), rcpt_data, alternate_port)
             .await
             .map_err(map_error_string!())
             .map_err(

@@ -2,7 +2,7 @@
 name = "veilid-core"
 version = "0.1.0"
 authors = ["John Smith <nobody@example.com>"]
-edition = "2018"
+edition = "2021"
 build = "build.rs"
 license = "LGPL-2.0-or-later OR MPL-2.0 OR (MIT AND BSD-3-Clause)"
 
@@ -62,7 +62,7 @@ keyvaluedb-sqlite = { path = "../external/keyvaluedb/keyvaluedb-sqlite" }
 data-encoding = { version = "^2" }
 serde = { version = "^1", features = ["derive" ] }
 serde_cbor = { version = "^0" }
-async_executors = { version = "^0", features = [ "async_std" ]}
+async_executors = { version = "^0", default-features = false, features = [ "async_std" ]}
 socket2 = "^0"
 bugsalot = "^0"
 chrono = "^0"
@@ -85,8 +85,8 @@ serde = { version = "^1", default-features = false, features = ["derive", "alloc
 serde_cbor = { version = "^0", default-features = false, features = ["alloc"] }
 getrandom = { version = "^0", features = ["js"] }
 ws_stream_wasm = "^0"
-async_executors = { version = "^0", features = [ "bindgen" ]}
-async-lock = "^0"
+async_executors = { version = "^0", default-features = false, features = [ "bindgen" ]}
+async-lock = "^2"
 
 # Configuration for WASM32 'web-sys' crate
 [target.'cfg(target_arch = "wasm32")'.dependencies.web-sys]

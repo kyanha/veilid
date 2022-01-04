@@ -255,32 +255,33 @@ impl Network {
     // This bypasses the connection table as it is not a 'node to node' connection.
     pub async fn send_data_unbound_to_dial_info(
         &self,
-        dial_info: &DialInfo,
+        dial_info: DialInfo,
         data: Vec<u8>,
     ) -> Result<(), String> {
-        match &dial_info {
-            DialInfo::UDP(_) => {
+        match dial_info.protocol_type() {
+            ProtocolType::UDP => {
                 let peer_socket_addr = dial_info.to_socket_addr();
                 RawUdpProtocolHandler::send_unbound_message(peer_socket_addr, data)
                     .await
                     .map_err(logthru_net!())
             }
-            DialInfo::TCP(_) => {
+            ProtocolType::TCP => {
                 let peer_socket_addr = dial_info.to_socket_addr();
                 RawTcpProtocolHandler::send_unbound_message(peer_socket_addr, data)
                     .await
                     .map_err(logthru_net!())
             }
-            DialInfo::WS(_) => Err("WS protocol does not support unbound messages".to_owned())
-                .map_err(logthru_net!(error)),
-            DialInfo::WSS(_) => Err("WSS protocol does not support unbound messages".to_owned())
-                .map_err(logthru_net!(error)),
+            ProtocolType::WS | ProtocolType::WSS => {
+                WebsocketProtocolHandler::send_unbound_message(dial_info, data)
+                    .await
+                    .map_err(logthru_net!())
+            }
         }
     }
 
     async fn send_data_to_existing_connection(
         &self,
-        descriptor: &ConnectionDescriptor,
+        descriptor: ConnectionDescriptor,
         data: Vec<u8>,
     ) -> Result<Option<Vec<u8>>, String> {
         // Handle connectionless protocol
@@ -317,7 +318,7 @@ impl Network {
     // Send data directly to a dial info, possibly without knowing which node it is going to
     pub async fn send_data_to_dial_info(
         &self,
-        dial_info: &DialInfo,
+        dial_info: DialInfo,
         data: Vec<u8>,
     ) -> Result<(), String> {
         // Handle connectionless protocol
@@ -334,10 +335,10 @@ impl Network {
         }
 
         // Handle connection-oriented protocols
-        let local_addr = self.get_preferred_local_address(dial_info);
+        let local_addr = self.get_preferred_local_address(&dial_info);
         let conn = self
             .connection_manager()
-            .get_or_create_connection(Some(local_addr), dial_info.clone())
+            .get_or_create_connection(Some(local_addr), dial_info)
             .await?;
 
         conn.send(data).await.map_err(logthru_net!(error))
@@ -353,7 +354,7 @@ impl Network {
         let data = if let Some(descriptor) = node_ref.last_connection() {
             match self
                 .clone()
-                .send_data_to_existing_connection(&descriptor, data)
+                .send_data_to_existing_connection(descriptor, data)
                 .await?
             {
                 None => {
@@ -370,8 +371,7 @@ impl Network {
             .best_dial_info()
             .ok_or_else(|| "couldn't send data, no dial info or peer address".to_owned())?;
 
-        // Handle connectionless protocol
-        self.send_data_to_dial_info(&dial_info, data).await
+        self.send_data_to_dial_info(dial_info, data).await
     }
 
     /////////////////////////////////////////////////////////////////

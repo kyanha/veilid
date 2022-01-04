@@ -405,7 +405,7 @@ impl NetworkManager {
     // Called by the RPC handler when we want to issue an direct receipt
     pub async fn send_direct_receipt<B: AsRef<[u8]>>(
         &self,
-        dial_info: &DialInfo,
+        dial_info: DialInfo,
         rcpt_data: B,
         alternate_port: bool,
     ) -> Result<(), String> {

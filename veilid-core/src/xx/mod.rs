@@ -27,7 +27,6 @@ pub type SendPinBoxFutureLifetime<'a, T> = PinBox<dyn Future<Output = T> + Send 
 
 cfg_if! {
     if #[cfg(target_arch = "wasm32")] {
-        extern crate alloc;
         pub use alloc::string::String;
         pub use alloc::vec::Vec;
         pub use alloc::collections::btree_map::BTreeMap;

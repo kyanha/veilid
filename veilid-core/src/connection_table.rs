@@ -32,8 +32,8 @@ impl ConnectionTable {
         Ok(())
     }
 
-    pub fn get_connection(&self, descriptor: &ConnectionDescriptor) -> Option<NetworkConnection> {
-        self.conn_by_addr.get(descriptor).cloned()
+    pub fn get_connection(&self, descriptor: ConnectionDescriptor) -> Option<NetworkConnection> {
+        self.conn_by_addr.get(&descriptor).cloned()
     }
 
     pub fn connection_count(&self) -> usize {
@@ -42,10 +42,10 @@ impl ConnectionTable {
 
     pub fn remove_connection(
         &mut self,
-        descriptor: &ConnectionDescriptor,
+        descriptor: ConnectionDescriptor,
     ) -> Result<NetworkConnection, String> {
         self.conn_by_addr
-            .remove(descriptor)
+            .remove(&descriptor)
             .ok_or_else(|| format!("Connection not in table: {:?}", descriptor))
     }
 }

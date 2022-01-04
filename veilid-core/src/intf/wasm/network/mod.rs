@@ -1,8 +1,9 @@
 mod protocol;
 
-use crate::intf::*;
+use crate::connection_manager::*;
 use crate::network_manager::*;
 use crate::routing_table::*;
+use crate::intf::*;
 use crate::*;
 use protocol::ws::WebsocketProtocolHandler;
 pub use protocol::*;
@@ -42,11 +43,15 @@ impl Network {
         }
     }
 
+    fn connection_manager(&self) -> ConnectionManager {
+        self.inner.lock().network_manager.connection_manager()
+    }
+
     /////////////////////////////////////////////////////////////////
 
     async fn send_data_to_existing_connection(
         &self,
-        descriptor: &ConnectionDescriptor,
+        descriptor: ConnectionDescriptor,
         data: Vec<u8>,
     ) -> Result<Option<Vec<u8>>, String> {
         match descriptor.protocol_type() {
@@ -56,79 +61,70 @@ impl Network {
             ProtocolType::TCP => {
                 return Err("no support for tcp protocol".to_owned()).map_err(logthru_net!(error))
             }
-            ProtocolType::WS | ProtocolType::WSS => {
-                // find an existing connection in the connection table if one exists
-                let network_manager = self.inner.lock().network_manager.clone();
-                if let Some(entry) = network_manager
-                    .connection_table()
-                    .get_connection(&descriptor)
-                {
-                    // connection exists, send over it
-                    entry.conn.send(data).await.map_err(logthru_net!())?;
-                    // Data was consumed
-                    return Ok(None);
-                }
-            }
+            _ => {}
         }
-        // connection or local socket didn't exist, we'll need to use dialinfo to create one
-        // Pass the data back out so we don't own it any more
-        Ok(Some(data))
+        
+        // Handle connection-oriented protocols
+        if let Some(conn) = self.connection_manager().get_connection(descriptor).await {
+            // connection exists, send over it
+            conn.send(data).await.map_err(logthru_net!())?;
+
+            // Data was consumed
+            Ok(None)
+        } else {
+            // Connection or didn't exist
+            // Pass the data back out so we don't own it any more
+            Ok(Some(data))
+        }
     }
 
     pub async fn send_data_unbound_to_dial_info(
         &self,
-        dial_info: &DialInfo,
+        dial_info: DialInfo,
         data: Vec<u8>,
     ) -> Result<(), String> {
-        let network_manager = self.inner.lock().network_manager.clone();
-
-        match &dial_info {
-            DialInfo::UDP(_) => {
+        match dial_info.protocol_type() {
+            ProtocolType::UDP => {
                 return Err("no support for UDP protocol".to_owned()).map_err(logthru_net!(error))
             }
-            DialInfo::TCP(_) => {
+            ProtocolType::TCP => {
                 return Err("no support for TCP protocol".to_owned()).map_err(logthru_net!(error))
             }
-            DialInfo::WS(_) => Err("WS protocol does not support unbound messages".to_owned())
-                .map_err(logthru_net!(error)),
-            DialInfo::WSS(_) => Err("WSS protocol does not support unbound messages".to_owned())
-                .map_err(logthru_net!(error)),
+            ProtocolType::WS | ProtocolType::WSS => {
+                WebsocketProtocolHandler::send_unbound_message(dial_info, data)
+                    .await
+                    .map_err(logthru_net!())
+            }
         }
     }
+
     pub async fn send_data_to_dial_info(
         &self,
-        dial_info: &DialInfo,
+        dial_info: DialInfo,
         data: Vec<u8>,
     ) -> Result<(), String> {
-        let network_manager = self.inner.lock().network_manager.clone();
+        if dial_info.protocol_type() == ProtocolType::UDP {
+            return Err("no support for UDP protocol".to_owned()).map_err(logthru_net!(error))
+        }
+        if dial_info.protocol_type() == ProtocolType::TCP {
+            return Err("no support for TCP protocol".to_owned()).map_err(logthru_net!(error))
+        }
 
-        let conn = match &dial_info {
-            DialInfo::UDP(_) => {
-                return Err("no support for UDP protocol".to_owned()).map_err(logthru_net!(error))
-            }
-            DialInfo::TCP(_) => {
-                return Err("no support for TCP protocol".to_owned()).map_err(logthru_net!(error))
-            }
-            DialInfo::WS(_) => WebsocketProtocolHandler::connect(network_manager, dial_info)
-                .await
-                .map_err(logthru_net!(error))?,
-            DialInfo::WSS(_) => WebsocketProtocolHandler::connect(network_manager, dial_info)
-                .await
-                .map_err(logthru_net!(error))?,
-        };
+        // Handle connection-oriented protocols
+        let conn = self
+            .connection_manager()
+            .get_or_create_connection(None, dial_info)
+            .await?;
 
         conn.send(data).await.map_err(logthru_net!(error))
     }
 
     pub async fn send_data(&self, node_ref: NodeRef, data: Vec<u8>) -> Result<(), String> {
-        let dial_info = node_ref.best_dial_info();
-        let descriptor = node_ref.last_connection();
-
         // First try to send data to the last socket we've seen this peer on
-        let di_data = if let Some(descriptor) = descriptor {
+        let data = if let Some(descriptor) = node_ref.last_connection() {
             match self
                 .clone()
-                .send_data_to_existing_connection(&descriptor, data)
+                .send_data_to_existing_connection(descriptor, data)
                 .await?
             {
                 None => {
@@ -141,15 +137,11 @@ impl Network {
         };
 
         // If that fails, try to make a connection or reach out to the peer via its dial info
-        if let Some(di) = dial_info {
-            self.clone()
-                .send_data_to_dial_info(&di, di_data)
-                .await
-                .map_err(logthru_net!(error))
-        } else {
-            Err("couldn't send data, no dial info or peer address".to_owned())
-                .map_err(logthru_net!(error))
-        }
+        let dial_info = node_ref
+            .best_dial_info()
+            .ok_or_else(|| "couldn't send data, no dial info or peer address".to_owned())?;
+
+        self.send_data_to_dial_info(dial_info, data).await
     }
 
     /////////////////////////////////////////////////////////////////

@@ -1,10 +1,10 @@
 use crate::intf::*;
-use crate::network_manager::{NetworkManager, MAX_MESSAGE_SIZE};
+use crate::network_connection::*;
+use crate::network_manager::MAX_MESSAGE_SIZE;
 use crate::*;
 use alloc::fmt;
-use futures_util::stream::StreamExt;
-use web_sys::WebSocket;
 use ws_stream_wasm::*;
+use futures_util::{StreamExt, SinkExt};
 
 struct WebsocketNetworkConnectionInner {
     ws_meta: WsMeta,
@@ -27,7 +27,7 @@ impl WebsocketNetworkConnection {
     pub fn new(tls: bool, ws_meta: WsMeta, ws_stream: WsStream) -> Self {
         Self {
             tls,
-            inner: Arc::new(Mutex::new(WebsocketNetworkConnectionInner {
+            inner: Arc::new(AsyncMutex::new(WebsocketNetworkConnectionInner {
                 ws_meta,
                 ws_stream,
             })),
@@ -36,7 +36,7 @@ impl WebsocketNetworkConnection {
 
     pub async fn close(&self) -> Result<(), String> {
         let inner = self.inner.lock().await;
-        inner.ws_meta.close().await;
+        inner.ws_meta.close().await.map_err(map_to_string).map(drop)
     }
 
     pub async fn send(&self, message: Vec<u8>) -> Result<(), String> {
@@ -77,46 +77,37 @@ pub struct WebsocketProtocolHandler {}
 impl WebsocketProtocolHandler {
     pub async fn connect(
         local_address: Option<SocketAddr>,
-        dial_info: &DialInfo,
+        dial_info: DialInfo,
     ) -> Result<NetworkConnection, String> {
-        let url = dial_info
-            .request()
-            .ok_or_else(|| format!("missing url in websocket dialinfo: {:?}", dial_info))?;
-        let split_url = SplitUrl::from_str(&url)?;
-        let tls = match dial_info {
-            DialInfo::WS(ws) => {
-                if split_url.scheme.to_ascii_lowercase() != "ws" {
-                    return Err(format!("wrong scheme for WS websocket url: {}", url));
-                }
-                false
-            }
-            DialInfo::WSS(wss) => {
-                if split_url.scheme.to_ascii_lowercase() != "wss" {
-                    return Err(format!("wrong scheme for WSS websocket url: {}", url));
-                }
-                true
-            }
-            _ => {
-                return Err("wrong protocol for WebsocketProtocolHandler".to_owned())
-                    .map_err(logthru_net!(error))
-            }
-        };
+        
+        assert!(local_address.is_none());
 
-        let (_, wsio) = WsMeta::connect(url, None)
+        // Split dial info up
+        let (tls, scheme) = match &dial_info {
+            DialInfo::WS(_) => (false, "ws"),
+            DialInfo::WSS(_) => (true, "wss"),
+            _ => panic!("invalid dialinfo for WS/WSS protocol"),
+        };
+        let request = dial_info.request().unwrap();
+        let split_url = SplitUrl::from_str(&request)?;
+        if split_url.scheme != scheme {
+            return Err("invalid websocket url scheme".to_string());
+        }
+    
+        let (wsmeta, wsio) = WsMeta::connect(request, None)
             .await
             .map_err(map_to_string)
             .map_err(logthru_net!(error))?;
 
         // Make our connection descriptor
-        let connection_descriptor = ConnectionDescriptor {
+
+        Ok(NetworkConnection::from_protocol(ConnectionDescriptor {
             local: None,
             remote: dial_info.to_peer_address(),
-        };
-
-        Ok(NetworkConnection::from_protocol(descriptor,ProtocolNetworkConnection::Ws(WebsocketNetworkConnection::new(tls, wsio))))
+        },ProtocolNetworkConnection::Ws(WebsocketNetworkConnection::new(tls, wsmeta, wsio))))
     }
 
-    pub async fn send_unbound_message(dial_info: &DialInfo, data: Vec<u8>) -> Result<(), String> {
+    pub async fn send_unbound_message(dial_info: DialInfo, data: Vec<u8>) -> Result<(), String> {
         if data.len() > MAX_MESSAGE_SIZE {
             return Err("sending too large unbound WS message".to_owned());
         }
@@ -126,7 +117,7 @@ impl WebsocketProtocolHandler {
             dial_info,
         );
 
-        let conn = Self::connect(None, dial_info.clone())
+        let conn = Self::connect(None, dial_info)
             .await
             .map_err(|e| format!("failed to connect websocket for unbound message: {}", e))?;
 

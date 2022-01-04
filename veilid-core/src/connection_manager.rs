@@ -83,7 +83,7 @@ impl ConnectionManager {
     // Returns a network connection if one already is established
     pub async fn get_connection(
         &self,
-        descriptor: &ConnectionDescriptor,
+        descriptor: ConnectionDescriptor,
     ) -> Option<NetworkConnection> {
         let inner = self.arc.inner.lock().await;
         inner.connection_table.get_connection(descriptor)
@@ -92,7 +92,7 @@ impl ConnectionManager {
     // Internal routine to register new connection atomically
     async fn on_new_connection_internal(
         &self,
-        mut inner: AsyncMutexGuard<'_, ConnectionManagerInner>,
+        inner: &mut ConnectionManagerInner,
         conn: NetworkConnection,
     ) -> Result<(), String> {
         let tx = inner
@@ -116,8 +116,8 @@ impl ConnectionManager {
     // either from incoming or outgoing connections. Registers connection in the connection table for later access
     // and spawns a message processing loop for the connection
     pub async fn on_new_connection(&self, conn: NetworkConnection) -> Result<(), String> {
-        let inner = self.arc.inner.lock().await;
-        self.on_new_connection_internal(inner, conn).await
+        let mut inner = self.arc.inner.lock().await;
+        self.on_new_connection_internal(&mut *inner, conn).await
     }
 
     pub async fn get_or_create_connection(
@@ -134,16 +134,17 @@ impl ConnectionManager {
         };
 
         // If connection exists, then return it
-        let inner = self.arc.inner.lock().await;
+        let mut inner = self.arc.inner.lock().await;
 
-        if let Some(conn) = inner.connection_table.get_connection(&descriptor) {
+        if let Some(conn) = inner.connection_table.get_connection(descriptor) {
             return Ok(conn);
         }
 
         // If not, attempt new connection
         let conn = NetworkConnection::connect(local_addr, dial_info).await?;
 
-        self.on_new_connection_internal(inner, conn.clone()).await?;
+        self.on_new_connection_internal(&mut *inner, conn.clone())
+            .await?;
 
         Ok(conn)
     }
@@ -178,7 +179,7 @@ impl ConnectionManager {
                 .lock()
                 .await
                 .connection_table
-                .remove_connection(&descriptor)
+                .remove_connection(descriptor)
             {
                 log_net!(error e);
             }

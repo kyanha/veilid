@@ -1,9 +1,9 @@
 pub mod wrtc;
 pub mod ws;
 
-use crate::connection_manager::*;
-use crate::veilid_api::ProtocolType;
+use crate::network_connection::*;
 use crate::xx::*;
+use crate::*;
 
 #[derive(Debug)]
 pub enum ProtocolNetworkConnection {
@@ -31,7 +31,7 @@ impl ProtocolNetworkConnection {
     }
 
     pub async fn send_unbound_message(
-        dial_info: &DialInfo,
+        dial_info: DialInfo,
         data: Vec<u8>,
     ) -> Result<(), String> {
         match dial_info.protocol_type() {
