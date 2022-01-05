@@ -15,7 +15,7 @@ const CONNECTION_PROCESSOR_CHANNEL_SIZE: usize = 128usize;
 struct ConnectionManagerInner {
     connection_table: ConnectionTable,
     connection_processor_jh: Option<JoinHandle<()>>,
-    connection_add_channel_tx: Option<utils::channel::Sender<SystemPinBoxFuture<()>>>,
+    connection_add_channel_tx: Option<async_channel::Sender<SystemPinBoxFuture<()>>>,
 }
 
 impl core::fmt::Debug for ConnectionManagerInner {
@@ -69,7 +69,7 @@ impl ConnectionManager {
 
     pub async fn startup(&self) {
         let mut inner = self.arc.inner.lock().await;
-        let cac = utils::channel::channel(CONNECTION_PROCESSOR_CHANNEL_SIZE); // xxx move to config
+        let cac = async_channel::bounded(CONNECTION_PROCESSOR_CHANNEL_SIZE); // xxx move to config
         inner.connection_add_channel_tx = Some(cac.0);
         let rx = cac.1.clone();
         let this = self.clone();
@@ -90,7 +90,7 @@ impl ConnectionManager {
     }
 
     // Internal routine to register new connection atomically
-    async fn on_new_connection_internal(
+    fn on_new_connection_internal(
         &self,
         inner: &mut ConnectionManagerInner,
         conn: NetworkConnection,
@@ -103,7 +103,6 @@ impl ConnectionManager {
 
         let receiver_loop_future = Self::process_connection(self.clone(), conn.clone());
         tx.try_send(receiver_loop_future)
-            .await
             .map_err(map_to_string)
             .map_err(logthru_net!(error "failed to start receiver loop"))?;
 
@@ -117,7 +116,7 @@ impl ConnectionManager {
     // and spawns a message processing loop for the connection
     pub async fn on_new_connection(&self, conn: NetworkConnection) -> Result<(), String> {
         let mut inner = self.arc.inner.lock().await;
-        self.on_new_connection_internal(&mut *inner, conn).await
+        self.on_new_connection_internal(&mut *inner, conn)
     }
 
     pub async fn get_or_create_connection(
@@ -133,18 +132,21 @@ impl ConnectionManager {
             None => ConnectionDescriptor::new_no_local(peer_address),
         };
 
-        // If connection exists, then return it
+        // If any connection to this remote exists that has the same protocol, return it
+        // Any connection will do, we don't have to match the local address
         let mut inner = self.arc.inner.lock().await;
 
-        if let Some(conn) = inner.connection_table.get_connection(descriptor) {
+        if let Some(conn) = inner
+            .connection_table
+            .get_last_connection_by_remote(descriptor.remote)
+        {
             return Ok(conn);
         }
 
         // If not, attempt new connection
         let conn = NetworkConnection::connect(local_addr, dial_info).await?;
 
-        self.on_new_connection_internal(&mut *inner, conn.clone())
-            .await?;
+        self.on_new_connection_internal(&mut *inner, conn.clone())?;
 
         Ok(conn)
     }
@@ -154,6 +156,7 @@ impl ConnectionManager {
         this: ConnectionManager,
         conn: NetworkConnection,
     ) -> SystemPinBoxFuture<()> {
+        log_net!("Starting process_connection loop for {:?}", conn);
         let network_manager = this.network_manager();
         Box::pin(async move {
             //
@@ -162,7 +165,10 @@ impl ConnectionManager {
                 let res = conn.clone().recv().await;
                 let message = match res {
                     Ok(v) => v,
-                    Err(_) => break,
+                    Err(e) => {
+                        log_net!(error e);
+                        break;
+                    }
                 };
                 if let Err(e) = network_manager
                     .on_recv_envelope(message.as_slice(), descriptor)
@@ -189,7 +195,7 @@ impl ConnectionManager {
     // Process connection oriented sockets in the background
     // This never terminates and must have its task cancelled once started
     // Task cancellation is performed by shutdown() by dropping the join handle
-    async fn connection_processor(self, rx: utils::channel::Receiver<SystemPinBoxFuture<()>>) {
+    async fn connection_processor(self, rx: async_channel::Receiver<SystemPinBoxFuture<()>>) {
         let mut connection_futures: FuturesUnordered<SystemPinBoxFuture<()>> =
             FuturesUnordered::new();
         loop {

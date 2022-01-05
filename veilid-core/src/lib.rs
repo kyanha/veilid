@@ -1,6 +1,5 @@
 #![deny(clippy::all)]
 #![deny(unused_must_use)]
-#![cfg_attr(target_arch = "wasm32", no_std)]
 
 #[macro_use]
 extern crate alloc;

@@ -14,7 +14,6 @@ use protocol::tcp::RawTcpProtocolHandler;
 use protocol::udp::RawUdpProtocolHandler;
 use protocol::ws::WebsocketProtocolHandler;
 pub use protocol::*;
-use utils::async_peek_stream::*;
 use utils::network_interfaces::*;
 
 use async_std::io;
@@ -302,6 +301,8 @@ impl Network {
         }
 
         // Handle connection-oriented protocols
+
+        // Try to send to the exact existing connection if one exists
         if let Some(conn) = self.connection_manager().get_connection(descriptor).await {
             // connection exists, send over it
             conn.send(data).await.map_err(logthru_net!())?;
@@ -355,7 +356,8 @@ impl Network {
             match self
                 .clone()
                 .send_data_to_existing_connection(descriptor, data)
-                .await?
+                .await
+                .map_err(logthru_net!())?
             {
                 None => {
                     return Ok(());
@@ -371,7 +373,9 @@ impl Network {
             .best_dial_info()
             .ok_or_else(|| "couldn't send data, no dial info or peer address".to_owned())?;
 
-        self.send_data_to_dial_info(dial_info, data).await
+        self.send_data_to_dial_info(dial_info, data)
+            .await
+            .map_err(logthru_net!())
     }
 
     /////////////////////////////////////////////////////////////////

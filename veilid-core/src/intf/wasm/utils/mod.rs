@@ -1,7 +1,5 @@
 #![cfg(target_arch = "wasm32")]
 
-pub mod channel;
-
 use crate::xx::*;
 use core::sync::atomic::{AtomicI8, Ordering};
 use js_sys::{global, Reflect};

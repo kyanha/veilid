@@ -1,5 +1,4 @@
 use super::*;
-use crate::intf::native::utils::async_peek_stream::*;
 use crate::intf::*;
 use crate::network_manager::MAX_MESSAGE_SIZE;
 use crate::*;
@@ -19,31 +18,12 @@ pub type WebsocketNetworkConnectionWSS =
     WebsocketNetworkConnection<async_tls::client::TlsStream<async_std::net::TcpStream>>;
 pub type WebsocketNetworkConnectionWS = WebsocketNetworkConnection<async_std::net::TcpStream>;
 
-struct WebSocketNetworkConnectionInner<T>
-where
-    T: io::Read + io::Write + Send + Unpin + 'static,
-{
-    ws_stream: WebSocketStream<T>,
-}
-
 pub struct WebsocketNetworkConnection<T>
 where
     T: io::Read + io::Write + Send + Unpin + 'static,
 {
     tls: bool,
-    inner: Arc<AsyncMutex<WebSocketNetworkConnectionInner<T>>>,
-}
-
-impl<T> Clone for WebsocketNetworkConnection<T>
-where
-    T: io::Read + io::Write + Send + Unpin + 'static,
-{
-    fn clone(&self) -> Self {
-        Self {
-            tls: self.tls,
-            inner: self.inner.clone(),
-        }
-    }
+    ws_stream: CloneStream<WebSocketStream<T>>,
 }
 
 impl<T> fmt::Debug for WebsocketNetworkConnection<T>
@@ -62,38 +42,28 @@ where
     pub fn new(tls: bool, ws_stream: WebSocketStream<T>) -> Self {
         Self {
             tls,
-            inner: Arc::new(AsyncMutex::new(WebSocketNetworkConnectionInner {
-                ws_stream,
-            })),
+            ws_stream: CloneStream::new(ws_stream),
         }
     }
 
     pub async fn close(&self) -> Result<(), String> {
-        let mut inner = self.inner.lock().await;
-        inner
-            .ws_stream
-            .close(None)
-            .await
-            .map_err(map_to_string)
-            .map_err(logthru_net!(error "failed to close websocket"))
+        self.ws_stream.clone().close().await.map_err(map_to_string)
     }
 
     pub async fn send(&self, message: Vec<u8>) -> Result<(), String> {
         if message.len() > MAX_MESSAGE_SIZE {
             return Err("received too large WS message".to_owned());
         }
-        let mut inner = self.inner.lock().await;
-        inner
-            .ws_stream
+        self.ws_stream
+            .clone()
             .send(Message::binary(message))
             .await
             .map_err(map_to_string)
             .map_err(logthru_net!(error "failed to send websocket message"))
     }
-    pub async fn recv(&self) -> Result<Vec<u8>, String> {
-        let mut inner = self.inner.lock().await;
 
-        let out = match inner.ws_stream.next().await {
+    pub async fn recv(&self) -> Result<Vec<u8>, String> {
+        let out = match self.ws_stream.clone().next().await {
             Some(Ok(Message::Binary(v))) => v,
             Some(Ok(_)) => {
                 return Err("Unexpected WS message type".to_owned()).map_err(logthru_net!(error));

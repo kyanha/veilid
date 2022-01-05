@@ -1,8 +1,6 @@
 use super::*;
 use crate::intf::*;
 use crate::network_connection::*;
-use utils::clone_stream::*;
-
 use async_tls::TlsAcceptor;
 
 /////////////////////////////////////////////////////////////////
@@ -135,7 +133,7 @@ impl Network {
                     let addr = match tcp_stream.peer_addr() {
                         Ok(addr) => addr,
                         Err(e) => {
-                            error!("failed to get peer address: {}", e);
+                            log_net!(error "failed to get peer address: {}", e);
                             return;
                         }
                     };
@@ -159,6 +157,7 @@ impl Network {
                     {
                         // If we fail to get a packet within the connection initial timeout
                         // then we punt this connection
+                        log_net!(warn "connection initial timeout from: {:?}", addr);
                         return;
                     }
 

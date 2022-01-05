@@ -6,7 +6,6 @@ pub use debug::*;
 pub use private_route::*;
 
 use crate::dht::*;
-use crate::intf::utils::channel::*;
 use crate::intf::*;
 use crate::xx::*;
 use crate::*;
@@ -145,7 +144,7 @@ pub struct RPCProcessorInner {
     routing_table: RoutingTable,
     node_id: key::DHTKey,
     node_id_secret: key::DHTKeySecret,
-    send_channel: Option<Sender<RPCMessage>>,
+    send_channel: Option<async_channel::Sender<RPCMessage>>,
     timeout: u64,
     max_route_hop_count: usize,
     waiting_rpc_table: BTreeMap<OperationId, EventualValue<RPCMessageReader>>,
@@ -394,9 +393,10 @@ impl RPCProcessor {
         let (op_id, wants_answer, is_ping) = {
             let operation = message
                 .get_root::<veilid_capnp::operation::Reader>()
-                .map_err(map_error_internal!("invalid operation"))?;
+                .map_err(map_error_internal!("invalid operation"))
+                .map_err(logthru_rpc!(error))?;
             let op_id = operation.get_op_id();
-            let wants_answer = self.wants_answer(&operation)?;
+            let wants_answer = self.wants_answer(&operation).map_err(logthru_rpc!())?;
             let is_ping = operation.get_detail().has_info_q();
 
             (op_id, wants_answer, is_ping)
@@ -490,7 +490,8 @@ impl RPCProcessor {
 
         // Verify hop count isn't larger than out maximum routed hop count
         if hopcount > self.inner.lock().max_route_hop_count {
-            return Err(rpc_error_internal("hop count too long for route"));
+            return Err(rpc_error_internal("hop count too long for route"))
+                .map_err(logthru_rpc!(warn));
         }
         // calculate actual timeout
         // timeout is number of hops times the timeout per hop
@@ -1245,7 +1246,7 @@ impl RPCProcessor {
         }
     }
 
-    async fn rpc_worker(self, receiver: Receiver<RPCMessage>) {
+    async fn rpc_worker(self, receiver: async_channel::Receiver<RPCMessage>) {
         while let Ok(msg) = receiver.recv().await {
             let _ = self
                 .process_rpc_message(msg)
@@ -1284,7 +1285,7 @@ impl RPCProcessor {
         }
         inner.timeout = timeout;
         inner.max_route_hop_count = max_route_hop_count;
-        let channel = channel(queue_size as usize);
+        let channel = async_channel::bounded(queue_size as usize);
         inner.send_channel = Some(channel.0.clone());
 
         // spin up N workers
@@ -1303,7 +1304,7 @@ impl RPCProcessor {
         *self.inner.lock() = Self::new_inner(self.network_manager());
     }
 
-    pub async fn enqueue_message(
+    pub fn enqueue_message(
         &self,
         envelope: envelope::Envelope,
         body: Vec<u8>,
@@ -1324,7 +1325,6 @@ impl RPCProcessor {
         };
         send_channel
             .try_send(msg)
-            .await
             .map_err(|e| format!("failed to enqueue received RPC message: {:?}", e))?;
         Ok(())
     }

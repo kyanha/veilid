@@ -1,4 +1,3 @@
-use crate::intf::utils::async_peek_stream::*;
 use crate::xx::*;
 use async_std::io;
 use async_std::net::{TcpListener, TcpStream};

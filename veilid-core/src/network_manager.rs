@@ -377,6 +377,7 @@ impl NetworkManager {
         node_ref: NodeRef,
         body: B,
     ) -> Result<(), String> {
+        log_net!("sending envelope to {:?}", node_ref);
         // Get node's min/max version and see if we can send to it
         // and if so, get the max version we can use
         let version = if let Some((node_min, node_max)) = node_ref.operate(|e| e.min_max_version())
@@ -388,7 +389,8 @@ impl NetworkManager {
                     node_ref.node_id(),
                     node_min,
                     node_max
-                ));
+                ))
+                .map_err(logthru_rpc!(warn));
             }
             cmp::min(node_max, MAX_VERSION)
         } else {
@@ -396,7 +398,9 @@ impl NetworkManager {
         };
 
         // Build the envelope to send
-        let out = self.build_envelope(node_ref.node_id(), version, body)?;
+        let out = self
+            .build_envelope(node_ref.node_id(), version, body)
+            .map_err(logthru_rpc!(error))?;
 
         // Send via relay if we have to
         self.net().send_data(node_ref, out).await
@@ -433,6 +437,11 @@ impl NetworkManager {
         data: &[u8],
         descriptor: ConnectionDescriptor,
     ) -> Result<bool, String> {
+        log_net!(
+            "envelope of {} bytes received from {:?}",
+            data.len(),
+            descriptor
+        );
         // Is this an out-of-band receipt instead of an envelope?
         if data[0..4] == *RECEIPT_MAGIC {
             self.process_receipt(data).await?;
@@ -530,7 +539,6 @@ impl NetworkManager {
 
         // Pass message to RPC system
         rpc.enqueue_message(envelope, body, source_noderef)
-            .await
             .map_err(|e| format!("enqueing rpc message failed: {}", e))?;
 
         // Inform caller that we dealt with the envelope locally

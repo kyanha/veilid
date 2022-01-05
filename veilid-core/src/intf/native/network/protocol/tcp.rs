@@ -1,5 +1,4 @@
 use super::*;
-use crate::intf::native::utils::async_peek_stream::*;
 use crate::intf::*;
 use crate::network_manager::MAX_MESSAGE_SIZE;
 use crate::*;
@@ -22,37 +21,43 @@ impl RawTcpNetworkConnection {
         Self { stream }
     }
 
-    pub async fn close(&mut self) -> Result<(), String> {
+    pub async fn close(&self) -> Result<(), String> {
         self.stream
+            .clone()
             .close()
             .await
             .map_err(map_to_string)
             .map_err(logthru_net!())
     }
 
-    pub async fn send(&mut self, message: Vec<u8>) -> Result<(), String> {
+    pub async fn send(&self, message: Vec<u8>) -> Result<(), String> {
+        log_net!("sending TCP message of size {}", message.len());
         if message.len() > MAX_MESSAGE_SIZE {
             return Err("sending too large TCP message".to_owned());
         }
         let len = message.len() as u16;
         let header = [b'V', b'L', len as u8, (len >> 8) as u8];
 
-        self.stream
+        let mut stream = self.stream.clone();
+
+        stream
             .write_all(&header)
             .await
             .map_err(map_to_string)
             .map_err(logthru_net!())?;
-        self.stream
+        stream
             .write_all(&message)
             .await
             .map_err(map_to_string)
             .map_err(logthru_net!())
     }
 
-    pub async fn recv(&mut self) -> Result<Vec<u8>, String> {
+    pub async fn recv(&self) -> Result<Vec<u8>, String> {
         let mut header = [0u8; 4];
 
-        self.stream
+        let mut stream = self.stream.clone();
+
+        stream
             .read_exact(&mut header)
             .await
             .map_err(|e| format!("TCP recv error: {}", e))?;
@@ -65,10 +70,7 @@ impl RawTcpNetworkConnection {
         }
 
         let mut out: Vec<u8> = vec![0u8; len];
-        self.stream
-            .read_exact(&mut out)
-            .await
-            .map_err(map_to_string)?;
+        stream.read_exact(&mut out).await.map_err(map_to_string)?;
         Ok(out)
     }
 }
@@ -121,6 +123,8 @@ impl RawTcpProtocolHandler {
             ConnectionDescriptor::new(peer_addr, SocketAddress::from_socket_addr(local_address)),
             ProtocolNetworkConnection::RawTcp(RawTcpNetworkConnection::new(stream)),
         );
+
+        warn!("on_accept_async from: {}", socket_addr);
 
         Ok(Some(conn))
     }

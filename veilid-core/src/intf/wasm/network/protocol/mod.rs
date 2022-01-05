@@ -46,20 +46,20 @@ impl ProtocolNetworkConnection {
             }
         }
     }
-    pub async fn close(&mut self) -> Result<(), String> {
+    pub async fn close(&self) -> Result<(), String> {
         match self {
             Self::Dummy(d) => d.close(),
             Self::Ws(w) => w.close().await,
         }
     }
-    pub async fn send(&mut self, message: Vec<u8>) -> Result<(), String> {
+    pub async fn send(&self, message: Vec<u8>) -> Result<(), String> {
         match self {
             Self::Dummy(d) => d.send(message),
             Self::Ws(w) => w.send(message).await,
         }
     }
 
-    pub async fn recv(&mut self) -> Result<Vec<u8>, String> {
+    pub async fn recv(&self) -> Result<Vec<u8>, String> {
         match self {
             Self::Dummy(d) => d.recv(),
             Self::Ws(w) => w.recv().await,

@@ -36,6 +36,14 @@ macro_rules! log_net {
     (error $fmt:literal, $($arg:expr),+) => {
         error!(target:"net", $fmt, $($arg),+);
     };
+    (warn $text:expr) => {warn!(
+        target: "net",
+        "{}",
+        $text,
+    )};
+    (warn $fmt:literal, $($arg:expr),+) => {
+        warn!(target:"net", $fmt, $($arg),+);
+    };
     ($text:expr) => {trace!(
         target: "net",
         "{}",
@@ -56,6 +64,14 @@ macro_rules! log_rpc {
     (error $fmt:literal, $($arg:expr),+) => {
         error!(target:"rpc", $fmt, $($arg),+);
     };
+    (warn $text:expr) => { warn!(
+        target: "rpc",
+        "{}",
+        $text,
+    )};
+    (warn $fmt:literal, $($arg:expr),+) => {
+        warn!(target:"rpc", $fmt, $($arg),+);
+    };
     ($text:expr) => {trace!(
         target: "rpc",
         "{}",
@@ -75,6 +91,14 @@ macro_rules! log_rtab {
     )};
     (error $fmt:literal, $($arg:expr),+) => {
         error!(target:"rtab", $fmt, $($arg),+);
+    };
+    (warn $text:expr) => { warn!(
+        target: "rtab",
+        "{}",
+        $text,
+    )};
+    (warn $fmt:literal, $($arg:expr),+) => {
+        warn!(target:"rtab", $fmt, $($arg),+);
     };
     ($text:expr) => {trace!(
         target: "rtab",
@@ -146,6 +170,33 @@ macro_rules! logthru {
     });
     (error $target:literal, $fmt:literal, $($arg:expr),+) => (|e__| {
         error!(
+            target: $target,
+            concat!("[{}] ", $fmt),
+            e__,
+            $($arg),+
+        );
+        e__
+    });
+    // warn
+    (warn $target:literal) => (|e__| {
+        warn!(
+            target: $target,
+            "[{}]",
+            e__,
+        );
+        e__
+    });
+    (warn $target:literal, $text:literal) => (|e__| {
+        warn!(
+            target: $target,
+            "[{}] {}",
+            e__,
+            $text
+        );
+        e__
+    });
+    (warn $target:literal, $fmt:literal, $($arg:expr),+) => (|e__| {
+        warn!(
             target: $target,
             concat!("[{}] ", $fmt),
             e__,

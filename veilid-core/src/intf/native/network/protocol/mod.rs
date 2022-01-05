@@ -56,7 +56,7 @@ impl ProtocolNetworkConnection {
         }
     }
 
-    pub async fn close(&mut self) -> Result<(), String> {
+    pub async fn close(&self) -> Result<(), String> {
         match self {
             Self::Dummy(d) => d.close(),
             Self::RawTcp(t) => t.close().await,
@@ -66,7 +66,7 @@ impl ProtocolNetworkConnection {
         }
     }
 
-    pub async fn send(&mut self, message: Vec<u8>) -> Result<(), String> {
+    pub async fn send(&self, message: Vec<u8>) -> Result<(), String> {
         match self {
             Self::Dummy(d) => d.send(message),
             Self::RawTcp(t) => t.send(message).await,
@@ -75,7 +75,7 @@ impl ProtocolNetworkConnection {
             Self::Wss(w) => w.send(message).await,
         }
     }
-    pub async fn recv(&mut self) -> Result<Vec<u8>, String> {
+    pub async fn recv(&self) -> Result<Vec<u8>, String> {
         match self {
             Self::Dummy(d) => d.recv(),
             Self::RawTcp(t) => t.recv().await,

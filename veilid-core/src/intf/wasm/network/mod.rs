@@ -65,6 +65,8 @@ impl Network {
         }
         
         // Handle connection-oriented protocols
+
+        // Try to send to the exact existing connection if one exists
         if let Some(conn) = self.connection_manager().get_connection(descriptor).await {
             // connection exists, send over it
             conn.send(data).await.map_err(logthru_net!())?;

@@ -1,4 +1,6 @@
 // mod bump_port;
+mod async_peek_stream;
+mod clone_stream;
 mod eventual;
 mod eventual_base;
 mod eventual_value;
@@ -68,6 +70,7 @@ cfg_if! {
         pub use async_std::pin::Pin;
         pub use async_std::sync::Mutex as AsyncMutex;
         pub use async_std::sync::MutexGuard as AsyncMutexGuard;
+        pub use async_std::channel as async_channel;
         pub use std::net::{ SocketAddr, SocketAddrV4, SocketAddrV6, ToSocketAddrs, IpAddr, Ipv4Addr, Ipv6Addr };
         pub type SystemPinBoxFuture<T> = PinBox<dyn Future<Output = T> + Send + 'static>;
         pub type SystemPinBoxFutureLifetime<'a, T> = PinBox<dyn Future<Output = T> + Send + 'a>;
@@ -75,6 +78,8 @@ cfg_if! {
 }
 
 // pub use bump_port::*;
+pub use async_peek_stream::*;
+pub use clone_stream::*;
 pub use eventual::*;
 pub use eventual_base::{EventualCommon, EventualResolvedFuture};
 pub use eventual_value::*;
