@@ -22,7 +22,6 @@ pub struct WebsocketNetworkConnection<T>
 where
     T: io::Read + io::Write + Send + Unpin + 'static,
 {
-    tls: bool,
     ws_stream: CloneStream<WebSocketStream<T>>,
 }
 
@@ -39,9 +38,8 @@ impl<T> WebsocketNetworkConnection<T>
 where
     T: io::Read + io::Write + Send + Unpin + 'static,
 {
-    pub fn new(tls: bool, ws_stream: WebSocketStream<T>) -> Self {
+    pub fn new(ws_stream: WebSocketStream<T>) -> Self {
         Self {
-            tls,
             ws_stream: CloneStream::new(ws_stream),
         }
     }
@@ -103,9 +101,9 @@ impl WebsocketProtocolHandler {
     pub fn new(config: VeilidConfig, tls: bool, local_address: SocketAddr) -> Self {
         let c = config.get();
         let path = if tls {
-            format!("GET {}", c.network.protocol.ws.path.trim_end_matches('/'))
+            format!("GET /{}", c.network.protocol.ws.path.trim_end_matches('/'))
         } else {
-            format!("GET {}", c.network.protocol.wss.path.trim_end_matches('/'))
+            format!("GET /{}", c.network.protocol.wss.path.trim_end_matches('/'))
         };
         let connection_initial_timeout = if tls {
             c.network.tls.connection_initial_timeout
@@ -151,7 +149,11 @@ impl WebsocketProtocolHandler {
                     && peekbuf[request_path_len - 1] == b' '));
 
         if !matches_path {
-            log_net!("not websocket");
+            log_net!(
+                "not websocket: request_path: {}   peekbuf:{}",
+                std::str::from_utf8(&self.arc.request_path).unwrap(),
+                std::str::from_utf8(&peekbuf).unwrap()
+            );
             return Ok(None);
         }
         log_net!("found websocket");
@@ -176,10 +178,7 @@ impl WebsocketProtocolHandler {
                 peer_addr,
                 SocketAddress::from_socket_addr(self.arc.local_address),
             ),
-            ProtocolNetworkConnection::WsAccepted(WebsocketNetworkConnection::new(
-                self.arc.tls,
-                ws_stream,
-            )),
+            ProtocolNetworkConnection::WsAccepted(WebsocketNetworkConnection::new(ws_stream)),
         );
 
         Ok(Some(conn))
@@ -246,7 +245,7 @@ impl WebsocketProtocolHandler {
 
             Ok(NetworkConnection::from_protocol(
                 descriptor,
-                ProtocolNetworkConnection::Wss(WebsocketNetworkConnection::new(tls, ws_stream)),
+                ProtocolNetworkConnection::Wss(WebsocketNetworkConnection::new(ws_stream)),
             ))
         } else {
             let (ws_stream, _response) = client_async(request, tcp_stream)
@@ -255,7 +254,7 @@ impl WebsocketProtocolHandler {
                 .map_err(logthru_net!(error))?;
             Ok(NetworkConnection::from_protocol(
                 descriptor,
-                ProtocolNetworkConnection::Ws(WebsocketNetworkConnection::new(tls, ws_stream)),
+                ProtocolNetworkConnection::Ws(WebsocketNetworkConnection::new(ws_stream)),
             ))
         }
     }

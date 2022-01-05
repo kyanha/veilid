@@ -96,9 +96,11 @@ impl TableStore {
         let cfg = DatabaseConfig::with_columns(column_count);
         let db =
             Database::open(&dbpath, cfg).map_err(|e| format!("failed to open tabledb: {}", e))?;
-        info!(
+        trace!(
             "opened table store '{}' at path '{:?}' with {} columns",
-            name, dbpath, column_count
+            name,
+            dbpath,
+            column_count
         );
         let table_db = TableDB::new(table_name.clone(), self.clone(), db);
 

@@ -124,7 +124,7 @@ impl RawTcpProtocolHandler {
             ProtocolNetworkConnection::RawTcp(RawTcpNetworkConnection::new(stream)),
         );
 
-        warn!("on_accept_async from: {}", socket_addr);
+        log_net!("on_accept_async from: {}", socket_addr);
 
         Ok(Some(conn))
     }

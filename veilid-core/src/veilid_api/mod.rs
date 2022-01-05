@@ -461,18 +461,18 @@ impl FromStr for DialInfo {
                 Ok(DialInfo::tcp(socket_address))
             }
             "ws" => {
-                let (sa, rest) = s.split_once('|').ok_or_else(|| {
+                let (sa, rest) = rest.split_once('|').ok_or_else(|| {
                     parse_error!("DialInfo::from_str missing socket address '|' separator", s)
                 })?;
                 let socket_address = SocketAddress::from_str(sa)?;
-                DialInfo::try_ws(socket_address, rest.to_string())
+                DialInfo::try_ws(socket_address, format!("ws://{}", rest))
             }
             "wss" => {
-                let (sa, rest) = s.split_once('|').ok_or_else(|| {
+                let (sa, rest) = rest.split_once('|').ok_or_else(|| {
                     parse_error!("DialInfo::from_str missing socket address '|' separator", s)
                 })?;
                 let socket_address = SocketAddress::from_str(sa)?;
-                DialInfo::try_wss(socket_address, rest.to_string())
+                DialInfo::try_wss(socket_address, format!("wss://{}", rest))
             }
             _ => Err(parse_error!("DialInfo::from_str has invalid scheme", s)),
         }

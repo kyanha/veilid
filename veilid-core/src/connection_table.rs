@@ -34,7 +34,7 @@ impl ConnectionTable {
         assert!(res.is_none());
 
         let conns = self.conns_by_remote.entry(descriptor.remote).or_default();
-        warn!("add_connection: {:?}", conn);
+        //warn!("add_connection: {:?}", conn);
         conns.push(conn);
 
         Ok(())
@@ -42,7 +42,7 @@ impl ConnectionTable {
 
     pub fn get_connection(&self, descriptor: ConnectionDescriptor) -> Option<NetworkConnection> {
         let out = self.conn_by_descriptor.get(&descriptor).cloned();
-        warn!("get_connection: {:?} -> {:?}", descriptor, out);
+        //warn!("get_connection: {:?} -> {:?}", descriptor, out);
         out
     }
     pub fn get_last_connection_by_remote(&self, remote: PeerAddress) -> Option<NetworkConnection> {
@@ -50,7 +50,7 @@ impl ConnectionTable {
             .conns_by_remote
             .get(&remote)
             .map(|v| v[(v.len() - 1)].clone());
-        warn!("get_last_connection_by_remote: {:?} -> {:?}", remote, out);
+        //warn!("get_last_connection_by_remote: {:?} -> {:?}", remote, out);
         out
     }
 
@@ -62,7 +62,7 @@ impl ConnectionTable {
         &mut self,
         descriptor: ConnectionDescriptor,
     ) -> Result<NetworkConnection, String> {
-        warn!("remove_connection: {:?}", descriptor);
+        //warn!("remove_connection: {:?}", descriptor);
         let out = self
             .conn_by_descriptor
             .remove(&descriptor)
