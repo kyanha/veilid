@@ -22,9 +22,7 @@ cfg-if = "^0"
 anyhow = "^1"
 thiserror = "^1"
 
-blake3 = { version = "^1", default_features = false }
 hex = "^0"
-digest = "^0"
 generic-array = "^0"
 secrecy = "^0"
 chacha20poly1305 = "^0"
@@ -41,6 +39,9 @@ x25519-dalek = { package = "x25519-dalek-ng", version = "^1", default_features =
 curve25519-dalek = { package = "curve25519-dalek-ng", version = "^4", default_features = false, features = ["alloc", "u64_backend"] }
 # ed25519-dalek needs rand 0.7 until it updates itself
 rand = "0.7"
+# curve25519-dalek-ng is stuck on digest 0.9.0
+blake3 = { version = "1.1.0", default_features = false }
+digest = "0.9.0"
 
 # Dependencies for native builds only
 # Linux, Windows, Mac, iOS, Android

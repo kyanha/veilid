@@ -19,7 +19,7 @@ pub mod veilid_client_capnp {
     include!(concat!(env!("OUT_DIR"), "/proto/veilid_client_capnp.rs"));
 }
 
-fn parse_command_line(default_config_path: &OsStr) -> Result<clap::ArgMatches, clap::Error> {
+fn parse_command_line(default_config_path: &OsStr) -> Result<clap::ArgMatches, anyhow::Error> {
     let matches = App::new("veilid-cli")
         .version("0.1")
         .about("Veilid Console Client")
