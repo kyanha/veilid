@@ -58,6 +58,11 @@ fn parse_command_line(default_config_path: &OsStr) -> Result<clap::ArgMatches, c
                 .help("Specify a configuration file to use"),
         )
         .arg(
+            Arg::with_name("dump-config")
+                .long("dump-config")
+                .help("Instead of running the server, print the configuration it would use to the console"),
+        )
+        .arg(
             Arg::with_name("bootstrap")
                 .long("bootstrap")
                 .takes_value(true)
@@ -244,6 +249,15 @@ pub async fn main() -> Result<(), String> {
             clogwriter,
         ))
     }
+
+    // --- Dump Config ---
+    if matches.occurrences_of("dump-config") != 0 {
+        //let cfg = config::Config::try_from(&*settingsr);
+        return serde_yaml::to_writer(std::io::stdout(), &*settingsr).map_err(|e| e.to_string());
+    }
+
+    // --- Normal Startup ---
+
     CombinedLogger::init(logs).map_err(|e| format!("failed to init logs: {}", e))?;
 
     // Create Veilid Core

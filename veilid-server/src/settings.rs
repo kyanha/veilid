@@ -168,6 +168,22 @@ impl<'de> serde::Deserialize<'de> for LogLevel {
         }
     }
 }
+impl serde::Serialize for LogLevel {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let s = match self {
+            LogLevel::Error => "error",
+            LogLevel::Warn => "warn",
+            LogLevel::Info => "info",
+            LogLevel::Debug => "debug",
+            LogLevel::Trace => "trace",
+        };
+        s.serialize(serializer)
+    }
+}
+
 pub fn convert_loglevel(log_level: LogLevel) -> LevelFilter {
     match log_level {
         LogLevel::Error => LevelFilter::Error,
@@ -223,6 +239,15 @@ impl<'de> serde::Deserialize<'de> for ParsedUrl {
     }
 }
 
+impl serde::Serialize for ParsedUrl {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.urlstring.serialize(serializer)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ParsedNodeDialInfo {
     pub node_dial_info_string: String,
@@ -263,6 +288,15 @@ impl<'de> serde::Deserialize<'de> for ParsedNodeDialInfo {
     }
 }
 
+impl serde::Serialize for ParsedNodeDialInfo {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.node_dial_info_string.serialize(serializer)
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub struct NamedSocketAddrs {
     pub name: String,
@@ -290,6 +324,15 @@ impl<'de> serde::Deserialize<'de> for NamedSocketAddrs {
     }
 }
 
+impl serde::Serialize for NamedSocketAddrs {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.name.serialize(serializer)
+    }
+}
+
 impl NamedSocketAddrs {
     pub fn offset_port(&mut self, offset: u16) -> Result<(), ()> {
         // Bump port on name
@@ -312,13 +355,13 @@ impl NamedSocketAddrs {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Terminal {
     pub enabled: bool,
     pub level: LogLevel,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct File {
     pub enabled: bool,
     pub path: String,
@@ -326,26 +369,26 @@ pub struct File {
     pub level: LogLevel,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Client {
     pub enabled: bool,
     pub level: LogLevel,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct ClientApi {
     pub enabled: bool,
     pub listen_address: NamedSocketAddrs,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Logging {
     pub terminal: Terminal,
     pub file: File,
     pub client: Client,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Https {
     pub enabled: bool,
     pub listen_address: NamedSocketAddrs,
@@ -353,7 +396,7 @@ pub struct Https {
     pub url: Option<ParsedUrl>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Http {
     pub enabled: bool,
     pub listen_address: NamedSocketAddrs,
@@ -361,13 +404,13 @@ pub struct Http {
     pub url: Option<ParsedUrl>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Application {
     pub https: Https,
     pub http: Http,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Udp {
     pub enabled: bool,
     pub socket_pool_size: u32,
@@ -375,7 +418,7 @@ pub struct Udp {
     pub public_address: Option<NamedSocketAddrs>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Tcp {
     pub connect: bool,
     pub listen: bool,
@@ -384,7 +427,7 @@ pub struct Tcp {
     pub public_address: Option<NamedSocketAddrs>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Ws {
     pub connect: bool,
     pub listen: bool,
@@ -394,7 +437,7 @@ pub struct Ws {
     pub url: Option<ParsedUrl>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Wss {
     pub connect: bool,
     pub listen: bool,
@@ -404,7 +447,7 @@ pub struct Wss {
     pub url: Option<ParsedUrl>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Protocol {
     pub udp: Udp,
     pub tcp: Tcp,
@@ -412,14 +455,14 @@ pub struct Protocol {
     pub wss: Wss,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Tls {
     pub certificate_path: PathBuf,
     pub private_key_path: PathBuf,
     pub connection_initial_timeout: u64,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Rpc {
     pub concurrency: u32,
     pub queue_size: u32,
@@ -429,7 +472,7 @@ pub struct Rpc {
     pub max_route_hop_count: u8,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Dht {
     pub resolve_node_timeout: Option<u64>,
     pub resolve_node_count: u32,
@@ -446,7 +489,7 @@ pub struct Dht {
     pub validate_dial_info_receipt_time: u64,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Leases {
     pub max_server_signal_leases: u32,
     pub max_server_relay_leases: u32,
@@ -454,7 +497,7 @@ pub struct Leases {
     pub max_client_relay_leases: u32,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Network {
     pub max_connections: u32,
     pub connection_initial_timeout: u64,
@@ -473,23 +516,23 @@ pub struct Network {
     pub leases: Leases,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Testing {
     pub subnode_index: u16,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct TableStore {
     pub directory: PathBuf,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Core {
     pub tablestore: TableStore,
     pub network: Network,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct SettingsInner {
     pub daemon: bool,
     pub client_api: ClientApi,
