@@ -8,13 +8,12 @@ use futures_util::{StreamExt, SinkExt};
 
 struct WebsocketNetworkConnectionInner {
     ws_meta: WsMeta,
-    ws_stream: WsStream,
+    ws_stream: CloneStream<WsStream>,
 }
 
 #[derive(Clone)]
 pub struct WebsocketNetworkConnection {
-    tls: bool,
-    inner: Arc<AsyncMutex<WebsocketNetworkConnectionInner>>,
+    inner: Arc<WebsocketNetworkConnectionInner>,
 }
 
 impl fmt::Debug for WebsocketNetworkConnection {
@@ -24,34 +23,30 @@ impl fmt::Debug for WebsocketNetworkConnection {
 }
 
 impl WebsocketNetworkConnection {
-    pub fn new(tls: bool, ws_meta: WsMeta, ws_stream: WsStream) -> Self {
+    pub fn new(ws_meta: WsMeta, ws_stream: WsStream) -> Self {
         Self {
-            tls,
-            inner: Arc::new(AsyncMutex::new(WebsocketNetworkConnectionInner {
+            inner: Arc::new(WebsocketNetworkConnectionInner {
                 ws_meta,
-                ws_stream,
-            })),
+                ws_stream: CloneStream::new(ws_stream),
+            }),
         }
     }
 
     pub async fn close(&self) -> Result<(), String> {
-        let inner = self.inner.lock().await;
-        inner.ws_meta.close().await.map_err(map_to_string).map(drop)
+        self.inner.ws_meta.close().await.map_err(map_to_string).map(drop)
     }
 
     pub async fn send(&self, message: Vec<u8>) -> Result<(), String> {
         if message.len() > MAX_MESSAGE_SIZE {
             return Err("sending too large WS message".to_owned()).map_err(logthru_net!(error));
         }
-        let mut inner = self.inner.lock().await;
-        inner.ws_stream
+        self.inner.ws_stream.clone()
             .send(WsMessage::Binary(message)).await
             .map_err(|_| "failed to send to websocket".to_owned())
             .map_err(logthru_net!(error))
     }
     pub async fn recv(&self) -> Result<Vec<u8>, String> {
-        let mut inner = self.inner.lock().await;
-        let out = match inner.ws_stream.next().await {
+        let out = match self.inner.ws_stream.clone().next().await {
             Some(WsMessage::Binary(v)) => v,
             Some(_) => {
                 return Err("Unexpected WS message type".to_owned())
@@ -104,7 +99,7 @@ impl WebsocketProtocolHandler {
         Ok(NetworkConnection::from_protocol(ConnectionDescriptor {
             local: None,
             remote: dial_info.to_peer_address(),
-        },ProtocolNetworkConnection::Ws(WebsocketNetworkConnection::new(tls, wsmeta, wsio))))
+        },ProtocolNetworkConnection::Ws(WebsocketNetworkConnection::new(wsmeta, wsio))))
     }
 
     pub async fn send_unbound_message(dial_info: DialInfo, data: Vec<u8>) -> Result<(), String> {

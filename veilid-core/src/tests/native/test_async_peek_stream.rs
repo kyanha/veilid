@@ -1,11 +1,12 @@
 use crate::xx::*;
+use core::time::Duration;
+
+static MESSAGE: &[u8; 62] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+
 use async_std::io;
 use async_std::net::{TcpListener, TcpStream};
 use async_std::prelude::*;
 use async_std::task;
-use std::time::Duration;
-
-static MESSAGE: &[u8; 62] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 
 async fn make_tcp_loopback() -> Result<(TcpStream, TcpStream), io::Error> {
     let listener = TcpListener::bind("127.0.0.1:0").await?;
@@ -35,13 +36,13 @@ async fn make_async_peek_stream_loopback() -> (AsyncPeekStream, AsyncPeekStream)
     (aps_a, aps_c)
 }
 
-async fn make_tcpstream_loopback() -> (TcpStream, TcpStream) {
+async fn make_stream_loopback() -> (TcpStream, TcpStream) {
     make_tcp_loopback().await.unwrap()
 }
 
 pub async fn test_nothing() {
     info!("test_nothing");
-    let (mut a, mut c) = make_tcpstream_loopback().await;
+    let (mut a, mut c) = make_stream_loopback().await;
     let outbuf = MESSAGE.to_vec();
 
     a.write_all(&outbuf).await.unwrap();
