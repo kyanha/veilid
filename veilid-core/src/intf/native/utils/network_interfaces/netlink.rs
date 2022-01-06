@@ -4,11 +4,13 @@ use alloc::collections::btree_map::Entry;
 use futures_util::stream::TryStreamExt;
 use ifstructs::ifreq;
 use libc::{
-    close, if_indextoname, ioctl, socket, IFA_F_DADFAILED, IFA_F_DEPRECATED, IFA_F_PERMANENT,
-    IFA_F_TEMPORARY, IFA_F_TENTATIVE, IFF_LOOPBACK, IFF_RUNNING, IF_NAMESIZE, SIOCGIFFLAGS,
+    close, if_indextoname, ioctl, socket, IFF_LOOPBACK, IFF_RUNNING, IF_NAMESIZE, SIOCGIFFLAGS,
     SOCK_DGRAM,
 };
-use rtnetlink::packet::{nlas::address::Nla, AddressMessage, AF_INET, AF_INET6};
+use rtnetlink::packet::{
+    nlas::address::Nla, AddressMessage, AF_INET, AF_INET6, IFA_F_DADFAILED, IFA_F_DEPRECATED,
+    IFA_F_PERMANENT, IFA_F_TEMPORARY, IFA_F_TENTATIVE,
+};
 use rtnetlink::{new_connection_with_socket, sys::SmolSocket, Handle, IpVersion};
 use std::convert::TryInto;
 use std::ffi::CStr;
@@ -18,9 +20,18 @@ use tools::*;
 
 fn get_interface_name(index: u32) -> Result<String, String> {
     let mut ifnamebuf = [0u8; (IF_NAMESIZE + 1)];
-    if unsafe { if_indextoname(index, ifnamebuf.as_mut_ptr() as *mut i8) }.is_null() {
-        return Err("if_indextoname returned null".to_owned());
+    cfg_if! {
+        if #[cfg(all(target_os = "android", target_arch = "aarch64"))] {
+            if unsafe { if_indextoname(index, ifnamebuf.as_mut_ptr()) }.is_null() {
+                return Err("if_indextoname returned null".to_owned());
+            }
+        } else {
+            if unsafe { if_indextoname(index, ifnamebuf.as_mut_ptr() as *mut i8) }.is_null() {
+                return Err("if_indextoname returned null".to_owned());
+            }
+        }
     }
+
     let ifnamebuflen = ifnamebuf
         .iter()
         .position(|c| *c == 0u8)
@@ -95,7 +106,13 @@ impl PlatformSupportNetlink {
             return Err(io::Error::last_os_error()).map_err(map_to_string);
         }
 
-        let res = unsafe { ioctl(sock, SIOCGIFFLAGS, &mut req) };
+        cfg_if! {
+            if #[cfg(target_os = "android")] {
+                let res = unsafe { ioctl(sock, SIOCGIFFLAGS as i32, &mut req) };
+            } else {
+                let res = unsafe { ioctl(sock, SIOCGIFFLAGS, &mut req) };
+            }
+        }
         unsafe { close(sock) };
         if res < 0 {
             return Err(io::Error::last_os_error()).map_err(map_to_string);

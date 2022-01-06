@@ -79,8 +79,10 @@ pub struct InterfaceFlags {
 /// Some of the flags associated with an address.
 #[derive(Debug, Default, PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy)]
 pub struct AddressFlags {
-    pub is_temporary: bool,
+    // common flags
     pub is_dynamic: bool,
+    // ipv6 flags
+    pub is_temporary: bool,
     pub is_deprecated: bool,
 }
 
@@ -88,6 +90,84 @@ pub struct AddressFlags {
 pub struct InterfaceAddress {
     if_addr: IfAddr,
     flags: AddressFlags,
+}
+
+use core::cmp::Ordering;
+
+impl Ord for InterfaceAddress {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match (&self.if_addr, &other.if_addr) {
+            (IfAddr::V4(a), IfAddr::V4(b)) => {
+                // global scope addresses are better
+                let ret = ipv4addr_is_global(&a.ip).cmp(&ipv4addr_is_global(&b.ip));
+                if ret != Ordering::Equal {
+                    return ret;
+                }
+                // local scope addresses are better
+                let ret = ipv4addr_is_private(&a.ip).cmp(&ipv4addr_is_private(&b.ip));
+                if ret != Ordering::Equal {
+                    return ret;
+                }
+                // non-dynamic addresses are better
+                let ret = (!self.flags.is_dynamic).cmp(&!other.flags.is_dynamic);
+                if ret != Ordering::Equal {
+                    return ret;
+                }
+            }
+            (IfAddr::V6(a), IfAddr::V6(b)) => {
+                // non-deprecated addresses are better
+                let ret = (!self.flags.is_deprecated).cmp(&!other.flags.is_deprecated);
+                if ret != Ordering::Equal {
+                    return ret;
+                }
+                // non-temporary address are better
+                let ret = (!self.flags.is_temporary).cmp(&!other.flags.is_temporary);
+                if ret != Ordering::Equal {
+                    return ret;
+                }
+                // global scope addresses are better
+                let ret = ipv6addr_is_global(&a.ip).cmp(&ipv6addr_is_global(&b.ip));
+                if ret != Ordering::Equal {
+                    return ret;
+                }
+                // unique local unicast addresses are better
+                let ret = ipv6addr_is_unique_local(&a.ip).cmp(&ipv6addr_is_unique_local(&b.ip));
+                if ret != Ordering::Equal {
+                    return ret;
+                }
+                // unicast site local addresses are better
+                let ret = ipv6addr_is_unicast_site_local(&a.ip)
+                    .cmp(&ipv6addr_is_unicast_site_local(&b.ip));
+                if ret != Ordering::Equal {
+                    return ret;
+                }
+                // unicast link local addresses are better
+                let ret = ipv6addr_is_unicast_link_local(&a.ip)
+                    .cmp(&ipv6addr_is_unicast_link_local(&b.ip));
+                if ret != Ordering::Equal {
+                    return ret;
+                }
+                // non-dynamic addresses are better
+                let ret = (!self.flags.is_dynamic).cmp(&!other.flags.is_dynamic);
+                if ret != Ordering::Equal {
+                    return ret;
+                }
+            }
+            (IfAddr::V4(_), IfAddr::V6(_)) => return Ordering::Less,
+            (IfAddr::V6(_), IfAddr::V4(_)) => return Ordering::Greater,
+        }
+        // stable sort
+        let ret = self.if_addr.cmp(&other.if_addr);
+        if ret != Ordering::Equal {
+            return ret;
+        }
+        self.flags.cmp(&other.flags)
+    }
+}
+impl PartialOrd for InterfaceAddress {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 #[allow(dead_code)]
@@ -158,33 +238,35 @@ impl NetworkInterface {
     }
 
     pub fn primary_ipv4(&self) -> Option<Ipv4Addr> {
-        // see if we have a non-dynamic address to use first
-        let mut best_dynamic: Option<Ipv4Addr> = None;
-        for x in self.addrs.iter() {
-            if let IfAddr::V4(a) = x.if_addr() {
-                if !x.is_dynamic() {
-                    return Some(a.ip);
-                } else if best_dynamic.is_none() {
-                    best_dynamic = Some(a.ip);
-                }
-            }
-        }
-        best_dynamic
+        let mut ipv4addrs: Vec<&InterfaceAddress> = self
+            .addrs
+            .iter()
+            .filter(|a| matches!(a.if_addr(), IfAddr::V4(_)))
+            .collect();
+        ipv4addrs.sort();
+        ipv4addrs
+            .last()
+            .map(|x| match x.if_addr() {
+                IfAddr::V4(v4) => Some(v4.ip),
+                _ => None,
+            })
+            .flatten()
     }
+
     pub fn primary_ipv6(&self) -> Option<Ipv6Addr> {
-        let mut best_dynamic: Option<Ipv6Addr> = None;
-        for x in self.addrs.iter() {
-            if let IfAddr::V6(a) = x.if_addr() {
-                if x.is_temporary() || x.is_deprecated() {
-                    if !x.is_dynamic() {
-                        return Some(a.ip);
-                    } else if best_dynamic.is_none() {
-                        best_dynamic = Some(a.ip);
-                    }
-                }
-            }
-        }
-        best_dynamic
+        let mut ipv6addrs: Vec<&InterfaceAddress> = self
+            .addrs
+            .iter()
+            .filter(|a| matches!(a.if_addr(), IfAddr::V6(_)))
+            .collect();
+        ipv6addrs.sort();
+        ipv6addrs
+            .last()
+            .map(|x| match x.if_addr() {
+                IfAddr::V6(v6) => Some(v6.ip),
+                _ => None,
+            })
+            .flatten()
     }
 }
 
