@@ -16,7 +16,7 @@ android {
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
         ndk {
-            abiFilters 'arm64-v8a', 'x86', 'x86_64'
+            abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'
         }
 
         // Required to copy libc++_shared.so
@@ -63,7 +63,7 @@ apply plugin: 'org.mozilla.rust-android-gradle.rust-android'
 cargo {
     module  = "../../../../../veilid-core"
     libname = "veilid_core"
-    targets = ["arm64", "x86", "x86_64"]
+    targets = ["arm", "arm64", "x86", "x86_64"]
     targetDirectory = "../../../../../target"
     prebuiltToolchains = true
     profile = gradle.startParameter.taskNames.any{it.toLowerCase().contains("debug")} ? "debug" : "release"

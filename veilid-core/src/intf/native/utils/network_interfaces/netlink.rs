@@ -21,7 +21,7 @@ use tools::*;
 fn get_interface_name(index: u32) -> Result<String, String> {
     let mut ifnamebuf = [0u8; (IF_NAMESIZE + 1)];
     cfg_if! {
-        if #[cfg(all(target_os = "android", target_arch = "aarch64"))] {
+        if #[cfg(all(target_os = "android", any(target_arch = "arm", target_arch = "aarch64")))] {
             if unsafe { if_indextoname(index, ifnamebuf.as_mut_ptr()) }.is_null() {
                 return Err("if_indextoname returned null".to_owned());
             }
