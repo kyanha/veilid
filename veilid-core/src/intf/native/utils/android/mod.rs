@@ -8,6 +8,7 @@ pub use get_directories::*;
 use crate::xx::*;
 use android_logger::{Config, FilterBuilder};
 use backtrace::Backtrace;
+use jni::errors::Result as JniResult;
 use jni::{objects::GlobalRef, objects::JObject, objects::JString, JNIEnv, JavaVM};
 use lazy_static::*;
 use log::*;
@@ -65,4 +66,14 @@ pub fn veilid_core_setup_android<'a>(
         vm: env.get_java_vm().unwrap(),
         ctx: env.new_global_ref(ctx).unwrap(),
     });
+}
+
+pub fn with_null_local_frame<'b, T, F>(env: JNIEnv<'b>, s: i32, f: F) -> JniResult<T>
+where
+    F: FnOnce() -> JniResult<T>,
+{
+    env.push_local_frame(s)?;
+    let out = f();
+    env.pop_local_frame(JObject::null())?;
+    out
 }
