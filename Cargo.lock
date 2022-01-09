@@ -1830,8 +1830,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "keyring"
-version = "0.10.1"
+name = "keyring-manager"
+version = "0.5.0"
 dependencies = [
  "android_logger",
  "backtrace",
@@ -1855,7 +1855,7 @@ dependencies = [
  "security-framework-sys",
  "serde 1.0.133",
  "serde_cbor",
- "serial_test 0.5.1",
+ "serial_test 0.4.0",
  "simplelog",
  "snailquote",
  "tempfile",
@@ -3832,7 +3832,7 @@ dependencies = [
  "jni",
  "jni-sys",
  "js-sys",
- "keyring",
+ "keyring-manager",
  "keyvaluedb-sqlite",
  "keyvaluedb-web",
  "lazy_static",

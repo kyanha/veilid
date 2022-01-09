@@ -1,7 +1,7 @@
 use crate::xx::*;
 use crate::*;
 use data_encoding::BASE64URL_NOPAD;
-use keyring::*;
+use keyring_manager::*;
 use std::path::Path;
 use std::result::Result;
 

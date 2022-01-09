@@ -50,7 +50,7 @@ async-std = { version = "^1", features = ["unstable"] }
 async-tungstenite = { version = "^0", features = ["async-std-runtime", "async-tls"] }
 maplit = "^1"
 config = { version = "^0", features = ["yaml"] }
-keyring = { path = "../external/keyring-rs" }
+keyring-manager = { path = "../external/keyring-manager" }
 lru = "^0"
 async-tls = "^0.11"
 webpki = "^0"
