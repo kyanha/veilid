@@ -15,4 +15,4 @@
 	url = ../keyvaluedb.git
 [submodule "external/netlink"]
 	path = external/netlink
-	url = git@gitlab.hackers.town:veilid/netlink.git
+	url = ../netlink.git
