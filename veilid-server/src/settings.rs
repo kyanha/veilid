@@ -36,9 +36,9 @@ testing:
     subnode_index: 0
 core:
     protected_store:
-        allow_insecure_fallback: true,
-        always_use_insecure_storage: false,
-        insecure_fallback_directory: "%INSECURE_FALLBACK_DIRECTORY%",
+        allow_insecure_fallback: true
+        always_use_insecure_storage: false
+        insecure_fallback_directory: "%INSECURE_FALLBACK_DIRECTORY%"
     table_store:
         directory: "%TABLE_STORE_DIRECTORY%"
     network:
@@ -1078,7 +1078,7 @@ mod tests {
         assert_eq!(s.core.protected_store.allow_insecure_fallback, true);
         assert_eq!(s.core.protected_store.always_use_insecure_storage, false);
         assert_eq!(
-            s.protected_store.insecure_fallback_directory,
+            s.core.protected_store.insecure_fallback_directory,
             Settings::get_default_protected_store_insecure_fallback_directory()
         );
         assert_eq!(s.core.network.max_connections, 16);
