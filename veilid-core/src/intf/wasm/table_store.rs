@@ -4,25 +4,25 @@ use crate::*;
 use keyvaluedb_web::*;
 
 struct TableStoreInner {
-    config: VeilidConfig,
     opened: BTreeMap<String, Weak<Mutex<TableDBInner>>>,
 }
 
 #[derive(Clone)]
 pub struct TableStore {
+    config: VeilidConfig,
     inner: Arc<Mutex<TableStoreInner>>,
 }
 
 impl TableStore {
-    fn new_inner(config: VeilidConfig) -> TableStoreInner {
+    fn new_inner() -> TableStoreInner {
         TableStoreInner {
-            config,
             opened: BTreeMap::new(),
         }
     }
     pub fn new(config: VeilidConfig) -> Self {
         Self {
-            inner: Arc::new(Mutex::new(Self::new_inner(config))),
+            config,
+            inner: Arc::new(Mutex::new(Self::new_inner())),
         }
     }
 
@@ -47,7 +47,7 @@ impl TableStore {
         }
     }
 
-    fn get_table_name(inner: &TableStoreInner, table: &str) -> Result<String, String> {
+    fn get_table_name(&self, table: &str) -> Result<String, String> {
         if !table
             .chars()
             .all(|c| char::is_alphanumeric(c) || c == '_' || c == '-')
@@ -64,9 +64,9 @@ impl TableStore {
     }
 
     pub async fn open(&self, name: &str, column_count: u32) -> Result<TableDB, String> {
-        let mut inner = self.inner.lock();
-        let table_name = Self::get_table_name(&*inner, name)?;
+        let table_name = self.get_table_name(name)?;
 
+        let mut inner = self.inner.lock();        
         if let Some(table_db_weak_inner) = inner.opened.get(&table_name) {
             match TableDB::try_new_from_weak_inner(table_db_weak_inner.clone()) {
                 Some(tdb) => {
@@ -91,9 +91,9 @@ impl TableStore {
 
     pub async fn delete(&self, name: &str) -> Result<bool, String> {
         trace!("TableStore::delete {}", name);
+        let table_name = self.get_table_name(name)?;
+        
         let inner = self.inner.lock();
-        let table_name = Self::get_table_name(&*inner, name)?;
-
         if inner.opened.contains_key(&table_name) {
             trace!(
                 "TableStore::delete {}: Not deleting, still open.",

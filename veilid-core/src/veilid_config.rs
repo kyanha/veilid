@@ -144,6 +144,13 @@ pub struct VeilidConfigTableStore {
 }
 
 #[derive(Default, Clone)]
+pub struct VeilidConfigProtectedStore {
+    pub allow_insecure_fallback: bool,
+    pub always_use_insecure_storage: bool,
+    pub insecure_fallback_directory: String,
+}
+
+#[derive(Default, Clone)]
 pub struct VeilidConfigCapabilities {
     pub protocol_udp: bool,
     pub protocol_connect_tcp: bool,
@@ -156,9 +163,11 @@ pub struct VeilidConfigCapabilities {
 
 #[derive(Default, Clone)]
 pub struct VeilidConfigInner {
+    pub program_name: String,
     pub namespace: String,
     pub capabilities: VeilidConfigCapabilities,
-    pub tablestore: VeilidConfigTableStore,
+    pub protected_store: VeilidConfigProtectedStore,
+    pub table_store: VeilidConfigTableStore,
     pub network: VeilidConfigNetwork,
 }
 
@@ -197,6 +206,7 @@ impl VeilidConfig {
 
         {
             let mut inner = self.inner.write();
+            get_config!(inner.program_name);
             get_config!(inner.namespace);
             get_config!(inner.capabilities.protocol_udp);
             get_config!(inner.capabilities.protocol_connect_tcp);
@@ -205,7 +215,10 @@ impl VeilidConfig {
             get_config!(inner.capabilities.protocol_accept_ws);
             get_config!(inner.capabilities.protocol_connect_wss);
             get_config!(inner.capabilities.protocol_accept_wss);
-            get_config!(inner.tablestore.directory);
+            get_config!(inner.table_store.directory);
+            get_config!(inner.protected_store.allow_insecure_fallback);
+            get_config!(inner.protected_store.always_use_insecure_storage);
+            get_config!(inner.protected_store.insecure_fallback_directory);
             get_config!(inner.network.node_id);
             get_config!(inner.network.node_id_secret);
             get_config!(inner.network.max_connections);
@@ -271,11 +284,6 @@ impl VeilidConfig {
             get_config!(inner.network.leases.max_client_signal_leases);
             get_config!(inner.network.leases.max_client_relay_leases);
         }
-
-        // Initialize node id as early as possible because it is used
-        // for encryption purposes all over the program
-        self.init_node_id().await?;
-
         // Validate settings
         self.validate().await?;
 
@@ -292,6 +300,11 @@ impl VeilidConfig {
 
     async fn validate(&self) -> Result<(), String> {
         let inner = self.inner.read();
+
+        if inner.program_name.is_empty() {
+            return Err("Program name must not be empty in 'program_name'".to_owned());
+        }
+
         // if inner.network.protocol.udp.enabled {
         //     // Validate UDP settings
         // }
@@ -367,16 +380,16 @@ impl VeilidConfig {
     }
 
     // Get the node id from config if one is specified
-    async fn init_node_id(&self) -> Result<(), String> {
+    // Must be done -after- protected store startup
+    pub async fn init_node_id(&self, protected_store: intf::ProtectedStore) -> Result<(), String> {
         let mut inner = self.inner.write();
 
-        let namespace = inner.namespace.clone();
         let mut node_id = inner.network.node_id;
         let mut node_id_secret = inner.network.node_id_secret;
         // See if node id was previously stored in the protected store
         if !node_id.valid {
             debug!("pulling node id from storage");
-            if let Some(s) = intf::load_user_secret_string(namespace.as_str(), "node_id").await? {
+            if let Some(s) = protected_store.load_user_secret_string("node_id").await? {
                 debug!("node id found in storage");
                 node_id = key::DHTKey::try_decode(s.as_str())?
             } else {
@@ -387,8 +400,9 @@ impl VeilidConfig {
         // See if node id secret was previously stored in the protected store
         if !node_id_secret.valid {
             debug!("pulling node id secret from storage");
-            if let Some(s) =
-                intf::load_user_secret_string(namespace.as_str(), "node_id_secret").await?
+            if let Some(s) = protected_store
+                .load_user_secret_string("node_id_secret")
+                .await?
             {
                 debug!("node id secret found in storage");
                 node_id_secret = key::DHTKeySecret::try_decode(s.as_str())?
@@ -416,14 +430,12 @@ impl VeilidConfig {
         // info!("Node Id Secret is {}", node_id_secret.encode());
 
         // Save the node id / secret in storage
-        intf::save_user_secret_string(namespace.as_str(), "node_id", node_id.encode().as_str())
+        protected_store
+            .save_user_secret_string("node_id", node_id.encode().as_str())
             .await?;
-        intf::save_user_secret_string(
-            namespace.as_str(),
-            "node_id_secret",
-            node_id_secret.encode().as_str(),
-        )
-        .await?;
+        protected_store
+            .save_user_secret_string("node_id_secret", node_id_secret.encode().as_str())
+            .await?;
 
         inner.network.node_id = node_id;
         inner.network.node_id_secret = node_id_secret;

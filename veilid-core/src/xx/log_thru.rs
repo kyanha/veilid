@@ -134,7 +134,6 @@ macro_rules! logthru_rpc {
         logthru!($($level)? "rpc", $fmt, $($arg),+)
     }
 }
-
 #[macro_export]
 macro_rules! logthru_rtab {
     ($($level:ident)?) => {
@@ -145,6 +144,18 @@ macro_rules! logthru_rtab {
     };
     ($($level:ident)? $fmt:literal, $($arg:expr),+) => {
         logthru!($($level)? "rtab", $fmt, $($arg),+)
+    }
+}
+#[macro_export]
+macro_rules! logthru_pstore {
+    ($($level:ident)?) => {
+        logthru!($($level)? "pstore")
+    };
+    ($($level:ident)? $text:literal) => {
+        logthru!($($level)? "pstore", $text)
+    };
+    ($($level:ident)? $fmt:literal, $($arg:expr),+) => {
+        logthru!($($level)? "pstore", $fmt, $($arg),+)
     }
 }
 

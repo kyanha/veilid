@@ -106,6 +106,26 @@
       },
       "args": ["${selectedText}"],
       "cwd": "${workspaceFolder}/external/keyvaluedb/keyvaluedb-sqlite"
+    }, 
+
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug keyring unit test",
+      "cargo": {
+        "args": [
+          "test",
+          "--no-run",
+          "--manifest-path",
+          "external/keyring-rs/Cargo.toml"
+        ],
+        "filter": {
+          "kind": "staticlib",
+          "name": "keyring"
+        }
+      },
+      "args": ["${selectedText}"],
+      "cwd": "${workspaceFolder}/external/keyring-rs"
     }
   ]
 }

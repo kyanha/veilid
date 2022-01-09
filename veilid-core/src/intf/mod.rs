@@ -1,7 +1,5 @@
 mod table_db;
-mod user_secret;
 use crate::xx::*;
-pub use user_secret::*;
 
 #[cfg(target_arch = "wasm32")]
 mod wasm;

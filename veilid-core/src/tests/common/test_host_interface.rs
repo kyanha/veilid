@@ -432,6 +432,10 @@ pub async fn test_split_url() {
 pub async fn test_protected_store() {
     info!("testing protected store");
 
+
+xxx move into its own test
+
+
     let _ = intf::remove_user_secret("test", "_test_key").await;
     let _ = intf::remove_user_secret("test", "_test_broken").await;
 

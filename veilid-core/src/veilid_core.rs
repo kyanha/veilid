@@ -33,6 +33,7 @@ pub struct VeilidCoreSetup {
 
 struct VeilidCoreInner {
     config: Option<VeilidConfig>,
+    protected_store: Option<ProtectedStore>,
     table_store: Option<TableStore>,
     crypto: Option<Crypto>,
     attachment_manager: Option<AttachmentManager>,
@@ -55,6 +56,7 @@ impl VeilidCore {
         VeilidCoreInner {
             config: None,
             table_store: None,
+            protected_store: None,
             crypto: None,
             attachment_manager: None,
             api: VeilidAPIWeak::default(),
@@ -110,8 +112,17 @@ impl VeilidCore {
         config.init(setup.config_callback).await?;
         inner.config = Some(config.clone());
 
+        // Set up protected store
+        trace!("VeilidCore::internal_startup init protected store");
+        let protected_store = ProtectedStore::new(config.clone());
+        protected_store.init().await?;
+        inner.protected_store = Some(protected_store.clone());
+
+        // Init node id from config now that protected store is set up
+        config.init_node_id(protected_store).await?;
+
         // Set up tablestore
-        trace!("VeilidCore::internal_startup init tablestore");
+        trace!("VeilidCore::internal_startup init table store");
         let table_store = TableStore::new(config.clone());
         table_store.init().await?;
         inner.table_store = Some(table_store.clone());
@@ -187,10 +198,16 @@ impl VeilidCore {
             inner.crypto = None;
         }
 
-        // Shut down tablestore
+        // Shut down table store
         if let Some(table_store) = &inner.table_store {
             table_store.terminate().await;
             inner.table_store = None;
+        }
+
+        // Shut down protected store
+        if let Some(protected_store) = &inner.protected_store {
+            protected_store.terminate().await;
+            inner.protected_store = None;
         }
 
         // Shut down config

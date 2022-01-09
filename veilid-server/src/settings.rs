@@ -35,8 +35,12 @@ logging:
 testing:
     subnode_index: 0
 core:
-    tablestore:
-        directory: "%TABLESTORE_DIRECTORY%"
+    protected_store:
+        allow_insecure_fallback: true,
+        always_use_insecure_storage: false,
+        insecure_fallback_directory: "%INSECURE_FALLBACK_DIRECTORY%",
+    table_store:
+        directory: "%TABLE_STORE_DIRECTORY%"
     network:
         max_connections: 16
         connection_initial_timeout: 2000000
@@ -117,8 +121,12 @@ core:
         "#,
     )
     .replace(
-        "%TABLESTORE_DIRECTORY%",
+        "%TABLE_STORE_DIRECTORY%",
         &Settings::get_default_table_store_path().to_string_lossy(),
+    )
+    .replace(
+        "%INSECURE_FALLBACK_DIRECTORY%",
+        &Settings::get_default_protected_store_insecure_fallback_directory().to_string_lossy(),
     );
     cfg.merge(config::File::from_str(
         &default_config,
@@ -527,8 +535,16 @@ pub struct TableStore {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+pub struct ProtectedStore {
+    pub allow_insecure_fallback: bool,
+    pub always_use_insecure_storage: bool,
+    pub insecure_fallback_directory: PathBuf,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Core {
-    pub tablestore: TableStore,
+    pub protected_store: ProtectedStore,
+    pub table_store: TableStore,
     pub network: Network,
 }
 
@@ -673,7 +689,21 @@ impl Settings {
         } else {
             default_config_path = PathBuf::from("./");
         }
-        default_config_path.push("tablestore");
+        default_config_path.push("table_store");
+
+        default_config_path
+    }
+
+    pub fn get_default_protected_store_insecure_fallback_directory() -> PathBuf {
+        // Get default configuration file location
+        let mut default_config_path;
+
+        if let Some(my_proj_dirs) = ProjectDirs::from("org", "Veilid", "Veilid") {
+            default_config_path = PathBuf::from(my_proj_dirs.data_local_dir());
+        } else {
+            default_config_path = PathBuf::from("./");
+        }
+        default_config_path.push("protected_store");
 
         default_config_path
     }
@@ -684,6 +714,7 @@ impl Settings {
         Arc::new(move |key: String| {
             let inner = inner.read();
             let out: Result<Box<dyn core::any::Any>, String> = match key.as_str() {
+                "program_name" => Ok(Box::new("veilid-server".to_owned())),
                 "namespace" => Ok(Box::new(if inner.testing.subnode_index == 0 {
                     "".to_owned()
                 } else {
@@ -696,10 +727,24 @@ impl Settings {
                 "capabilities.protocol_accept_ws" => Ok(Box::new(true)),
                 "capabilities.protocol_connect_wss" => Ok(Box::new(true)),
                 "capabilities.protocol_accept_wss" => Ok(Box::new(true)),
-                "tablestore.directory" => Ok(Box::new(
+                "protected_store.allow_insecure_fallback" => {
+                    Ok(Box::new(inner.core.protected_store.allow_insecure_fallback))
+                }
+                "protected_store.always_use_insecure_storage" => Ok(Box::new(
+                    inner.core.protected_store.always_use_insecure_storage,
+                )),
+                "protected_store.insecure_fallback_directory" => Ok(Box::new(
                     inner
                         .core
-                        .tablestore
+                        .protected_store
+                        .insecure_fallback_directory
+                        .to_string_lossy()
+                        .to_string(),
+                )),
+                "table_store.directory" => Ok(Box::new(
+                    inner
+                        .core
+                        .table_store
                         .directory
                         .to_string_lossy()
                         .to_string(),
@@ -1027,8 +1072,14 @@ mod tests {
         assert_eq!(s.logging.client.level, LogLevel::Info);
         assert_eq!(s.testing.subnode_index, 0);
         assert_eq!(
-            s.core.tablestore.directory,
+            s.core.table_store.directory,
             Settings::get_default_table_store_path()
+        );
+        assert_eq!(s.core.protected_store.allow_insecure_fallback, true);
+        assert_eq!(s.core.protected_store.always_use_insecure_storage, false);
+        assert_eq!(
+            s.protected_store.insecure_fallback_directory,
+            Settings::get_default_protected_store_insecure_fallback_directory()
         );
         assert_eq!(s.core.network.max_connections, 16);
         assert_eq!(s.core.network.connection_initial_timeout, 2_000_000u64);
