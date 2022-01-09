@@ -76,6 +76,10 @@ impl VeilidCore {
         self.inner.lock().table_store.as_ref().unwrap().clone()
     }
 
+    pub(crate) fn protected_store(&self) -> ProtectedStore {
+        self.inner.lock().protected_store.as_ref().unwrap().clone()
+    }
+
     pub(crate) fn crypto(&self) -> Crypto {
         self.inner.lock().crypto.as_ref().unwrap().clone()
     }

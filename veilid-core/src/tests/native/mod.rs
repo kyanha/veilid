@@ -57,6 +57,8 @@ pub fn run_all_tests() {
     exec_test_connection_table();
     info!("TEST: exec_test_table_store");
     exec_test_table_store();
+    info!("TEST: exec_test_protected_store");
+    exec_test_protected_store();
     info!("TEST: exec_test_crypto");
     exec_test_crypto();
     info!("TEST: exec_test_envelope_receipt");
@@ -98,6 +100,11 @@ fn exec_test_connection_table() {
 fn exec_test_table_store() {
     async_std::task::block_on(async {
         test_table_store::test_all().await;
+    })
+}
+fn exec_test_protected_store() {
+    async_std::task::block_on(async {
+        test_protected_store::test_all().await;
     })
 }
 fn exec_test_crypto() {
@@ -178,6 +185,13 @@ cfg_if! {
         fn run_test_table_store() {
             setup();
             exec_test_table_store();
+        }
+
+        #[test]
+        #[serial]
+        fn run_test_protected_store() {
+            setup();
+            exec_test_protected_store();
         }
 
         #[test]

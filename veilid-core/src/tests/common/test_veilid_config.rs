@@ -167,7 +167,7 @@ pub fn config_callback(key: String) -> Result<Box<dyn core::any::Any>, String> {
         "capabilities.protocol_accept_ws" => Ok(Box::new(true)),
         "capabilities.protocol_connect_wss" => Ok(Box::new(true)),
         "capabilities.protocol_accept_wss" => Ok(Box::new(true)),
-        "tablestore.directory" => Ok(Box::new(get_table_store_path())),
+        "table_store.directory" => Ok(Box::new(get_table_store_path())),
         "protected_store.allow_insecure_fallback" => Ok(Box::new(true)),
         "protected_store.always_use_insecure_storage" => Ok(Box::new(false)),
         "protected_store.insecure_fallback_directory" => Ok(Box::new(get_protected_store_path())),
@@ -252,6 +252,7 @@ pub async fn test_config() {
             unreachable!();
         }
     }
+
     let inner = vc.get();
     assert_eq!(inner.program_name, String::from("Veilid"));
     assert_eq!(inner.namespace, String::from(""));
@@ -271,8 +272,8 @@ pub async fn test_config() {
     );
     assert_eq!(inner.network.max_connections, 16);
     assert_eq!(inner.network.connection_initial_timeout, 2_000_000u64);
-    assert!(inner.network.node_id.valid);
-    assert!(inner.network.node_id_secret.valid);
+    assert!(!inner.network.node_id.valid);
+    assert!(!inner.network.node_id_secret.valid);
     assert_eq!(
         inner.network.bootstrap,
         vec![String::from("asdf"), String::from("qwer")]

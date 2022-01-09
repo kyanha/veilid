@@ -382,10 +382,8 @@ impl VeilidConfig {
     // Get the node id from config if one is specified
     // Must be done -after- protected store startup
     pub async fn init_node_id(&self, protected_store: intf::ProtectedStore) -> Result<(), String> {
-        let mut inner = self.inner.write();
-
-        let mut node_id = inner.network.node_id;
-        let mut node_id_secret = inner.network.node_id_secret;
+        let mut node_id = self.inner.read().network.node_id;
+        let mut node_id_secret = self.inner.read().network.node_id_secret;
         // See if node id was previously stored in the protected store
         if !node_id.valid {
             debug!("pulling node id from storage");
@@ -437,8 +435,8 @@ impl VeilidConfig {
             .save_user_secret_string("node_id_secret", node_id_secret.encode().as_str())
             .await?;
 
-        inner.network.node_id = node_id;
-        inner.network.node_id_secret = node_id_secret;
+        self.inner.write().network.node_id = node_id;
+        self.inner.write().network.node_id_secret = node_id_secret;
 
         trace!("init_node_id complete");
 
