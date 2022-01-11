@@ -1,0 +1,7 @@
+[target.aarch64-unknown-linux-gnu]
+# ar = "aarch64-linux-gnu-ar"
+linker = "aarch64-linux-gnu-gcc"
+
+[target.aarch64-linux-android]
+#ar = "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android-ar" 
+linker = "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android-clang"

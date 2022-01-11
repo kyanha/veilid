@@ -12,13 +12,19 @@ deps-base:
     RUN apt-get install -y software-properties-common
     RUN add-apt-repository -y ppa:deadsnakes/ppa
     RUN apt-get -y update
-    RUN apt-get install -y iproute2 curl build-essential cmake libssl-dev openssl file git pkg-config python3.8 python3.8-distutils python3.8-dev libdbus-1-dev libdbus-glib-1-dev libgirepository1.0-dev libcairo2-dev
+    RUN apt-get install -y iproute2 curl build-essential cmake libssl-dev openssl file git pkg-config python3.8 python3.8-distutils python3.8-dev libdbus-1-dev libdbus-glib-1-dev libgirepository1.0-dev libcairo2-dev 
     RUN apt-get remove -y python3.5
     RUN curl https://bootstrap.pypa.io/get-pip.py | python3.8
 
+# Install Cap'n Proto
+deps-capnp:
+    FROM +deps-base
+    COPY scripts/earthly/install_capnproto.sh /
+    RUN /bin/bash /install_capnproto.sh; rm /install_capnproto.sh
+
 # Install Rust
 deps-rust:
-    FROM +deps-base
+    FROM +deps-capnp
     ENV RUSTUP_HOME=/usr/local/rustup
     ENV CARGO_HOME=/usr/local/cargo
     ENV PATH=/usr/local/cargo/bin:$PATH
@@ -37,20 +43,19 @@ deps-rust:
     # WASM
     RUN rustup target add wasm32-unknown-unknown
 
-# Install Cap'n Proto
-deps-capnp:
+# Install cross-platform tooling
+deps-cross:
     FROM +deps-rust
-    COPY scripts/earthly/install_capnproto.sh /
-    RUN /bin/bash /install_capnproto.sh; rm /install_capnproto.sh
+    RUN apt-get install -y gcc-aarch64-linux-gnu 
+
 
 # Install stub secrets daemon for keyring tests
 deps-secretsd:
-    FROM +deps-capnp
+    FROM +deps-cross
     COPY scripts/earthly/secretsd /secretsd
     RUN pip install -r /secretsd/requirements.txt
     RUN pip install keyring
     RUN cp /secretsd/dbus/org.freedesktop.secrets.service /usr/share/dbus-1/services/org.freedesktop.secrets.service
-
 
 # Clean up the apt cache to save space
 deps:
@@ -78,6 +83,10 @@ build-linux-arm64:
     SAVE ARTIFACT ./target/aarch64-unknown-linux-gnu AS LOCAL ./target/artifacts/aarch64-unknown-linux-gnu
 
 # Unit tests
-unit-test:
+unit-tests-linux-amd64:
     FROM +code
-    RUN cargo test --release
+    RUN cargo test --target x86_64-unknown-linux-gnu --release
+
+unit-tests-linux-arm64:
+    FROM +code
+    RUN cargo test --target aarch64-unknown-linux-gnu --release
