@@ -43,15 +43,23 @@ deps-rust:
     # WASM
     RUN rustup target add wasm32-unknown-unknown
 
-# Install cross-platform tooling
+# Install Linux cross-platform tooling
 deps-cross:
     FROM +deps-rust
-    RUN apt-get install -y gcc-aarch64-linux-gnu 
+    RUN apt-get install -y gcc-aarch64-linux-gnu curl unzip
 
-
+# Install android tooling
+deps-android:
+    FROM +deps-cross
+    RUN apt-get install -y openjdk-9-jdk-headless
+    RUN mkdir /Android; mkdir /Android/Sdk
+    RUN curl -o /Android/cmdline-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-7583922_latest.zip
+    RUN cd /Android; unzip /Android/cmdline-tools.zip
+    RUN yes | /Android/cmdline-tools/bin/sdkmanager --sdk_root=/Android/Sdk build-tools\;30.0.3 ndk\;22.0.7026061 cmake\;3.18.1 platform-tools platforms\;android-30
+    
 # Install stub secrets daemon for keyring tests
 deps-secretsd:
-    FROM +deps-cross
+    FROM +deps-android
     COPY scripts/earthly/secretsd /secretsd
     RUN pip install -r /secretsd/requirements.txt
     RUN pip install keyring
@@ -64,7 +72,8 @@ deps:
 
 code:
     FROM +deps
-    COPY . .
+    COPY --dir .cargo external files scripts veilid-cli veilid-core veilid-server veilid-wasm Cargo.lock Cargo.toml /veilid
+    WORKDIR /veilid
 
 # Clippy only
 clippy:
@@ -81,6 +90,20 @@ build-linux-arm64:
     FROM +code
     RUN cargo build --target aarch64-unknown-linux-gnu --release
     SAVE ARTIFACT ./target/aarch64-unknown-linux-gnu AS LOCAL ./target/artifacts/aarch64-unknown-linux-gnu
+
+build-android:
+    FROM +code
+    WORKDIR /veilid/veilid-core
+    ENV PATH=$PATH:/Android/Sdk/ndk/22.0.7026061/toolchains/llvm/prebuilt/linux-x86_64/bin/
+    RUN cargo build --target aarch64-linux-android --release
+    RUN cargo build --target armv7-linux-androideabi --release
+    RUN cargo build --target i686-linux-android --release
+    RUN cargo build --target x86_64-linux-android --release
+    WORKDIR /veilid
+    SAVE ARTIFACT ./target/aarch64-linux-android AS LOCAL ./target/artifacts/aarch64-linux-android
+    SAVE ARTIFACT ./target/armv7-linux-androideabi AS LOCAL ./target/artifacts/armv7-linux-androideabi
+    SAVE ARTIFACT ./target/i686-linux-android AS LOCAL ./target/artifacts/i686-linux-android
+    SAVE ARTIFACT ./target/x86_64-linux-android AS LOCAL ./target/artifacts/x86_64-linux-android
 
 # Unit tests
 unit-tests-linux-amd64:

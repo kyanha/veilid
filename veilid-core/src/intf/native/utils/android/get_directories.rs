@@ -6,7 +6,7 @@ pub fn get_files_dir() -> String {
     let ag = aglock.as_ref().unwrap();
     let env = ag.vm.attach_current_thread().unwrap();
 
-    with_null_local_frame(env, 64, || {
+    with_null_local_frame(*env, 64, || {
         // context.getFilesDir().getAbsolutePath()
         let file = env
             .call_method(ag.ctx.as_obj(), "getFilesDir", "()Ljava/io/File;", &[])
@@ -30,7 +30,7 @@ pub fn get_cache_dir() -> String {
     let ag = aglock.as_ref().unwrap();
     let env = ag.vm.attach_current_thread().unwrap();
 
-    with_null_local_frame(env, 64, || {
+    with_null_local_frame(*env, 64, || {
         // context.getCacheDir().getAbsolutePath()
         let file = env
             .call_method(ag.ctx.as_obj(), "getCacheDir", "()Ljava/io/File;", &[])
@@ -44,7 +44,7 @@ pub fn get_cache_dir() -> String {
             .unwrap();
 
         let jstrval = env.get_string(JString::from(path)).unwrap();
-        String::from(jstrval.to_string_lossy())
+        Ok(String::from(jstrval.to_string_lossy()))
     })
     .unwrap()
 }
