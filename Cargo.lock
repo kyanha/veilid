@@ -1855,7 +1855,7 @@ dependencies = [
  "security-framework-sys",
  "serde 1.0.133",
  "serde_cbor",
- "serial_test 0.4.0",
+ "serial_test 0.5.1",
  "simplelog",
  "snailquote",
  "tempfile",
