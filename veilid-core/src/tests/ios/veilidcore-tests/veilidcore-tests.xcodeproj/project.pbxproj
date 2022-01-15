@@ -18,8 +18,8 @@
 
 /* Begin PBXFileReference section */
 		4317C6BA2694A675009C717F /* veilidcore-tests-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "veilidcore-tests-Bridging-Header.h"; sourceTree = "<group>"; };
-		4317C6BB2694A676009C717F /* veilid-core.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = veilid-core.h; sourceTree = "<group>"; };
-		4317C6BC2694A676009C717F /* veilid-core.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = veilid-core.c; sourceTree = "<group>"; };
+		4317C6BB2694A676009C717F /* veilid-core.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "veilid-core.h"; sourceTree = "<group>"; };
+		4317C6BC2694A676009C717F /* veilid-core.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "veilid-core.c"; sourceTree = "<group>"; };
 		43C436AC268904AC002D11C5 /* veilidcore-tests.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "veilidcore-tests.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		43C436AF268904AC002D11C5 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		43C436B1268904AC002D11C5 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
@@ -339,11 +339,11 @@
 				);
 				OTHER_LDFLAGS = "";
 				"OTHER_LDFLAGS[sdk=iphoneos*]" = (
-					"-L../../../../target/aarch64-apple-ios/debug",
+					"-L../../../../../target/aarch64-apple-ios/debug",
 					"-lveilid_core",
 				);
 				"OTHER_LDFLAGS[sdk=iphonesimulator*]" = (
-					"-L../../../../target/x86_64-apple-ios/debug",
+					"-L../../../../../target/x86_64-apple-ios/debug",
 					"-lveilid_core",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "com.veilid.veilidcore-tests";
@@ -371,11 +371,11 @@
 				);
 				OTHER_LDFLAGS = "";
 				"OTHER_LDFLAGS[sdk=iphoneos*]" = (
-					"-L../../../../target/aarch64-apple-ios/release",
+					"-L../../../../../target/aarch64-apple-ios/release",
 					"-lveilid_core",
 				);
 				"OTHER_LDFLAGS[sdk=iphonesimulator*]" = (
-					"-L../../../../target/x86_64-apple-ios/release",
+					"-L../../../../../target/x86_64-apple-ios/release",
 					"-lveilid_core",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "com.veilid.veilidcore-tests";

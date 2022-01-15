@@ -1,7 +1,6 @@
 use crate::xx::*;
 use crate::*;
 use core::fmt;
-mod tools;
 
 cfg_if::cfg_if! {
     if #[cfg(any(target_os = "linux", target_os = "android"))] {
@@ -12,6 +11,7 @@ cfg_if::cfg_if! {
         use windows::PlatformSupportWindows as PlatformSupport;
     } else if #[cfg(any(target_os = "macos", target_os = "ios"))] {
         mod apple;
+        mod sockaddr_tools;
         use apple::PlatformSupportApple as PlatformSupport;
     } else {
         compile_error!("No network interfaces support for this platform!");
