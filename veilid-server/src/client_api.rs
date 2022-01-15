@@ -154,7 +154,7 @@ impl veilid_server::Server for VeilidServerImpl {
                 assert!(false, "write me!");
             }
             else {
-                crate::unix::shutdown();
+                crate::server::shutdown();
             }
         }
 

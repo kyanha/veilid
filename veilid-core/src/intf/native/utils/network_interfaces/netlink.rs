@@ -9,7 +9,7 @@ use libc::{
 };
 use rtnetlink::packet::{
     nlas::address::Nla, AddressMessage, AF_INET, AF_INET6, IFA_F_DADFAILED, IFA_F_DEPRECATED,
-    IFA_F_PERMANENT, IFA_F_TEMPORARY, IFA_F_TENTATIVE,
+    IFA_F_OPTIMISTIC, IFA_F_PERMANENT, IFA_F_TEMPORARY, IFA_F_TENTATIVE,
 };
 use rtnetlink::{new_connection_with_socket, sys::SmolSocket, Handle, IpVersion};
 use std::convert::TryInto;
@@ -47,7 +47,9 @@ fn flags_to_address_flags(flags: u32) -> AddressFlags {
     AddressFlags {
         is_temporary: (flags & IFA_F_TEMPORARY) != 0,
         is_dynamic: (flags & IFA_F_PERMANENT) == 0,
-        is_preferred: (flags & (IFA_F_TENTATIVE | IFA_F_DADFAILED | IFA_F_DEPRECATED | IFA_F_OPTIMISTIC)  ) == 0,
+        is_preferred: (flags
+            & (IFA_F_TENTATIVE | IFA_F_DADFAILED | IFA_F_DEPRECATED | IFA_F_OPTIMISTIC))
+            == 0,
     }
 }
 
