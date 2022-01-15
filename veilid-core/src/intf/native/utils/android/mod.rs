@@ -68,6 +68,15 @@ pub fn veilid_core_setup_android<'a>(
     });
 }
 
+pub fn get_android_globals() -> (JavaVM, GlobalRef) {
+    let globals_locked = ANDROID_GLOBALS.lock();
+    let globals = globals_locked.as_ref().unwrap();
+    let env = globals.vm.attach_current_thread().unwrap();
+    let vm = env.get_java_vm().unwrap();
+    let ctx = globals.ctx.clone();
+    (vm, ctx)
+}
+
 pub fn with_null_local_frame<'b, T, F>(env: JNIEnv<'b>, s: i32, f: F) -> JniResult<T>
 where
     F: FnOnce() -> JniResult<T>,

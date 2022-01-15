@@ -3,7 +3,7 @@
 
 use anyhow::*;
 use async_std::prelude::*;
-use clap::{App, Arg};
+use clap::{App, Arg, ColorChoice};
 use flexi_logger::*;
 use log::*;
 use std::ffi::OsStr;
@@ -22,31 +22,32 @@ pub mod veilid_client_capnp {
 fn parse_command_line(default_config_path: &OsStr) -> Result<clap::ArgMatches, anyhow::Error> {
     let matches = App::new("veilid-cli")
         .version("0.1")
+        .color(ColorChoice::Auto)
         .about("Veilid Console Client")
         .arg(
-            Arg::with_name("address")
+            Arg::new("address")
                 .required(false)
                 .help("Address to connect to"),
         )
         .arg(
-            Arg::with_name("debug")
+            Arg::new("debug")
                 .long("debug")
                 .help("Turn on debug logging"),
         )
         .arg(
-            Arg::with_name("wait-for-debug")
+            Arg::new("wait-for-debug")
                 .long("wait-for-debug")
                 .help("Wait for debugger to attach"),
         )
         .arg(
-            Arg::with_name("trace")
+            Arg::new("trace")
                 .long("trace")
                 .conflicts_with("debug")
                 .help("Turn on trace logging"),
         )
         .arg(
-            Arg::with_name("config-file")
-                .short("c")
+            Arg::new("config-file")
+                .short('c')
                 .takes_value(true)
                 .value_name("FILE")
                 .default_value_os(default_config_path)

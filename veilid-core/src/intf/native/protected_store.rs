@@ -33,7 +33,13 @@ impl ProtectedStore {
         let c = self.config.get();
         let mut inner = self.inner.lock();
         if !c.protected_store.always_use_insecure_storage {
-            inner.keyring_manager = KeyringManager::new_secure(&c.program_name).ok();
+            cfg_if! {
+                if #[cfg(target_os = "android")] {
+                    inner.keyring_manager = KeyringManager::new_secure(&c.program_name, intf::native::utils::android::get_android_globals()).ok();
+                } else {
+                    inner.keyring_manager = KeyringManager::new_secure(&c.program_name).ok();
+                }
+            }
         }
         if (c.protected_store.always_use_insecure_storage
             || c.protected_store.allow_insecure_fallback)

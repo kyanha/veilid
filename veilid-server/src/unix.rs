@@ -17,73 +17,82 @@ use std::time::{Duration, Instant};
 use veilid_core::xx::SingleShotEventual;
 
 fn parse_command_line(default_config_path: &OsStr) -> Result<clap::ArgMatches, clap::Error> {
+
     let matches = App::new("veilid-server")
         .version("0.1")
         .about("Veilid Server")
+        .color(clap::ColorChoice::Auto)
         .arg(
-            Arg::with_name("daemon")
+            Arg::new("daemon")
                 .long("daemon")
-                .short("d")
+                .short('d')
                 .help("Run in daemon mode in the background"),
         )
         .arg(
-            Arg::with_name("subnode_index")
-                .long("subnode_index")
-                .takes_value(true)
-                .help("Run as an extra daemon on the same machine for testing purposes, specify a number greater than zero to offset the listening ports"),
-        )
-        .arg(
-            Arg::with_name("debug")
-                .long("debug")
-                .help("Turn on debug logging on the terminal"),
-        )
-        .arg(
-            Arg::with_name("trace")
-                .long("trace")
-                .conflicts_with("debug")
-                .help("Turn on trace logging on the terminal"),
-        )
-        .arg(
-            Arg::with_name("generate-id")
-                .long("generate-id")
-                .help("Only generate a new node id and print it"),
-        )
-        .arg(
-            Arg::with_name("config-file")
-                .short("c")
+            Arg::new("config-file")
+                .short('c')
                 .long("config-file")
                 .takes_value(true)
                 .value_name("FILE")
                 .default_value_os(default_config_path)
                 .help("Specify a configuration file to use"),
-        )
-        .arg(
-            Arg::with_name("dump-config")
-                .long("dump-config")
-                .help("Instead of running the server, print the configuration it would use to the console"),
-        )
-        .arg(
-            Arg::with_name("bootstrap")
-                .long("bootstrap")
-                .takes_value(true)
-                .value_name("BOOTSTRAP_LIST")
-                .help("Specify a list of bootstrap servers to use"),
-        )
-        .arg(
-            Arg::with_name("attach")
+        ).arg(
+            Arg::new("attach")
                 .long("attach")
                 .takes_value(true)
                 .value_name("BOOL")
                 .possible_values(&["false", "true"])
                 .help("Automatically attach the server to the Veilid network"),
         )
-        ;
-    #[cfg(debug_assertions)]
-    let matches = matches.arg(
-        Arg::with_name("wait-for-debug")
-            .long("wait-for-debug")
-            .help("Wait for debugger to attach"),
-    );
+        // Dev options
+        .arg(
+            Arg::new("debug")
+                .long("debug")
+                .help("Turn on debug logging on the terminal"),
+        )
+        .arg(
+            Arg::new("trace")
+                .long("trace")
+                .conflicts_with("debug")
+                .help("Turn on trace logging on the terminal"),
+        )
+        .arg(
+            Arg::new("subnode_index")
+                .long("subnode_index")
+                .takes_value(true)
+                .help("Run as an extra daemon on the same machine for testing purposes, specify a number greater than zero to offset the listening ports"),
+        )
+        .arg(
+            Arg::new("generate-dht-key")
+                .long("generate-dht-key")
+                .help("Only generate a new dht key and print it"),
+        )
+        
+        .arg(
+            Arg::new("dump-config")
+                .long("dump-config")
+                .help("Instead of running the server, print the configuration it would use to the console"),
+        )
+        .arg(
+            Arg::new("bootstrap")
+                .long("bootstrap")
+                .takes_value(true)
+                .value_name("BOOTSTRAP_LIST")
+                .help("Specify a list of bootstrap servers to use"),
+        )
+        .arg(
+            Arg::new("local")
+                .long("local")
+                .help("Enable local peer scope")
+        );
+        
+        #[cfg(debug_assertions)]
+        let matches = matches.arg(
+            Arg::new("wait-for-debug")
+                .long("wait-for-debug")
+                .help("Wait for debugger to attach"),
+        );
+       
     Ok(matches.get_matches())
 }
 
@@ -162,6 +171,9 @@ pub async fn main() -> Result<(), String> {
     }
     if matches.is_present("attach") {
         settingsrw.auto_attach = !matches!(matches.value_of("attach"), Some("true"));
+    }
+    if matches.is_present("local") {
+        settingsrw.core.network.enable_local_peer_scope = true;
     }
     if matches.occurrences_of("bootstrap") != 0 {
         let bootstrap = match matches.value_of("bootstrap") {

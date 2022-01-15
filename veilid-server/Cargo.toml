@@ -13,17 +13,17 @@ path = "src/main.rs"
 [dependencies]
 log = "^0"
 simplelog = { version = "^0", features = ["test"] }
-clap = "^2"
+clap = "^3"
 async-std = { version = "^1", features = ["unstable"] }
 async-tungstenite = { version = "^0", features = ["async-std-runtime", "async-tls"] }
 veilid-core = { path = "../veilid-core" }
-directories = "^3"
+directories = "^4"
 capnp = "^0"
 parking_lot = "^0"
 capnp-rpc = "^0"
 config = { version = "^0", features = ["yaml"] }
 failure = "^0"
-cfg-if = "^0"
+cfg-if = "^1"
 serde = "^1"
 serde_derive = "^1"
 serde_yaml = "^0"
