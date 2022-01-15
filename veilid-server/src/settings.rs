@@ -18,34 +18,34 @@ pub fn load_default_config(cfg: &mut config::Config) -> Result<(), config::Confi
 daemon: false
 client_api:
     enabled: true
-    listen_address: "localhost:5959"
+    listen_address: 'localhost:5959'
 auto_attach: true
 logging: 
     terminal:
         enabled: true
-        level: "info"
+        level: 'info'
     file: 
         enabled: false
-        path: ""
+        path: ''
         append: true
-        level: "info"
+        level: 'info'
     client:
         enabled: true
-        level: "info"
+        level: 'info'
 testing:
     subnode_index: 0
 core:
     protected_store:
         allow_insecure_fallback: true
         always_use_insecure_storage: false
-        insecure_fallback_directory: "%INSECURE_FALLBACK_DIRECTORY%"
+        insecure_fallback_directory: '%INSECURE_FALLBACK_DIRECTORY%'
     table_store:
-        directory: "%TABLE_STORE_DIRECTORY%"
+        directory: '%TABLE_STORE_DIRECTORY%'
     network:
         max_connections: 16
         connection_initial_timeout: 2000000
-        node_id: ""
-        node_id_secret: ""
+        node_id: ''
+        node_id_secret: ''
         bootstrap: []
         rpc: 
             concurrency: 0
@@ -73,46 +73,46 @@ core:
         enable_local_peer_scope: false
         restricted_nat_retries: 3
         tls:
-            certificate_path: "/etc/veilid/server.crt"
-            private_key_path: "/etc/veilid/private/server.key"
+            certificate_path: '/etc/veilid/server.crt'
+            private_key_path: '/etc/veilid/private/server.key'
             connection_initial_timeout: 2000000
         application:
             https:
                 enabled: false
-                listen_address: "[::]:5150"
-                path: "app"
-                # url: "https://localhost:5150"
+                listen_address: '[::]:5150'
+                path: 'app'
+                # url: 'https://localhost:5150'
             http:
                 enabled: false
-                listen_address: "[::]:5150"
-                path: "app"
-                # url: "http://localhost:5150"
+                listen_address: '[::]:5150'
+                path: 'app'
+                # url: 'http://localhost:5150'
         protocol:
             udp:
                 enabled: true
                 socket_pool_size: 0
-                listen_address: "[::]:5150"
-                # public_address: ""
+                listen_address: '[::]:5150'
+                # public_address: ''
             tcp:
                 connect: true
                 listen: true
                 max_connections: 32
-                listen_address: "[::]:5150"
-                # "public_address": ""
+                listen_address: '[::]:5150'
+                #'public_address: ''
             ws:
                 connect: true
                 listen: true
                 max_connections: 16
-                listen_address: "[::]:5150"
-                path: "ws"
-                # url: "ws://localhost:5150/ws"
+                listen_address: '[::]:5150'
+                path: 'ws'
+                # url: 'ws://localhost:5150/ws'
             wss:
                 connect: true
                 listen: false
                 max_connections: 16
-                listen_address: "[::]:5150"
-                path: "ws"
-                # url: ""
+                listen_address: '[::]:5150'
+                path: 'ws'
+                # url: ''
         leases:
             max_server_signal_leases: 256
             max_server_relay_leases: 8
@@ -558,10 +558,9 @@ pub struct SettingsInner {
     pub core: Core,
 }
 
-type Handle<T> = Arc<RwLock<T>>;
-
+#[derive(Clone, Debug)]
 pub struct Settings {
-    inner: Handle<SettingsInner>,
+    inner: Arc<RwLock<SettingsInner>>,
 }
 
 impl Settings {

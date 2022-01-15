@@ -4,26 +4,62 @@
 
 mod client_api;
 mod client_log_channel;
+mod cmdline;
+mod server;
 mod settings;
+#[cfg(unix)]
+mod unix;
+mod veilid_logs;
+#[cfg(windows)]
+mod windows;
+
+use async_std::task;
+use cfg_if::*;
+use server::*;
+use veilid_logs::*;
 
 #[allow(clippy::all)]
 pub mod veilid_client_capnp {
     include!(concat!(env!("OUT_DIR"), "/proto/veilid_client_capnp.rs"));
 }
 
-cfg_if::cfg_if! {
-    if #[cfg(windows)] {
-        mod windows;
+fn main() -> Result<(), String> {
+    let (settings, matches) = cmdline::process_command_line()?;
 
-        fn main() -> windows_service::Result<(), String> {
-            windows::main()
+    // --- Dump Config ---
+    if matches.occurrences_of("dump-config") != 0 {
+        //let cfg = config::Config::try_from(&*settingsr);
+        return serde_yaml::to_writer(std::io::stdout(), &*settings.read())
+            .map_err(|e| e.to_string());
+    }
+
+    // --- Generate Id ---
+    if matches.occurrences_of("generate-id") != 0 {
+        let (key, secret) = veilid_core::generate_secret();
+        println!("Public: {}\nSecret: {}", key.encode(), secret.encode());
+        return Ok(());
+    }
+
+    // --- Daemon Mode ----
+    if settings.read().daemon {
+        cfg_if! {
+            if #[cfg(windows)] {
+                return windows::run_service(settings, matches).map_err(|e| format!("{}", e));
+            } else if #[cfg(unix)] {
+                return unix::run_daemon(settings, matches);
+            }
         }
     }
-    else {
-        mod unix;
 
-        fn main() -> Result<(), String> {
-            async_std::task::block_on(unix::main())
-        }
-    }
+    // Init combined console/file logger
+    let logs = VeilidLogs::setup_normal_logs(settings.clone())?;
+
+    // --- Normal Startup ---
+    ctrlc::set_handler(move || {
+        shutdown();
+    })
+    .expect("Error setting Ctrl-C handler");
+
+    // Run the server loop
+    task::block_on(async { run_veilid_server(settings, logs).await })
 }

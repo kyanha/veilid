@@ -12,7 +12,7 @@ use std::sync::mpsc::SyncSender as StdSender;
 use std::sync::mpsc::TrySendError as StdTrySendError;
 
 //////////////////////////////////////////
-
+#[derive(Clone)]
 pub struct ClientLogChannelCloser {
     sender: Arc<Mutex<Option<StdSender<String>>>>,
 }
@@ -59,6 +59,7 @@ pub type ClientLogChannelWriter = std::io::LineWriter<ClientLogChannelWriterShim
 
 //////////////////////////////////////////
 
+#[derive(Clone)]
 pub struct ClientLogChannel {
     async_receiver: AsyncReceiver<String>,
 }

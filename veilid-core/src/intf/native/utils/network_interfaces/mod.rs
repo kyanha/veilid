@@ -9,6 +9,7 @@ cfg_if::cfg_if! {
         use netlink::PlatformSupportNetlink as PlatformSupport;
     } else if #[cfg(target_os = "windows")] {
         mod windows;
+        mod sockaddr_tools;
         use windows::PlatformSupportWindows as PlatformSupport;
     } else if #[cfg(any(target_os = "macos", target_os = "ios"))] {
         mod apple;
@@ -84,7 +85,7 @@ pub struct AddressFlags {
     pub is_dynamic: bool,
     // ipv6 flags
     pub is_temporary: bool,
-    pub is_deprecated: bool,
+    pub is_preferred: bool,
 }
 
 #[derive(PartialEq, Eq, Clone, Debug)]
@@ -116,8 +117,8 @@ impl Ord for InterfaceAddress {
                 }
             }
             (IfAddr::V6(a), IfAddr::V6(b)) => {
-                // non-deprecated addresses are better
-                let ret = (!self.flags.is_deprecated).cmp(&!other.flags.is_deprecated);
+                // preferred addresses are better
+                let ret = self.flags.is_preferred.cmp(&other.flags.is_preferred);
                 if ret != Ordering::Equal {
                     return ret;
                 }
@@ -187,8 +188,8 @@ impl InterfaceAddress {
     pub fn is_dynamic(&self) -> bool {
         self.flags.is_dynamic
     }
-    pub fn is_deprecated(&self) -> bool {
-        self.flags.is_deprecated
+    pub fn is_preferred(&self) -> bool {
+        self.flags.is_preferred
     }
 }
 

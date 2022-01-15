@@ -47,7 +47,7 @@ fn flags_to_address_flags(flags: u32) -> AddressFlags {
     AddressFlags {
         is_temporary: (flags & IFA_F_TEMPORARY) != 0,
         is_dynamic: (flags & IFA_F_PERMANENT) == 0,
-        is_deprecated: (flags & IFA_F_DEPRECATED) != 0,
+        is_preferred: (flags & (IFA_F_TENTATIVE | IFA_F_DADFAILED | IFA_F_DEPRECATED | IFA_F_OPTIMISTIC)  ) == 0,
     }
 }
 

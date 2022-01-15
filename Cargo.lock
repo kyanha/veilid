@@ -3874,6 +3874,7 @@ dependencies = [
  "webpki 0.22.0",
  "webpki-roots 0.22.2",
  "wee_alloc",
+ "winapi",
  "ws_stream_wasm",
  "x25519-dalek-ng",
 ]

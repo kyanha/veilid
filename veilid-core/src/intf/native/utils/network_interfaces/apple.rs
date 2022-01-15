@@ -207,7 +207,6 @@ pub struct IfAddrs {
 }
 
 impl IfAddrs {
-    #[allow(unsafe_code, clippy::new_ret_no_self)]
     pub fn new() -> io::Result<Self> {
         let mut ifaddrs = mem::MaybeUninit::uninit();
 
@@ -393,7 +392,7 @@ impl PlatformSupportApple {
         Ok(AddressFlags {
             is_temporary: (flags & IN6_IFF_TEMPORARY) != 0,
             is_dynamic: (flags & IN6_IFF_DYNAMIC) != 0,
-            is_deprecated: (flags & IN6_IFF_DEPRECATED) != 0,
+            is_preferred: (flags & (IN6_IFF_TENTATIVE | IN6_IFF_DUPLICATED | IN6_IFF_DETACHED | IN6_IFF_DEPRECATED)  ) == 0,
         })
     }
 

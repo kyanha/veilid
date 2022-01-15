@@ -122,6 +122,10 @@ ifstructs = "^0"
 [target.'cfg(any(target_os = "android",target_os = "linux"))'.dependencies]
 rtnetlink = { version = "^0", default-features = false, features = [ "smol_socket" ] }
 
+# Dependencies for Windows
+[target.'cfg(target_os = "windows")'.dependencies]
+winapi = { version = "^0", features = [ "iptypes", "iphlpapi" ] }
+
 # Dependencies for MacOS and iOS
 #[target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]
 # XXX
