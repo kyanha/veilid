@@ -18,25 +18,25 @@ fi
 
 # ensure flutter is installed
 if command -v flutter &> /dev/null; then 
-    echo '[X] flutter is available in the path'
+    echo '[X] Flutter is available in the path'
 else
-    echo 'flutter is not available in the path, install flutter from here: https://docs.flutter.dev/get-started/install'
+    echo 'Flutter is not available in the path, install Flutter from here: https://docs.flutter.dev/get-started/install'
     exit 1
 fi
 
 # ensure dart is installed
 if command -v dart &> /dev/null; then 
-    echo '[X] dart is available in the path'
+    echo '[X] Dart is available in the path'
 else
-    echo 'dart is not available in the path, check your environment variables and that Flutter was installed correctly'
+    echo 'Dart is not available in the path, check your environment variables and that Flutter is installed correctly'
     exit 1
 fi
 
 # ensure cargo is installed
 if command -v cargo &> /dev/null; then 
-    echo '[X] cargo is available in the path'
+    echo '[X] Cargo is available in the path'
 else
-    echo 'cargo is not available in the path, ensure Rust is installed correctly'
+    echo 'Cargo is not available in the path, ensure Rust is installed correctly'
     exit 1
 fi
 
@@ -49,11 +49,21 @@ dart pub global activate ffigen
 # install flutter_rust_bridge_codegen
 cargo install flutter_rust_bridge_codegen
 
-# Ensure packages are installed
+# platform specific stuff
 if [ "$OS" == "linux" ]; then
+    # ensure packages are installed
     sudo apt-get install libclang-dev
+    
+    # ensure platforms are enabled in flutter
+    flutter config --enable-linux-desktop --enable-android
+
 elif [ "$OS" == "macos" ]; then
+    # ensure packages are installed
     brew install llvm
+
+    # ensure platforms are enabled in flutter
+    flutter config --enable-macos-desktop --enable-ios --no-enable-android
 fi
 
-
+# run flutter doctor
+flutter doctor -v
