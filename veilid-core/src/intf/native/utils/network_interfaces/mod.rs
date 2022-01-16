@@ -96,6 +96,7 @@ pub struct InterfaceAddress {
 
 use core::cmp::Ordering;
 
+// less is less preferable, greater is more preferable
 impl Ord for InterfaceAddress {
     fn cmp(&self, other: &Self) -> Ordering {
         match (&self.if_addr, &other.if_addr) {
@@ -155,8 +156,30 @@ impl Ord for InterfaceAddress {
                     return ret;
                 }
             }
-            (IfAddr::V4(_), IfAddr::V6(_)) => return Ordering::Less,
-            (IfAddr::V6(_), IfAddr::V4(_)) => return Ordering::Greater,
+            (IfAddr::V4(a), IfAddr::V6(b)) => {
+                // If the IPv6 address is preferred and not temporary, compare if it is global scope
+                if other.flags.is_preferred && !other.flags.is_temporary {
+                    let ret = ipv4addr_is_global(&a.ip).cmp(&ipv6addr_is_global(&b.ip));
+                    if ret != Ordering::Equal {
+                        return ret;
+                    }
+                }
+
+                // Default, prefer IPv4 because many IPv6 addresses are not actually routed
+                return Ordering::Greater;
+            }
+            (IfAddr::V6(a), IfAddr::V4(b)) => {
+                // If the IPv6 address is preferred and not temporary, compare if it is global scope
+                if self.flags.is_preferred && !self.flags.is_temporary {
+                    let ret = ipv6addr_is_global(&a.ip).cmp(&ipv4addr_is_global(&b.ip));
+                    if ret != Ordering::Equal {
+                        return ret;
+                    }
+                }
+
+                // Default, prefer IPv4 because many IPv6 addresses are not actually routed
+                return Ordering::Less;
+            }
         }
         // stable sort
         let ret = self.if_addr.cmp(&other.if_addr);
@@ -192,6 +215,14 @@ impl InterfaceAddress {
         self.flags.is_preferred
     }
 }
+
+// #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+// enum NetworkInterfaceType {
+//     Mobile,     // Least preferable, usually metered and slow
+//     Unknown,    // Everything else if we can't detect the type
+//     Wireless,   // Wifi is usually free or cheap and medium speed
+//     Wired,      // Wired is usually free or cheap and high speed
+// }
 
 #[derive(PartialEq, Eq, Clone)]
 pub struct NetworkInterface {
@@ -239,36 +270,24 @@ impl NetworkInterface {
         self.flags.has_default_route
     }
 
-    pub fn primary_ipv4(&self) -> Option<Ipv4Addr> {
+    pub fn primary_ipv4(&self) -> Option<InterfaceAddress> {
         let mut ipv4addrs: Vec<&InterfaceAddress> = self
             .addrs
             .iter()
             .filter(|a| matches!(a.if_addr(), IfAddr::V4(_)))
             .collect();
         ipv4addrs.sort();
-        ipv4addrs
-            .last()
-            .map(|x| match x.if_addr() {
-                IfAddr::V4(v4) => Some(v4.ip),
-                _ => None,
-            })
-            .flatten()
+        ipv4addrs.last().cloned().cloned()
     }
 
-    pub fn primary_ipv6(&self) -> Option<Ipv6Addr> {
+    pub fn primary_ipv6(&self) -> Option<InterfaceAddress> {
         let mut ipv6addrs: Vec<&InterfaceAddress> = self
             .addrs
             .iter()
             .filter(|a| matches!(a.if_addr(), IfAddr::V6(_)))
             .collect();
         ipv6addrs.sort();
-        ipv6addrs
-            .last()
-            .map(|x| match x.if_addr() {
-                IfAddr::V6(v6) => Some(v6.ip),
-                _ => None,
-            })
-            .flatten()
+        ipv6addrs.last().cloned().cloned()
     }
 }
 
@@ -286,11 +305,7 @@ impl fmt::Debug for NetworkInterfaces {
             .finish()?;
         if f.alternate() {
             writeln!(f)?;
-            writeln!(
-                f,
-                "// default_route_addresses: {:?}",
-                self.default_route_addresses()
-            )?;
+            writeln!(f, "// best_addresses: {:?}", self.best_addresses())?;
         }
         Ok(())
     }
@@ -337,18 +352,25 @@ impl NetworkInterfaces {
         self.interfaces.iter()
     }
 
-    pub fn default_route_addresses(&self) -> Vec<IpAddr> {
-        let mut out = Vec::new();
+    pub fn best_addresses(&self) -> Vec<IpAddr> {
+        // Reduce interfaces to their best routable ip addresses
+        let mut intf_addrs = Vec::new();
         for intf in self.interfaces.values() {
-            if intf.is_running() && intf.has_default_route() && !intf.is_loopback() {
-                if let Some(pipv4) = intf.primary_ipv4() {
-                    out.push(IpAddr::V4(pipv4));
-                }
-                if let Some(pipv6) = intf.primary_ipv6() {
-                    out.push(IpAddr::V6(pipv6));
-                }
+            if !intf.is_running() || !intf.has_default_route() || intf.is_loopback() {
+                continue;
+            }
+            if let Some(pipv4) = intf.primary_ipv4() {
+                intf_addrs.push(pipv4);
+            }
+            if let Some(pipv6) = intf.primary_ipv6() {
+                intf_addrs.push(pipv6);
             }
         }
-        out
+
+        // Sort one more time to get the best interface addresses overall
+        intf_addrs.sort();
+
+        // Now export just the addresses
+        intf_addrs.iter().map(|x| x.if_addr().ip()).collect()
     }
 }

@@ -223,7 +223,7 @@ impl Network {
         } else {
             inner
                 .interfaces
-                .default_route_addresses()
+                .best_addresses()
                 .iter()
                 .map(|a| SocketAddr::new(*a, from.port()))
                 .collect()
