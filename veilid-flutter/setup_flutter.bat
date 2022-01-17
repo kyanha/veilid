@@ -47,6 +47,9 @@ call dart pub global activate ffigen
 rem install flutter_rust_bridge_codegen
 cargo install flutter_rust_bridge_codegen
 
+rem install just
+cargo install just
+
 rem ensure packages are installed
 winget install -e --id LLVM.LLVM --accept-package-agreements --accept-source-agreements
 

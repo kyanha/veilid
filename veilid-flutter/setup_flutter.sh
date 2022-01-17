@@ -49,6 +49,9 @@ dart pub global activate ffigen
 # install flutter_rust_bridge_codegen
 cargo install flutter_rust_bridge_codegen
 
+# install just
+cargo install just
+
 # platform specific stuff
 if [ "$OS" == "linux" ]; then
     # ensure packages are installed

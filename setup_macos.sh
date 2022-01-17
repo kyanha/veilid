@@ -34,5 +34,9 @@ fi
 xcode-select --install
 
 # Ensure packages are installed
-brew install capnp
+if [ "$BREW_USER" == "" ]; then
+    BREW_USER=`ls -lad /opt/homebrew/. | cut -d\  -f4`
+    echo "Must sudo to homebrew user \"$BREW_USER\" to install capnp package:"
+fi
+sudo -H -u $BREW_USER brew install capnp
 
