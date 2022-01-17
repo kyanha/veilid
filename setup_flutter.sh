@@ -59,7 +59,11 @@ if [ "$OS" == "linux" ]; then
 
 elif [ "$OS" == "macos" ]; then
     # ensure packages are installed
-    brew install llvm
+    if [ "$BREW_USER" == "" ]; then
+        BREW_USER=`ls -lad /opt/homebrew/. | cut -d\  -f4`
+        echo "Must sudo to homebrew user \"$BREW_USER\":"
+    fi
+    sudo -H -u $BREW_USER brew install llvm
     sudo gem install cocoapods
     
     # ensure platforms are enabled in flutter
