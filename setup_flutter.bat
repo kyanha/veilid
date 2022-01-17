@@ -51,6 +51,10 @@ rem ensure packages are installed
 winget install -e --id LLVM.LLVM --accept-package-agreements --accept-source-agreements
 
 rem ensure windows is enabled in flutter
-flutter config --enable-windows-desktop --no-enable-android
+call flutter config --enable-windows-desktop --no-enable-android
 
-flutter doctor -v
+rem turn off analytics
+call flutter config --no-analytics
+call dart --disable-analytics
+
+call flutter doctor -v

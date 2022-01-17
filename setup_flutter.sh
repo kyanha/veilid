@@ -60,10 +60,15 @@ if [ "$OS" == "linux" ]; then
 elif [ "$OS" == "macos" ]; then
     # ensure packages are installed
     brew install llvm
-
+    sudo gem install cocoapods
+    
     # ensure platforms are enabled in flutter
     flutter config --enable-macos-desktop --enable-ios --no-enable-android
 fi
+
+# turn off analytics
+flutter config --no-analytics
+dart --disable-analytics
 
 # run flutter doctor
 flutter doctor -v

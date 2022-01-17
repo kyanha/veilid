@@ -1,7 +1,7 @@
 #!/bin/bash
 SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 
-if [ ! "$(grep -Ei 'debian|buntu|mint' /etc/*release)" ]; then
+if [ ! "$(grep -qEi 'debian|buntu|mint' /etc/*release 2>/dev/null)" ]; then
     echo Not a supported Linux
     exit 1
 fi
