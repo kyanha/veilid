@@ -52,6 +52,7 @@ cargo install flutter_rust_bridge_codegen
 # platform specific stuff
 if [ "$OS" == "linux" ]; then
     # ensure packages are installed
+    echo "Must sudo to root to install LLVM package:"
     sudo apt-get install libclang-dev
     
     # ensure platforms are enabled in flutter
@@ -61,9 +62,10 @@ elif [ "$OS" == "macos" ]; then
     # ensure packages are installed
     if [ "$BREW_USER" == "" ]; then
         BREW_USER=`ls -lad /opt/homebrew/. | cut -d\  -f4`
-        echo "Must sudo to homebrew user \"$BREW_USER\":"
+        echo "Must sudo to homebrew user \"$BREW_USER\" to install LLVM package:"
     fi
     sudo -H -u $BREW_USER brew install llvm
+    echo "Must sudo to root to install CocoaPods gem:"
     sudo gem install cocoapods
     
     # ensure platforms are enabled in flutter
