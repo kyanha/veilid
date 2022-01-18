@@ -25,7 +25,7 @@ pub async fn test_attach_detach() {
     api.attach().await.unwrap();
     intf::sleep(5000).await;
     api.detach().await.unwrap();
-    api.wait_for_state(VeilidState::Attachment(AttachmentState::Detached))
+    api.wait_for_update(VeilidUpdate::Attachment(AttachmentState::Detached), None)
         .await
         .unwrap();
     api.shutdown().await;

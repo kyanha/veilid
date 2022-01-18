@@ -8,10 +8,10 @@ static LOREM_IPSUM:&[u8] = b"Lorem ipsum dolor sit amet, consectetur adipiscing 
 
 fn setup_veilid_core() -> VeilidCoreSetup {
     VeilidCoreSetup {
-        state_change_callback: Arc::new(
-            move |change: VeilidStateChange| -> SystemPinBoxFuture<()> {
+        update_callback: Arc::new(
+            move |veilid_update: VeilidUpdate| -> SystemPinBoxFuture<()> {
                 Box::pin(async move {
-                    trace!("state_change_callback: {:?}", change);
+                    trace!("update_callback: {:?}", veilid_update);
                 })
             },
         ),

@@ -273,7 +273,7 @@ debug               - send a debugging command to the Veilid server
     // called by client_api_connection
     // calls into ui
     ////////////////////////////////////////////
-    pub fn set_attachment_state(&mut self, state: AttachmentState) {
+    pub fn update_attachment(&mut self, state: AttachmentState) {
         self.inner_mut().ui.set_attachment_state(state);
     }
 

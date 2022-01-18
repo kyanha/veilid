@@ -29,18 +29,18 @@ pub async fn run_veilid_server(settings: Settings, logs: VeilidLogs) -> Result<(
 
     // Create client api state change pipe
     let (sender, receiver): (
-        Sender<veilid_core::VeilidStateChange>,
-        Receiver<veilid_core::VeilidStateChange>,
+        Sender<veilid_core::VeilidUpdate>,
+        Receiver<veilid_core::VeilidUpdate>,
     ) = bounded(1);
 
     // Create VeilidCore setup
     let vcs = veilid_core::VeilidCoreSetup {
-        state_change_callback: Arc::new(
-            move |change: veilid_core::VeilidStateChange| -> veilid_core::SystemPinBoxFuture<()> {
+        update_callback: Arc::new(
+            move |change: veilid_core::VeilidUpdate| -> veilid_core::SystemPinBoxFuture<()> {
                 let sender = sender.clone();
                 Box::pin(async move {
                     if sender.send(change).await.is_err() {
-                        error!("error sending state change callback");
+                        error!("error sending veilid update callback");
                     }
                 })
             },
@@ -70,10 +70,10 @@ pub async fn run_veilid_server(settings: Settings, logs: VeilidLogs) -> Result<(
     drop(settingsr);
 
     // Handle state changes on main thread for capnproto rpc
-    let state_change_receiver_jh = capi.clone().map(|capi| {
+    let update_receiver_jh = capi.clone().map(|capi| {
         async_std::task::spawn_local(async move {
             while let Ok(change) = receiver.recv().await {
-                capi.clone().handle_state_change(change);
+                capi.clone().handle_update(change);
             }
         })
     });
@@ -147,9 +147,9 @@ pub async fn run_veilid_server(settings: Settings, logs: VeilidLogs) -> Result<(
         client_log_channel_closer.close();
     }
 
-    // Wait for state change receiver to exit
-    if let Some(state_change_receiver_jh) = state_change_receiver_jh {
-        state_change_receiver_jh.await;
+    // Wait for update receiver to exit
+    if let Some(update_receiver_jh) = update_receiver_jh {
+        update_receiver_jh.await;
     }
 
     // Wait for client api log receiver to exit

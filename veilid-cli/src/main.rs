@@ -1,11 +1,11 @@
 #![deny(clippy::all)]
 #![deny(unused_must_use)]
 
-use anyhow::*;
+use veilid_core::xx::*;
+
 use async_std::prelude::*;
 use clap::{App, Arg, ColorChoice};
 use flexi_logger::*;
-use log::*;
 use std::ffi::OsStr;
 use std::net::ToSocketAddrs;
 
@@ -19,7 +19,7 @@ pub mod veilid_client_capnp {
     include!(concat!(env!("OUT_DIR"), "/proto/veilid_client_capnp.rs"));
 }
 
-fn parse_command_line(default_config_path: &OsStr) -> Result<clap::ArgMatches, anyhow::Error> {
+fn parse_command_line(default_config_path: &OsStr) -> Result<clap::ArgMatches, String> {
     let matches = App::new("veilid-cli")
         .version("0.1")
         .color(ColorChoice::Auto)
@@ -59,7 +59,7 @@ fn parse_command_line(default_config_path: &OsStr) -> Result<clap::ArgMatches, a
 }
 
 #[async_std::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), String> {
     // Get command line options
     let default_config_path = settings::Settings::get_default_config_path();
     let matches = parse_command_line(default_config_path.as_os_str())?;
@@ -73,7 +73,7 @@ async fn main() -> Result<()> {
         matches.occurrences_of("config-file") == 0,
         matches.value_of_os("config-file").unwrap(),
     )
-    .map_err(Box::new)?;
+    .map_err(map_to_string)?;
 
     // Set config from command line
     if matches.occurrences_of("debug") != 0 {
@@ -104,7 +104,8 @@ async fn main() -> Result<()> {
         if settings.logging.terminal.enabled {
             let flv = sivui.cursive_flexi_logger();
             if settings.logging.file.enabled {
-                std::fs::create_dir_all(settings.logging.file.directory.clone())?;
+                std::fs::create_dir_all(settings.logging.file.directory.clone())
+                    .map_err(map_to_string)?;
                 logger
                     .log_target(LogTarget::FileAndWriter(flv))
                     .suppress_timestamp()
@@ -121,7 +122,8 @@ async fn main() -> Result<()> {
                     .expect("failed to initialize logger!");
             }
         } else if settings.logging.file.enabled {
-            std::fs::create_dir_all(settings.logging.file.directory.clone())?;
+            std::fs::create_dir_all(settings.logging.file.directory.clone())
+                .map_err(map_to_string)?;
             logger
                 .log_target(LogTarget::File)
                 .suppress_timestamp()
@@ -135,7 +137,7 @@ async fn main() -> Result<()> {
     if let Some(address_arg) = matches.value_of("address") {
         server_addrs = address_arg
             .to_socket_addrs()
-            .context(format!("Invalid server address '{}'", address_arg))?
+            .map_err(|e| format!("Invalid server address '{}'", e))?
             .collect()
     } else {
         server_addrs = settings.address.addrs.clone();

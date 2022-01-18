@@ -367,7 +367,9 @@ impl AttachmentManager {
         attachment_machine.state()
     }
 
-    pub async fn wait_for_state(&self, state: AttachmentState) {
+    pub async fn wait_for_state(&self, state: AttachmentState, timeout_ms: Option<u32>) -> bool {
+        let start_time = intf::get_timestamp();
+
         loop {
             let (current_state, eventual) = self
                 .inner
@@ -377,9 +379,28 @@ impl AttachmentManager {
             if current_state == state {
                 break;
             }
-            if eventual.await == state {
-                break;
+            if let Some(timeout_ms) = timeout_ms {
+                let timeout_time = start_time + (timeout_ms as u64 * 1000);
+                let cur_time = intf::get_timestamp();
+                if timeout_time > cur_time {
+                    let timeout_dur_ms = ((timeout_time - cur_time) / 1000) as u32;
+
+                    if match intf::timeout(timeout_dur_ms, eventual).await {
+                        Ok(v) => v,
+                        Err(_) => return false,
+                    } == state
+                    {
+                        return true;
+                    }
+                } else {
+                    return false;
+                }
+            } else {
+                if eventual.await == state {
+                    break;
+                }
             }
         }
+        true
     }
 }

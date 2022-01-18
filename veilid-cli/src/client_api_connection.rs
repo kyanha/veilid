@@ -1,11 +1,11 @@
 use crate::command_processor::*;
 use crate::veilid_client_capnp::*;
-use anyhow::*;
+use veilid_core::xx::*;
+
 use async_std::prelude::*;
 use capnp::capability::Promise;
 use capnp_rpc::{pry, rpc_twoparty_capnp, twoparty, Disconnector, RpcSystem};
 use futures::AsyncReadExt;
-use log::*;
 use std::cell::RefCell;
 use std::net::SocketAddr;
 use std::rc::Rc;
@@ -21,24 +21,29 @@ impl VeilidClientImpl {
 }
 
 impl veilid_client::Server for VeilidClientImpl {
-    fn state_changed(
+    fn update(
         &mut self,
-        params: veilid_client::StateChangedParams,
-        _results: veilid_client::StateChangedResults,
+        params: veilid_client::UpdateParams,
+        _results: veilid_client::UpdateResults,
     ) -> Promise<(), ::capnp::Error> {
-        let changed = pry!(pry!(params.get()).get_changed());
+        let veilid_update = pry!(pry!(params.get()).get_veilid_update());
 
-        if changed.has_attachment() {
-            let attachment = pry!(changed.get_attachment());
-            let old_state = pry!(attachment.get_old_state());
-            let new_state = pry!(attachment.get_new_state());
+        let which = match veilid_update.which() {
+            Ok(v) => v,
+            Err(e) => {
+                panic!("(missing update kind in schema: {:?})", e);
+            }
+        };
+        match which {
+            veilid_update::Attachment(Ok(attachment)) => {
+                let state = pry!(attachment.get_state());
 
-            trace!(
-                "AttachmentStateChange: old_state={} new_state={}",
-                old_state as u16,
-                new_state as u16
-            );
-            self.comproc.set_attachment_state(new_state);
+                trace!("Attachment: {}", state as u16);
+                self.comproc.update_attachment(state);
+            }
+            _ => {
+                panic!("shouldn't get this")
+            }
         }
 
         Promise::ok(())
@@ -83,13 +88,15 @@ impl ClientApiConnection {
         }
     }
 
-    async fn handle_connection(&mut self) -> Result<()> {
+    async fn handle_connection(&mut self) -> Result<(), String> {
         trace!("ClientApiConnection::handle_connection");
         let connect_addr = self.inner.borrow().connect_addr.unwrap();
         // Connect the TCP socket
-        let stream = async_std::net::TcpStream::connect(connect_addr).await?;
+        let stream = async_std::net::TcpStream::connect(connect_addr)
+            .await
+            .map_err(map_to_string)?;
         // If it succeed, disable nagle algorithm
-        stream.set_nodelay(true)?;
+        stream.set_nodelay(true).map_err(map_to_string)?;
 
         // Create the VAT network
         let (reader, writer) = stream.split();
@@ -134,7 +141,10 @@ impl ClientApiConnection {
         }
 
         // Don't drop the registration
-        rpc_system.try_join(request.send().promise).await?;
+        rpc_system
+            .try_join(request.send().promise)
+            .await
+            .map_err(map_to_string)?;
 
         // Drop the server and disconnector too (if we still have it)
         let mut inner = self.inner.borrow_mut();
@@ -145,80 +155,81 @@ impl ClientApiConnection {
 
         if !disconnect_requested {
             // Connection lost
-            Err(anyhow!("Connection lost"))
+            Err("Connection lost".to_owned())
         } else {
             // Connection finished
             Ok(())
         }
     }
 
-    pub async fn server_attach(&mut self) -> Result<()> {
+    pub async fn server_attach(&mut self) -> Result<(), String> {
         trace!("ClientApiConnection::server_attach");
         let server = {
             let inner = self.inner.borrow();
             inner
                 .server
                 .as_ref()
-                .ok_or(anyhow!("Not connected, ignoring attach request"))?
+                .ok_or("Not connected, ignoring attach request".to_owned())?
                 .clone()
         };
         let request = server.borrow().attach_request();
-        let response = request.send().promise.await?;
-        response.get().map(drop).map_err(|e| anyhow!(e))
+        let response = request.send().promise.await.map_err(map_to_string)?;
+        response.get().map(drop).map_err(map_to_string)
     }
 
-    pub async fn server_detach(&mut self) -> Result<()> {
+    pub async fn server_detach(&mut self) -> Result<(), String> {
         trace!("ClientApiConnection::server_detach");
         let server = {
             let inner = self.inner.borrow();
             inner
                 .server
                 .as_ref()
-                .ok_or(anyhow!("Not connected, ignoring detach request"))?
+                .ok_or("Not connected, ignoring detach request".to_owned())?
                 .clone()
         };
         let request = server.borrow().detach_request();
-        let response = request.send().promise.await?;
-        response.get().map(drop).map_err(|e| anyhow!(e))
+        let response = request.send().promise.await.map_err(map_to_string)?;
+        response.get().map(drop).map_err(map_to_string)
     }
 
-    pub async fn server_shutdown(&mut self) -> Result<()> {
+    pub async fn server_shutdown(&mut self) -> Result<(), String> {
         trace!("ClientApiConnection::server_shutdown");
         let server = {
             let inner = self.inner.borrow();
             inner
                 .server
                 .as_ref()
-                .ok_or(anyhow!("Not connected, ignoring attach request"))?
+                .ok_or("Not connected, ignoring attach request".to_owned())?
                 .clone()
         };
         let request = server.borrow().shutdown_request();
-        let response = request.send().promise.await?;
-        response.get().map(drop).map_err(|e| anyhow!(e))
+        let response = request.send().promise.await.map_err(map_to_string)?;
+        response.get().map(drop).map_err(map_to_string)
     }
 
-    pub async fn server_debug(&mut self, what: String) -> Result<String> {
+    pub async fn server_debug(&mut self, what: String) -> Result<String, String> {
         trace!("ClientApiConnection::server_debug");
         let server = {
             let inner = self.inner.borrow();
             inner
                 .server
                 .as_ref()
-                .ok_or(anyhow!("Not connected, ignoring attach request"))?
+                .ok_or("Not connected, ignoring attach request".to_owned())?
                 .clone()
         };
         let mut request = server.borrow().debug_request();
         request.get().set_what(&what);
-        let response = request.send().promise.await?;
+        let response = request.send().promise.await.map_err(map_to_string)?;
         response
-            .get()?
+            .get()
+            .map_err(map_to_string)?
             .get_output()
             .map(|o| o.to_owned())
-            .map_err(|e| anyhow!(e))
+            .map_err(map_to_string)
     }
 
     // Start Client API connection
-    pub async fn connect(&mut self, connect_addr: SocketAddr) -> Result<()> {
+    pub async fn connect(&mut self, connect_addr: SocketAddr) -> Result<(), String> {
         trace!("ClientApiConnection::connect");
         // Save the address to connect to
         self.inner.borrow_mut().connect_addr = Some(connect_addr);

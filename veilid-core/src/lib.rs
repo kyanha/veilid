@@ -27,7 +27,7 @@ pub mod xx;
 pub use self::attachment_manager::AttachmentState;
 pub use self::veilid_api::*;
 pub use self::veilid_config::*;
-pub use self::veilid_core::{VeilidCore, VeilidCoreSetup, VeilidState, VeilidStateChange};
+pub use self::veilid_core::{VeilidCore, VeilidCoreSetup};
 
 pub mod veilid_capnp {
     include!(concat!(env!("OUT_DIR"), "/proto/veilid_capnp.rs"));

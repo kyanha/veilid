@@ -17,6 +17,40 @@ use veilid_core::xx::Eventual;
 #[fail(display = "Client API error: {}", _0)]
 pub struct ClientAPIError(String);
 
+fn convert_attachment_state(state: &veilid_core::AttachmentState) -> AttachmentState {
+    match state {
+        veilid_core::AttachmentState::Detached => AttachmentState::Detached,
+        veilid_core::AttachmentState::Attaching => AttachmentState::Attaching,
+        veilid_core::AttachmentState::AttachedWeak => AttachmentState::AttachedWeak,
+        veilid_core::AttachmentState::AttachedGood => AttachmentState::AttachedGood,
+        veilid_core::AttachmentState::AttachedStrong => AttachmentState::AttachedStrong,
+        veilid_core::AttachmentState::FullyAttached => AttachmentState::FullyAttached,
+        veilid_core::AttachmentState::OverAttached => AttachmentState::OverAttached,
+        veilid_core::AttachmentState::Detaching => AttachmentState::Detaching,
+    }
+}
+
+fn convert_update(
+    update: &veilid_core::VeilidUpdate,
+    rpc_update: crate::veilid_client_capnp::veilid_update::Builder,
+) {
+    match update {
+        veilid_core::VeilidUpdate::Attachment(state) => {
+            let mut att = rpc_update.init_attachment();
+            att.set_state(convert_attachment_state(state));
+        }
+    }
+}
+
+fn convert_state(
+    state: &veilid_core::VeilidState,
+    rpc_state: crate::veilid_client_capnp::veilid_state::Builder,
+) {
+    rpc_state
+        .init_attachment()
+        .set_state(convert_attachment_state(&state.attachment));
+}
+
 // --- interface Registration ---------------------------------
 
 struct RegistrationHandle {
@@ -104,13 +138,25 @@ impl veilid_server::Server for VeilidServerImpl {
 
         self.next_id += 1;
 
-        // Send state update
+        Promise::ok(())
+    }
+
+    fn debug(
+        &mut self,
+        params: veilid_server::DebugParams,
+        mut results: veilid_server::DebugResults,
+    ) -> Promise<(), ::capnp::Error> {
+        trace!("VeilidServerImpl::debug");
         let veilid_api = self.veilid_api.clone();
+        let what = pry!(pry!(params.get()).get_what()).to_owned();
+
         Promise::from_future(async move {
-            veilid_api
-                .send_state_update()
+            let output = veilid_api
+                .debug(what)
                 .await
-                .map_err(|e| ::capnp::Error::failed(format!("{:?}", e)))
+                .map_err(|e| ::capnp::Error::failed(format!("{:?}", e)))?;
+            results.get().set_output(output.as_str());
+            Ok(())
         })
     }
 
@@ -128,6 +174,7 @@ impl veilid_server::Server for VeilidServerImpl {
                 .map_err(|e| ::capnp::Error::failed(format!("{:?}", e)))
         })
     }
+
     fn detach(
         &mut self,
         _params: veilid_server::DetachParams,
@@ -142,6 +189,7 @@ impl veilid_server::Server for VeilidServerImpl {
                 .map_err(|e| ::capnp::Error::failed(format!("{:?}", e)))
         })
     }
+
     fn shutdown(
         &mut self,
         _params: veilid_server::ShutdownParams,
@@ -161,21 +209,21 @@ impl veilid_server::Server for VeilidServerImpl {
         Promise::ok(())
     }
 
-    fn debug(
+    fn get_state(
         &mut self,
-        params: veilid_server::DebugParams,
-        mut results: veilid_server::DebugResults,
+        _params: veilid_server::GetStateParams,
+        mut results: veilid_server::GetStateResults,
     ) -> Promise<(), ::capnp::Error> {
-        trace!("VeilidServerImpl::debug");
+        trace!("VeilidServerImpl::get_state");
         let veilid_api = self.veilid_api.clone();
-        let what = pry!(pry!(params.get()).get_what()).to_owned();
-
         Promise::from_future(async move {
-            let output = veilid_api
-                .debug(what)
+            let state = veilid_api
+                .get_state()
                 .await
                 .map_err(|e| ::capnp::Error::failed(format!("{:?}", e)))?;
-            results.get().set_output(output.as_str());
+
+            let rpc_state = results.get().init_state();
+            convert_state(&state, rpc_state);
             Ok(())
         })
     }
@@ -260,35 +308,6 @@ impl ClientApi {
         incoming_loop.await
     }
 
-    fn convert_attachment_state(state: &veilid_core::AttachmentState) -> AttachmentState {
-        match state {
-            veilid_core::AttachmentState::Detached => AttachmentState::Detached,
-            veilid_core::AttachmentState::Attaching => AttachmentState::Attaching,
-            veilid_core::AttachmentState::AttachedWeak => AttachmentState::AttachedWeak,
-            veilid_core::AttachmentState::AttachedGood => AttachmentState::AttachedGood,
-            veilid_core::AttachmentState::AttachedStrong => AttachmentState::AttachedStrong,
-            veilid_core::AttachmentState::FullyAttached => AttachmentState::FullyAttached,
-            veilid_core::AttachmentState::OverAttached => AttachmentState::OverAttached,
-            veilid_core::AttachmentState::Detaching => AttachmentState::Detaching,
-        }
-    }
-
-    fn convert_state_changed(
-        changed: &veilid_core::VeilidStateChange,
-        rpc_changed: crate::veilid_client_capnp::veilid_state_change::Builder,
-    ) {
-        match changed {
-            veilid_core::VeilidStateChange::Attachment {
-                old_state,
-                new_state,
-            } => {
-                let mut att = rpc_changed.init_attachment();
-                att.set_old_state(ClientApi::convert_attachment_state(old_state));
-                att.set_new_state(ClientApi::convert_attachment_state(new_state));
-            }
-        }
-    }
-
     fn send_request_to_all_clients<F, T>(self: Rc<Self>, request: F)
     where
         F: Fn(u64, &mut RegistrationHandle) -> ::capnp::capability::RemotePromise<T>,
@@ -326,11 +345,11 @@ impl ClientApi {
         }
     }
 
-    pub fn handle_state_change(self: Rc<Self>, changed: veilid_core::VeilidStateChange) {
+    pub fn handle_update(self: Rc<Self>, veilid_update: veilid_core::VeilidUpdate) {
         self.send_request_to_all_clients(|_id, registration| {
-            let mut request = registration.client.state_changed_request();
-            let rpc_changed = request.get().init_changed();
-            ClientApi::convert_state_changed(&changed, rpc_changed);
+            let mut request = registration.client.update_request();
+            let rpc_veilid_update = request.get().init_veilid_update();
+            convert_update(&veilid_update, rpc_veilid_update);
             request.send()
         });
     }

@@ -5,7 +5,7 @@ pub use debug::*;
 
 pub use crate::rpc_processor::InfoAnswer;
 use crate::*;
-use attachment_manager::AttachmentManager;
+use attachment_manager::*;
 use core::fmt;
 use network_manager::NetworkManager;
 use routing_table::*;
@@ -106,6 +106,18 @@ macro_rules! parse_error {
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 
+#[derive(Debug)]
+pub enum VeilidUpdate {
+    Attachment(AttachmentState),
+}
+
+#[derive(Debug)]
+pub struct VeilidState {
+    pub attachment: AttachmentState,
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////
+///
 #[derive(Clone, Debug, Default, PartialOrd, PartialEq, Eq, Ord)]
 pub struct NodeId {
     pub key: DHTKey,
@@ -1100,12 +1112,13 @@ impl VeilidAPI {
     ////////////////////////////////////////////////////////////////
     // Attach/Detach
 
-    // issue state changed updates for updating clients
-    pub async fn send_state_update(&self) -> Result<(), VeilidAPIError> {
-        trace!("VeilidCore::send_state_update");
+    // get a full copy of the current state
+    pub async fn get_state(&self) -> Result<VeilidState, VeilidAPIError> {
+        trace!("VeilidCore::get_state");
         let attachment_manager = self.attachment_manager()?;
-        attachment_manager.send_state_update().await;
-        Ok(())
+        Ok(VeilidState {
+            attachment: attachment_manager.get_state(),
+        })
     }
 
     // connect to the network
@@ -1124,12 +1137,17 @@ impl VeilidAPI {
         Ok(())
     }
 
-    // wait for state change
-    // xxx: should have optional timeout
-    pub async fn wait_for_state(&self, state: VeilidState) -> Result<(), VeilidAPIError> {
-        match state {
-            VeilidState::Attachment(cs) => {
-                self.attachment_manager()?.wait_for_state(cs).await;
+    // wait for a matching update
+    pub async fn wait_for_update(
+        &self,
+        update: VeilidUpdate,
+        timeout_ms: Option<u32>,
+    ) -> Result<(), VeilidAPIError> {
+        match update {
+            VeilidUpdate::Attachment(cs) => {
+                self.attachment_manager()?
+                    .wait_for_state(cs, timeout_ms)
+                    .await;
             }
         }
         Ok(())

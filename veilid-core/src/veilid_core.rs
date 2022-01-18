@@ -7,27 +7,14 @@ use crate::xx::*;
 
 cfg_if! {
     if #[cfg(target_arch = "wasm32")] {
-        pub type StateChangeCallback = Arc<dyn Fn(VeilidStateChange) -> SystemPinBoxFuture<()>>;
+        pub type UpdateCallback = Arc<dyn Fn(VeilidUpdate) -> SystemPinBoxFuture<()>>;
     } else {
-        pub type StateChangeCallback = Arc<dyn Fn(VeilidStateChange) -> SystemPinBoxFuture<()> + Send + Sync>;
+        pub type UpdateCallback = Arc<dyn Fn(VeilidUpdate) -> SystemPinBoxFuture<()> + Send + Sync>;
     }
 }
 
-#[derive(Debug)]
-pub enum VeilidStateChange {
-    Attachment {
-        old_state: AttachmentState,
-        new_state: AttachmentState,
-    },
-}
-
-#[derive(Debug)]
-pub enum VeilidState {
-    Attachment(AttachmentState),
-}
-
 pub struct VeilidCoreSetup {
-    pub state_change_callback: StateChangeCallback,
+    pub update_callback: UpdateCallback,
     pub config_callback: ConfigCallback,
 }
 
@@ -139,16 +126,13 @@ impl VeilidCore {
 
         // Set up attachment manager
         trace!("VeilidCore::internal_startup init attachment manager");
-        let cb = setup.state_change_callback;
+        let cb = setup.update_callback;
         let attachment_manager =
             AttachmentManager::new(config.clone(), table_store.clone(), crypto.clone());
         attachment_manager
             .init(Arc::new(
-                move |old_state: AttachmentState, new_state: AttachmentState| {
-                    cb(VeilidStateChange::Attachment {
-                        old_state,
-                        new_state,
-                    })
+                move |_old_state: AttachmentState, new_state: AttachmentState| {
+                    cb(VeilidUpdate::Attachment(new_state))
                 },
             ))
             .await?;

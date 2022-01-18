@@ -11,21 +11,19 @@ enum AttachmentState {
     detaching           @7;
 }
 
+struct Attachment {
+    state               @0  :AttachmentState;
+}
+
+struct VeilidUpdate {
+    union {
+        attachment      @0 :Attachment;
+        dummy           @1 :Void;
+    } 
+}
+
 struct VeilidState {
-#   union {
-       attachment       @0  :AttachmentState;
-#   } 
-}
-
-struct AttachmentStateChange {
-    oldState            @0  :AttachmentState;
-    newState            @1  :AttachmentState;
-}
-
-struct VeilidStateChange {
-#   union {
-       attachment       @0 :AttachmentStateChange;
-#   } 
+    attachment          @0 :Attachment;
 }
 
 interface Registration {}
@@ -33,18 +31,17 @@ interface Registration {}
 interface VeilidServer {
 
     register @0 (veilidClient: VeilidClient) -> (registration: Registration);
+    debug @1 (what: Text) -> (output: Text);
 
-    attach @1 ();
-    detach @2 ();
-    shutdown @3 ();
-
-    debug @4 (what: Text) -> (output: Text);
-
+    attach @2 ();
+    detach @3 ();
+    shutdown @4 ();
+    getState @5 () -> (state: VeilidState);
 }
 
 interface VeilidClient {
 
-    stateChanged @0 (changed: VeilidStateChange);
+    update @0 (veilidUpdate: VeilidUpdate);
     logMessage @1 (message: Text);
 
 }

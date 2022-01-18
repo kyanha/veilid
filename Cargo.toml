@@ -6,7 +6,7 @@ members = [
     "veilid-cli"
 ]
 
-exclude = [ "./external/cursive" ]
+exclude = [ "./external/cursive", "./veilid-flutter" ]
 
 [patch.crates-io]
 cursive = { path = "./external/cursive/cursive" }
