@@ -68,22 +68,10 @@ where
     // pub fn clear_state_change_callback(&self) {
     //     self.inner.lock().callback = None;
     // }
+
     pub fn state_eventual_instance(&self) -> (T::State, EventualValueCloneFuture<T::State>) {
         let inner = self.inner.lock();
         (inner.state, inner.eventual.instance())
-    }
-
-    pub async fn send_state_update(&self) {
-        let (state, callback, eventual) = {
-            let mut inner = self.inner.lock();
-            let eventual =
-                core::mem::replace(&mut inner.eventual, EventualValueClone::<T::State>::new());
-            (inner.state, inner.callback.clone(), eventual)
-        };
-        if let Some(cb) = callback {
-            cb(state, state).await;
-        }
-        eventual.resolve(state).await;
     }
 
     pub async fn consume(&self, input: &T::Input) -> Result<Option<T::Output>, ()> {

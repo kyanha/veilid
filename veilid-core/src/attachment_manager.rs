@@ -333,11 +333,6 @@ impl AttachmentManager {
         }
     }
 
-    pub async fn send_state_update(&self) {
-        let attachment_machine = self.inner.lock().attachment_machine.clone();
-        attachment_machine.send_state_update().await;
-    }
-
     pub async fn request_attach(&self) {
         if !self.is_detached() {
             trace!("attach request ignored");
@@ -395,10 +390,8 @@ impl AttachmentManager {
                 } else {
                     return false;
                 }
-            } else {
-                if eventual.await == state {
-                    break;
-                }
+            } else if eventual.await == state {
+                break;
             }
         }
         true

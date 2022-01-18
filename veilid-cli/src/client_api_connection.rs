@@ -2,7 +2,6 @@ use crate::command_processor::*;
 use crate::veilid_client_capnp::*;
 use veilid_core::xx::*;
 
-use async_std::prelude::*;
 use capnp::capability::Promise;
 use capnp_rpc::{pry, rpc_twoparty_capnp, twoparty, Disconnector, RpcSystem};
 use futures::AsyncReadExt;
@@ -87,6 +86,19 @@ impl ClientApiConnection {
             })),
         }
     }
+    async fn process_veilid_state<'a>(
+        &'a mut self,
+        state: veilid_state::Reader<'a>,
+    ) -> Result<(), String> {
+        let mut inner = self.inner.borrow_mut();
+
+        // Process attachment state
+        let attachment = state.reborrow().get_attachment().map_err(map_to_string)?;
+        let state = attachment.get_state().map_err(map_to_string)?;
+        inner.comproc.update_attachment(state);
+
+        Ok(())
+    }
 
     async fn handle_connection(&mut self) -> Result<(), String> {
         trace!("ClientApiConnection::handle_connection");
@@ -140,11 +152,20 @@ impl ClientApiConnection {
                 ));
         }
 
-        // Don't drop the registration
-        rpc_system
-            .try_join(request.send().promise)
-            .await
-            .map_err(map_to_string)?;
+        // Send the request and get the state object and the registration object
+        if let Ok(response) = request.send().promise.await {
+            if let Ok(response) = response.get() {
+                if let Ok(_registration) = response.get_registration() {
+                    if let Ok(state) = response.get_state() {
+                        // Set up our state for the first time
+                        if self.process_veilid_state(state).await.is_ok() {
+                            // Don't drop the registration
+                            rpc_system.await.map_err(map_to_string)?;
+                        }
+                    }
+                }
+            }
+        }
 
         // Drop the server and disconnector too (if we still have it)
         let mut inner = self.inner.borrow_mut();
@@ -169,7 +190,7 @@ impl ClientApiConnection {
             inner
                 .server
                 .as_ref()
-                .ok_or("Not connected, ignoring attach request".to_owned())?
+                .ok_or_else(|| "Not connected, ignoring attach request".to_owned())?
                 .clone()
         };
         let request = server.borrow().attach_request();
@@ -184,7 +205,7 @@ impl ClientApiConnection {
             inner
                 .server
                 .as_ref()
-                .ok_or("Not connected, ignoring detach request".to_owned())?
+                .ok_or_else(|| "Not connected, ignoring detach request".to_owned())?
                 .clone()
         };
         let request = server.borrow().detach_request();
@@ -199,7 +220,7 @@ impl ClientApiConnection {
             inner
                 .server
                 .as_ref()
-                .ok_or("Not connected, ignoring attach request".to_owned())?
+                .ok_or_else(|| "Not connected, ignoring attach request".to_owned())?
                 .clone()
         };
         let request = server.borrow().shutdown_request();
@@ -214,7 +235,7 @@ impl ClientApiConnection {
             inner
                 .server
                 .as_ref()
-                .ok_or("Not connected, ignoring attach request".to_owned())?
+                .ok_or_else(|| "Not connected, ignoring attach request".to_owned())?
                 .clone()
         };
         let mut request = server.borrow().debug_request();

@@ -30,7 +30,7 @@ interface Registration {}
 
 interface VeilidServer {
 
-    register @0 (veilidClient: VeilidClient) -> (registration: Registration);
+    register @0 (veilidClient: VeilidClient) -> (registration: Registration, state: VeilidState);
     debug @1 (what: Text) -> (output: Text);
 
     attach @2 ();

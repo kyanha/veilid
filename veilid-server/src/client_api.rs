@@ -121,6 +121,7 @@ impl veilid_server::Server for VeilidServerImpl {
         mut results: veilid_server::RegisterResults,
     ) -> Promise<(), ::capnp::Error> {
         trace!("VeilidServerImpl::register");
+
         self.registration_map.borrow_mut().registrations.insert(
             self.next_id,
             RegistrationHandle {
@@ -129,16 +130,26 @@ impl veilid_server::Server for VeilidServerImpl {
             },
         );
 
-        results
-            .get()
-            .set_registration(capnp_rpc::new_client(RegistrationImpl::new(
-                self.next_id,
-                self.registration_map.clone(),
-            )));
-
+        let veilid_api = self.veilid_api.clone();
+        let registration = capnp_rpc::new_client(RegistrationImpl::new(
+            self.next_id,
+            self.registration_map.clone(),
+        ));
         self.next_id += 1;
 
-        Promise::ok(())
+        Promise::from_future(async move {
+            let state = veilid_api
+                .get_state()
+                .await
+                .map_err(|e| ::capnp::Error::failed(format!("{:?}", e)))?;
+
+            let mut res = results.get();
+            res.set_registration(registration);
+            let rpc_state = res.init_state();
+            convert_state(&state, rpc_state);
+
+            Ok(())
+        })
     }
 
     fn debug(
