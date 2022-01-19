@@ -124,6 +124,12 @@ impl VeilidCore {
         crypto.init().await?;
         inner.crypto = Some(crypto.clone());
 
+        // Set up block store
+        // trace!("VeilidCore::internal_startup init block store");
+        // let block_store = BlockStore::new(config.clone());
+        // block_store.init().await?;
+        // inner.block_store = Some(block_store.clone();)
+
         // Set up attachment manager
         trace!("VeilidCore::internal_startup init attachment manager");
         let cb = setup.update_callback;

@@ -3776,6 +3776,7 @@ version = "0.1.0"
 dependencies = [
  "async-std",
  "async-tungstenite 0.8.0",
+ "async_executors",
  "bugsalot",
  "capnp",
  "capnp-rpc",

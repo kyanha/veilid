@@ -101,6 +101,13 @@ pub struct VeilidConfigNetwork {
 #[derive(Default, Clone)]
 pub struct VeilidConfigTableStore {
     pub directory: String,
+    pub delete: bool,
+}
+
+#[derive(Default, Clone)]
+pub struct VeilidConfigBlockStore {
+    pub directory: String,
+    pub delete: bool,
 }
 
 #[derive(Default, Clone)]
@@ -108,6 +115,7 @@ pub struct VeilidConfigProtectedStore {
     pub allow_insecure_fallback: bool,
     pub always_use_insecure_storage: bool,
     pub insecure_fallback_directory: String,
+    pub delete: bool,
 }
 
 #[derive(Default, Clone)]
@@ -128,6 +136,7 @@ pub struct VeilidConfig {
     pub capabilities: VeilidConfigCapabilities,
     pub protected_store: VeilidConfigProtectedStore,
     pub table_store: VeilidConfigTableStore,
+    pub block_store: VeilidConfigBlockStore,
     pub network: VeilidConfigNetwork,
 }
 

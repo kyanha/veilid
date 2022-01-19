@@ -39,8 +39,13 @@ core:
         allow_insecure_fallback: true
         always_use_insecure_storage: false
         insecure_fallback_directory: '%INSECURE_FALLBACK_DIRECTORY%'
+        delete: false
     table_store:
         directory: '%TABLE_STORE_DIRECTORY%'
+        delete: false
+    block_store:
+        directory: '%BLOCK_STORE_DIRECTORY%'
+        delete: false
     network:
         max_connections: 16
         connection_initial_timeout: 2000000
@@ -123,6 +128,10 @@ core:
     .replace(
         "%TABLE_STORE_DIRECTORY%",
         &Settings::get_default_table_store_path().to_string_lossy(),
+    )
+    .replace(
+        "%BLOCK_STORE_DIRECTORY%",
+        &Settings::get_default_block_store_path().to_string_lossy(),
     )
     .replace(
         "%INSECURE_FALLBACK_DIRECTORY%",
@@ -532,6 +541,13 @@ pub struct Testing {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct TableStore {
     pub directory: PathBuf,
+    pub delete: bool,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct BlockStore {
+    pub directory: PathBuf,
+    pub delete: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -539,12 +555,14 @@ pub struct ProtectedStore {
     pub allow_insecure_fallback: bool,
     pub always_use_insecure_storage: bool,
     pub insecure_fallback_directory: PathBuf,
+    pub delete: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Core {
     pub protected_store: ProtectedStore,
     pub table_store: TableStore,
+    pub block_store: BlockStore,
     pub network: Network,
 }
 
@@ -693,6 +711,20 @@ impl Settings {
         default_config_path
     }
 
+    pub fn get_default_block_store_path() -> PathBuf {
+        // Get default configuration file location
+        let mut default_config_path;
+
+        if let Some(my_proj_dirs) = ProjectDirs::from("org", "Veilid", "Veilid") {
+            default_config_path = PathBuf::from(my_proj_dirs.data_local_dir());
+        } else {
+            default_config_path = PathBuf::from("./");
+        }
+        default_config_path.push("block_store");
+
+        default_config_path
+    }
+
     pub fn get_default_protected_store_insecure_fallback_directory() -> PathBuf {
         // Get default configuration file location
         let mut default_config_path;
@@ -740,6 +772,8 @@ impl Settings {
                         .to_string_lossy()
                         .to_string(),
                 )),
+                "protected_store.delete" => Ok(Box::new(inner.core.protected_store.delete)),
+
                 "table_store.directory" => Ok(Box::new(
                     inner
                         .core
@@ -748,6 +782,18 @@ impl Settings {
                         .to_string_lossy()
                         .to_string(),
                 )),
+                "table_store.delete" => Ok(Box::new(inner.core.table_store.delete)),
+
+                "block_store.directory" => Ok(Box::new(
+                    inner
+                        .core
+                        .block_store
+                        .directory
+                        .to_string_lossy()
+                        .to_string(),
+                )),
+                "block_store.delete" => Ok(Box::new(inner.core.block_store.delete)),
+
                 "network.max_connections" => Ok(Box::new(inner.core.network.max_connections)),
                 "network.connection_initial_timeout" => {
                     Ok(Box::new(inner.core.network.connection_initial_timeout))
@@ -1070,16 +1116,27 @@ mod tests {
         assert_eq!(s.logging.client.enabled, true);
         assert_eq!(s.logging.client.level, LogLevel::Info);
         assert_eq!(s.testing.subnode_index, 0);
+
         assert_eq!(
             s.core.table_store.directory,
             Settings::get_default_table_store_path()
         );
+        assert_eq!(s.core.table_store.delete, false);
+
+        assert_eq!(
+            s.core.block_store.directory,
+            Settings::get_default_block_store_path()
+        );
+        assert_eq!(s.core.block_store.delete, false);
+
         assert_eq!(s.core.protected_store.allow_insecure_fallback, true);
         assert_eq!(s.core.protected_store.always_use_insecure_storage, false);
         assert_eq!(
             s.core.protected_store.insecure_fallback_directory,
             Settings::get_default_protected_store_insecure_fallback_directory()
         );
+        assert_eq!(s.core.protected_store.delete, false);
+
         assert_eq!(s.core.network.max_connections, 16);
         assert_eq!(s.core.network.connection_initial_timeout, 2_000_000u64);
         assert_eq!(s.core.network.node_id, veilid_core::DHTKey::default());

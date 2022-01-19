@@ -29,35 +29,55 @@ impl ProtectedStore {
         }
     }
 
+    pub async fn delete_all(&self) -> Result<(), String> {
+        // Delete all known keys
+        if self.remove_user_secret_string("node_id").await? {
+            debug!("deleted protected_store key 'node_id'");
+        }
+        if self.remove_user_secret_string("node_id_secret").await? {
+            debug!("deleted protected_store key 'node_id_secret'");
+        }
+        if self.remove_user_secret_string("_test_key").await? {
+            debug!("deleted protected_store key '_test_key'");
+        }
+        Ok(())
+    }
+
     pub async fn init(&self) -> Result<(), String> {
         let c = self.config.get();
-        let mut inner = self.inner.lock();
-        if !c.protected_store.always_use_insecure_storage {
-            cfg_if! {
-                if #[cfg(target_os = "android")] {
-                    inner.keyring_manager = KeyringManager::new_secure(&c.program_name, intf::native::utils::android::get_android_globals()).ok();
-                } else {
-                    inner.keyring_manager = KeyringManager::new_secure(&c.program_name).ok();
+        {
+            let mut inner = self.inner.lock();
+            if !c.protected_store.always_use_insecure_storage {
+                cfg_if! {
+                    if #[cfg(target_os = "android")] {
+                        inner.keyring_manager = KeyringManager::new_secure(&c.program_name, intf::native::utils::android::get_android_globals()).ok();
+                    } else {
+                        inner.keyring_manager = KeyringManager::new_secure(&c.program_name).ok();
+                    }
                 }
             }
+            if (c.protected_store.always_use_insecure_storage
+                || c.protected_store.allow_insecure_fallback)
+                && inner.keyring_manager.is_none()
+            {
+                let insecure_fallback_directory =
+                    Path::new(&c.protected_store.insecure_fallback_directory);
+                let insecure_keyring_file = insecure_fallback_directory
+                    .to_owned()
+                    .join("insecure_keyring");
+                inner.keyring_manager = Some(
+                    KeyringManager::new_insecure(&c.program_name, &insecure_keyring_file)
+                        .map_err(map_to_string)
+                        .map_err(logthru_pstore!(error))?,
+                );
+            }
+            if inner.keyring_manager.is_none() {
+                return Err("Could not initialize the protected store.".to_owned());
+            }
         }
-        if (c.protected_store.always_use_insecure_storage
-            || c.protected_store.allow_insecure_fallback)
-            && inner.keyring_manager.is_none()
-        {
-            let insecure_fallback_directory =
-                Path::new(&c.protected_store.insecure_fallback_directory);
-            let insecure_keyring_file = insecure_fallback_directory
-                .to_owned()
-                .join("insecure_keyring");
-            inner.keyring_manager = Some(
-                KeyringManager::new_insecure(&c.program_name, &insecure_keyring_file)
-                    .map_err(map_to_string)
-                    .map_err(logthru_pstore!(error))?,
-            );
-        }
-        if inner.keyring_manager.is_none() {
-            return Err("Could not initialize the protected store.".to_owned());
+
+        if c.protected_store.delete {
+            self.delete_all().await?;
         }
 
         Ok(())

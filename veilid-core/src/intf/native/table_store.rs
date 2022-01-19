@@ -27,6 +27,12 @@ impl TableStore {
         }
     }
 
+    pub async fn delete_all(&self) -> Result<(), String> {
+        // Delete all known keys
+        self.delete("crypto_caches").await?;
+        Ok(())
+    }
+
     pub async fn init(&self) -> Result<(), String> {
         Ok(())
     }

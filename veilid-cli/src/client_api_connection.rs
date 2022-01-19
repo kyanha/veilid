@@ -1,13 +1,13 @@
 use crate::command_processor::*;
 use crate::veilid_client_capnp::*;
-use veilid_core::xx::*;
-
+use async_executors::{AsyncStd, LocalSpawnHandleExt};
 use capnp::capability::Promise;
 use capnp_rpc::{pry, rpc_twoparty_capnp, twoparty, Disconnector, RpcSystem};
 use futures::AsyncReadExt;
 use std::cell::RefCell;
 use std::net::SocketAddr;
 use std::rc::Rc;
+use veilid_core::xx::*;
 
 struct VeilidClientImpl {
     comproc: CommandProcessor,
@@ -152,19 +152,29 @@ impl ClientApiConnection {
                 ));
         }
 
-        // Send the request and get the state object and the registration object
-        if let Ok(response) = request.send().promise.await {
-            if let Ok(response) = response.get() {
-                if let Ok(_registration) = response.get_registration() {
-                    if let Ok(state) = response.get_state() {
-                        // Set up our state for the first time
-                        if self.process_veilid_state(state).await.is_ok() {
-                            // Don't drop the registration
-                            rpc_system.await.map_err(map_to_string)?;
+        // Process the rpc system until we decide we're done
+        if let Ok(rpc_jh) = AsyncStd.spawn_handle_local(rpc_system) {
+            // Send the request and get the state object and the registration object
+            if let Ok(response) = request.send().promise.await {
+                if let Ok(response) = response.get() {
+                    if let Ok(_registration) = response.get_registration() {
+                        if let Ok(state) = response.get_state() {
+                            // Set up our state for the first time
+                            if self.process_veilid_state(state).await.is_ok() {
+                                // Don't drop the registration, doing so will remove the client
+                                // object mapping from the server which we need for the update backchannel
+
+                                // Wait until rpc system completion or disconnect was requested
+                                if let Err(e) = rpc_jh.await {
+                                    error!("Client RPC system error: {}", e);
+                                }
+                            }
                         }
                     }
                 }
             }
+        } else {
+            error!("Failed to spawn client RPC system");
         }
 
         // Drop the server and disconnector too (if we still have it)

@@ -33,8 +33,8 @@ fn main() -> Result<(), String> {
             .map_err(|e| e.to_string());
     }
 
-    // --- Generate Id ---
-    if matches.occurrences_of("generate-id") != 0 {
+    // --- Generate DHT Key ---
+    if matches.occurrences_of("generate-dht-key") != 0 {
         let (key, secret) = veilid_core::generate_secret();
         println!("Public: {}\nSecret: {}", key.encode(), secret.encode());
         return Ok(());

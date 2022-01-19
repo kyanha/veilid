@@ -1,10 +1,9 @@
 use crate::settings::*;
-use std::ffi::OsStr;
 use clap::{App, Arg, ArgMatches};
+use std::ffi::OsStr;
 use std::str::FromStr;
 
 fn do_clap_matches(default_config_path: &OsStr) -> Result<clap::ArgMatches, clap::Error> {
-
     let matches = App::new("veilid-server")
         .version("0.1")
         .about("Veilid Server")
@@ -22,6 +21,7 @@ fn do_clap_matches(default_config_path: &OsStr) -> Result<clap::ArgMatches, clap
                 .takes_value(true)
                 .value_name("FILE")
                 .default_value_os(default_config_path)
+                .allow_invalid_utf8(true)
                 .help("Specify a configuration file to use"),
         ).arg(
             Arg::new("attach")
@@ -54,7 +54,21 @@ fn do_clap_matches(default_config_path: &OsStr) -> Result<clap::ArgMatches, clap
                 .long("generate-dht-key")
                 .help("Only generate a new dht key and print it"),
         )
-        
+        .arg(
+            Arg::new("delete-protected-store")
+                .long("delete-protected-store")
+                .help("Delete the entire contents of the protected store (DANGER, NO UNDO!)"),
+        )
+        .arg(
+            Arg::new("delete-table-store")
+                .long("delete-table-store")
+                .help("Delete the entire contents of the table store (DANGER, NO UNDO!)"),
+        )
+        .arg(
+            Arg::new("delete-block-store")
+                .long("delete-block-store")
+                .help("Delete the entire contents of the block store (DANGER, NO UNDO!)"),
+        )
         .arg(
             Arg::new("dump-config")
                 .long("dump-config")
@@ -72,19 +86,18 @@ fn do_clap_matches(default_config_path: &OsStr) -> Result<clap::ArgMatches, clap
                 .long("local")
                 .help("Enable local peer scope")
         );
-        
-        #[cfg(debug_assertions)]
-        let matches = matches.arg(
-            Arg::new("wait-for-debug")
-                .long("wait-for-debug")
-                .help("Wait for debugger to attach"),
-        );
-       
+
+    #[cfg(debug_assertions)]
+    let matches = matches.arg(
+        Arg::new("wait-for-debug")
+            .long("wait-for-debug")
+            .help("Wait for debugger to attach"),
+    );
+
     Ok(matches.get_matches())
 }
 
 pub fn process_command_line() -> Result<(Settings, ArgMatches), String> {
-   
     // Get command line options
     let default_config_path = Settings::get_default_config_path();
     let matches = do_clap_matches(default_config_path.as_os_str())
@@ -126,6 +139,7 @@ pub fn process_command_line() -> Result<(Settings, ArgMatches), String> {
         }
         settingsrw.testing.subnode_index = subnode_index;
     }
+
     if matches.occurrences_of("debug") != 0 {
         settingsrw.logging.terminal.enabled = true;
         settingsrw.logging.terminal.level = LogLevel::Debug;
@@ -139,6 +153,15 @@ pub fn process_command_line() -> Result<(Settings, ArgMatches), String> {
     }
     if matches.is_present("local") {
         settingsrw.core.network.enable_local_peer_scope = true;
+    }
+    if matches.occurrences_of("delete-protected-store") != 0 {
+        settingsrw.core.protected_store.delete = true;
+    }
+    if matches.occurrences_of("delete-block-store") != 0 {
+        settingsrw.core.block_store.delete = true;
+    }
+    if matches.occurrences_of("delete-table-store") != 0 {
+        settingsrw.core.table_store.delete = true;
     }
     if matches.occurrences_of("bootstrap") != 0 {
         let bootstrap = match matches.value_of("bootstrap") {

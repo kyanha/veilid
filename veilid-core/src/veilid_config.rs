@@ -141,6 +141,13 @@ pub struct VeilidConfigNetwork {
 #[derive(Default, Clone)]
 pub struct VeilidConfigTableStore {
     pub directory: String,
+    pub delete: bool,
+}
+
+#[derive(Default, Clone)]
+pub struct VeilidConfigBlockStore {
+    pub directory: String,
+    pub delete: bool,
 }
 
 #[derive(Default, Clone)]
@@ -148,6 +155,7 @@ pub struct VeilidConfigProtectedStore {
     pub allow_insecure_fallback: bool,
     pub always_use_insecure_storage: bool,
     pub insecure_fallback_directory: String,
+    pub delete: bool,
 }
 
 #[derive(Default, Clone)]
@@ -168,6 +176,7 @@ pub struct VeilidConfigInner {
     pub capabilities: VeilidConfigCapabilities,
     pub protected_store: VeilidConfigProtectedStore,
     pub table_store: VeilidConfigTableStore,
+    pub block_store: VeilidConfigBlockStore,
     pub network: VeilidConfigNetwork,
 }
 
@@ -216,9 +225,13 @@ impl VeilidConfig {
             get_config!(inner.capabilities.protocol_connect_wss);
             get_config!(inner.capabilities.protocol_accept_wss);
             get_config!(inner.table_store.directory);
+            get_config!(inner.table_store.delete);
+            get_config!(inner.block_store.directory);
+            get_config!(inner.block_store.delete);
             get_config!(inner.protected_store.allow_insecure_fallback);
             get_config!(inner.protected_store.always_use_insecure_storage);
             get_config!(inner.protected_store.insecure_fallback_directory);
+            get_config!(inner.protected_store.delete);
             get_config!(inner.network.node_id);
             get_config!(inner.network.node_id_secret);
             get_config!(inner.network.max_connections);
