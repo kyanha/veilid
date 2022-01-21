@@ -744,7 +744,7 @@ impl Settings {
 
         Arc::new(move |key: String| {
             let inner = inner.read();
-            let out: Result<Box<dyn core::any::Any>, String> = match key.as_str() {
+            let out: Result<Box<dyn core::any::Any + Send>, String> = match key.as_str() {
                 "program_name" => Ok(Box::new("veilid-server".to_owned())),
                 "namespace" => Ok(Box::new(if inner.testing.subnode_index == 0 {
                     "".to_owned()

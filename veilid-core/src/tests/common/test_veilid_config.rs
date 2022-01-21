@@ -64,7 +64,13 @@ wFAbkZY9eS/x6P7qrpd7dUA=
 cfg_if! {
 
     if #[cfg(target_arch = "wasm32")] {
-        pub fn get_tablestore_path() -> String {
+        pub fn get_table_store_path() -> String {
+            String::new()
+        }
+        pub fn get_block_store_path() -> String {
+            String::new()
+        }
+        pub fn get_protected_store_path() -> String {
             String::new()
         }
         pub fn get_certfile_path() -> String {
@@ -99,6 +105,15 @@ cfg_if! {
             std::fs::create_dir_all(&out).unwrap();
 
             out.push("table_store");
+
+            out.into_os_string().into_string().unwrap()
+        }
+
+        pub fn get_block_store_path() -> String {
+            let mut out = get_data_dir();
+            std::fs::create_dir_all(&out).unwrap();
+
+            out.push("block_store");
 
             out.into_os_string().into_string().unwrap()
         }
@@ -156,7 +171,7 @@ pub fn setup_veilid_core() -> VeilidCoreSetup {
     }
 }
 
-pub fn config_callback(key: String) -> Result<Box<dyn core::any::Any>, String> {
+pub fn config_callback(key: String) -> ConfigCallbackReturn {
     match key.as_str() {
         "program_name" => Ok(Box::new(String::from("Veilid"))),
         "namespace" => Ok(Box::new(String::from(""))),
@@ -168,9 +183,13 @@ pub fn config_callback(key: String) -> Result<Box<dyn core::any::Any>, String> {
         "capabilities.protocol_connect_wss" => Ok(Box::new(true)),
         "capabilities.protocol_accept_wss" => Ok(Box::new(true)),
         "table_store.directory" => Ok(Box::new(get_table_store_path())),
+        "table_store.delete" => Ok(Box::new(false)),
+        "block_store.directory" => Ok(Box::new(get_block_store_path())),
+        "block_store.delete" => Ok(Box::new(false)),
         "protected_store.allow_insecure_fallback" => Ok(Box::new(true)),
         "protected_store.always_use_insecure_storage" => Ok(Box::new(false)),
         "protected_store.insecure_fallback_directory" => Ok(Box::new(get_protected_store_path())),
+        "protected_store.delete" => Ok(Box::new(false)),
         "network.max_connections" => Ok(Box::new(16u32)),
         "network.connection_initial_timeout" => Ok(Box::new(2_000_000u64)),
         "network.node_id" => Ok(Box::new(dht::key::DHTKey::default())),
@@ -264,12 +283,16 @@ pub async fn test_config() {
     assert_eq!(inner.capabilities.protocol_connect_wss, true);
     assert_eq!(inner.capabilities.protocol_accept_wss, true);
     assert_eq!(inner.table_store.directory, get_table_store_path());
+    assert_eq!(inner.table_store.delete, false);
+    assert_eq!(inner.block_store.directory, get_block_store_path());
+    assert_eq!(inner.block_store.delete, false);
     assert_eq!(inner.protected_store.allow_insecure_fallback, true);
     assert_eq!(inner.protected_store.always_use_insecure_storage, false);
     assert_eq!(
         inner.protected_store.insecure_fallback_directory,
         get_protected_store_path()
     );
+    assert_eq!(inner.protected_store.delete, false);
     assert_eq!(inner.network.max_connections, 16);
     assert_eq!(inner.network.connection_initial_timeout, 2_000_000u64);
     assert!(!inner.network.node_id.valid);

@@ -4,9 +4,12 @@ use crate::xx::*;
 
 cfg_if! {
     if #[cfg(target_arch = "wasm32")] {
-        pub type ConfigCallback = Arc<dyn Fn(String) -> Result<Box<dyn core::any::Any>, String>>;
+        pub type ConfigCallbackReturn = Result<Box<dyn core::any::Any>, String>;
+        pub type ConfigCallback = Arc<dyn Fn(String) -> ConfigCallbackReturn>;
+
     } else {
-        pub type ConfigCallback = Arc<dyn Fn(String) -> Result<Box<dyn core::any::Any>, String> + Send>;
+        pub type ConfigCallbackReturn = Result<Box<dyn core::any::Any + Send>, String>;
+        pub type ConfigCallback = Arc<dyn Fn(String) -> ConfigCallbackReturn + Send>;
     }
 }
 

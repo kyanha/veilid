@@ -54,7 +54,7 @@ impl TableStore {
         {
             return Err(format!("table name '{}' is invalid", table));
         }
-        let c = inner.config.get();
+        let c = self.config.get();
         let namespace = c.namespace.clone();
         Ok(if namespace.len() == 0 {
             format!("{}", table)
