@@ -10,7 +10,9 @@ crate-type = ["cdylib", "staticlib"]
 async-std = { version = "^1", features = ["unstable"] }
 veilid-core = { path="../../veilid-core" }
 flutter_rust_bridge = "^1"
+parking_lot = "^0"
 log = "^0"
+anyhow = { version = "^1", features = ["backtrace"] }
 
 [build-dependencies]
 cfg-if = "^1"

@@ -83,5 +83,5 @@ fn main() {
         .wait()
         .expect("flutter_rust_bridge_codegen was not running");
 
-    println!("cargo:rerun-if-changed=src/api.c");
+    println!("cargo:rerun-if-changed={}", input_path.to_str().unwrap());
 }
