@@ -37,242 +37,138 @@ enum AttachmentState {
 class VeilidConfig {
   final String programName;
   final String namespace;
-  final VeilidConfigCapabilities capabilities;
-  final VeilidConfigProtectedStore protectedStore;
-  final VeilidConfigTableStore tableStore;
-  final VeilidConfigBlockStore blockStore;
-  final VeilidConfigNetwork network;
+  final bool capabilitiesProtocolUdp;
+  final bool capabilitiesProtocolConnectTcp;
+  final bool capabilitiesProtocolAcceptTcp;
+  final bool capabilitiesProtocolConnectWs;
+  final bool capabilitiesProtocolAcceptWs;
+  final bool capabilitiesProtocolConnectWss;
+  final bool capabilitiesProtocolAcceptWss;
+  final bool protectedStoreAllowInsecureFallback;
+  final bool protectedStoreAlwaysUseInsecureStorage;
+  final String protectedStoreInsecureFallbackDirectory;
+  final bool protectedStoreDelete;
+  final String tableStoreDirectory;
+  final bool tableStoreDelete;
+  final String blockStoreDirectory;
+  final bool blockStoreDelete;
+  final int networkMaxConnections;
+  final int networkConnectionInitialTimeoutMs;
+  final String networkNodeId;
+  final String networkNodeIdSecret;
+  final List<String> networkBootstrap;
+  final bool networkUpnp;
+  final bool networkNatpmp;
+  final bool networkEnableLocalPeerScope;
+  final int networkRestrictedNatRetries;
+  final int networkRpcConcurrency;
+  final int networkRpcQueueSize;
+  final int? networkRpcMaxTimestampBehindMs;
+  final int? networkRpcMaxTimestampAheadMs;
+  final int networkRpcTimeoutMs;
+  final int networkRpcMaxRouteHopCount;
+  final int? networkDhtResolveNodeTimeoutMs;
+  final int networkDhtResolveNodeCount;
+  final int networkDhtResolveNodeFanout;
+  final int networkDhtMaxFindNodeCount;
+  final int? networkDhtGetValueTimeoutMs;
+  final int networkDhtGetValueCount;
+  final int networkDhtGetValueFanout;
+  final int? networkDhtSetValueTimeoutMs;
+  final int networkDhtSetValueCount;
+  final int networkDhtSetValueFanout;
+  final int networkDhtMinPeerCount;
+  final int networkDhtMinPeerRefreshTimeMs;
+  final int networkDhtValidateDialInfoReceiptTimeMs;
+  final bool networkProtocolUdpEnabled;
+  final int networkProtocolUdpSocketPoolSize;
+  final String networkProtocolUdpListenAddress;
+  final String? networkProtocolUdpPublicAddress;
+  final bool networkProtocolTcpConnect;
+  final bool networkProtocolTcpListen;
+  final int networkProtocolTcpMaxConnections;
+  final String networkProtocolTcpListenAddress;
+  final String? networkProtocolTcpPublicAddress;
+  final bool networkProtocolWsConnect;
+  final bool networkProtocolWsListen;
+  final int networkProtocolWsMaxConnections;
+  final String networkProtocolWsListenAddress;
+  final String networkProtocolWsPath;
+  final String? networkProtocolWsUrl;
+  final bool networkProtocolWssConnect;
+  final int networkProtocolWssMaxConnections;
+  final int networkLeasesMaxServerSignalLeases;
+  final int networkLeasesMaxServerRelayLeases;
+  final int networkLeasesMaxClientSignalLeases;
+  final int networkLeasesMaxClientRelayLeases;
 
   VeilidConfig({
     required this.programName,
     required this.namespace,
-    required this.capabilities,
-    required this.protectedStore,
-    required this.tableStore,
-    required this.blockStore,
-    required this.network,
-  });
-}
-
-class VeilidConfigBlockStore {
-  final String directory;
-  final bool delete;
-
-  VeilidConfigBlockStore({
-    required this.directory,
-    required this.delete,
-  });
-}
-
-class VeilidConfigCapabilities {
-  final bool protocolUdp;
-  final bool protocolConnectTcp;
-  final bool protocolAcceptTcp;
-  final bool protocolConnectWs;
-  final bool protocolAcceptWs;
-  final bool protocolConnectWss;
-  final bool protocolAcceptWss;
-
-  VeilidConfigCapabilities({
-    required this.protocolUdp,
-    required this.protocolConnectTcp,
-    required this.protocolAcceptTcp,
-    required this.protocolConnectWs,
-    required this.protocolAcceptWs,
-    required this.protocolConnectWss,
-    required this.protocolAcceptWss,
-  });
-}
-
-class VeilidConfigDHT {
-  final int? resolveNodeTimeout;
-  final int resolveNodeCount;
-  final int resolveNodeFanout;
-  final int maxFindNodeCount;
-  final int? getValueTimeout;
-  final int getValueCount;
-  final int getValueFanout;
-  final int? setValueTimeout;
-  final int setValueCount;
-  final int setValueFanout;
-  final int minPeerCount;
-  final int minPeerRefreshTime;
-  final int validateDialInfoReceiptTime;
-
-  VeilidConfigDHT({
-    this.resolveNodeTimeout,
-    required this.resolveNodeCount,
-    required this.resolveNodeFanout,
-    required this.maxFindNodeCount,
-    this.getValueTimeout,
-    required this.getValueCount,
-    required this.getValueFanout,
-    this.setValueTimeout,
-    required this.setValueCount,
-    required this.setValueFanout,
-    required this.minPeerCount,
-    required this.minPeerRefreshTime,
-    required this.validateDialInfoReceiptTime,
-  });
-}
-
-class VeilidConfigLeases {
-  final int maxServerSignalLeases;
-  final int maxServerRelayLeases;
-  final int maxClientSignalLeases;
-  final int maxClientRelayLeases;
-
-  VeilidConfigLeases({
-    required this.maxServerSignalLeases,
-    required this.maxServerRelayLeases,
-    required this.maxClientSignalLeases,
-    required this.maxClientRelayLeases,
-  });
-}
-
-class VeilidConfigNetwork {
-  final int maxConnections;
-  final int connectionInitialTimeout;
-  final String nodeId;
-  final String nodeIdSecret;
-  final List<String> bootstrap;
-  final VeilidConfigRPC rpc;
-  final VeilidConfigDHT dht;
-  final bool upnp;
-  final bool natpmp;
-  final bool enableLocalPeerScope;
-  final int restrictedNatRetries;
-  final VeilidConfigProtocol protocol;
-  final VeilidConfigLeases leases;
-
-  VeilidConfigNetwork({
-    required this.maxConnections,
-    required this.connectionInitialTimeout,
-    required this.nodeId,
-    required this.nodeIdSecret,
-    required this.bootstrap,
-    required this.rpc,
-    required this.dht,
-    required this.upnp,
-    required this.natpmp,
-    required this.enableLocalPeerScope,
-    required this.restrictedNatRetries,
-    required this.protocol,
-    required this.leases,
-  });
-}
-
-class VeilidConfigProtectedStore {
-  final bool allowInsecureFallback;
-  final bool alwaysUseInsecureStorage;
-  final String insecureFallbackDirectory;
-  final bool delete;
-
-  VeilidConfigProtectedStore({
-    required this.allowInsecureFallback,
-    required this.alwaysUseInsecureStorage,
-    required this.insecureFallbackDirectory,
-    required this.delete,
-  });
-}
-
-class VeilidConfigProtocol {
-  final VeilidConfigUDP udp;
-  final VeilidConfigTCP tcp;
-  final VeilidConfigWS ws;
-  final VeilidConfigWSS wss;
-
-  VeilidConfigProtocol({
-    required this.udp,
-    required this.tcp,
-    required this.ws,
-    required this.wss,
-  });
-}
-
-class VeilidConfigRPC {
-  final int concurrency;
-  final int queueSize;
-  final int? maxTimestampBehind;
-  final int? maxTimestampAhead;
-  final int timeout;
-  final int maxRouteHopCount;
-
-  VeilidConfigRPC({
-    required this.concurrency,
-    required this.queueSize,
-    this.maxTimestampBehind,
-    this.maxTimestampAhead,
-    required this.timeout,
-    required this.maxRouteHopCount,
-  });
-}
-
-class VeilidConfigTableStore {
-  final String directory;
-  final bool delete;
-
-  VeilidConfigTableStore({
-    required this.directory,
-    required this.delete,
-  });
-}
-
-class VeilidConfigTCP {
-  final bool connect;
-  final bool listen;
-  final int maxConnections;
-  final String listenAddress;
-  final String? publicAddress;
-
-  VeilidConfigTCP({
-    required this.connect,
-    required this.listen,
-    required this.maxConnections,
-    required this.listenAddress,
-    this.publicAddress,
-  });
-}
-
-class VeilidConfigUDP {
-  final bool enabled;
-  final int socketPoolSize;
-  final String listenAddress;
-  final String? publicAddress;
-
-  VeilidConfigUDP({
-    required this.enabled,
-    required this.socketPoolSize,
-    required this.listenAddress,
-    this.publicAddress,
-  });
-}
-
-class VeilidConfigWS {
-  final bool connect;
-  final bool listen;
-  final int maxConnections;
-  final String listenAddress;
-  final String path;
-  final String? url;
-
-  VeilidConfigWS({
-    required this.connect,
-    required this.listen,
-    required this.maxConnections,
-    required this.listenAddress,
-    required this.path,
-    this.url,
-  });
-}
-
-class VeilidConfigWSS {
-  final bool connect;
-  final int maxConnections;
-
-  VeilidConfigWSS({
-    required this.connect,
-    required this.maxConnections,
+    required this.capabilitiesProtocolUdp,
+    required this.capabilitiesProtocolConnectTcp,
+    required this.capabilitiesProtocolAcceptTcp,
+    required this.capabilitiesProtocolConnectWs,
+    required this.capabilitiesProtocolAcceptWs,
+    required this.capabilitiesProtocolConnectWss,
+    required this.capabilitiesProtocolAcceptWss,
+    required this.protectedStoreAllowInsecureFallback,
+    required this.protectedStoreAlwaysUseInsecureStorage,
+    required this.protectedStoreInsecureFallbackDirectory,
+    required this.protectedStoreDelete,
+    required this.tableStoreDirectory,
+    required this.tableStoreDelete,
+    required this.blockStoreDirectory,
+    required this.blockStoreDelete,
+    required this.networkMaxConnections,
+    required this.networkConnectionInitialTimeoutMs,
+    required this.networkNodeId,
+    required this.networkNodeIdSecret,
+    required this.networkBootstrap,
+    required this.networkUpnp,
+    required this.networkNatpmp,
+    required this.networkEnableLocalPeerScope,
+    required this.networkRestrictedNatRetries,
+    required this.networkRpcConcurrency,
+    required this.networkRpcQueueSize,
+    this.networkRpcMaxTimestampBehindMs,
+    this.networkRpcMaxTimestampAheadMs,
+    required this.networkRpcTimeoutMs,
+    required this.networkRpcMaxRouteHopCount,
+    this.networkDhtResolveNodeTimeoutMs,
+    required this.networkDhtResolveNodeCount,
+    required this.networkDhtResolveNodeFanout,
+    required this.networkDhtMaxFindNodeCount,
+    this.networkDhtGetValueTimeoutMs,
+    required this.networkDhtGetValueCount,
+    required this.networkDhtGetValueFanout,
+    this.networkDhtSetValueTimeoutMs,
+    required this.networkDhtSetValueCount,
+    required this.networkDhtSetValueFanout,
+    required this.networkDhtMinPeerCount,
+    required this.networkDhtMinPeerRefreshTimeMs,
+    required this.networkDhtValidateDialInfoReceiptTimeMs,
+    required this.networkProtocolUdpEnabled,
+    required this.networkProtocolUdpSocketPoolSize,
+    required this.networkProtocolUdpListenAddress,
+    this.networkProtocolUdpPublicAddress,
+    required this.networkProtocolTcpConnect,
+    required this.networkProtocolTcpListen,
+    required this.networkProtocolTcpMaxConnections,
+    required this.networkProtocolTcpListenAddress,
+    this.networkProtocolTcpPublicAddress,
+    required this.networkProtocolWsConnect,
+    required this.networkProtocolWsListen,
+    required this.networkProtocolWsMaxConnections,
+    required this.networkProtocolWsListenAddress,
+    required this.networkProtocolWsPath,
+    this.networkProtocolWsUrl,
+    required this.networkProtocolWssConnect,
+    required this.networkProtocolWssMaxConnections,
+    required this.networkLeasesMaxServerSignalLeases,
+    required this.networkLeasesMaxServerRelayLeases,
+    required this.networkLeasesMaxClientSignalLeases,
+    required this.networkLeasesMaxClientRelayLeases,
   });
 }
 
@@ -353,8 +249,8 @@ class VeilidFlutterImpl extends FlutterRustBridgeBase<VeilidFlutterWire>
     return raw ? 1 : 0;
   }
 
-  ffi.Pointer<ffi.Uint64> _api2wire_box_autoadd_u64(int raw) {
-    return inner.new_box_autoadd_u64(raw);
+  ffi.Pointer<ffi.Uint32> _api2wire_box_autoadd_u32(int raw) {
+    return inner.new_box_autoadd_u32(raw);
   }
 
   ffi.Pointer<wire_VeilidConfig> _api2wire_box_autoadd_veilid_config(
@@ -368,15 +264,11 @@ class VeilidFlutterImpl extends FlutterRustBridgeBase<VeilidFlutterWire>
     return raw == null ? ffi.nullptr : _api2wire_String(raw);
   }
 
-  ffi.Pointer<ffi.Uint64> _api2wire_opt_box_autoadd_u64(int? raw) {
-    return raw == null ? ffi.nullptr : _api2wire_box_autoadd_u64(raw);
+  ffi.Pointer<ffi.Uint32> _api2wire_opt_box_autoadd_u32(int? raw) {
+    return raw == null ? ffi.nullptr : _api2wire_box_autoadd_u32(raw);
   }
 
   int _api2wire_u32(int raw) {
-    return raw;
-  }
-
-  int _api2wire_u64(int raw) {
     return raw;
   }
 
@@ -401,155 +293,128 @@ class VeilidFlutterImpl extends FlutterRustBridgeBase<VeilidFlutterWire>
       VeilidConfig apiObj, wire_VeilidConfig wireObj) {
     wireObj.program_name = _api2wire_String(apiObj.programName);
     wireObj.namespace = _api2wire_String(apiObj.namespace);
-    wireObj.capabilities =
-        _api2wire_veilid_config_capabilities(apiObj.capabilities);
-    wireObj.protected_store =
-        _api2wire_veilid_config_protected_store(apiObj.protectedStore);
-    wireObj.table_store =
-        _api2wire_veilid_config_table_store(apiObj.tableStore);
-    wireObj.block_store =
-        _api2wire_veilid_config_block_store(apiObj.blockStore);
-    wireObj.network = _api2wire_veilid_config_network(apiObj.network);
-  }
-
-  void _api_fill_to_wire_veilid_config_block_store(
-      VeilidConfigBlockStore apiObj, wire_VeilidConfigBlockStore wireObj) {
-    wireObj.directory = _api2wire_String(apiObj.directory);
-    wireObj.delete = _api2wire_bool(apiObj.delete);
-  }
-
-  void _api_fill_to_wire_veilid_config_capabilities(
-      VeilidConfigCapabilities apiObj, wire_VeilidConfigCapabilities wireObj) {
-    wireObj.protocol_udp = _api2wire_bool(apiObj.protocolUdp);
-    wireObj.protocol_connect_tcp = _api2wire_bool(apiObj.protocolConnectTcp);
-    wireObj.protocol_accept_tcp = _api2wire_bool(apiObj.protocolAcceptTcp);
-    wireObj.protocol_connect_ws = _api2wire_bool(apiObj.protocolConnectWs);
-    wireObj.protocol_accept_ws = _api2wire_bool(apiObj.protocolAcceptWs);
-    wireObj.protocol_connect_wss = _api2wire_bool(apiObj.protocolConnectWss);
-    wireObj.protocol_accept_wss = _api2wire_bool(apiObj.protocolAcceptWss);
-  }
-
-  void _api_fill_to_wire_veilid_config_dht(
-      VeilidConfigDHT apiObj, wire_VeilidConfigDHT wireObj) {
-    wireObj.resolve_node_timeout =
-        _api2wire_opt_box_autoadd_u64(apiObj.resolveNodeTimeout);
-    wireObj.resolve_node_count = _api2wire_u32(apiObj.resolveNodeCount);
-    wireObj.resolve_node_fanout = _api2wire_u32(apiObj.resolveNodeFanout);
-    wireObj.max_find_node_count = _api2wire_u32(apiObj.maxFindNodeCount);
-    wireObj.get_value_timeout =
-        _api2wire_opt_box_autoadd_u64(apiObj.getValueTimeout);
-    wireObj.get_value_count = _api2wire_u32(apiObj.getValueCount);
-    wireObj.get_value_fanout = _api2wire_u32(apiObj.getValueFanout);
-    wireObj.set_value_timeout =
-        _api2wire_opt_box_autoadd_u64(apiObj.setValueTimeout);
-    wireObj.set_value_count = _api2wire_u32(apiObj.setValueCount);
-    wireObj.set_value_fanout = _api2wire_u32(apiObj.setValueFanout);
-    wireObj.min_peer_count = _api2wire_u32(apiObj.minPeerCount);
-    wireObj.min_peer_refresh_time = _api2wire_u64(apiObj.minPeerRefreshTime);
-    wireObj.validate_dial_info_receipt_time =
-        _api2wire_u64(apiObj.validateDialInfoReceiptTime);
-  }
-
-  void _api_fill_to_wire_veilid_config_leases(
-      VeilidConfigLeases apiObj, wire_VeilidConfigLeases wireObj) {
-    wireObj.max_server_signal_leases =
-        _api2wire_u32(apiObj.maxServerSignalLeases);
-    wireObj.max_server_relay_leases =
-        _api2wire_u32(apiObj.maxServerRelayLeases);
-    wireObj.max_client_signal_leases =
-        _api2wire_u32(apiObj.maxClientSignalLeases);
-    wireObj.max_client_relay_leases =
-        _api2wire_u32(apiObj.maxClientRelayLeases);
-  }
-
-  void _api_fill_to_wire_veilid_config_network(
-      VeilidConfigNetwork apiObj, wire_VeilidConfigNetwork wireObj) {
-    wireObj.max_connections = _api2wire_u32(apiObj.maxConnections);
-    wireObj.connection_initial_timeout =
-        _api2wire_u64(apiObj.connectionInitialTimeout);
-    wireObj.node_id = _api2wire_String(apiObj.nodeId);
-    wireObj.node_id_secret = _api2wire_String(apiObj.nodeIdSecret);
-    wireObj.bootstrap = _api2wire_StringList(apiObj.bootstrap);
-    wireObj.rpc = _api2wire_veilid_config_rpc(apiObj.rpc);
-    wireObj.dht = _api2wire_veilid_config_dht(apiObj.dht);
-    wireObj.upnp = _api2wire_bool(apiObj.upnp);
-    wireObj.natpmp = _api2wire_bool(apiObj.natpmp);
-    wireObj.enable_local_peer_scope =
-        _api2wire_bool(apiObj.enableLocalPeerScope);
-    wireObj.restricted_nat_retries = _api2wire_u32(apiObj.restrictedNatRetries);
-    wireObj.protocol = _api2wire_veilid_config_protocol(apiObj.protocol);
-    wireObj.leases = _api2wire_veilid_config_leases(apiObj.leases);
-  }
-
-  void _api_fill_to_wire_veilid_config_protected_store(
-      VeilidConfigProtectedStore apiObj,
-      wire_VeilidConfigProtectedStore wireObj) {
-    wireObj.allow_insecure_fallback =
-        _api2wire_bool(apiObj.allowInsecureFallback);
-    wireObj.always_use_insecure_storage =
-        _api2wire_bool(apiObj.alwaysUseInsecureStorage);
-    wireObj.insecure_fallback_directory =
-        _api2wire_String(apiObj.insecureFallbackDirectory);
-    wireObj.delete = _api2wire_bool(apiObj.delete);
-  }
-
-  void _api_fill_to_wire_veilid_config_protocol(
-      VeilidConfigProtocol apiObj, wire_VeilidConfigProtocol wireObj) {
-    wireObj.udp = _api2wire_veilid_config_udp(apiObj.udp);
-    wireObj.tcp = _api2wire_veilid_config_tcp(apiObj.tcp);
-    wireObj.ws = _api2wire_veilid_config_ws(apiObj.ws);
-    wireObj.wss = _api2wire_veilid_config_wss(apiObj.wss);
-  }
-
-  void _api_fill_to_wire_veilid_config_rpc(
-      VeilidConfigRPC apiObj, wire_VeilidConfigRPC wireObj) {
-    wireObj.concurrency = _api2wire_u32(apiObj.concurrency);
-    wireObj.queue_size = _api2wire_u32(apiObj.queueSize);
-    wireObj.max_timestamp_behind =
-        _api2wire_opt_box_autoadd_u64(apiObj.maxTimestampBehind);
-    wireObj.max_timestamp_ahead =
-        _api2wire_opt_box_autoadd_u64(apiObj.maxTimestampAhead);
-    wireObj.timeout = _api2wire_u64(apiObj.timeout);
-    wireObj.max_route_hop_count = _api2wire_u8(apiObj.maxRouteHopCount);
-  }
-
-  void _api_fill_to_wire_veilid_config_table_store(
-      VeilidConfigTableStore apiObj, wire_VeilidConfigTableStore wireObj) {
-    wireObj.directory = _api2wire_String(apiObj.directory);
-    wireObj.delete = _api2wire_bool(apiObj.delete);
-  }
-
-  void _api_fill_to_wire_veilid_config_tcp(
-      VeilidConfigTCP apiObj, wire_VeilidConfigTCP wireObj) {
-    wireObj.connect = _api2wire_bool(apiObj.connect);
-    wireObj.listen = _api2wire_bool(apiObj.listen);
-    wireObj.max_connections = _api2wire_u32(apiObj.maxConnections);
-    wireObj.listen_address = _api2wire_String(apiObj.listenAddress);
-    wireObj.public_address = _api2wire_opt_String(apiObj.publicAddress);
-  }
-
-  void _api_fill_to_wire_veilid_config_udp(
-      VeilidConfigUDP apiObj, wire_VeilidConfigUDP wireObj) {
-    wireObj.enabled = _api2wire_bool(apiObj.enabled);
-    wireObj.socket_pool_size = _api2wire_u32(apiObj.socketPoolSize);
-    wireObj.listen_address = _api2wire_String(apiObj.listenAddress);
-    wireObj.public_address = _api2wire_opt_String(apiObj.publicAddress);
-  }
-
-  void _api_fill_to_wire_veilid_config_ws(
-      VeilidConfigWS apiObj, wire_VeilidConfigWS wireObj) {
-    wireObj.connect = _api2wire_bool(apiObj.connect);
-    wireObj.listen = _api2wire_bool(apiObj.listen);
-    wireObj.max_connections = _api2wire_u32(apiObj.maxConnections);
-    wireObj.listen_address = _api2wire_String(apiObj.listenAddress);
-    wireObj.path = _api2wire_String(apiObj.path);
-    wireObj.url = _api2wire_opt_String(apiObj.url);
-  }
-
-  void _api_fill_to_wire_veilid_config_wss(
-      VeilidConfigWSS apiObj, wire_VeilidConfigWSS wireObj) {
-    wireObj.connect = _api2wire_bool(apiObj.connect);
-    wireObj.max_connections = _api2wire_u32(apiObj.maxConnections);
+    wireObj.capabilities__protocol_udp =
+        _api2wire_bool(apiObj.capabilitiesProtocolUdp);
+    wireObj.capabilities__protocol_connect_tcp =
+        _api2wire_bool(apiObj.capabilitiesProtocolConnectTcp);
+    wireObj.capabilities__protocol_accept_tcp =
+        _api2wire_bool(apiObj.capabilitiesProtocolAcceptTcp);
+    wireObj.capabilities__protocol_connect_ws =
+        _api2wire_bool(apiObj.capabilitiesProtocolConnectWs);
+    wireObj.capabilities__protocol_accept_ws =
+        _api2wire_bool(apiObj.capabilitiesProtocolAcceptWs);
+    wireObj.capabilities__protocol_connect_wss =
+        _api2wire_bool(apiObj.capabilitiesProtocolConnectWss);
+    wireObj.capabilities__protocol_accept_wss =
+        _api2wire_bool(apiObj.capabilitiesProtocolAcceptWss);
+    wireObj.protected_store__allow_insecure_fallback =
+        _api2wire_bool(apiObj.protectedStoreAllowInsecureFallback);
+    wireObj.protected_store__always_use_insecure_storage =
+        _api2wire_bool(apiObj.protectedStoreAlwaysUseInsecureStorage);
+    wireObj.protected_store__insecure_fallback_directory =
+        _api2wire_String(apiObj.protectedStoreInsecureFallbackDirectory);
+    wireObj.protected_store__delete =
+        _api2wire_bool(apiObj.protectedStoreDelete);
+    wireObj.table_store__directory =
+        _api2wire_String(apiObj.tableStoreDirectory);
+    wireObj.table_store__delete = _api2wire_bool(apiObj.tableStoreDelete);
+    wireObj.block_store__directory =
+        _api2wire_String(apiObj.blockStoreDirectory);
+    wireObj.block_store__delete = _api2wire_bool(apiObj.blockStoreDelete);
+    wireObj.network__max_connections =
+        _api2wire_u32(apiObj.networkMaxConnections);
+    wireObj.network__connection_initial_timeout_ms =
+        _api2wire_u32(apiObj.networkConnectionInitialTimeoutMs);
+    wireObj.network__node_id = _api2wire_String(apiObj.networkNodeId);
+    wireObj.network__node_id_secret =
+        _api2wire_String(apiObj.networkNodeIdSecret);
+    wireObj.network__bootstrap = _api2wire_StringList(apiObj.networkBootstrap);
+    wireObj.network__upnp = _api2wire_bool(apiObj.networkUpnp);
+    wireObj.network__natpmp = _api2wire_bool(apiObj.networkNatpmp);
+    wireObj.network__enable_local_peer_scope =
+        _api2wire_bool(apiObj.networkEnableLocalPeerScope);
+    wireObj.network__restricted_nat_retries =
+        _api2wire_u32(apiObj.networkRestrictedNatRetries);
+    wireObj.network__rpc__concurrency =
+        _api2wire_u32(apiObj.networkRpcConcurrency);
+    wireObj.network__rpc__queue_size =
+        _api2wire_u32(apiObj.networkRpcQueueSize);
+    wireObj.network__rpc__max_timestamp_behind_ms =
+        _api2wire_opt_box_autoadd_u32(apiObj.networkRpcMaxTimestampBehindMs);
+    wireObj.network__rpc__max_timestamp_ahead_ms =
+        _api2wire_opt_box_autoadd_u32(apiObj.networkRpcMaxTimestampAheadMs);
+    wireObj.network__rpc__timeout_ms =
+        _api2wire_u32(apiObj.networkRpcTimeoutMs);
+    wireObj.network__rpc__max_route_hop_count =
+        _api2wire_u8(apiObj.networkRpcMaxRouteHopCount);
+    wireObj.network__dht__resolve_node_timeout_ms =
+        _api2wire_opt_box_autoadd_u32(apiObj.networkDhtResolveNodeTimeoutMs);
+    wireObj.network__dht__resolve_node_count =
+        _api2wire_u32(apiObj.networkDhtResolveNodeCount);
+    wireObj.network__dht__resolve_node_fanout =
+        _api2wire_u32(apiObj.networkDhtResolveNodeFanout);
+    wireObj.network__dht__max_find_node_count =
+        _api2wire_u32(apiObj.networkDhtMaxFindNodeCount);
+    wireObj.network__dht__get_value_timeout_ms =
+        _api2wire_opt_box_autoadd_u32(apiObj.networkDhtGetValueTimeoutMs);
+    wireObj.network__dht__get_value_count =
+        _api2wire_u32(apiObj.networkDhtGetValueCount);
+    wireObj.network__dht__get_value_fanout =
+        _api2wire_u32(apiObj.networkDhtGetValueFanout);
+    wireObj.network__dht__set_value_timeout_ms =
+        _api2wire_opt_box_autoadd_u32(apiObj.networkDhtSetValueTimeoutMs);
+    wireObj.network__dht__set_value_count =
+        _api2wire_u32(apiObj.networkDhtSetValueCount);
+    wireObj.network__dht__set_value_fanout =
+        _api2wire_u32(apiObj.networkDhtSetValueFanout);
+    wireObj.network__dht__min_peer_count =
+        _api2wire_u32(apiObj.networkDhtMinPeerCount);
+    wireObj.network__dht__min_peer_refresh_time_ms =
+        _api2wire_u32(apiObj.networkDhtMinPeerRefreshTimeMs);
+    wireObj.network__dht__validate_dial_info_receipt_time_ms =
+        _api2wire_u32(apiObj.networkDhtValidateDialInfoReceiptTimeMs);
+    wireObj.network__protocol__udp__enabled =
+        _api2wire_bool(apiObj.networkProtocolUdpEnabled);
+    wireObj.network__protocol__udp__socket_pool_size =
+        _api2wire_u32(apiObj.networkProtocolUdpSocketPoolSize);
+    wireObj.network__protocol__udp__listen_address =
+        _api2wire_String(apiObj.networkProtocolUdpListenAddress);
+    wireObj.network__protocol__udp__public_address =
+        _api2wire_opt_String(apiObj.networkProtocolUdpPublicAddress);
+    wireObj.network__protocol__tcp__connect =
+        _api2wire_bool(apiObj.networkProtocolTcpConnect);
+    wireObj.network__protocol__tcp__listen =
+        _api2wire_bool(apiObj.networkProtocolTcpListen);
+    wireObj.network__protocol__tcp__max_connections =
+        _api2wire_u32(apiObj.networkProtocolTcpMaxConnections);
+    wireObj.network__protocol__tcp__listen_address =
+        _api2wire_String(apiObj.networkProtocolTcpListenAddress);
+    wireObj.network__protocol__tcp__public_address =
+        _api2wire_opt_String(apiObj.networkProtocolTcpPublicAddress);
+    wireObj.network__protocol__ws__connect =
+        _api2wire_bool(apiObj.networkProtocolWsConnect);
+    wireObj.network__protocol__ws__listen =
+        _api2wire_bool(apiObj.networkProtocolWsListen);
+    wireObj.network__protocol__ws__max_connections =
+        _api2wire_u32(apiObj.networkProtocolWsMaxConnections);
+    wireObj.network__protocol__ws__listen_address =
+        _api2wire_String(apiObj.networkProtocolWsListenAddress);
+    wireObj.network__protocol__ws__path =
+        _api2wire_String(apiObj.networkProtocolWsPath);
+    wireObj.network__protocol__ws__url =
+        _api2wire_opt_String(apiObj.networkProtocolWsUrl);
+    wireObj.network__protocol__wss__connect =
+        _api2wire_bool(apiObj.networkProtocolWssConnect);
+    wireObj.network__protocol__wss__max_connections =
+        _api2wire_u32(apiObj.networkProtocolWssMaxConnections);
+    wireObj.network__leases__max_server_signal_leases =
+        _api2wire_u32(apiObj.networkLeasesMaxServerSignalLeases);
+    wireObj.network__leases__max_server_relay_leases =
+        _api2wire_u32(apiObj.networkLeasesMaxServerRelayLeases);
+    wireObj.network__leases__max_client_signal_leases =
+        _api2wire_u32(apiObj.networkLeasesMaxClientSignalLeases);
+    wireObj.network__leases__max_client_relay_leases =
+        _api2wire_u32(apiObj.networkLeasesMaxClientRelayLeases);
   }
 }
 
@@ -663,19 +528,19 @@ class VeilidFlutterWire implements FlutterRustBridgeWireBase {
   late final _new_StringList = _new_StringListPtr
       .asFunction<ffi.Pointer<wire_StringList> Function(int)>();
 
-  ffi.Pointer<ffi.Uint64> new_box_autoadd_u64(
+  ffi.Pointer<ffi.Uint32> new_box_autoadd_u32(
     int value,
   ) {
-    return _new_box_autoadd_u64(
+    return _new_box_autoadd_u32(
       value,
     );
   }
 
-  late final _new_box_autoadd_u64Ptr =
-      _lookup<ffi.NativeFunction<ffi.Pointer<ffi.Uint64> Function(ffi.Uint64)>>(
-          'new_box_autoadd_u64');
-  late final _new_box_autoadd_u64 = _new_box_autoadd_u64Ptr
-      .asFunction<ffi.Pointer<ffi.Uint64> Function(int)>();
+  late final _new_box_autoadd_u32Ptr =
+      _lookup<ffi.NativeFunction<ffi.Pointer<ffi.Uint32> Function(ffi.Uint32)>>(
+          'new_box_autoadd_u32');
+  late final _new_box_autoadd_u32 = _new_box_autoadd_u32Ptr
+      .asFunction<ffi.Pointer<ffi.Uint32> Function(int)>();
 
   ffi.Pointer<wire_VeilidConfig> new_box_autoadd_veilid_config() {
     return _new_box_autoadd_veilid_config();
@@ -738,56 +603,6 @@ class wire_uint_8_list extends ffi.Struct {
   external int len;
 }
 
-class wire_VeilidConfigCapabilities extends ffi.Struct {
-  @ffi.Uint8()
-  external int protocol_udp;
-
-  @ffi.Uint8()
-  external int protocol_connect_tcp;
-
-  @ffi.Uint8()
-  external int protocol_accept_tcp;
-
-  @ffi.Uint8()
-  external int protocol_connect_ws;
-
-  @ffi.Uint8()
-  external int protocol_accept_ws;
-
-  @ffi.Uint8()
-  external int protocol_connect_wss;
-
-  @ffi.Uint8()
-  external int protocol_accept_wss;
-}
-
-class wire_VeilidConfigProtectedStore extends ffi.Struct {
-  @ffi.Uint8()
-  external int allow_insecure_fallback;
-
-  @ffi.Uint8()
-  external int always_use_insecure_storage;
-
-  external ffi.Pointer<wire_uint_8_list> insecure_fallback_directory;
-
-  @ffi.Uint8()
-  external int delete_;
-}
-
-class wire_VeilidConfigTableStore extends ffi.Struct {
-  external ffi.Pointer<wire_uint_8_list> directory;
-
-  @ffi.Uint8()
-  external int delete_;
-}
-
-class wire_VeilidConfigBlockStore extends ffi.Struct {
-  external ffi.Pointer<wire_uint_8_list> directory;
-
-  @ffi.Uint8()
-  external int delete_;
-}
-
 class wire_StringList extends ffi.Struct {
   external ffi.Pointer<ffi.Pointer<wire_uint_8_list>> ptr;
 
@@ -795,186 +610,185 @@ class wire_StringList extends ffi.Struct {
   external int len;
 }
 
-class wire_VeilidConfigRPC extends ffi.Struct {
-  @ffi.Uint32()
-  external int concurrency;
-
-  @ffi.Uint32()
-  external int queue_size;
-
-  external ffi.Pointer<ffi.Uint64> max_timestamp_behind;
-
-  external ffi.Pointer<ffi.Uint64> max_timestamp_ahead;
-
-  @ffi.Uint64()
-  external int timeout;
-
-  @ffi.Uint8()
-  external int max_route_hop_count;
-}
-
-class wire_VeilidConfigDHT extends ffi.Struct {
-  external ffi.Pointer<ffi.Uint64> resolve_node_timeout;
-
-  @ffi.Uint32()
-  external int resolve_node_count;
-
-  @ffi.Uint32()
-  external int resolve_node_fanout;
-
-  @ffi.Uint32()
-  external int max_find_node_count;
-
-  external ffi.Pointer<ffi.Uint64> get_value_timeout;
-
-  @ffi.Uint32()
-  external int get_value_count;
-
-  @ffi.Uint32()
-  external int get_value_fanout;
-
-  external ffi.Pointer<ffi.Uint64> set_value_timeout;
-
-  @ffi.Uint32()
-  external int set_value_count;
-
-  @ffi.Uint32()
-  external int set_value_fanout;
-
-  @ffi.Uint32()
-  external int min_peer_count;
-
-  @ffi.Uint64()
-  external int min_peer_refresh_time;
-
-  @ffi.Uint64()
-  external int validate_dial_info_receipt_time;
-}
-
-class wire_VeilidConfigUDP extends ffi.Struct {
-  @ffi.Uint8()
-  external int enabled;
-
-  @ffi.Uint32()
-  external int socket_pool_size;
-
-  external ffi.Pointer<wire_uint_8_list> listen_address;
-
-  external ffi.Pointer<wire_uint_8_list> public_address;
-}
-
-class wire_VeilidConfigTCP extends ffi.Struct {
-  @ffi.Uint8()
-  external int connect;
-
-  @ffi.Uint8()
-  external int listen;
-
-  @ffi.Uint32()
-  external int max_connections;
-
-  external ffi.Pointer<wire_uint_8_list> listen_address;
-
-  external ffi.Pointer<wire_uint_8_list> public_address;
-}
-
-class wire_VeilidConfigWS extends ffi.Struct {
-  @ffi.Uint8()
-  external int connect;
-
-  @ffi.Uint8()
-  external int listen;
-
-  @ffi.Uint32()
-  external int max_connections;
-
-  external ffi.Pointer<wire_uint_8_list> listen_address;
-
-  external ffi.Pointer<wire_uint_8_list> path;
-
-  external ffi.Pointer<wire_uint_8_list> url;
-}
-
-class wire_VeilidConfigWSS extends ffi.Struct {
-  @ffi.Uint8()
-  external int connect;
-
-  @ffi.Uint32()
-  external int max_connections;
-}
-
-class wire_VeilidConfigProtocol extends ffi.Struct {
-  external wire_VeilidConfigUDP udp;
-
-  external wire_VeilidConfigTCP tcp;
-
-  external wire_VeilidConfigWS ws;
-
-  external wire_VeilidConfigWSS wss;
-}
-
-class wire_VeilidConfigLeases extends ffi.Struct {
-  @ffi.Uint32()
-  external int max_server_signal_leases;
-
-  @ffi.Uint32()
-  external int max_server_relay_leases;
-
-  @ffi.Uint32()
-  external int max_client_signal_leases;
-
-  @ffi.Uint32()
-  external int max_client_relay_leases;
-}
-
-class wire_VeilidConfigNetwork extends ffi.Struct {
-  @ffi.Uint32()
-  external int max_connections;
-
-  @ffi.Uint64()
-  external int connection_initial_timeout;
-
-  external ffi.Pointer<wire_uint_8_list> node_id;
-
-  external ffi.Pointer<wire_uint_8_list> node_id_secret;
-
-  external ffi.Pointer<wire_StringList> bootstrap;
-
-  external wire_VeilidConfigRPC rpc;
-
-  external wire_VeilidConfigDHT dht;
-
-  @ffi.Uint8()
-  external int upnp;
-
-  @ffi.Uint8()
-  external int natpmp;
-
-  @ffi.Uint8()
-  external int enable_local_peer_scope;
-
-  @ffi.Uint32()
-  external int restricted_nat_retries;
-
-  external wire_VeilidConfigProtocol protocol;
-
-  external wire_VeilidConfigLeases leases;
-}
-
 class wire_VeilidConfig extends ffi.Struct {
   external ffi.Pointer<wire_uint_8_list> program_name;
 
   external ffi.Pointer<wire_uint_8_list> namespace_;
 
-  external wire_VeilidConfigCapabilities capabilities;
+  @ffi.Uint8()
+  external int capabilities__protocol_udp;
 
-  external wire_VeilidConfigProtectedStore protected_store;
+  @ffi.Uint8()
+  external int capabilities__protocol_connect_tcp;
 
-  external wire_VeilidConfigTableStore table_store;
+  @ffi.Uint8()
+  external int capabilities__protocol_accept_tcp;
 
-  external wire_VeilidConfigBlockStore block_store;
+  @ffi.Uint8()
+  external int capabilities__protocol_connect_ws;
 
-  external wire_VeilidConfigNetwork network;
+  @ffi.Uint8()
+  external int capabilities__protocol_accept_ws;
+
+  @ffi.Uint8()
+  external int capabilities__protocol_connect_wss;
+
+  @ffi.Uint8()
+  external int capabilities__protocol_accept_wss;
+
+  @ffi.Uint8()
+  external int protected_store__allow_insecure_fallback;
+
+  @ffi.Uint8()
+  external int protected_store__always_use_insecure_storage;
+
+  external ffi.Pointer<wire_uint_8_list>
+      protected_store__insecure_fallback_directory;
+
+  @ffi.Uint8()
+  external int protected_store__delete;
+
+  external ffi.Pointer<wire_uint_8_list> table_store__directory;
+
+  @ffi.Uint8()
+  external int table_store__delete;
+
+  external ffi.Pointer<wire_uint_8_list> block_store__directory;
+
+  @ffi.Uint8()
+  external int block_store__delete;
+
+  @ffi.Uint32()
+  external int network__max_connections;
+
+  @ffi.Uint32()
+  external int network__connection_initial_timeout_ms;
+
+  external ffi.Pointer<wire_uint_8_list> network__node_id;
+
+  external ffi.Pointer<wire_uint_8_list> network__node_id_secret;
+
+  external ffi.Pointer<wire_StringList> network__bootstrap;
+
+  @ffi.Uint8()
+  external int network__upnp;
+
+  @ffi.Uint8()
+  external int network__natpmp;
+
+  @ffi.Uint8()
+  external int network__enable_local_peer_scope;
+
+  @ffi.Uint32()
+  external int network__restricted_nat_retries;
+
+  @ffi.Uint32()
+  external int network__rpc__concurrency;
+
+  @ffi.Uint32()
+  external int network__rpc__queue_size;
+
+  external ffi.Pointer<ffi.Uint32> network__rpc__max_timestamp_behind_ms;
+
+  external ffi.Pointer<ffi.Uint32> network__rpc__max_timestamp_ahead_ms;
+
+  @ffi.Uint32()
+  external int network__rpc__timeout_ms;
+
+  @ffi.Uint8()
+  external int network__rpc__max_route_hop_count;
+
+  external ffi.Pointer<ffi.Uint32> network__dht__resolve_node_timeout_ms;
+
+  @ffi.Uint32()
+  external int network__dht__resolve_node_count;
+
+  @ffi.Uint32()
+  external int network__dht__resolve_node_fanout;
+
+  @ffi.Uint32()
+  external int network__dht__max_find_node_count;
+
+  external ffi.Pointer<ffi.Uint32> network__dht__get_value_timeout_ms;
+
+  @ffi.Uint32()
+  external int network__dht__get_value_count;
+
+  @ffi.Uint32()
+  external int network__dht__get_value_fanout;
+
+  external ffi.Pointer<ffi.Uint32> network__dht__set_value_timeout_ms;
+
+  @ffi.Uint32()
+  external int network__dht__set_value_count;
+
+  @ffi.Uint32()
+  external int network__dht__set_value_fanout;
+
+  @ffi.Uint32()
+  external int network__dht__min_peer_count;
+
+  @ffi.Uint32()
+  external int network__dht__min_peer_refresh_time_ms;
+
+  @ffi.Uint32()
+  external int network__dht__validate_dial_info_receipt_time_ms;
+
+  @ffi.Uint8()
+  external int network__protocol__udp__enabled;
+
+  @ffi.Uint32()
+  external int network__protocol__udp__socket_pool_size;
+
+  external ffi.Pointer<wire_uint_8_list> network__protocol__udp__listen_address;
+
+  external ffi.Pointer<wire_uint_8_list> network__protocol__udp__public_address;
+
+  @ffi.Uint8()
+  external int network__protocol__tcp__connect;
+
+  @ffi.Uint8()
+  external int network__protocol__tcp__listen;
+
+  @ffi.Uint32()
+  external int network__protocol__tcp__max_connections;
+
+  external ffi.Pointer<wire_uint_8_list> network__protocol__tcp__listen_address;
+
+  external ffi.Pointer<wire_uint_8_list> network__protocol__tcp__public_address;
+
+  @ffi.Uint8()
+  external int network__protocol__ws__connect;
+
+  @ffi.Uint8()
+  external int network__protocol__ws__listen;
+
+  @ffi.Uint32()
+  external int network__protocol__ws__max_connections;
+
+  external ffi.Pointer<wire_uint_8_list> network__protocol__ws__listen_address;
+
+  external ffi.Pointer<wire_uint_8_list> network__protocol__ws__path;
+
+  external ffi.Pointer<wire_uint_8_list> network__protocol__ws__url;
+
+  @ffi.Uint8()
+  external int network__protocol__wss__connect;
+
+  @ffi.Uint32()
+  external int network__protocol__wss__max_connections;
+
+  @ffi.Uint32()
+  external int network__leases__max_server_signal_leases;
+
+  @ffi.Uint32()
+  external int network__leases__max_server_relay_leases;
+
+  @ffi.Uint32()
+  external int network__leases__max_client_signal_leases;
+
+  @ffi.Uint32()
+  external int network__leases__max_client_relay_leases;
 }
 
 typedef DartPostCObjectFnType = ffi.Pointer<

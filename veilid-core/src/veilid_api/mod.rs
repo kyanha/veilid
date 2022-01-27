@@ -1196,7 +1196,7 @@ impl VeilidAPI {
             (
                 c.network.dht.resolve_node_count,
                 c.network.dht.resolve_node_fanout,
-                c.network.dht.resolve_node_timeout,
+                c.network.dht.resolve_node_timeout_ms.map(ms_to_us),
             )
         };
 
@@ -1224,7 +1224,7 @@ impl VeilidAPI {
             (
                 c.network.dht.resolve_node_count,
                 c.network.dht.resolve_node_fanout,
-                c.network.dht.resolve_node_timeout,
+                c.network.dht.resolve_node_timeout_ms.map(ms_to_us),
             )
         };
 

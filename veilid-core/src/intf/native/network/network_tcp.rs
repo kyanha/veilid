@@ -88,8 +88,8 @@ impl Network {
         let (connection_initial_timeout, tls_connection_initial_timeout) = {
             let c = self.config.get();
             (
-                c.network.connection_initial_timeout,
-                c.network.tls.connection_initial_timeout,
+                ms_to_us(c.network.connection_initial_timeout_ms),
+                ms_to_us(c.network.tls.connection_initial_timeout_ms),
             )
         };
 

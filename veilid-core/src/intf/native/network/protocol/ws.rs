@@ -106,9 +106,9 @@ impl WebsocketProtocolHandler {
             format!("GET /{}", c.network.protocol.wss.path.trim_end_matches('/'))
         };
         let connection_initial_timeout = if tls {
-            c.network.tls.connection_initial_timeout
+            ms_to_us(c.network.tls.connection_initial_timeout_ms)
         } else {
-            c.network.connection_initial_timeout
+            ms_to_us(c.network.connection_initial_timeout_ms)
         };
 
         Self {

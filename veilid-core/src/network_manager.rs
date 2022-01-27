@@ -504,8 +504,8 @@ impl NetworkManager {
         let (tsbehind, tsahead) = {
             let c = self.config.get();
             (
-                c.network.rpc.max_timestamp_behind,
-                c.network.rpc.max_timestamp_ahead,
+                c.network.rpc.max_timestamp_behind_ms.map(ms_to_us),
+                c.network.rpc.max_timestamp_ahead_ms.map(ms_to_us),
             )
         };
 

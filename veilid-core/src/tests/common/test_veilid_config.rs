@@ -191,36 +191,36 @@ pub fn config_callback(key: String) -> ConfigCallbackReturn {
         "protected_store.insecure_fallback_directory" => Ok(Box::new(get_protected_store_path())),
         "protected_store.delete" => Ok(Box::new(false)),
         "network.max_connections" => Ok(Box::new(16u32)),
-        "network.connection_initial_timeout" => Ok(Box::new(2_000_000u64)),
+        "network.connection_initial_timeout_ms" => Ok(Box::new(2_000u32)),
         "network.node_id" => Ok(Box::new(dht::key::DHTKey::default())),
         "network.node_id_secret" => Ok(Box::new(dht::key::DHTKeySecret::default())),
         "network.bootstrap" => Ok(Box::new(vec![String::from("asdf"), String::from("qwer")])),
         "network.rpc.concurrency" => Ok(Box::new(2u32)),
         "network.rpc.queue_size" => Ok(Box::new(128u32)),
-        "network.rpc.max_timestamp_behind" => Ok(Box::new(Some(10_000_000u64))),
-        "network.rpc.max_timestamp_ahead" => Ok(Box::new(Some(10_000_000u64))),
-        "network.rpc.timeout" => Ok(Box::new(10_000_000u64)),
+        "network.rpc.max_timestamp_behind_ms" => Ok(Box::new(Some(10_000u32))),
+        "network.rpc.max_timestamp_ahead_ms" => Ok(Box::new(Some(10_000u32))),
+        "network.rpc.timeout_ms" => Ok(Box::new(10_000u32)),
         "network.rpc.max_route_hop_count" => Ok(Box::new(7u8)),
-        "network.dht.resolve_node_timeout" => Ok(Box::new(Option::<u64>::None)),
+        "network.dht.resolve_node_timeout_ms" => Ok(Box::new(Option::<u32>::None)),
         "network.dht.resolve_node_count" => Ok(Box::new(20u32)),
         "network.dht.resolve_node_fanout" => Ok(Box::new(3u32)),
         "network.dht.max_find_node_count" => Ok(Box::new(20u32)),
-        "network.dht.get_value_timeout" => Ok(Box::new(Option::<u64>::None)),
+        "network.dht.get_value_timeout_ms" => Ok(Box::new(Option::<u32>::None)),
         "network.dht.get_value_count" => Ok(Box::new(20u32)),
         "network.dht.get_value_fanout" => Ok(Box::new(3u32)),
-        "network.dht.set_value_timeout" => Ok(Box::new(Option::<u64>::None)),
+        "network.dht.set_value_timeout_ms" => Ok(Box::new(Option::<u32>::None)),
         "network.dht.set_value_count" => Ok(Box::new(20u32)),
         "network.dht.set_value_fanout" => Ok(Box::new(5u32)),
         "network.dht.min_peer_count" => Ok(Box::new(20u32)),
-        "network.dht.min_peer_refresh_time" => Ok(Box::new(2000000u64)),
-        "network.dht.validate_dial_info_receipt_time" => Ok(Box::new(5000000u64)),
+        "network.dht.min_peer_refresh_time_ms" => Ok(Box::new(2_000u32)),
+        "network.dht.validate_dial_info_receipt_time_ms" => Ok(Box::new(5_000u32)),
         "network.upnp" => Ok(Box::new(false)),
         "network.natpmp" => Ok(Box::new(false)),
         "network.enable_local_peer_scope" => Ok(Box::new(false)),
         "network.restricted_nat_retries" => Ok(Box::new(3u32)),
         "network.tls.certificate_path" => Ok(Box::new(get_certfile_path())),
         "network.tls.private_key_path" => Ok(Box::new(get_keyfile_path())),
-        "network.tls.connection_initial_timeout" => Ok(Box::new(2_000_000u64)),
+        "network.tls.connection_initial_timeout_ms" => Ok(Box::new(2_000u32)),
         "network.application.https.enabled" => Ok(Box::new(false)),
         "network.application.https.listen_address" => Ok(Box::new(String::from("[::1]:5150"))),
         "network.application.https.path" => Ok(Box::new(String::from("app"))),
@@ -294,7 +294,7 @@ pub async fn test_config() {
     );
     assert_eq!(inner.protected_store.delete, false);
     assert_eq!(inner.network.max_connections, 16);
-    assert_eq!(inner.network.connection_initial_timeout, 2_000_000u64);
+    assert_eq!(inner.network.connection_initial_timeout_ms, 2_000u32);
     assert!(!inner.network.node_id.valid);
     assert!(!inner.network.node_id_secret.valid);
     assert_eq!(
@@ -303,22 +303,25 @@ pub async fn test_config() {
     );
     assert_eq!(inner.network.rpc.concurrency, 2u32);
     assert_eq!(inner.network.rpc.queue_size, 128u32);
-    assert_eq!(inner.network.rpc.timeout, 10_000_000u64);
+    assert_eq!(inner.network.rpc.timeout_ms, 10_000u32);
     assert_eq!(inner.network.rpc.max_route_hop_count, 7u8);
-    assert_eq!(inner.network.dht.resolve_node_timeout, Option::<u64>::None);
+    assert_eq!(
+        inner.network.dht.resolve_node_timeout_ms,
+        Option::<u32>::None
+    );
     assert_eq!(inner.network.dht.resolve_node_count, 20u32);
     assert_eq!(inner.network.dht.resolve_node_fanout, 3u32);
-    assert_eq!(inner.network.dht.get_value_timeout, Option::<u64>::None);
+    assert_eq!(inner.network.dht.get_value_timeout_ms, Option::<u32>::None);
     assert_eq!(inner.network.dht.get_value_count, 20u32);
     assert_eq!(inner.network.dht.get_value_fanout, 3u32);
-    assert_eq!(inner.network.dht.set_value_timeout, Option::<u64>::None);
+    assert_eq!(inner.network.dht.set_value_timeout_ms, Option::<u32>::None);
     assert_eq!(inner.network.dht.set_value_count, 20u32);
     assert_eq!(inner.network.dht.set_value_fanout, 5u32);
     assert_eq!(inner.network.dht.min_peer_count, 20u32);
-    assert_eq!(inner.network.dht.min_peer_refresh_time, 2000000u64);
+    assert_eq!(inner.network.dht.min_peer_refresh_time_ms, 2_000u32);
     assert_eq!(
-        inner.network.dht.validate_dial_info_receipt_time,
-        5000000u64
+        inner.network.dht.validate_dial_info_receipt_time_ms,
+        5_000u32
     );
 
     assert_eq!(inner.network.upnp, false);
@@ -327,7 +330,7 @@ pub async fn test_config() {
     assert_eq!(inner.network.restricted_nat_retries, 3u32);
     assert_eq!(inner.network.tls.certificate_path, get_certfile_path());
     assert_eq!(inner.network.tls.private_key_path, get_keyfile_path());
-    assert_eq!(inner.network.tls.connection_initial_timeout, 2_000_000u64);
+    assert_eq!(inner.network.tls.connection_initial_timeout_ms, 2_000u32);
 
     assert_eq!(inner.network.application.https.enabled, false);
     assert_eq!(inner.network.application.https.listen_address, "[::1]:5150");

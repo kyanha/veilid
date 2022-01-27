@@ -383,7 +383,7 @@ struct Operation {
         route               @9  :OperationRoute;
         
         # Routable operations
-        getValueQ           @10  :OperationGetValueQ;
+        getValueQ           @10 :OperationGetValueQ;
         getValueA           @11 :OperationGetValueA;
         setValueQ           @12 :OperationSetValueQ;
         setValueA           @13 :OperationSetValueA;

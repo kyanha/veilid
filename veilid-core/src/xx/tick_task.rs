@@ -32,6 +32,14 @@ impl TickTask {
             single_future: SingleFuture::new(),
         }
     }
+    pub fn new_ms(tick_period_ms: u32) -> Self {
+        Self {
+            last_timestamp_us: AtomicU64::new(0),
+            tick_period_us: (tick_period_ms as u64) * 1000u64,
+            routine: OnceCell::new(),
+            single_future: SingleFuture::new(),
+        }
+    }
     pub fn new(tick_period_sec: u32) -> Self {
         Self {
             last_timestamp_us: AtomicU64::new(0),

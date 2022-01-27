@@ -92,7 +92,7 @@ impl RoutingTable {
         RoutingTableUnlockedInner {
             rolling_transfers_task: TickTask::new(ROLLING_TRANSFERS_INTERVAL_SECS),
             bootstrap_task: TickTask::new(1),
-            peer_minimum_refresh_task: TickTask::new_us(c.network.dht.min_peer_refresh_time),
+            peer_minimum_refresh_task: TickTask::new_ms(c.network.dht.min_peer_refresh_time_ms),
             ping_validator_task: TickTask::new(1),
         }
     }

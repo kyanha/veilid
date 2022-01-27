@@ -271,7 +271,7 @@ impl RPCProcessor {
             (
                 c.network.dht.resolve_node_count,
                 c.network.dht.resolve_node_fanout,
-                c.network.dht.resolve_node_timeout,
+                c.network.dht.resolve_node_timeout_ms.map(ms_to_us),
             )
         };
 
@@ -1266,7 +1266,7 @@ impl RPCProcessor {
         // set up channel
         let mut concurrency = c.network.rpc.concurrency;
         let mut queue_size = c.network.rpc.queue_size;
-        let mut timeout = c.network.rpc.timeout;
+        let mut timeout = ms_to_us(c.network.rpc.timeout_ms);
         let mut max_route_hop_count = c.network.rpc.max_route_hop_count as usize;
         if concurrency == 0 {
             concurrency = get_concurrency() / 2;
@@ -1411,12 +1411,13 @@ impl RPCProcessor {
         alternate_port: bool,
     ) -> Result<bool, RPCError> {
         let network_manager = self.network_manager();
-        let receipt_time = self
-            .config
-            .get()
-            .network
-            .dht
-            .validate_dial_info_receipt_time;
+        let receipt_time = ms_to_us(
+            self.config
+                .get()
+                .network
+                .dht
+                .validate_dial_info_receipt_time_ms,
+        );
         //
         let (vdi_msg, eventual_value) = {
             let mut vdi_msg = ::capnp::message::Builder::new_default();

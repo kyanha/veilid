@@ -84,33 +84,33 @@ pub struct VeilidConfigProtocol {
 pub struct VeilidConfigTLS {
     pub certificate_path: String,
     pub private_key_path: String,
-    pub connection_initial_timeout: u64,
+    pub connection_initial_timeout_ms: u32,
 }
 
 #[derive(Default, Clone)]
 pub struct VeilidConfigDHT {
-    pub resolve_node_timeout: Option<u64>,
+    pub resolve_node_timeout_ms: Option<u32>,
     pub resolve_node_count: u32,
     pub resolve_node_fanout: u32,
     pub max_find_node_count: u32,
-    pub get_value_timeout: Option<u64>,
+    pub get_value_timeout_ms: Option<u32>,
     pub get_value_count: u32,
     pub get_value_fanout: u32,
-    pub set_value_timeout: Option<u64>,
+    pub set_value_timeout_ms: Option<u32>,
     pub set_value_count: u32,
     pub set_value_fanout: u32,
     pub min_peer_count: u32,
-    pub min_peer_refresh_time: u64,
-    pub validate_dial_info_receipt_time: u64,
+    pub min_peer_refresh_time_ms: u32,
+    pub validate_dial_info_receipt_time_ms: u32,
 }
 
 #[derive(Default, Clone)]
 pub struct VeilidConfigRPC {
     pub concurrency: u32,
     pub queue_size: u32,
-    pub max_timestamp_behind: Option<u64>,
-    pub max_timestamp_ahead: Option<u64>,
-    pub timeout: u64,
+    pub max_timestamp_behind_ms: Option<u32>,
+    pub max_timestamp_ahead_ms: Option<u32>,
+    pub timeout_ms: u32,
     pub max_route_hop_count: u8,
 }
 
@@ -125,7 +125,7 @@ pub struct VeilidConfigLeases {
 #[derive(Default, Clone)]
 pub struct VeilidConfigNetwork {
     pub max_connections: u32,
-    pub connection_initial_timeout: u64,
+    pub connection_initial_timeout_ms: u32,
     pub node_id: key::DHTKey,
     pub node_id_secret: key::DHTKeySecret,
     pub bootstrap: Vec<String>,
@@ -238,26 +238,26 @@ impl VeilidConfig {
             get_config!(inner.network.node_id);
             get_config!(inner.network.node_id_secret);
             get_config!(inner.network.max_connections);
-            get_config!(inner.network.connection_initial_timeout);
+            get_config!(inner.network.connection_initial_timeout_ms);
             get_config!(inner.network.bootstrap);
-            get_config!(inner.network.dht.resolve_node_timeout);
+            get_config!(inner.network.dht.resolve_node_timeout_ms);
             get_config!(inner.network.dht.resolve_node_count);
             get_config!(inner.network.dht.resolve_node_fanout);
             get_config!(inner.network.dht.max_find_node_count);
-            get_config!(inner.network.dht.get_value_timeout);
+            get_config!(inner.network.dht.get_value_timeout_ms);
             get_config!(inner.network.dht.get_value_count);
             get_config!(inner.network.dht.get_value_fanout);
-            get_config!(inner.network.dht.set_value_timeout);
+            get_config!(inner.network.dht.set_value_timeout_ms);
             get_config!(inner.network.dht.set_value_count);
             get_config!(inner.network.dht.set_value_fanout);
             get_config!(inner.network.dht.min_peer_count);
-            get_config!(inner.network.dht.min_peer_refresh_time);
-            get_config!(inner.network.dht.validate_dial_info_receipt_time);
+            get_config!(inner.network.dht.min_peer_refresh_time_ms);
+            get_config!(inner.network.dht.validate_dial_info_receipt_time_ms);
             get_config!(inner.network.rpc.concurrency);
             get_config!(inner.network.rpc.queue_size);
-            get_config!(inner.network.rpc.max_timestamp_behind);
-            get_config!(inner.network.rpc.max_timestamp_ahead);
-            get_config!(inner.network.rpc.timeout);
+            get_config!(inner.network.rpc.max_timestamp_behind_ms);
+            get_config!(inner.network.rpc.max_timestamp_ahead_ms);
+            get_config!(inner.network.rpc.timeout_ms);
             get_config!(inner.network.rpc.max_route_hop_count);
             get_config!(inner.network.upnp);
             get_config!(inner.network.natpmp);
@@ -265,7 +265,7 @@ impl VeilidConfig {
             get_config!(inner.network.restricted_nat_retries);
             get_config!(inner.network.tls.certificate_path);
             get_config!(inner.network.tls.private_key_path);
-            get_config!(inner.network.tls.connection_initial_timeout);
+            get_config!(inner.network.tls.connection_initial_timeout_ms);
             get_config!(inner.network.application.https.enabled);
             get_config!(inner.network.application.https.listen_address);
             get_config!(inner.network.application.https.path);

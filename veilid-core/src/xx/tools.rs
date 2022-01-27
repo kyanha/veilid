@@ -41,6 +41,10 @@ pub fn secs_to_timestamp(secs: f64) -> u64 {
     (secs * 1000000.0f64) as u64
 }
 
+pub fn ms_to_us(ms: u32) -> u64 {
+    (ms as u64) * 1000u64
+}
+
 // Calculate retry attempt with logarhythmic falloff
 pub fn retry_falloff_log(
     last_us: u64,
