@@ -13,7 +13,8 @@ dependencies:
     sdk: flutter
   flutter_web_plugins:
     sdk: flutter
-  flutter_rust_bridge: ^1.0
+  flutter_rust_bridge: ^1.14.0
+  freezed: ^1.1.1
 
 dev_dependencies:
   flutter_test:
