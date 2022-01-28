@@ -51,11 +51,18 @@ fn main() {
         .unwrap()
         .join("lib")
         .join("bridge_generated.dart");
+    let c_path = Path::new(&manifest_dir)
+        .parent()
+        .unwrap()
+        .join("ios")
+        .join("Classes")
+        .join("bridge_generated.h");
     let llvm_path = resolve_llvm_path();
 
-    eprintln!("input_path: {:?}", input_path);
-    eprintln!("output_path: {:?}", output_path);
-    eprintln!("llvm_path: {:?}", llvm_path);
+    //eprintln!("input_path: {:?}", input_path);
+    //eprintln!("output_path: {:?}", output_path);
+    //eprintln!("c_path: {:?}", c_path);
+    //eprintln!("llvm_path: {:?}", llvm_path);
 
     let mut command = Command::new("flutter_rust_bridge_codegen");
     if let Some(llvm_path) = llvm_path {
@@ -64,6 +71,8 @@ fn main() {
             input_path.as_os_str(),
             OsStr::new("--dart-output"),
             output_path.as_os_str(),
+            OsStr::new("--c-output"),
+            c_path.as_os_str(),
             OsStr::new("--llvm-path"),
             llvm_path.as_os_str(),
         ]);
@@ -73,6 +82,8 @@ fn main() {
             input_path.as_os_str(),
             OsStr::new("--dart-output"),
             output_path.as_os_str(),
+            OsStr::new("--c-output"),
+            c_path.as_os_str(),
         ]);
     }
 
@@ -83,5 +94,5 @@ fn main() {
         .wait()
         .expect("flutter_rust_bridge_codegen was not running");
 
-    println!("cargo:rerun-if-changed={}", input_path.to_str().unwrap());
+    //println!("cargo:rerun-if-changed={}", input_path.to_str().unwrap());
 }

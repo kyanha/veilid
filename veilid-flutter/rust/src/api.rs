@@ -408,3 +408,20 @@ pub fn shutdown_veilid_core() -> Result<()> {
         Ok(())
     })
 }
+
+pub fn veilid_version_string() -> Result<String> {
+    Ok(veilid_core::veilid_version_string())
+}
+
+pub struct VeilidVersion{
+    pub major: u32,
+    pub minor: u32, 
+    pub patch: u32
+}
+
+pub fn veilid_version() -> Result<VeilidVersion> {
+    let (major, minor, patch) = veilid_core::veilid_version();
+    Ok(VeilidVersion {
+        major, minor, patch
+    })
+}

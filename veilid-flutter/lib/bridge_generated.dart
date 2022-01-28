@@ -21,6 +21,10 @@ abstract class VeilidFlutter {
   Future<VeilidState> getVeilidState({dynamic hint});
 
   Future<void> shutdownVeilidCore({dynamic hint});
+
+  Future<String> veilidVersionString({dynamic hint});
+
+  Future<VeilidVersion> veilidVersion({dynamic hint});
 }
 
 enum AttachmentState {
@@ -187,6 +191,18 @@ class VeilidUpdate with _$VeilidUpdate {
   ) = Attachment;
 }
 
+class VeilidVersion {
+  final int major;
+  final int minor;
+  final int patch;
+
+  VeilidVersion({
+    required this.major,
+    required this.minor,
+    required this.patch,
+  });
+}
+
 class VeilidFlutterImpl extends FlutterRustBridgeBase<VeilidFlutterWire>
     implements VeilidFlutter {
   factory VeilidFlutterImpl(ffi.DynamicLibrary dylib) =>
@@ -226,6 +242,30 @@ class VeilidFlutterImpl extends FlutterRustBridgeBase<VeilidFlutterWire>
         parseSuccessData: _wire2api_unit,
         constMeta: const FlutterRustBridgeTaskConstMeta(
           debugName: "shutdown_veilid_core",
+          argNames: [],
+        ),
+        argValues: [],
+        hint: hint,
+      ));
+
+  Future<String> veilidVersionString({dynamic hint}) =>
+      executeNormal(FlutterRustBridgeTask(
+        callFfi: (port) => inner.wire_veilid_version_string(port),
+        parseSuccessData: _wire2api_String,
+        constMeta: const FlutterRustBridgeTaskConstMeta(
+          debugName: "veilid_version_string",
+          argNames: [],
+        ),
+        argValues: [],
+        hint: hint,
+      ));
+
+  Future<VeilidVersion> veilidVersion({dynamic hint}) =>
+      executeNormal(FlutterRustBridgeTask(
+        callFfi: (port) => inner.wire_veilid_version(port),
+        parseSuccessData: _wire2api_veilid_version,
+        constMeta: const FlutterRustBridgeTaskConstMeta(
+          debugName: "veilid_version",
           argNames: [],
         ),
         argValues: [],
@@ -419,8 +459,24 @@ class VeilidFlutterImpl extends FlutterRustBridgeBase<VeilidFlutterWire>
 }
 
 // Section: wire2api
+String _wire2api_String(dynamic raw) {
+  return raw as String;
+}
+
 AttachmentState _wire2api_attachment_state(dynamic raw) {
   return AttachmentState.values[raw];
+}
+
+int _wire2api_u32(dynamic raw) {
+  return raw as int;
+}
+
+int _wire2api_u8(dynamic raw) {
+  return raw as int;
+}
+
+Uint8List _wire2api_uint_8_list(dynamic raw) {
+  return raw as Uint8List;
 }
 
 void _wire2api_unit(dynamic raw) {
@@ -445,6 +501,17 @@ VeilidUpdate _wire2api_veilid_update(dynamic raw) {
     default:
       throw Exception("unreachable");
   }
+}
+
+VeilidVersion _wire2api_veilid_version(dynamic raw) {
+  final arr = raw as List<dynamic>;
+  if (arr.length != 3)
+    throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+  return VeilidVersion(
+    major: _wire2api_u32(arr[0]),
+    minor: _wire2api_u32(arr[1]),
+    patch: _wire2api_u32(arr[2]),
+  );
 }
 
 // ignore_for_file: camel_case_types, non_constant_identifier_names, avoid_positional_boolean_parameters, annotate_overrides, constant_identifier_names
@@ -513,6 +580,34 @@ class VeilidFlutterWire implements FlutterRustBridgeWireBase {
           'wire_shutdown_veilid_core');
   late final _wire_shutdown_veilid_core =
       _wire_shutdown_veilid_corePtr.asFunction<void Function(int)>();
+
+  void wire_veilid_version_string(
+    int port_,
+  ) {
+    return _wire_veilid_version_string(
+      port_,
+    );
+  }
+
+  late final _wire_veilid_version_stringPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Int64)>>(
+          'wire_veilid_version_string');
+  late final _wire_veilid_version_string =
+      _wire_veilid_version_stringPtr.asFunction<void Function(int)>();
+
+  void wire_veilid_version(
+    int port_,
+  ) {
+    return _wire_veilid_version(
+      port_,
+    );
+  }
+
+  late final _wire_veilid_versionPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Int64)>>(
+          'wire_veilid_version');
+  late final _wire_veilid_version =
+      _wire_veilid_versionPtr.asFunction<void Function(int)>();
 
   ffi.Pointer<wire_StringList> new_StringList(
     int len,

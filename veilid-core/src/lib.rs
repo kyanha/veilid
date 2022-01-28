@@ -34,3 +34,14 @@ pub mod veilid_capnp {
 }
 
 pub mod tests;
+
+pub fn veilid_version_string() -> String {
+    env!("CARGO_PKG_VERSION").to_owned()
+}
+pub fn veilid_version() -> (u32, u32, u32) {
+    (
+        u32::from_str(env!("CARGO_PKG_VERSION_MAJOR")).unwrap(),
+        u32::from_str(env!("CARGO_PKG_VERSION_MINOR")).unwrap(),
+        u32::from_str(env!("CARGO_PKG_VERSION_PATCH")).unwrap(),
+    )
+}
