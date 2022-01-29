@@ -1,17 +1,15 @@
 use cfg_if::*;
 use std::env;
 use std::ffi::OsStr;
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 fn resolve_llvm_path() -> Option<PathBuf> {
-    let paths: Vec<PathBuf> =
-        env::var_os("PATH").map(|paths| env::split_paths(&paths).collect())?;
-
     cfg_if! {
         if #[cfg(target_os="linux")] {
             // build host is linux
+            let paths: Vec<PathBuf> =
+                env::var_os("PATH").map(|paths| env::split_paths(&paths).collect())?;
 
             // find clang
             let d = paths.iter().find_map(|p| {
@@ -36,7 +34,7 @@ fn resolve_llvm_path() -> Option<PathBuf> {
             ["/opt/homebrew/opt/llvm", "/usr/local/homebrew/opt/llvm"].iter().map(Path::new).find_map(|p| if p.exists() { Some(p.to_owned()) } else { None } )
         } else {
             // anywhere else, just use the default paths
-            llvm_path = None;
+            None
         }
     }
 }
@@ -97,13 +95,28 @@ fn main() {
     // Build freezed
     // Run: flutter pub run build_runner build
 
-    let mut command = Command::new("flutter");
-    command.args([
-        OsStr::new("pub"),
-        OsStr::new("run"),
-        OsStr::new("build_runner"),
-        OsStr::new("build"),
-    ]);
+    let mut command;
+    cfg_if! {
+        if #[cfg(target_os="windows")] {
+            command = Command::new("cmd");
+            command.args([
+                OsStr::new("/c"),
+                OsStr::new("flutter"),
+                OsStr::new("pub"),
+                OsStr::new("run"),
+                OsStr::new("build_runner"),
+                OsStr::new("build"),
+            ]);
+        } else {
+            command = Command::new("flutter");
+            command.args([
+                OsStr::new("pub"),
+                OsStr::new("run"),
+                OsStr::new("build_runner"),
+                OsStr::new("build"),
+            ]);
+        }
+    }
 
     let mut child = command
         .spawn()
