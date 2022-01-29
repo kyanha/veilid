@@ -4,7 +4,7 @@ use crate::network_manager::MAX_MESSAGE_SIZE;
 use crate::*;
 use async_std::net::TcpStream;
 use core::fmt;
-use futures_util::{AsyncReadExt, AsyncWriteExt};
+use futures_util::io::{AsyncReadExt, AsyncWriteExt};
 
 pub struct RawTcpNetworkConnection {
     stream: AsyncPeekStream,

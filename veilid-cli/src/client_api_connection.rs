@@ -3,7 +3,7 @@ use crate::veilid_client_capnp::*;
 use async_executors::{AsyncStd, LocalSpawnHandleExt};
 use capnp::capability::Promise;
 use capnp_rpc::{pry, rpc_twoparty_capnp, twoparty, Disconnector, RpcSystem};
-use futures::AsyncReadExt;
+use futures::io::AsyncReadExt;
 use std::cell::RefCell;
 use std::net::SocketAddr;
 use std::rc::Rc;

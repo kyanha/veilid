@@ -1,9 +1,9 @@
 use crate::xx::*;
 use core::pin::Pin;
 use core::task::{Context, Poll};
-use futures_util::AsyncRead as Read;
-use futures_util::AsyncReadExt;
-use futures_util::AsyncWrite as Write;
+use futures_util::io::AsyncRead as Read;
+use futures_util::io::AsyncReadExt;
+use futures_util::io::AsyncWrite as Write;
 use std::io::Result;
 
 ////////
