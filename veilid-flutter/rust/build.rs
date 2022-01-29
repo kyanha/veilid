@@ -14,7 +14,7 @@ fn resolve_llvm_path() -> Option<PathBuf> {
             // find clang
             let d = paths.iter().find_map(|p| {
                 if p.join("clang").exists() {
-                    if let Ok(real_clang_path) = fs::canonicalize(p.join("clang")) {
+                    if let Ok(real_clang_path) = std::fs::canonicalize(p.join("clang")) {
                         if let Some(llvmbindir) = real_clang_path.parent() {
                             if let Some(llvmdir) = llvmbindir.parent() {
                                 return Some(llvmdir.to_owned());

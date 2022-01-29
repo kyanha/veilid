@@ -3,10 +3,11 @@
 members = [
     "veilid-core",
     "veilid-server",
-    "veilid-cli"
+    "veilid-cli",
+    "veilid-flutter/rust"
 ]
 
-exclude = [ "./external/keyring-rs", "./external/netlink", "./external/cursive", "./veilid-flutter" ]
+exclude = [ "./external/keyring-rs", "./external/netlink", "./external/cursive" ]
 
 [patch.crates-io]
 cursive = { path = "./external/cursive/cursive" }

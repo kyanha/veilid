@@ -78,6 +78,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "allo-isolate"
+version = "0.1.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "31644a919a9e4b0188e4569e55bbf5a78b5588ea645acffc15c29240407261bc"
+dependencies = [
+ "atomic",
+]
+
+[[package]]
 name = "alloc_counter"
 version = "0.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -121,6 +130,9 @@ name = "anyhow"
 version = "1.0.53"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94a45b455c14666b85fc40a019e8ab9eb75e3a124e05494f5397122bc9eb06e0"
+dependencies = [
+ "backtrace",
+]
 
 [[package]]
 name = "arraydeque"
@@ -353,6 +365,15 @@ dependencies = [
  "futures",
  "pharos",
  "rustc_version",
+]
+
+[[package]]
+name = "atomic"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b88d82667eca772c4aa12f0f1348b3ae643424c8876448f3f7bd5787032e234c"
+dependencies = [
+ "autocfg",
 ]
 
 [[package]]
@@ -1392,6 +1413,26 @@ dependencies = [
  "thiserror",
  "yansi",
 ]
+
+[[package]]
+name = "flutter_rust_bridge"
+version = "1.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "39ad509fe9fd3ac5a4d10a30a7de9224b74192c65c22338cc958ab0f93f0c834"
+dependencies = [
+ "allo-isolate",
+ "anyhow",
+ "flutter_rust_bridge_macros",
+ "lazy_static",
+ "parking_lot 0.11.2",
+ "threadpool",
+]
+
+[[package]]
+name = "flutter_rust_bridge_macros"
+version = "1.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "99a2555456c9c12c5982543c61d79267327d522eaa1490ef4914f5ed87b16fe1"
 
 [[package]]
 name = "fnv"
@@ -3584,6 +3625,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "threadpool"
+version = "1.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d050e60b33d41c19108b32cea32164033a9013fe3b46cbd4457559bfbf77afaa"
+dependencies = [
+ "num_cpus",
+]
+
+[[package]]
 name = "time"
 version = "0.1.43"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3908,6 +3958,19 @@ dependencies = [
  "winapi",
  "ws_stream_wasm",
  "x25519-dalek-ng",
+]
+
+[[package]]
+name = "veilid-flutter"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-std",
+ "cfg-if 1.0.0",
+ "flutter_rust_bridge",
+ "log",
+ "parking_lot 0.12.0",
+ "veilid-core",
 ]
 
 [[package]]
