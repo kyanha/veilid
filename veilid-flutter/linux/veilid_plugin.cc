@@ -6,11 +6,12 @@
 
 #include <cstring>
 
-#define VEILID_PLUGIN(obj) \
+#define VEILID_PLUGIN(obj)                                     \
   (G_TYPE_CHECK_INSTANCE_CAST((obj), veilid_plugin_get_type(), \
                               VeilidPlugin))
 
-struct _VeilidPlugin {
+struct _VeilidPlugin
+{
   GObject parent_instance;
 };
 
@@ -18,43 +19,48 @@ G_DEFINE_TYPE(VeilidPlugin, veilid_plugin, g_object_get_type())
 
 // Called when a method call is received from Flutter.
 static void veilid_plugin_handle_method_call(
-    VeilidPlugin* self,
-    FlMethodCall* method_call) {
+    VeilidPlugin *self,
+    FlMethodCall *method_call)
+{
   g_autoptr(FlMethodResponse) response = nullptr;
 
-  const gchar* method = fl_method_call_get_name(method_call);
+  //const gchar *method = fl_method_call_get_name(method_call);
 
-  if (strcmp(method, "getPlatformVersion") == 0) {
-    struct utsname uname_data = {};
-    uname(&uname_data);
-    g_autofree gchar *version = g_strdup_printf("Linux %s", uname_data.version);
-    g_autoptr(FlValue) result = fl_value_new_string(version);
-    response = FL_METHOD_RESPONSE(fl_method_success_response_new(result));
-  } else {
-    response = FL_METHOD_RESPONSE(fl_method_not_implemented_response_new());
-  }
+  // if (strcmp(method, "getPlatformVersion") == 0) {
+  //   struct utsname uname_data = {};
+  //   uname(&uname_data);
+  //   g_autofree gchar *version = g_strdup_printf("Linux %s", uname_data.version);
+  //   g_autoptr(FlValue) result = fl_value_new_string(version);
+  //   response = FL_METHOD_RESPONSE(fl_method_success_response_new(result));
+  // } else {
+  response = FL_METHOD_RESPONSE(fl_method_not_implemented_response_new());
+  // }
 
   fl_method_call_respond(method_call, response, nullptr);
 }
 
-static void veilid_plugin_dispose(GObject* object) {
+static void veilid_plugin_dispose(GObject *object)
+{
   G_OBJECT_CLASS(veilid_plugin_parent_class)->dispose(object);
 }
 
-static void veilid_plugin_class_init(VeilidPluginClass* klass) {
+static void veilid_plugin_class_init(VeilidPluginClass *klass)
+{
   G_OBJECT_CLASS(klass)->dispose = veilid_plugin_dispose;
 }
 
-static void veilid_plugin_init(VeilidPlugin* self) {}
+static void veilid_plugin_init(VeilidPlugin *self) {}
 
-static void method_call_cb(FlMethodChannel* channel, FlMethodCall* method_call,
-                           gpointer user_data) {
-  VeilidPlugin* plugin = VEILID_PLUGIN(user_data);
+static void method_call_cb(FlMethodChannel *channel, FlMethodCall *method_call,
+                           gpointer user_data)
+{
+  VeilidPlugin *plugin = VEILID_PLUGIN(user_data);
   veilid_plugin_handle_method_call(plugin, method_call);
 }
 
-void veilid_plugin_register_with_registrar(FlPluginRegistrar* registrar) {
-  VeilidPlugin* plugin = VEILID_PLUGIN(
+void veilid_plugin_register_with_registrar(FlPluginRegistrar *registrar)
+{
+  VeilidPlugin *plugin = VEILID_PLUGIN(
       g_object_new(veilid_plugin_get_type(), nullptr));
 
   g_autoptr(FlStandardMethodCodec) codec = fl_standard_method_codec_new();

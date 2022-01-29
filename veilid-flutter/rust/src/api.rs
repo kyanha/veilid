@@ -42,7 +42,7 @@ async fn take_veilid_api() -> Result<veilid_core::VeilidAPI> {
 #[allow(non_snake_case)]
 pub struct VeilidConfig {
     pub program_name: String,
-    pub namespace: String,
+    pub veilid_namespace: String,
     // Capabilities
     pub capabilities__protocol_udp: bool,
     pub capabilities__protocol_connect_tcp: bool,
@@ -126,7 +126,7 @@ impl VeilidConfig {
     pub fn get_by_str(&self, key: &str) -> std::result::Result<Box<dyn std::any::Any + Send + 'static>, String> {
         let out: Box<dyn core::any::Any + Send> = match key {
             "program_name" => Box::new(self.program_name.clone()),
-            "namespace" => Box::new(self.namespace.clone()),
+            "namespace" => Box::new(self.veilid_namespace.clone()),
             "capabilities.protocol_udp" => Box::new(self.capabilities__protocol_udp.clone()),
             "capabilities.protocol_connect_tcp" => Box::new(self.capabilities__protocol_connect_tcp.clone()),
             "capabilities.protocol_accept_tcp" => Box::new(self.capabilities__protocol_accept_tcp.clone()),

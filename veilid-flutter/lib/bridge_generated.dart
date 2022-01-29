@@ -40,7 +40,7 @@ enum AttachmentState {
 
 class VeilidConfig {
   final String programName;
-  final String namespace;
+  final String veilidNamespace;
   final bool capabilitiesProtocolUdp;
   final bool capabilitiesProtocolConnectTcp;
   final bool capabilitiesProtocolAcceptTcp;
@@ -108,7 +108,7 @@ class VeilidConfig {
 
   VeilidConfig({
     required this.programName,
-    required this.namespace,
+    required this.veilidNamespace,
     required this.capabilitiesProtocolUdp,
     required this.capabilitiesProtocolConnectTcp,
     required this.capabilitiesProtocolAcceptTcp,
@@ -332,7 +332,7 @@ class VeilidFlutterImpl extends FlutterRustBridgeBase<VeilidFlutterWire>
   void _api_fill_to_wire_veilid_config(
       VeilidConfig apiObj, wire_VeilidConfig wireObj) {
     wireObj.program_name = _api2wire_String(apiObj.programName);
-    wireObj.namespace = _api2wire_String(apiObj.namespace);
+    wireObj.veilid_namespace = _api2wire_String(apiObj.veilidNamespace);
     wireObj.capabilities__protocol_udp =
         _api2wire_bool(apiObj.capabilitiesProtocolUdp);
     wireObj.capabilities__protocol_connect_tcp =
@@ -708,7 +708,7 @@ class wire_StringList extends ffi.Struct {
 class wire_VeilidConfig extends ffi.Struct {
   external ffi.Pointer<wire_uint_8_list> program_name;
 
-  external ffi.Pointer<wire_uint_8_list> namespace_;
+  external ffi.Pointer<wire_uint_8_list> veilid_namespace;
 
   @ffi.Uint8()
   external int capabilities__protocol_udp;

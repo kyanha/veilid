@@ -18,8 +18,9 @@ target_include_directories(${PLUGIN_NAME} INTERFACE
 target_link_libraries(${PLUGIN_NAME} PRIVATE flutter)
 target_link_libraries(${PLUGIN_NAME} PRIVATE PkgConfig::GTK)
 
+include(./rust.cmake)
 # List of absolute paths to libraries that should be bundled with the plugin
 set(veilid_bundled_libraries
-  ""
+  "$<TARGET_FILE:${CRATE_NAME}-shared>"
   PARENT_SCOPE
 )

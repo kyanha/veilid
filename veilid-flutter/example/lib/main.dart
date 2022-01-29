@@ -1,6 +1,6 @@
-import 'package:flutter/material.dart';
 import 'dart:async';
 
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:veilid/veilid.dart';
 
@@ -16,7 +16,7 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> {
-  String _platformVersion = 'Unknown';
+  String _veilidVersion = 'Unknown';
 
   @override
   void initState() {
@@ -26,14 +26,13 @@ class _MyAppState extends State<MyApp> {
 
   // Platform messages are asynchronous, so we initialize in an async method.
   Future<void> initPlatformState() async {
-    String platformVersion;
+    String veilidVersion;
     // Platform messages may fail, so we use a try/catch PlatformException.
     // We also handle the message potentially returning null.
     try {
-      platformVersion =
-          await Veilid.platformVersion ?? 'Unknown platform version';
+      veilidVersion = await Veilid.api.veilidVersionString();
     } on PlatformException {
-      platformVersion = 'Failed to get platform version.';
+      veilidVersion = 'Failed to get veilid version.';
     }
 
     // If the widget was removed from the tree while the asynchronous platform
@@ -42,7 +41,7 @@ class _MyAppState extends State<MyApp> {
     if (!mounted) return;
 
     setState(() {
-      _platformVersion = platformVersion;
+      _veilidVersion = veilidVersion;
     });
   }
 
@@ -51,10 +50,10 @@ class _MyAppState extends State<MyApp> {
     return MaterialApp(
       home: Scaffold(
         appBar: AppBar(
-          title: const Text('Plugin example app'),
+          title: const Text('Veilid Plugin Example App'),
         ),
         body: Center(
-          child: Text('Running on: $_platformVersion\n'),
+          child: Text('Veilid version: $_veilidVersion\n'),
         ),
       ),
     );

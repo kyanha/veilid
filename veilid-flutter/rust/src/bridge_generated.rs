@@ -96,7 +96,7 @@ pub struct wire_uint_8_list {
 #[derive(Clone)]
 pub struct wire_VeilidConfig {
     program_name: *mut wire_uint_8_list,
-    namespace: *mut wire_uint_8_list,
+    veilid_namespace: *mut wire_uint_8_list,
     capabilities__protocol_udp: bool,
     capabilities__protocol_connect_tcp: bool,
     capabilities__protocol_accept_tcp: bool,
@@ -275,7 +275,7 @@ impl Wire2Api<VeilidConfig> for wire_VeilidConfig {
     fn wire2api(self) -> VeilidConfig {
         VeilidConfig {
             program_name: self.program_name.wire2api(),
-            namespace: self.namespace.wire2api(),
+            veilid_namespace: self.veilid_namespace.wire2api(),
             capabilities__protocol_udp: self.capabilities__protocol_udp.wire2api(),
             capabilities__protocol_connect_tcp: self.capabilities__protocol_connect_tcp.wire2api(),
             capabilities__protocol_accept_tcp: self.capabilities__protocol_accept_tcp.wire2api(),
@@ -404,7 +404,7 @@ impl NewWithNullPtr for wire_VeilidConfig {
     fn new_with_null_ptr() -> Self {
         Self {
             program_name: core::ptr::null_mut(),
-            namespace: core::ptr::null_mut(),
+            veilid_namespace: core::ptr::null_mut(),
             capabilities__protocol_udp: Default::default(),
             capabilities__protocol_connect_tcp: Default::default(),
             capabilities__protocol_accept_tcp: Default::default(),

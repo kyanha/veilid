@@ -3,12 +3,12 @@ import UIKit
 
 public class SwiftVeilidPlugin: NSObject, FlutterPlugin {
   public static func register(with registrar: FlutterPluginRegistrar) {
-    let channel = FlutterMethodChannel(name: "veilid", binaryMessenger: registrar.messenger())
-    let instance = SwiftVeilidPlugin()
-    registrar.addMethodCallDelegate(instance, channel: channel)
+    // No channel, FFI plugin
+    print("dummy_value=\(dummy_method_to_enforce_bundling())");
   }
 
   public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
-    result("iOS " + UIDevice.current.systemVersion)
+    // Noop
+    result(nil)
   }
 }

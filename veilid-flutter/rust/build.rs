@@ -94,5 +94,21 @@ fn main() {
         .wait()
         .expect("flutter_rust_bridge_codegen was not running");
 
-    //println!("cargo:rerun-if-changed={}", input_path.to_str().unwrap());
+    // Build freezed
+    // Run: flutter pub run build_runner build
+
+    let mut command = Command::new("flutter");
+    command.args([
+        OsStr::new("pub"),
+        OsStr::new("run"),
+        OsStr::new("build_runner"),
+        OsStr::new("build"),
+    ]);
+
+    let mut child = command
+        .spawn()
+        .expect("'flutter pub run build_runner build' did not execute correctly");
+    child
+        .wait()
+        .expect("'flutter pub run build_runner build' was not running");
 }

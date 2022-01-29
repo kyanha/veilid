@@ -14,7 +14,7 @@ typedef struct wire_StringList {
 
 typedef struct wire_VeilidConfig {
   struct wire_uint_8_list *program_name;
-  struct wire_uint_8_list *namespace_;
+  struct wire_uint_8_list *veilid_namespace;
   bool capabilities__protocol_udp;
   bool capabilities__protocol_connect_tcp;
   bool capabilities__protocol_accept_tcp;
