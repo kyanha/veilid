@@ -30,10 +30,10 @@
             <a class="subsection-name" href="#peer-network-for-data-storage">Peer Network for Data Storage</a>
           </li>
           <li>
-            <a class="subsection-name" href="#blockstore">Blockstore</a>
+            <a class="subsection-name" href="#block-store">Block Store</a>
           </li>
           <li>
-            <a class="subsection-name" href="#distributed-hash-table">Distributed Hash Table</a>
+            <a class="subsection-name" href="#key-value-store">Key-Value Store</a>
           </li>
           <li>
             <a class="subsection-name" href="#structuring-data">Structuring Data</a>
@@ -86,16 +86,16 @@
       The data stored in the network is segmented into two kinds of data: file-like data, which typically is large, and textual data, which typically is small. Each kind of data is stored in its own subsystem specifically chosen to optimize for that kind of data.
     </p>
     
-    <h3 id="blockstore">Blockstore</h3>
+    <h3 id="block-store">Block Store</h3>
     
     <p>
       File-like content is stored in a content-addressable block store. Each block is just some arbitrary blob of data (for instance, a JPEG or an MP4) of whatever size. The hash of that block acts as the unique identifier for the block, and can be used by peers to request particular blocks. Technically, textual data can be stored as a block as well, and this is expected to be done when the textual data is thought of as a document or file of some sort.
     </p>
     
-    <h3 id="distributed-hash-table">Distributed Hash Table</h3>
+    <h3 id="key-value-store">Key-Value Store</h3>
     
     <p>
-      Smaller, more ephemeral textual content generally, however, is stored in a distributed hash table (DHT). Things like status updates, blog posts, user bios, etc. are all thought of as being suited for storage in this part of the data store. DHT data is not simply "on the Veilid network", but also owned/controlled by peers, and identified by an arbitrary name chosen by the peers which owns the data. Any group of peers can add data, but can only change the data they've added.
+      Smaller, more ephemeral textual content generally, however, is stored in a key-value-store (KV store). Things like status updates, blog posts, user bios, etc. are all thought of as being suited for storage in this part of the data store. KV store data is not simply "on the Veilid network", but also owned/controlled by peers, and identified by an arbitrary name chosen by the peers which owns the data. Any group of peers can add data, but can only change the data they've added.
     </p>
     
     <p>
@@ -103,27 +103,27 @@
     </p>
     
     <p>
-      DHT data is also versioned, so that updates to it can be made. Boone's bio, for instance, would not be fixed in time, but rather is likely to vary over time as he changes jobs, picks up new hobbies, etc. Versioning, together with arbitrary peer-chosen identifiers instead of content hashes, means that we can talk about "Boone's Bio" as an abstract thing, and subscribe to updates to it.
+      KV store data is also versioned, so that updates to it can be made. Boone's bio, for instance, would not be fixed in time, but rather is likely to vary over time as he changes jobs, picks up new hobbies, etc. Versioning, together with arbitrary peer-chosen identifiers instead of content hashes, means that we can talk about "Boone's Bio" as an abstract thing, and subscribe to updates to it.
     </p>
     
     <h3 id="structuring-data">Structuring Data</h3>
     
     <p>
-      The combination of block storage and DHT storage together makes it possible to have higher-level concepts as well. A song, for instance, might be represented in two places in Veilid: the blockstore would hold the raw data, while the DHT would store a representation of the idea of the song. Maybe that would consist of a JSON object with metadata about the song, like the title, composer, date, encoding information, etc. as well as the ID of the blockstore data. We can then also store different <em>versions</em> of that JSON data, as the piece is updated, upsampled, remastered, or whatever, each one pointing to a different block in the blockstore. It's still "the same song", at a conceptual level, so it has the same identifier in the DHT, but the raw bits associated with each version differ.
+      The combination of block storage and key-value storage together makes it possible to have higher-level concepts as well. A song, for instance, might be represented in two places in Veilid: the block store would hold the raw data, while the KV store would store a representation of the idea of the song. Maybe that would consist of a JSON object with metadata about the song, like the title, composer, date, encoding information, etc. as well as the ID of the block store data. We can then also store different <em>versions</em> of that JSON data, as the piece is updated, upsampled, remastered, or whatever, each one pointing to a different block in the block store. It's still "the same song", at a conceptual level, so it has the same identifier in the KV store, but the raw bits associated with each version differ.
     </p>
     
     <p>
-      Another example of this, but with even more tenuous connection between the blockstore data, is the notion of a profile picture. "Marquette's Profile Picture" is a really abstracted notion, and precisely which bits it corresponds to can vary wildly over time, not just being different versions of the picture but completely different pictures entirely. Maybe one day its a photo of Marquette and the next day it's a photo of a flower.
+      Another example of this, but with even more tenuous connection between the block store data, is the notion of a profile picture. "Marquette's Profile Picture" is a really abstracted notion, and precisely which bits it corresponds to can vary wildly over time, not just being different versions of the picture but completely different pictures entirely. Maybe one day its a photo of Marquette and the next day it's a photo of a flower.
     </p>
     
     <p>
-      Social media offers many examples of these concepts. Friends lists, block lists, post indexes, favorites. These are all stateful notions, in a sense: a stable reference to a thing, but the precise content of the thing changes over time. These are exactly what we would store in the DHT, as opposed to in the blockstore, even if this data makes reference to content in the blockstore.
+      Social media offers many examples of these concepts. Friends lists, block lists, post indexes, favorites. These are all stateful notions, in a sense: a stable reference to a thing, but the precise content of the thing changes over time. These are exactly what we would put in the KV store, as opposed to in the block store, even if this data makes reference to content in the block store.
     </p>
     
     <h3 id="identity">Identity</h3>
     
     <p>
-      As discussed above, peers talk to one another with RPCs, talk about one another by referencing each other on the network, own content stored in the DHT. This raises the question of how peers are identified and distinguished from one another. If the network was just an immutable blockstore, we could say that identity is just the IP address of the machine the peer is running on, since all that really matters is being able to get data from the peer. This would be like what BitTorrent or IPFS do, since they don't really have any concept of ownership and mutability of data.
+      As discussed above, peers talk to one another with RPCs, talk about one another by referencing each other on the network, own content that's in the KV store. This raises the question of how peers are identified and distinguished from one another. If the network was just an immutable block store, we could say that identity is just the IP address of the machine the peer is running on, since all that really matters is being able to get data from the peer. This would be like what BitTorrent or IPFS do, since they don't really have any concept of ownership and mutability of data.
     </p>
     
     <p>
@@ -131,7 +131,7 @@
     </p>
     
     <p>
-      On the network, within the datastore, this means that a peer is identified by a public key, or a hash thereof. Changes to a peer's data in the DHT require that the peers attempting to make the change verify their identity as owners. Data can also, of course, be encrypted so that it can only be accessed by the owners, or by anyone else they choose.
+      On the network, within the datastore, this means that a peer is identified by a public key, or a hash thereof. Changes to a peer's data in the KV store require that the peers attempting to make the change verify their identity as owners. Data can also, of course, be encrypted so that it can only be accessed by the owners, or by anyone else they choose.
     </p>
     
     <h3 id="privacy">Privacy</h3>
@@ -145,7 +145,7 @@
     </p>
     
     <p>
-      Receiver privacy is similar, in that we have a nesting doll of encrypted peer address, except because it's for incoming messages, the various addresses have to be shared ahead of time. We call such things Private Routes, and they are published to the DHT as part of a peer's public data. For full privacy on both ends, a Private Route will be used as the final destination of a Safety Route, so that a total of four intermediate hops are used to send a message so that neither the sender nor receiver knows the IP address of the other.
+      Receiver privacy is similar, in that we have a nesting doll of encrypted peer address, except because it's for incoming messages, the various addresses have to be shared ahead of time. We call such things Private Routes, and they are published to the key-value store as part of a peer's public data. For full privacy on both ends, a Private Route will be used as the final destination of a Safety Route, so that a total of four intermediate hops are used to send a message so that neither the sender nor receiver knows the IP address of the other.
     </p>
     
     <h2 id="on-the-ground">On The Ground</h2>
