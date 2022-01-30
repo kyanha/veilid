@@ -213,8 +213,8 @@ class VeilidFlutterImpl extends FlutterRustBridgeBase<VeilidFlutterWire>
   Stream<VeilidUpdate> startupVeilidCore(
           {required VeilidConfig config, dynamic hint}) =>
       executeStream(FlutterRustBridgeTask(
-        callFfi: (port) => inner.wire_startup_veilid_core(
-            port, _api2wire_box_autoadd_veilid_config(config)),
+        callFfi: (port_) => inner.wire_startup_veilid_core(
+            port_, _api2wire_box_autoadd_veilid_config(config)),
         parseSuccessData: _wire2api_veilid_update,
         constMeta: const FlutterRustBridgeTaskConstMeta(
           debugName: "startup_veilid_core",
@@ -226,7 +226,7 @@ class VeilidFlutterImpl extends FlutterRustBridgeBase<VeilidFlutterWire>
 
   Future<VeilidState> getVeilidState({dynamic hint}) =>
       executeNormal(FlutterRustBridgeTask(
-        callFfi: (port) => inner.wire_get_veilid_state(port),
+        callFfi: (port_) => inner.wire_get_veilid_state(port_),
         parseSuccessData: _wire2api_veilid_state,
         constMeta: const FlutterRustBridgeTaskConstMeta(
           debugName: "get_veilid_state",
@@ -238,7 +238,7 @@ class VeilidFlutterImpl extends FlutterRustBridgeBase<VeilidFlutterWire>
 
   Future<void> shutdownVeilidCore({dynamic hint}) =>
       executeNormal(FlutterRustBridgeTask(
-        callFfi: (port) => inner.wire_shutdown_veilid_core(port),
+        callFfi: (port_) => inner.wire_shutdown_veilid_core(port_),
         parseSuccessData: _wire2api_unit,
         constMeta: const FlutterRustBridgeTaskConstMeta(
           debugName: "shutdown_veilid_core",
@@ -250,7 +250,7 @@ class VeilidFlutterImpl extends FlutterRustBridgeBase<VeilidFlutterWire>
 
   Future<String> veilidVersionString({dynamic hint}) =>
       executeNormal(FlutterRustBridgeTask(
-        callFfi: (port) => inner.wire_veilid_version_string(port),
+        callFfi: (port_) => inner.wire_veilid_version_string(port_),
         parseSuccessData: _wire2api_String,
         constMeta: const FlutterRustBridgeTaskConstMeta(
           debugName: "veilid_version_string",
@@ -262,7 +262,7 @@ class VeilidFlutterImpl extends FlutterRustBridgeBase<VeilidFlutterWire>
 
   Future<VeilidVersion> veilidVersion({dynamic hint}) =>
       executeNormal(FlutterRustBridgeTask(
-        callFfi: (port) => inner.wire_veilid_version(port),
+        callFfi: (port_) => inner.wire_veilid_version(port_),
         parseSuccessData: _wire2api_veilid_version,
         constMeta: const FlutterRustBridgeTaskConstMeta(
           debugName: "veilid_version",

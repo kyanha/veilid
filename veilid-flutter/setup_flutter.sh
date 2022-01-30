@@ -62,12 +62,23 @@ if [ "$OS" == "linux" ]; then
     flutter config --enable-linux-desktop --enable-android
 
 elif [ "$OS" == "macos" ]; then
+
+    # ensure x86_64 homebrew is installed
+    if [ -f /usr/local/bin/brew ] &> /dev/null; then 
+        echo '[X] x86_64 homebrew is available'
+    else
+        echo 'x86_64 homebrew is not available, run this:'
+        echo 'arch -x86_64 zsh'
+        echo '/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
+        exit 1
+    fi
+
     # ensure packages are installed
     if [ "$BREW_USER" == "" ]; then
-        BREW_USER=`ls -lad /opt/homebrew/. | cut -d\  -f4`
+        BREW_USER=`ls -lad /usr/local/bin/. | cut -d\  -f4`
         echo "Must sudo to homebrew user \"$BREW_USER\" to install LLVM package:"
     fi
-    sudo -H -u $BREW_USER brew install llvm
+    sudo -H -u $BREW_USER arch -x86_64 /usr/local/bin/brew install llvm
     echo "Must sudo to root to install CocoaPods gem:"
     sudo arch -x86_64 gem install ffi
     sudo arch -x86_64 gem install cocoapods

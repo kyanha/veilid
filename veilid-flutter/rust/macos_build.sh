@@ -9,7 +9,7 @@ if [ "$CONFIGURATION" == "Debug" ]; then
 else
     EXTRA_CARGO_OPTIONS="$@ --release"
 fi
-ARCHS=${ARCHS:=arm64}
+ARCHS=${ARCHS:=x86_64}
 for arch in $ARCHS
 do
     if [ "$arch" == "arm64" ]; then
@@ -24,8 +24,9 @@ do
         echo Unsupported ARCH: $arch
         continue
     fi
-    HOMEBREW_DIR=$(dirname `which brew`)
     FLUTTER_DIR=$(dirname `which flutter`)
-    env -i PATH=/usr/bin:/bin:/usr/local/bin:$HOMEBREW_DIR:$FLUTTER_DIR ~/.cargo/bin/cargo $CARGO_TOOLCHAIN build $EXTRA_CARGO_OPTIONS --target $CARGO_TARGET --manifest-path $CARGO_MANIFEST_PATH
+    HOMEBREW_DIR=$(dirname `which brew`)
+    CARGO_DIR=$(dirname `which cargo`)
+    env -i PATH=/usr/bin:/bin:/usr/local/bin:$HOMEBREW_DIR:$FLUTTER_DIR:$CARGO_DIR HOME="$HOME" USER="$USER" cargo $CARGO_TOOLCHAIN build $EXTRA_CARGO_OPTIONS --target $CARGO_TARGET --manifest-path $CARGO_MANIFEST_PATH
 done
 

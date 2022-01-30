@@ -31,7 +31,7 @@ fn resolve_llvm_path() -> Option<PathBuf> {
 
         } else if #[cfg(target_os="macos")] {
             // build host is mac
-            ["/opt/homebrew/opt/llvm", "/usr/local/homebrew/opt/llvm"].iter().map(Path::new).find_map(|p| if p.exists() { Some(p.to_owned()) } else { None } )
+            ["/usr/local/opt/llvm", "/opt/homebrew/opt/llvm", ].iter().map(Path::new).find_map(|p| if p.exists() { Some(p.to_owned()) } else { None } )
         } else {
             // anywhere else, just use the default paths
             None
