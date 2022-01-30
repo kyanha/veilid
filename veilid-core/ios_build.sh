@@ -1,8 +1,8 @@
 #!/bin/bash
 
 SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
-
-CARGO_MANIFEST_PATH=$SCRIPTDIR/Cargo.toml
+CARGO_MANIFEST_PATH=$(python -c "import os; print(os.path.realpath(\"$SCRIPTDIR/Cargo.toml\"))")
+# echo CARGO_MANIFEST_PATH: $CARGO_MANIFEST_PATH 
 
 if [ "$CONFIGURATION" == "Debug" ]; then 
     EXTRA_CARGO_OPTIONS="$@"
@@ -25,6 +25,8 @@ do
         echo Unsupported ARCH: $arch
         continue
     fi
-    env -i PATH=/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin ~/.cargo/bin/cargo $CARGO_TOOLCHAIN build $EXTRA_CARGO_OPTIONS --target $CARGO_TARGET --manifest-path $CARGO_MANIFEST_PATH
+    HOMEBREW_DIR=$(dirname `which brew`)
+    CARGO_DIR=$(dirname `which cargo`)
+    env -i PATH=/usr/bin:/bin:/usr/local/bin:$HOMEBREW_DIR:$CARGO_DIR HOME="$HOME" USER="$USER" cargo $CARGO_TOOLCHAIN build $EXTRA_CARGO_OPTIONS --target $CARGO_TARGET --manifest-path $CARGO_MANIFEST_PATH
 done
 

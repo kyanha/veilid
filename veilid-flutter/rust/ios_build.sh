@@ -1,8 +1,8 @@
 #!/bin/bash
 
 SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
-
-CARGO_MANIFEST_PATH=$SCRIPTDIR/Cargo.toml
+CARGO_MANIFEST_PATH=$(python -c "import os; print(os.path.realpath(\"$SCRIPTDIR/Cargo.toml\"))")
+# echo CARGO_MANIFEST_PATH: $CARGO_MANIFEST_PATH 
 
 if [ "$CONFIGURATION" == "Debug" ]; then 
     EXTRA_CARGO_OPTIONS="$@"
