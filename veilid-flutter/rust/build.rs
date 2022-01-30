@@ -114,6 +114,7 @@ fn main() {
                 OsStr::new("run"),
                 OsStr::new("build_runner"),
                 OsStr::new("build"),
+                OsStr::new("--delete-conflicting-outputs"),
             ]);
         }
     }
