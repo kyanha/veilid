@@ -1,0 +1,163 @@
+<!doctype html>
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    
+    <title>Veilid Architecture Guide</title>
+    <meta name="description" content="a guide to the architecture of Veilid">
+    <meta name="author" content="beka">
+
+    <!-- <link rel="stylesheet" href="guide.css"> -->
+
+  </head>
+
+  <body>
+    <div id="content">
+
+    <h1>Veilid Architecture Guide</h1>
+    
+    <hr/>
+    
+    <ul class="section-toc">
+      <li>
+        <a class="section-name" href="#from-orbit">From Orbit</a>
+      </li>
+      <li>
+        <a class="section-name" href="#birds-eye-view">Bird's Eye View</a>
+        <ul class="subsection-toc">
+          <li>
+            <a class="subsection-name" href="#peer-network-for-data-storage">Peer Network for Data Storage</a>
+          </li>
+          <li>
+            <a class="subsection-name" href="#blockstore">Blockstore</a>
+          </li>
+          <li>
+            <a class="subsection-name" href="#distributed-hash-table">Distributed Hash Table</a>
+          </li>
+          <li>
+            <a class="subsection-name" href="#structuring-data">Structuring Data</a>
+          </li>
+          <li>
+            <a class="subsection-name" href="#identity">Identity</a>
+          </li>
+          <li>
+            <a class="subsection-name" href="#privacy">Privacy</a>
+          </li>
+        </ul>
+      </li>
+      <li>
+        <a class="section-name" href="#on-the-ground">On The Ground</a>
+        <ul class="subsection-toc">
+          <li>Section 2a</li>
+        </ul>
+      </li>
+    </ul>
+    
+    <hr/>
+    
+    <h2 id="from-orbit">From Orbit</h2>
+    
+    <p>
+      The first matter to address is the question "What is Veilid?" The highest-level description is that Veilid is a peer-to-peer network for easily sharing various kinds of data.
+    </p>
+    
+    <p>
+      Veilid is designed with a social dimension in mind, so that each user can have their personal content stored on the network, but also can share that content with other people of their choosing, or with the entire world if they want.
+    </p>
+    
+    <p>
+      The primary purpose of the Veilid network is to provide the infrastructure for a specific kind of shared data: social media in various forms. That includes light-weight content such as Twitter's tweets or Mastodon's toots, medium-weight content like images and songs, and heavy-weight content like videos. Meta-content such as personal feeds, replies, private messages, and so forth are also intended to run atop Veilid.
+    </p>
+    
+    <h2 id="birds-eye-view">Bird's Eye View</h2>
+    
+    <p>
+      Now that we know what Veilid is and what we intend to put on it, the second order of business is to address the parts of the question of how Veilid achieves that. Not at a very detailed level, of course, that will come later, but rather at a middle level of detail such that all of it can fit in your head at the same time.
+    </p>
+    
+    <h3 id="peer-network-for-data-storage">Peer Network for Data Storage</h3>
+    
+    <p>
+      The bottom-most level of Veilid is a network of peers communicating to one another over the internet. Peers send each other messages (remote procedure calls) about the data being stored on the network, and also messages about the network itself. For instance, one peer might ask another for some file, or it might ask for info about what other nodes exist in the network.
+    </p>
+    
+    <p>
+      The data stored in the network is segmented into two kinds of data: file-like data, which typically is large, and textual data, which typically is small. Each kind of data is stored in its own subsystem specifically chosen to optimize for that kind of data.
+    </p>
+    
+    <h3 id="blockstore">Blockstore</h3>
+    
+    <p>
+      File-like content is stored in a content-addressable block store. Each block is just some arbitrary blob of data (for instance, a JPEG or an MP4) of whatever size. The hash of that block acts as the unique identifier for the block, and can be used by peers to request particular blocks. Technically, textual data can be stored as a block as well, and this is expected to be done when the textual data is thought of as a document or file of some sort.
+    </p>
+    
+    <h3 id="distributed-hash-table">Distributed Hash Table</h3>
+    
+    <p>
+      Smaller, more ephemeral textual content generally, however, is stored in a distributed hash table (DHT). Things like status updates, blog posts, user bios, etc. are all thought of as being suited for storage in this part of the data store. DHT data is not simply "on the Veilid network", but also owned/controlled by peers, and identified by an arbitrary name chosen by the peers which owns the data. Any group of peers can add data, but can only change the data they've added.
+    </p>
+    
+    <p>
+      For instance, we might talk about Boone's bio vs. Boone's blogpost titled "Hi, I'm Boone!", which are two things owned by the same peer but with different identifiers, or on Boone's bio vs. Marquette's bio, which are two things owned by distinct peers but with the same identifier.
+    </p>
+    
+    <p>
+      DHT data is also versioned, so that updates to it can be made. Boone's bio, for instance, would not be fixed in time, but rather is likely to vary over time as he changes jobs, picks up new hobbies, etc. Versioning, together with arbitrary peer-chosen identifiers instead of content hashes, means that we can talk about "Boone's Bio" as an abstract thing, and subscribe to updates to it.
+    </p>
+    
+    <h3 id="structuring-data">Structuring Data</h3>
+    
+    <p>
+      The combination of block storage and DHT storage together makes it possible to have higher-level concepts as well. A song, for instance, might be represented in two places in Veilid: the blockstore would hold the raw data, while the DHT would store a representation of the idea of the song. Maybe that would consist of a JSON object with metadata about the song, like the title, composer, date, encoding information, etc. as well as the ID of the blockstore data. We can then also store different <em>versions</em> of that JSON data, as the piece is updated, upsampled, remastered, or whatever, each one pointing to a different block in the blockstore. It's still "the same song", at a conceptual level, so it has the same identifier in the DHT, but the raw bits associated with each version differ.
+    </p>
+    
+    <p>
+      Another example of this, but with even more tenuous connection between the blockstore data, is the notion of a profile picture. "Marquette's Profile Picture" is a really abstracted notion, and precisely which bits it corresponds to can vary wildly over time, not just being different versions of the picture but completely different pictures entirely. Maybe one day its a photo of Marquette and the next day it's a photo of a flower.
+    </p>
+    
+    <p>
+      Social media offers many examples of these concepts. Friends lists, block lists, post indexes, favorites. These are all stateful notions, in a sense: a stable reference to a thing, but the precise content of the thing changes over time. These are exactly what we would store in the DHT, as opposed to in the blockstore, even if this data makes reference to content in the blockstore.
+    </p>
+    
+    <h3 id="identity">Identity</h3>
+    
+    <p>
+      As discussed above, peers talk to one another with RPCs, talk about one another by referencing each other on the network, own content stored in the DHT. This raises the question of how peers are identified and distinguished from one another. If the network was just an immutable blockstore, we could say that identity is just the IP address of the machine the peer is running on, since all that really matters is being able to get data from the peer. This would be like what BitTorrent or IPFS do, since they don't really have any concept of ownership and mutability of data.
+    </p>
+    
+    <p>
+      But because Veilid cares deeply about ownership of data and change over time, we chose a different approach: identity is a cryptographic keypair. This allows a peer to access the Veilid network from arbitrarily many different computers and IP addresses, over any communication medium. In practice, this means different devices (e.g. home machine vs smart phone), but in principle it could mean word of mouth and sneakernet. Veilid is agnostic to the particular substrate and communication medium.
+    </p>
+    
+    <p>
+      On the network, within the datastore, this means that a peer is identified by a public key, or a hash thereof. Changes to a peer's data in the DHT require that the peers attempting to make the change verify their identity as owners. Data can also, of course, be encrypted so that it can only be accessed by the owners, or by anyone else they choose.
+    </p>
+    
+    <h3 id="privacy">Privacy</h3>
+    
+    <p>
+      In order to ensure that peers can participate in Veilid with some amount of privacy, we need to address the fact that being connected to Veilid entails communicating with other peers, and therefore sharing IP addresses.
+    </p>
+    
+    <p>
+      The approach that Veilid takes to privacy is two sided: privacy of the sender of a message, and privacy of the receiver of a message. Either or both sides can want privacy or opt out of privacy. To achieve sender privacy, we use something called a Safety Route: a sequence of two other peers, chosen by the sender, who will relay messages. The sequence of addresses is put into a nesting doll of encryption, so that the first hop can see the second hop, but not the final destination, while the second hope can see the final destination. This is similar to a 2-hop Tor route, except only the addresses are hidden from view. Additionally, the route can be chosen at random for each send.
+    </p>
+    
+    <p>
+      Receiver privacy is similar, in that we have a nesting doll of encrypted peer address, except because it's for incoming messages, the various addresses have to be shared ahead of time. We call such things Private Routes, and they are published to the DHT as part of a peer's public data. For full privacy on both ends, a Private Route will be used as the final destination of a Safety Route, so that a total of four intermediate hops are used to send a message so that neither the sender nor receiver knows the IP address of the other.
+    </p>
+    
+    <h2 id="on-the-ground">On The Ground</h2>
+    
+    <p>
+      The bird's eye view of things makes it possible to hold it all in mind at once, but leaves out lots of information about implementation choice. It's now time to come down to earth and get our hands dirty.
+    </p>
+    
+    <p>
+      TODO
+    </p>
+    
+    </div>
+  </body>
+</html>
