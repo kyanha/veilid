@@ -69,8 +69,9 @@ elif [ "$OS" == "macos" ]; then
     fi
     sudo -H -u $BREW_USER brew install llvm
     echo "Must sudo to root to install CocoaPods gem:"
-    sudo gem install cocoapods
-    
+    sudo arch -x86_64 gem install ffi
+    sudo arch -x86_64 gem install cocoapods
+
     # ensure platforms are enabled in flutter
     flutter config --enable-macos-desktop --enable-ios --no-enable-android
 fi

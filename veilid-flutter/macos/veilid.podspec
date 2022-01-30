@@ -19,4 +19,7 @@ Veilid Network
   s.platform = :osx, '10.11'
   s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES' }
   s.swift_version = '5.0'
+
+  s.script_phase = { :name => 'Cargo Build', :script => '../rust/macos_build.sh', :execution_position => :before_compile }
+
 end

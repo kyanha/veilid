@@ -3,17 +3,17 @@ import FlutterMacOS
 
 public class VeilidPlugin: NSObject, FlutterPlugin {
   public static func register(with registrar: FlutterPluginRegistrar) {
-    let channel = FlutterMethodChannel(name: "veilid", binaryMessenger: registrar.messenger)
-    let instance = VeilidPlugin()
-    registrar.addMethodCallDelegate(instance, channel: channel)
+    // let channel = FlutterMethodChannel(name: "veilid", binaryMessenger: registrar.messenger)
+    // let instance = VeilidPlugin()
+    // registrar.addMethodCallDelegate(instance, channel: channel)
   }
 
   public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
-    switch call.method {
-    case "getPlatformVersion":
-      result("macOS " + ProcessInfo.processInfo.operatingSystemVersionString)
-    default:
-      result(FlutterMethodNotImplemented)
-    }
+    // switch call.method {
+    // case "getPlatformVersion":
+    //   result("macOS " + ProcessInfo.processInfo.operatingSystemVersionString)
+    // default:
+    result(FlutterMethodNotImplemented)
+    // }
   }
 }

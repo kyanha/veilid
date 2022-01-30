@@ -10,8 +10,10 @@ use std::ffi::CStr;
 use std::io;
 use std::os::raw::{c_int, c_uchar, c_ulong, c_ushort, c_void};
 
-//const SIOCGIFFLAGS:c_ulong = 0xC0206911;
 const SIOCGIFAFLAG_IN6: c_ulong = 0xC1206949;
+const IN6_IFF_TENTATIVE: c_ushort = 0x0002;
+const IN6_IFF_DUPLICATED: c_ushort = 0x0004;
+const IN6_IFF_DETACHED: c_ushort = 0x0008;
 const IN6_IFF_TEMPORARY: c_ushort = 0x0080;
 const IN6_IFF_DEPRECATED: c_ushort = 0x0010;
 const IN6_IFF_DYNAMIC: c_ushort = 0x0100;
@@ -392,7 +394,9 @@ impl PlatformSupportApple {
         Ok(AddressFlags {
             is_temporary: (flags & IN6_IFF_TEMPORARY) != 0,
             is_dynamic: (flags & IN6_IFF_DYNAMIC) != 0,
-            is_preferred: (flags & (IN6_IFF_TENTATIVE | IN6_IFF_DUPLICATED | IN6_IFF_DETACHED | IN6_IFF_DEPRECATED)  ) == 0,
+            is_preferred: (flags
+                & (IN6_IFF_TENTATIVE | IN6_IFF_DUPLICATED | IN6_IFF_DETACHED | IN6_IFF_DEPRECATED))
+                == 0,
         })
     }
 
