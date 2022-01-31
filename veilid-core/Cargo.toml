@@ -11,7 +11,7 @@ crate-type = ["cdylib", "staticlib", "rlib"]
 
 [features]
 android_tests = []
-ios_tests = []
+ios_tests = [ "simplelog", "backtrace" ]
 
 [dependencies]
 capnp = { version = "^0", default_features = false }
@@ -126,14 +126,10 @@ rtnetlink = { version = "^0", default-features = false, features = [ "smol_socke
 [target.'cfg(target_os = "windows")'.dependencies]
 winapi = { version = "^0", features = [ "iptypes", "iphlpapi" ] }
 
-# Dependencies for MacOS and iOS
-#[target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]
-# XXX
-
 # Dependencies for iOS
 [target.'cfg(target_os = "ios")'.dependencies]
-simplelog = { version = "^0" }
-backtrace = { version = "^0" }
+simplelog = { version = "^0", optional = true }
+backtrace = { version = "^0", optional = true }
 
 # Rusqlite configuration to ensure platforms that don't come with sqlite get it bundled
 # Except WASM which doesn't use sqlite

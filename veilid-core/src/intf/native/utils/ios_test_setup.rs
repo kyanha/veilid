@@ -1,29 +1,22 @@
 use crate::xx::*;
 use backtrace::Backtrace;
-use lazy_static::*;
 use log::*;
 use simplelog::*;
 use std::fs::OpenOptions;
 use std::panic;
 use std::path::{Path, PathBuf};
 
-pub struct IOSGlobals {}
-
-lazy_static! {
-    pub static ref IOS_GLOBALS: Arc<Mutex<Option<IOSGlobals>>> = Arc::new(Mutex::new(None));
-}
-
-pub fn veilid_core_setup_ios<'a>(
+pub fn veilid_core_setup<'a>(
     log_tag: &'a str,
     terminal_log: Option<Level>,
     file_log: Option<(Level, &Path)>,
 ) {
-    if let Err(e) = veilid_core_setup_ios_internal(log_tag, terminal_log, file_log) {
+    if let Err(e) = veilid_core_setup_internal(log_tag, terminal_log, file_log) {
         panic!("failed to set up veilid-core: {}", e);
     }
 }
 
-fn veilid_core_setup_ios_internal<'a>(
+fn veilid_core_setup_internal<'a>(
     _log_tag: &'a str,
     terminal_log: Option<Level>,
     file_log: Option<(Level, &Path)>,
@@ -94,6 +87,5 @@ fn veilid_core_setup_ios_internal<'a>(
         error!("Backtrace:\n{:?}", bt);
     }));
 
-    *IOS_GLOBALS.lock() = Some(IOSGlobals {});
     Ok(())
 }

@@ -31,7 +31,7 @@ pub extern "C" fn run_veilid_core_tests() {
     ]
     .iter()
     .collect();
-    crate::intf::utils::ios::veilid_core_setup_ios(
+    crate::intf::utils::ios_test_setup::veilid_core_setup(
         "veilid-core",
         Some(Level::Trace),
         Some((Level::Trace, log_path.as_path())),

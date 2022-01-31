@@ -25,8 +25,20 @@ do
         echo Unsupported ARCH: $arch
         continue
     fi
-    HOMEBREW_DIR=$(dirname `which brew`)
-    CARGO_DIR=$(dirname `which cargo`)
-    env -i PATH=/usr/bin:/bin:/usr/local/bin:$HOMEBREW_DIR:$CARGO_DIR HOME="$HOME" USER="$USER" cargo $CARGO_TOOLCHAIN build $EXTRA_CARGO_OPTIONS --target $CARGO_TARGET --manifest-path $CARGO_MANIFEST_PATH
+
+    CARGO=`which cargo`
+    CARGO=${CARGO:=~/.cargo/bin/cargo}
+    CARGO_DIR=$(dirname $CARGO)
+
+    # Choose arm64 brew for unit tests by default if we are on M1
+    if [ -f /opt/homebrew/bin/brew ]; then
+        HOMEBREW_DIR=/opt/homebrew/bin
+    elif [ -f /usr/local/bin/brew ]; then
+        HOMEBREW_DIR=/usr/local/bin
+    else 
+        HOMEBREW_DIR=$(dirname `which brew`)
+    fi
+
+    env -i PATH=/usr/bin:/bin:$HOMEBREW_DIR:$CARGO_DIR HOME="$HOME" USER="$USER" cargo $CARGO_TOOLCHAIN build $EXTRA_CARGO_OPTIONS --target $CARGO_TARGET --manifest-path $CARGO_MANIFEST_PATH
 done
 

@@ -13,6 +13,7 @@ flutter_rust_bridge = "^1"
 parking_lot = "^0"
 log = "^0"
 anyhow = { version = "^1", features = ["backtrace"] }
+cfg-if = "^1"
 
 [build-dependencies]
 cfg-if = "^1"
