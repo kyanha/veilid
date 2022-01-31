@@ -751,6 +751,7 @@ impl Settings {
                 } else {
                     format!("subnode{}", inner.testing.subnode_index)
                 })),
+                "log_to_api" => Ok(Box::new(false)),
                 "capabilities.protocol_udp" => Ok(Box::new(true)),
                 "capabilities.protocol_connect_tcp" => Ok(Box::new(true)),
                 "capabilities.protocol_accept_tcp" => Ok(Box::new(true)),

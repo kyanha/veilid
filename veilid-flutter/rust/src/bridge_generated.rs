@@ -491,6 +491,19 @@ impl support::IntoDart for AttachmentState {
     }
 }
 
+impl support::IntoDart for VeilidLogLevel {
+    fn into_dart(self) -> support::DartCObject {
+        match self {
+            Self::Error => 0,
+            Self::Warn => 1,
+            Self::Info => 2,
+            Self::Debug => 3,
+            Self::Trace => 4,
+        }
+        .into_dart()
+    }
+}
+
 impl support::IntoDart for VeilidState {
     fn into_dart(self) -> support::DartCObject {
         vec![self.attachment.into_dart()].into_dart()
@@ -501,7 +514,10 @@ impl support::IntoDartExceptPrimitive for VeilidState {}
 impl support::IntoDart for VeilidUpdate {
     fn into_dart(self) -> support::DartCObject {
         match self {
-            Self::Attachment(field0) => vec![0.into_dart(), field0.into_dart()],
+            Self::Log(field0, field1) => {
+                vec![0.into_dart(), field0.into_dart(), field1.into_dart()]
+            }
+            Self::Attachment(field0) => vec![1.into_dart(), field0.into_dart()],
         }
         .into_dart()
     }

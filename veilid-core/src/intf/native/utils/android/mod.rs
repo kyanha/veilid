@@ -23,22 +23,7 @@ lazy_static! {
     pub static ref ANDROID_GLOBALS: Arc<Mutex<Option<AndroidGlobals>>> = Arc::new(Mutex::new(None));
 }
 
-pub fn veilid_core_setup_android<'a>(
-    env: JNIEnv<'a>,
-    ctx: JObject<'a>,
-    log_tag: &'a str,
-    log_level: Level,
-) {
-    android_logger::init_once(
-        Config::default()
-            .with_min_level(log_level)
-            .with_tag(log_tag)
-            .with_filter(
-                FilterBuilder::new()
-                    .filter(Some(log_tag), log_level.to_level_filter())
-                    .build(),
-            ),
-    );
+pub fn veilid_core_setup_android_no_log<'a>(env: JNIEnv<'a>, ctx: JObject<'a>) {
     panic::set_hook(Box::new(|panic_info| {
         let bt = Backtrace::new();
         if let Some(location) = panic_info.location() {
@@ -66,6 +51,26 @@ pub fn veilid_core_setup_android<'a>(
         vm: env.get_java_vm().unwrap(),
         ctx: env.new_global_ref(ctx).unwrap(),
     });
+}
+
+pub fn veilid_core_setup_android<'a>(
+    env: JNIEnv<'a>,
+    ctx: JObject<'a>,
+    log_tag: &'a str,
+    log_level: Level,
+) {
+    android_logger::init_once(
+        Config::default()
+            .with_min_level(log_level)
+            .with_tag(log_tag)
+            .with_filter(
+                FilterBuilder::new()
+                    .filter(Some(log_tag), log_level.to_level_filter())
+                    .build(),
+            ),
+    );
+
+    veilid_core_setup_android_no_log(env, ctx);
 }
 
 pub fn get_android_globals() -> (JavaVM, GlobalRef) {

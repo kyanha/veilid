@@ -176,6 +176,7 @@ pub struct VeilidConfigCapabilities {
 pub struct VeilidConfigInner {
     pub program_name: String,
     pub namespace: String,
+    pub log_to_api: bool,
     pub capabilities: VeilidConfigCapabilities,
     pub protected_store: VeilidConfigProtectedStore,
     pub table_store: VeilidConfigTableStore,
@@ -220,6 +221,7 @@ impl VeilidConfig {
             let mut inner = self.inner.write();
             get_config!(inner.program_name);
             get_config!(inner.namespace);
+            get_config!(inner.log_to_api);
             get_config!(inner.capabilities.protocol_udp);
             get_config!(inner.capabilities.protocol_connect_tcp);
             get_config!(inner.capabilities.protocol_accept_tcp);

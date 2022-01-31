@@ -36,6 +36,9 @@ fn convert_update(
     rpc_update: crate::veilid_client_capnp::veilid_update::Builder,
 ) {
     match update {
+        veilid_core::VeilidUpdate::Log(_ll, _s) => {
+            panic!("Should not be logging to api in server!");
+        }
         veilid_core::VeilidUpdate::Attachment(state) => {
             let mut att = rpc_update.init_attachment();
             att.set_state(convert_attachment_state(state));
@@ -358,6 +361,7 @@ impl ClientApi {
     }
 
     pub fn handle_update(self: Rc<Self>, veilid_update: veilid_core::VeilidUpdate) {
+        // Pass other updates to clients
         self.send_request_to_all_clients(|_id, registration| {
             let mut request = registration.client.update_request();
             let rpc_veilid_update = request.get().init_veilid_update();

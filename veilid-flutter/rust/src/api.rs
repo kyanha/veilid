@@ -427,14 +427,36 @@ impl AttachmentState {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum VeilidLogLevel {
+    Error,
+    Warn,
+    Info,
+    Debug,
+    Trace,
+}
+impl VeilidLogLevel {
+    fn from_core(level: veilid_core::VeilidLogLevel) -> Self {
+        match level {
+            veilid_core::VeilidLogLevel::Error => VeilidLogLevel::Error,
+            veilid_core::VeilidLogLevel::Warn => VeilidLogLevel::Warn,
+            veilid_core::VeilidLogLevel::Info => VeilidLogLevel::Info,
+            veilid_core::VeilidLogLevel::Debug => VeilidLogLevel::Debug,
+            veilid_core::VeilidLogLevel::Trace => VeilidLogLevel::Trace,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum VeilidUpdate {
+    Log(VeilidLogLevel, String),
     Attachment(AttachmentState),
 }
 
 impl VeilidUpdate {
     fn from_core(veilid_update: veilid_core::VeilidUpdate) -> Self {
         match veilid_update {
+            veilid_core::VeilidUpdate::Log(ll, s) => Self::Log(VeilidLogLevel::from_core(ll), s),
             veilid_core::VeilidUpdate::Attachment(attachment) => {
                 Self::Attachment(AttachmentState::from_core(attachment))
             }

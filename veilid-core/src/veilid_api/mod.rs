@@ -106,12 +106,34 @@ macro_rules! parse_error {
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
+pub enum VeilidLogLevel {
+    Error = 1,
+    Warn,
+    Info,
+    Debug,
+    Trace,
+}
+
+impl VeilidLogLevel {
+    pub fn from_log_level(level: log::Level) -> VeilidLogLevel {
+        match level {
+            Level::Error => VeilidLogLevel::Error,
+            Level::Warn => VeilidLogLevel::Warn,
+            Level::Info => VeilidLogLevel::Info,
+            Level::Debug => VeilidLogLevel::Debug,
+            Level::Trace => VeilidLogLevel::Trace,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub enum VeilidUpdate {
+    Log(VeilidLogLevel, String),
     Attachment(AttachmentState),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct VeilidState {
     pub attachment: AttachmentState,
 }
@@ -1144,6 +1166,9 @@ impl VeilidAPI {
         timeout_ms: Option<u32>,
     ) -> Result<(), VeilidAPIError> {
         match update {
+            VeilidUpdate::Log(_l, _s) => {
+                // No point in waiting for a log
+            }
             VeilidUpdate::Attachment(cs) => {
                 self.attachment_manager()?
                     .wait_for_state(cs, timeout_ms)

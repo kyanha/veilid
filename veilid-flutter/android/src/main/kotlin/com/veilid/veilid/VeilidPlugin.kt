@@ -16,6 +16,12 @@ class VeilidPlugin: FlutterPlugin, MethodCallHandler {
   /// when the Flutter Engine is detached from the Activity
   // private lateinit var channel : MethodChannel
 
+  // static {
+  //   System.loadLibrary("veilid_flutter");
+  // }
+// xxx get main activity
+  // private static native void init_android(Context context);
+
   override fun onAttachedToEngine(@NonNull flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
   //   channel = MethodChannel(flutterPluginBinding.binaryMessenger, "veilid")
   //   channel.setMethodCallHandler(this)
