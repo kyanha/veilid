@@ -20,11 +20,15 @@ Veilid Network Plugin
   s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES' }
   s.swift_version = '5.0'
 
+  require 'json'
+  require 'pathname'
+  cargo_target_dir = File.join(File.dirname(JSON.parse(`cargo locate-project`)['root']), 'target')
+
   s.script_phase = { 
     :name => 'Cargo Build', 
     :script => File.join(File.dirname(__dir__), 'rust', 'macos_build.sh'), 
     :execution_position => :before_compile,
-    :output_files => [ File.join(File.dirname(__dir__), 'lib', 'libveilid_flutter.dylib') ]
+    :output_files => [ File.join(cargo_target_dir, 'macos_lib', 'libveilid_flutter.dylib') ]
   }
 
   # s.prepare_command = <<-CMD

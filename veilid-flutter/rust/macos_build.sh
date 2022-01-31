@@ -10,7 +10,7 @@ TARGET_DIR=$(dirname `cargo locate-project --message-format plain`)/target
 
 # Configure outputs
 OUTPUT_FILENAME=libveilid_flutter.dylib
-OUTPUT_DIR=$SCRIPTDIR/../macos/lib
+OUTPUT_DIR=$TARGET_DIR/macos_lib
 
 # Get Rust configurations from xcode configurations
 if [ "$CONFIGURATION" == "Debug" ]; then 
