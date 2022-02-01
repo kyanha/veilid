@@ -39,10 +39,10 @@
             <a class="subsection-name" href="#structuring-data">Structuring Data</a>
           </li>
           <li>
-            <a class="subsection-name" href="#identity">Identity</a>
+            <a class="subsection-name" href="#peer-and-user-identity">Peer and User Identity</a>
           </li>
           <li>
-            <a class="subsection-name" href="#privacy">Privacy</a>
+            <a class="subsection-name" href="#peer-privacy">Peer Privacy</a>
           </li>
         </ul>
       </li>
@@ -70,6 +70,8 @@
       The primary purpose of the Veilid network is to provide the infrastructure for a specific kind of shared data: social media in various forms. That includes light-weight content such as Twitter's tweets or Mastodon's toots, medium-weight content like images and songs, and heavy-weight content like videos. Meta-content such as personal feeds, replies, private messages, and so forth are also intended to run atop Veilid.
     </p>
     
+    <hr/>
+    
     <h2 id="birds-eye-view">Bird's Eye View</h2>
     
     <p>
@@ -95,15 +97,15 @@
     <h3 id="key-value-store">Key-Value Store</h3>
     
     <p>
-      Smaller, more ephemeral textual content generally, however, is stored in a key-value-store (KV store). Things like status updates, blog posts, user bios, etc. are all thought of as being suited for storage in this part of the data store. KV store data is not simply "on the Veilid network", but also owned/controlled by peers, and identified by an arbitrary name chosen by the peers which owns the data. Any group of peers can add data, but can only change the data they've added.
+      Smaller, more ephemeral textual content generally, however, is stored in a key-value-store (KV store). Things like status updates, blog posts, user bios, etc. are all thought of as being suited for storage in this part of the data store. KV store data is not simply "on the Veilid network", but also owned/controlled by users, and identified by an arbitrary name chosen by the owner the data. Any group of users can add data, but can only change the data they've added.
     </p>
     
     <p>
-      For instance, we might talk about Boone's bio vs. Boone's blogpost titled "Hi, I'm Boone!", which are two things owned by the same peer but with different identifiers, or on Boone's bio vs. Marquette's bio, which are two things owned by distinct peers but with the same identifier.
+      For instance, we might talk about Boone's bio vs. Boone's blogpost titled "Hi, I'm Boone!", which are two things owned by the same user but with different identifiers, or on Boone's bio vs. Marquette's bio, which are two things owned by distinct users but with the same identifier.
     </p>
     
     <p>
-      KV store data is also versioned, so that updates to it can be made. Boone's bio, for instance, would not be fixed in time, but rather is likely to vary over time as he changes jobs, picks up new hobbies, etc. Versioning, together with arbitrary peer-chosen identifiers instead of content hashes, means that we can talk about "Boone's Bio" as an abstract thing, and subscribe to updates to it.
+      KV store data is also versioned, so that updates to it can be made. Boone's bio, for instance, would not be fixed in time, but rather is likely to vary over time as he changes jobs, picks up new hobbies, etc. Versioning, together with arbitrary user-chosen identifiers instead of content hashes, means that we can talk about "Boone's Bio" as an abstract thing, and subscribe to updates to it.
     </p>
     
     <h3 id="structuring-data">Structuring Data</h3>
@@ -120,33 +122,35 @@
       Social media offers many examples of these concepts. Friends lists, block lists, post indexes, favorites. These are all stateful notions, in a sense: a stable reference to a thing, but the precise content of the thing changes over time. These are exactly what we would put in the KV store, as opposed to in the block store, even if this data makes reference to content in the block store.
     </p>
     
-    <h3 id="identity">Identity</h3>
+    <h3 id="peer-and-user-identity">Peer and User Identity</h3>
     
     <p>
-      As discussed above, peers talk to one another with RPCs, talk about one another by referencing each other on the network, own content that's in the KV store. This raises the question of how peers are identified and distinguished from one another. If the network was just an immutable block store, we could say that identity is just the IP address of the machine the peer is running on, since all that really matters is being able to get data from the peer. This would be like what BitTorrent or IPFS do, since they don't really have any concept of ownership and mutability of data.
+      Two notions of identity are at play in the above network: peer identity and user identity. Peer identity is simple enough: each peer has a cryptographic key pair that it uses to communicate securely with other peers, both through traditional encrypted communication, and also through the various encrypted routes. Peer identity is just the identity of the particular instance of the Veilid software running on a computer.
     </p>
     
     <p>
-      But because Veilid cares deeply about ownership of data and change over time, we chose a different approach: identity is a cryptographic keypair. This allows a peer to access the Veilid network from arbitrarily many different computers and IP addresses, over any communication medium. In practice, this means different devices (e.g. home machine vs smart phone), but in principle it could mean word of mouth and sneakernet. Veilid is agnostic to the particular substrate and communication medium.
+      User identity is a slightly richer notion. Users, that is to say, *people*, will want to access the Veilid network in a way that has a consistent identity across devices and apps. But since Veilid doesn't have servers in any traditional sense, we can't have a normal notion of "account". Doing so would also introduce points of centralization, which federated systems have shown to be a source of trouble. Many Mastodon users have found themselves in a tricky situation when their instance sysadmins burned out and suddenly shut down the instance without enough warning.
     </p>
     
     <p>
-      On the network, within the datastore, this means that a peer is identified by a public key, or a hash thereof. Changes to a peer's data in the KV store require that the peers attempting to make the change verify their identity as owners. Data can also, of course, be encrypted so that it can only be accessed by the owners, or by anyone else they choose.
+      To avoid this re-centralization of identity, we use cryptographic identity for users as well. The user's key pair is used to sign and encrypt their content as needed for publication to the data store. A user is said to be "logged in" to a client app whenever that app has a copy of their private key. When logged in a client app act like any other of the user's client apps, able to decrypt and encrypt content, sign messages, and so forth. Keys can be added to new apps to sign in on them, allowing the user to have any number of clients they want, on any number of devices they want.
     </p>
     
-    <h3 id="privacy">Privacy</h3>
+    <h3 id="peer-privacy">Peer Privacy</h3>
     
     <p>
       In order to ensure that peers can participate in Veilid with some amount of privacy, we need to address the fact that being connected to Veilid entails communicating with other peers, and therefore sharing IP addresses.
     </p>
     
     <p>
-      The approach that Veilid takes to privacy is two sided: privacy of the sender of a message, and privacy of the receiver of a message. Either or both sides can want privacy or opt out of privacy. To achieve sender privacy, we use something called a Safety Route: a sequence of two other peers, chosen by the sender, who will relay messages. The sequence of addresses is put into a nesting doll of encryption, so that the first hop can see the second hop, but not the final destination, while the second hope can see the final destination. This is similar to a 2-hop Tor route, except only the addresses are hidden from view. Additionally, the route can be chosen at random for each send.
+      The approach that Veilid takes to privacy is two sided: privacy of the sender of a message, and privacy of the receiver of a message. Either or both sides can want privacy or opt out of privacy. To achieve sender privacy, we use something called a Safety Route: a sequence of any number of other peers, chosen by the sender, who will relay messages. The sequence of addresses is put into a nesting doll of encryption, so that each hope can see the previous and next hops, while no hop can see the whole route. This is similar to a Tor route, except only the addresses are hidden from view. Additionally, the route can be chosen at random for each send.
     </p>
     
     <p>
       Receiver privacy is similar, in that we have a nesting doll of encrypted peer address, except because it's for incoming messages, the various addresses have to be shared ahead of time. We call such things Private Routes, and they are published to the key-value store as part of a peer's public data. For full privacy on both ends, a Private Route will be used as the final destination of a Safety Route, so that a total of four intermediate hops are used to send a message so that neither the sender nor receiver knows the IP address of the other.
     </p>
+    
+    <hr/>
     
     <h2 id="on-the-ground">On The Ground</h2>
     
