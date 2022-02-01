@@ -18,14 +18,9 @@ impl VeilidLogs {
         let mut client_log_channel: Option<ClientLogChannel> = None;
         let mut client_log_channel_closer: Option<ClientLogChannelCloser> = None;
         let mut cb = ConfigBuilder::new();
-        cb.add_filter_ignore_str("async_std");
-        cb.add_filter_ignore_str("async_io");
-        cb.add_filter_ignore_str("polling");
-        cb.add_filter_ignore_str("rustls");
-        cb.add_filter_ignore_str("async_tungstenite");
-        cb.add_filter_ignore_str("tungstenite");
-        cb.add_filter_ignore_str("netlink_proto");
-        cb.add_filter_ignore_str("netlink_sys");
+        for ig in veilid_core::DEFAULT_LOG_IGNORE_LIST {
+            cb.add_filter_ignore_str(ig);
+        }
 
         if settingsr.logging.terminal.enabled {
             logs.push(TermLogger::new(

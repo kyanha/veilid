@@ -5,6 +5,7 @@ pub use debug::*;
 
 pub use crate::rpc_processor::InfoAnswer;
 use crate::*;
+use api_logger::*;
 use attachment_manager::*;
 use core::fmt;
 use network_manager::NetworkManager;
@@ -1176,6 +1177,11 @@ impl VeilidAPI {
             }
         }
         Ok(())
+    }
+
+    // Change api logging level if it is enabled
+    pub async fn change_api_log_level(&self, log_level: VeilidConfigLogLevel) {
+        ApiLogger::change_log_level(log_level.to_level_filter());
     }
 
     ////////////////////////////////////////////////////////////////

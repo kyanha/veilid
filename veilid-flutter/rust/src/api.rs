@@ -38,6 +38,7 @@ async fn take_veilid_api() -> Result<veilid_core::VeilidAPI> {
 pub struct VeilidConfig {
     pub program_name: String,
     pub veilid_namespace: String,
+    pub api_log_level: VeilidLogLevel,
     // Capabilities
     pub capabilities__protocol_udp: bool,
     pub capabilities__protocol_connect_tcp: bool,
@@ -125,6 +126,7 @@ impl VeilidConfig {
         let out: Box<dyn core::any::Any + Send> = match key {
             "program_name" => Box::new(self.program_name.clone()),
             "namespace" => Box::new(self.veilid_namespace.clone()),
+            "api_log_level" => Box::new(self.api_log_level.to_config_log_level()),
             "capabilities.protocol_udp" => Box::new(self.capabilities__protocol_udp.clone()),
             "capabilities.protocol_connect_tcp" => {
                 Box::new(self.capabilities__protocol_connect_tcp.clone())
@@ -445,6 +447,16 @@ impl VeilidLogLevel {
             veilid_core::VeilidLogLevel::Trace => VeilidLogLevel::Trace,
         }
     }
+
+    fn to_config_log_level(&self) -> VeilidConfigLogLevel {
+        match self {
+            Self::Error => VeilidConfigLogLevel::Error,
+            Self::Warn => VeilidConfigLogLevel::Warn,
+            Self::Info => VeilidConfigLogLevel::Info,
+            Self::Debug => VeilidConfigLogLevel::Debug,
+            Self::Trace => VeilidConfigLogLevel::Trace,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -530,6 +542,16 @@ pub fn get_veilid_state() -> Result<VeilidState> {
 }
 
 // xxx api functions
+
+pub fn change_api_log_level(level: VeilidLogLevel) -> Result<()> {
+    async_std::task::block_on(async {
+        let veilid_api = get_veilid_api().await?;
+        veilid_api
+            .change_api_log_level(log_level.to_config_log_level())
+            .await;
+        Ok(())
+    })
+}
 
 pub fn shutdown_veilid_core() -> Result<()> {
     async_std::task::block_on(async {

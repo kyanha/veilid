@@ -41,6 +41,21 @@ pub extern "C" fn wire_get_veilid_state(port_: i64) {
 }
 
 #[no_mangle]
+pub extern "C" fn wire_change_api_log_level(port_: i64, level: i32) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap(
+        WrapInfo {
+            debug_name: "change_api_log_level",
+            port: Some(port_),
+            mode: FfiCallMode::Normal,
+        },
+        move || {
+            let api_level = level.wire2api();
+            move |task_callback| change_api_log_level(api_level)
+        },
+    )
+}
+
+#[no_mangle]
 pub extern "C" fn wire_shutdown_veilid_core(port_: i64) {
     FLUTTER_RUST_BRIDGE_HANDLER.wrap(
         WrapInfo {
@@ -97,6 +112,7 @@ pub struct wire_uint_8_list {
 pub struct wire_VeilidConfig {
     program_name: *mut wire_uint_8_list,
     veilid_namespace: *mut wire_uint_8_list,
+    api_log_level: i32,
     capabilities__protocol_udp: bool,
     capabilities__protocol_connect_tcp: bool,
     capabilities__protocol_accept_tcp: bool,
@@ -276,6 +292,7 @@ impl Wire2Api<VeilidConfig> for wire_VeilidConfig {
         VeilidConfig {
             program_name: self.program_name.wire2api(),
             veilid_namespace: self.veilid_namespace.wire2api(),
+            api_log_level: self.api_log_level.wire2api(),
             capabilities__protocol_udp: self.capabilities__protocol_udp.wire2api(),
             capabilities__protocol_connect_tcp: self.capabilities__protocol_connect_tcp.wire2api(),
             capabilities__protocol_accept_tcp: self.capabilities__protocol_accept_tcp.wire2api(),
@@ -388,6 +405,19 @@ impl Wire2Api<VeilidConfig> for wire_VeilidConfig {
     }
 }
 
+impl Wire2Api<VeilidLogLevel> for i32 {
+    fn wire2api(self) -> VeilidLogLevel {
+        match self {
+            0 => VeilidLogLevel::Error,
+            1 => VeilidLogLevel::Warn,
+            2 => VeilidLogLevel::Info,
+            3 => VeilidLogLevel::Debug,
+            4 => VeilidLogLevel::Trace,
+            _ => unreachable!("Invalid variant for VeilidLogLevel: {}", self),
+        }
+    }
+}
+
 // Section: impl NewWithNullPtr
 
 pub trait NewWithNullPtr {
@@ -405,6 +435,7 @@ impl NewWithNullPtr for wire_VeilidConfig {
         Self {
             program_name: core::ptr::null_mut(),
             veilid_namespace: core::ptr::null_mut(),
+            api_log_level: Default::default(),
             capabilities__protocol_udp: Default::default(),
             capabilities__protocol_connect_tcp: Default::default(),
             capabilities__protocol_accept_tcp: Default::default(),

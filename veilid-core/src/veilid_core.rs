@@ -1,3 +1,4 @@
+use crate::api_logger::*;
 use crate::attachment_manager::*;
 use crate::dht::crypto::Crypto;
 use crate::intf::*;
@@ -86,6 +87,21 @@ impl VeilidCore {
         inner: &mut VeilidCoreInner,
         setup: VeilidCoreSetup,
     ) -> Result<VeilidAPI, String> {
+        // Start up api logging early if it's in the config
+        let api_log_level: VeilidConfigLogLevel =
+            *(setup.config_callback)("api_log_level".to_owned())?
+                .downcast()
+                .map_err(|_| "incorrect type for key 'api_log_level'".to_owned())?;
+        if api_log_level != VeilidConfigLogLevel::Off {
+            ApiLogger::init(
+                api_log_level.to_level_filter(),
+                setup.update_callback.clone(),
+            );
+            for ig in crate::DEFAULT_LOG_IGNORE_LIST {
+                ApiLogger::add_filter_ignore_str(ig);
+            }
+        }
+
         trace!("VeilidCore::internal_startup starting");
 
         cfg_if! {
@@ -211,6 +227,8 @@ impl VeilidCore {
         }
 
         trace!("VeilidCore::shutdown complete");
+
+        ApiLogger::terminate();
     }
 
     // stop the node gracefully because the veilid api was dropped

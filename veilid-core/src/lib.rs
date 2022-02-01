@@ -4,6 +4,7 @@
 #[macro_use]
 extern crate alloc;
 
+mod api_logger;
 mod attachment_manager;
 mod callback_state_machine;
 mod connection_manager;
@@ -45,3 +46,14 @@ pub fn veilid_version() -> (u32, u32, u32) {
         u32::from_str(env!("CARGO_PKG_VERSION_PATCH")).unwrap(),
     )
 }
+
+pub static DEFAULT_LOG_IGNORE_LIST: [&'static str; 8] = [
+    "async_std",
+    "async_io",
+    "polling",
+    "rustls",
+    "async_tungstenite",
+    "tungstenite",
+    "netlink_proto",
+    "netlink_sys",
+];

@@ -172,11 +172,39 @@ pub struct VeilidConfigCapabilities {
     pub protocol_accept_wss: bool,
 }
 
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum VeilidConfigLogLevel {
+    Off,
+    Error,
+    Warn,
+    Info,
+    Debug,
+    Trace,
+}
+
+impl VeilidConfigLogLevel {
+    pub fn to_level_filter(&self) -> LevelFilter {
+        match self {
+            Self::Off => LevelFilter::Off,
+            Self::Error => LevelFilter::Error,
+            Self::Warn => LevelFilter::Warn,
+            Self::Info => LevelFilter::Info,
+            Self::Debug => LevelFilter::Debug,
+            Self::Trace => LevelFilter::Trace,
+        }
+    }
+}
+impl Default for VeilidConfigLogLevel {
+    fn default() -> Self {
+        Self::Off
+    }
+}
+
 #[derive(Default, Clone)]
 pub struct VeilidConfigInner {
     pub program_name: String,
     pub namespace: String,
-    pub log_to_api: bool,
+    pub api_log_level: VeilidConfigLogLevel,
     pub capabilities: VeilidConfigCapabilities,
     pub protected_store: VeilidConfigProtectedStore,
     pub table_store: VeilidConfigTableStore,
@@ -221,7 +249,7 @@ impl VeilidConfig {
             let mut inner = self.inner.write();
             get_config!(inner.program_name);
             get_config!(inner.namespace);
-            get_config!(inner.log_to_api);
+            get_config!(inner.api_log_level);
             get_config!(inner.capabilities.protocol_udp);
             get_config!(inner.capabilities.protocol_connect_tcp);
             get_config!(inner.capabilities.protocol_accept_tcp);
