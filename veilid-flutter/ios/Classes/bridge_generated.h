@@ -15,6 +15,7 @@ typedef struct wire_StringList {
 typedef struct wire_VeilidConfig {
   struct wire_uint_8_list *program_name;
   struct wire_uint_8_list *veilid_namespace;
+  int32_t api_log_level;
   bool capabilities__protocol_udp;
   bool capabilities__protocol_connect_tcp;
   bool capabilities__protocol_accept_tcp;
@@ -95,6 +96,8 @@ void wire_startup_veilid_core(int64_t port_, struct wire_VeilidConfig *config);
 
 void wire_get_veilid_state(int64_t port_);
 
+void wire_change_api_log_level(int64_t port_, int32_t log_level);
+
 void wire_shutdown_veilid_core(int64_t port_);
 
 void wire_veilid_version_string(int64_t port_);
@@ -117,6 +120,7 @@ static int64_t dummy_method_to_enforce_bundling(void) {
     int64_t dummy_var = 0;
     dummy_var ^= ((int64_t) (void*) wire_startup_veilid_core);
     dummy_var ^= ((int64_t) (void*) wire_get_veilid_state);
+    dummy_var ^= ((int64_t) (void*) wire_change_api_log_level);
     dummy_var ^= ((int64_t) (void*) wire_shutdown_veilid_core);
     dummy_var ^= ((int64_t) (void*) wire_veilid_version_string);
     dummy_var ^= ((int64_t) (void*) wire_veilid_version);

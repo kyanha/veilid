@@ -26,6 +26,8 @@ abstract class VeilidFlutter {
 
 Future<VeilidState> getVeilidState({ dynamic hint });
 
+Future<void> changeApiLogLevel({ required VeilidLogLevel logLevel,dynamic hint });
+
 Future<void> shutdownVeilidCore({ dynamic hint });
 
 Future<String> veilidVersionString({ dynamic hint });
@@ -47,6 +49,7 @@ Detaching,
 class VeilidConfig {
             final String programName;
 final String veilidNamespace;
+final VeilidLogLevel apiLogLevel;
 final bool capabilitiesProtocolUdp;
 final bool capabilitiesProtocolConnectTcp;
 final bool capabilitiesProtocolAcceptTcp;
@@ -112,7 +115,7 @@ final int networkLeasesMaxServerRelayLeases;
 final int networkLeasesMaxClientSignalLeases;
 final int networkLeasesMaxClientRelayLeases;
 
-            VeilidConfig({required this.programName,required this.veilidNamespace,required this.capabilitiesProtocolUdp,required this.capabilitiesProtocolConnectTcp,required this.capabilitiesProtocolAcceptTcp,required this.capabilitiesProtocolConnectWs,required this.capabilitiesProtocolAcceptWs,required this.capabilitiesProtocolConnectWss,required this.capabilitiesProtocolAcceptWss,required this.protectedStoreAllowInsecureFallback,required this.protectedStoreAlwaysUseInsecureStorage,required this.protectedStoreInsecureFallbackDirectory,required this.protectedStoreDelete,required this.tableStoreDirectory,required this.tableStoreDelete,required this.blockStoreDirectory,required this.blockStoreDelete,required this.networkMaxConnections,required this.networkConnectionInitialTimeoutMs,required this.networkNodeId,required this.networkNodeIdSecret,required this.networkBootstrap,required this.networkUpnp,required this.networkNatpmp,required this.networkEnableLocalPeerScope,required this.networkRestrictedNatRetries,required this.networkRpcConcurrency,required this.networkRpcQueueSize,this.networkRpcMaxTimestampBehindMs,this.networkRpcMaxTimestampAheadMs,required this.networkRpcTimeoutMs,required this.networkRpcMaxRouteHopCount,this.networkDhtResolveNodeTimeoutMs,required this.networkDhtResolveNodeCount,required this.networkDhtResolveNodeFanout,required this.networkDhtMaxFindNodeCount,this.networkDhtGetValueTimeoutMs,required this.networkDhtGetValueCount,required this.networkDhtGetValueFanout,this.networkDhtSetValueTimeoutMs,required this.networkDhtSetValueCount,required this.networkDhtSetValueFanout,required this.networkDhtMinPeerCount,required this.networkDhtMinPeerRefreshTimeMs,required this.networkDhtValidateDialInfoReceiptTimeMs,required this.networkProtocolUdpEnabled,required this.networkProtocolUdpSocketPoolSize,required this.networkProtocolUdpListenAddress,this.networkProtocolUdpPublicAddress,required this.networkProtocolTcpConnect,required this.networkProtocolTcpListen,required this.networkProtocolTcpMaxConnections,required this.networkProtocolTcpListenAddress,this.networkProtocolTcpPublicAddress,required this.networkProtocolWsConnect,required this.networkProtocolWsListen,required this.networkProtocolWsMaxConnections,required this.networkProtocolWsListenAddress,required this.networkProtocolWsPath,this.networkProtocolWsUrl,required this.networkProtocolWssConnect,required this.networkProtocolWssMaxConnections,required this.networkLeasesMaxServerSignalLeases,required this.networkLeasesMaxServerRelayLeases,required this.networkLeasesMaxClientSignalLeases,required this.networkLeasesMaxClientRelayLeases,});
+            VeilidConfig({required this.programName,required this.veilidNamespace,required this.apiLogLevel,required this.capabilitiesProtocolUdp,required this.capabilitiesProtocolConnectTcp,required this.capabilitiesProtocolAcceptTcp,required this.capabilitiesProtocolConnectWs,required this.capabilitiesProtocolAcceptWs,required this.capabilitiesProtocolConnectWss,required this.capabilitiesProtocolAcceptWss,required this.protectedStoreAllowInsecureFallback,required this.protectedStoreAlwaysUseInsecureStorage,required this.protectedStoreInsecureFallbackDirectory,required this.protectedStoreDelete,required this.tableStoreDirectory,required this.tableStoreDelete,required this.blockStoreDirectory,required this.blockStoreDelete,required this.networkMaxConnections,required this.networkConnectionInitialTimeoutMs,required this.networkNodeId,required this.networkNodeIdSecret,required this.networkBootstrap,required this.networkUpnp,required this.networkNatpmp,required this.networkEnableLocalPeerScope,required this.networkRestrictedNatRetries,required this.networkRpcConcurrency,required this.networkRpcQueueSize,this.networkRpcMaxTimestampBehindMs,this.networkRpcMaxTimestampAheadMs,required this.networkRpcTimeoutMs,required this.networkRpcMaxRouteHopCount,this.networkDhtResolveNodeTimeoutMs,required this.networkDhtResolveNodeCount,required this.networkDhtResolveNodeFanout,required this.networkDhtMaxFindNodeCount,this.networkDhtGetValueTimeoutMs,required this.networkDhtGetValueCount,required this.networkDhtGetValueFanout,this.networkDhtSetValueTimeoutMs,required this.networkDhtSetValueCount,required this.networkDhtSetValueFanout,required this.networkDhtMinPeerCount,required this.networkDhtMinPeerRefreshTimeMs,required this.networkDhtValidateDialInfoReceiptTimeMs,required this.networkProtocolUdpEnabled,required this.networkProtocolUdpSocketPoolSize,required this.networkProtocolUdpListenAddress,this.networkProtocolUdpPublicAddress,required this.networkProtocolTcpConnect,required this.networkProtocolTcpListen,required this.networkProtocolTcpMaxConnections,required this.networkProtocolTcpListenAddress,this.networkProtocolTcpPublicAddress,required this.networkProtocolWsConnect,required this.networkProtocolWsListen,required this.networkProtocolWsMaxConnections,required this.networkProtocolWsListenAddress,required this.networkProtocolWsPath,this.networkProtocolWsUrl,required this.networkProtocolWssConnect,required this.networkProtocolWssMaxConnections,required this.networkLeasesMaxServerSignalLeases,required this.networkLeasesMaxServerRelayLeases,required this.networkLeasesMaxClientSignalLeases,required this.networkLeasesMaxClientRelayLeases,});
         }
 
 enum VeilidLogLevel {
@@ -171,6 +174,19 @@ Future<VeilidState> getVeilidState({ dynamic hint }) => executeNormal(FlutterRus
             argNames: [],
         ),
         argValues: [],
+        hint: hint,
+        
+        ));
+
+Future<void> changeApiLogLevel({ required VeilidLogLevel logLevel,dynamic hint }) => executeNormal(FlutterRustBridgeTask(
+            callFfi: (port_) => inner.wire_change_api_log_level(port_, _api2wire_veilid_log_level(logLevel)),
+            parseSuccessData: _wire2api_unit,
+            
+        constMeta: const FlutterRustBridgeTaskConstMeta(
+            debugName: "change_api_log_level",
+            argNames: ["logLevel"],
+        ),
+        argValues: [logLevel],
         hint: hint,
         
         ));
@@ -275,6 +291,11 @@ ffi.Pointer<wire_uint_8_list> _api2wire_uint_8_list(Uint8List raw) {
 
 
 
+int _api2wire_veilid_log_level(VeilidLogLevel raw) {
+            return raw.index;
+        }
+        
+
             // Section: api_fill_to_wire
             
 
@@ -301,6 +322,7 @@ void _api_fill_to_wire_box_autoadd_veilid_config(VeilidConfig apiObj, ffi.Pointe
 void _api_fill_to_wire_veilid_config(VeilidConfig apiObj, wire_VeilidConfig wireObj) {
             wireObj.program_name = _api2wire_String(apiObj.programName);
 wireObj.veilid_namespace = _api2wire_String(apiObj.veilidNamespace);
+wireObj.api_log_level = _api2wire_veilid_log_level(apiObj.apiLogLevel);
 wireObj.capabilities__protocol_udp = _api2wire_bool(apiObj.capabilitiesProtocolUdp);
 wireObj.capabilities__protocol_connect_tcp = _api2wire_bool(apiObj.capabilitiesProtocolConnectTcp);
 wireObj.capabilities__protocol_accept_tcp = _api2wire_bool(apiObj.capabilitiesProtocolAcceptTcp);
@@ -366,6 +388,8 @@ wireObj.network__leases__max_server_relay_leases = _api2wire_u32(apiObj.networkL
 wireObj.network__leases__max_client_signal_leases = _api2wire_u32(apiObj.networkLeasesMaxClientSignalLeases);
 wireObj.network__leases__max_client_relay_leases = _api2wire_u32(apiObj.networkLeasesMaxClientRelayLeases);
         }
+
+
         }
 
         // Section: wire2api
@@ -481,6 +505,22 @@ class VeilidFlutterWire implements FlutterRustBridgeWireBase {
           'wire_get_veilid_state');
   late final _wire_get_veilid_state =
       _wire_get_veilid_statePtr.asFunction<void Function(int)>();
+
+  void wire_change_api_log_level(
+    int port_,
+    int log_level,
+  ) {
+    return _wire_change_api_log_level(
+      port_,
+      log_level,
+    );
+  }
+
+  late final _wire_change_api_log_levelPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Int64, ffi.Int32)>>(
+          'wire_change_api_log_level');
+  late final _wire_change_api_log_level =
+      _wire_change_api_log_levelPtr.asFunction<void Function(int, int)>();
 
   void wire_shutdown_veilid_core(
     int port_,
@@ -624,6 +664,9 @@ class wire_VeilidConfig extends ffi.Struct {
   external ffi.Pointer<wire_uint_8_list> program_name;
 
   external ffi.Pointer<wire_uint_8_list> veilid_namespace;
+
+  @ffi.Int32()
+  external int api_log_level;
 
   @ffi.Uint8()
   external int capabilities__protocol_udp;

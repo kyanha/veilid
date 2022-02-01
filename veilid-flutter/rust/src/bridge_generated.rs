@@ -41,7 +41,7 @@ pub extern "C" fn wire_get_veilid_state(port_: i64) {
 }
 
 #[no_mangle]
-pub extern "C" fn wire_change_api_log_level(port_: i64, level: i32) {
+pub extern "C" fn wire_change_api_log_level(port_: i64, log_level: i32) {
     FLUTTER_RUST_BRIDGE_HANDLER.wrap(
         WrapInfo {
             debug_name: "change_api_log_level",
@@ -49,8 +49,8 @@ pub extern "C" fn wire_change_api_log_level(port_: i64, level: i32) {
             mode: FfiCallMode::Normal,
         },
         move || {
-            let api_level = level.wire2api();
-            move |task_callback| change_api_log_level(api_level)
+            let api_log_level = log_level.wire2api();
+            move |task_callback| change_api_log_level(api_log_level)
         },
     )
 }
@@ -579,21 +579,3 @@ pub extern "C" fn free_WireSyncReturnStruct(val: support::WireSyncReturnStruct) 
         let _ = support::vec_from_leak_ptr(val.ptr, val.len);
     }
 }
-
-    // ----------- DUMMY CODE FOR BINDGEN ----------
-    
-    // copied from: allo-isolate
-    pub type DartPort = i64;
-    pub type DartPostCObjectFnType = unsafe extern "C" fn(port_id: DartPort, message: *mut std::ffi::c_void) -> bool;
-    #[no_mangle] pub unsafe extern "C" fn store_dart_post_cobject(ptr: DartPostCObjectFnType) { panic!("dummy code") }
-    
-    // copied from: frb_rust::support.rs
-    #[repr(C)]
-    pub struct WireSyncReturnStruct {
-        pub ptr: *mut u8,
-        pub len: i32,
-        pub success: bool,
-    }
-    
-    // ---------------------------------------------
-    

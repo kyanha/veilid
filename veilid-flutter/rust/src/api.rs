@@ -437,6 +437,13 @@ pub enum VeilidLogLevel {
     Debug,
     Trace,
 }
+
+impl Default for VeilidLogLevel {
+    fn default() -> Self {
+        Self::Info
+    }
+}
+
 impl VeilidLogLevel {
     fn from_core(level: veilid_core::VeilidLogLevel) -> Self {
         match level {
@@ -448,13 +455,13 @@ impl VeilidLogLevel {
         }
     }
 
-    fn to_config_log_level(&self) -> VeilidConfigLogLevel {
+    fn to_config_log_level(&self) -> veilid_core::VeilidConfigLogLevel {
         match self {
-            Self::Error => VeilidConfigLogLevel::Error,
-            Self::Warn => VeilidConfigLogLevel::Warn,
-            Self::Info => VeilidConfigLogLevel::Info,
-            Self::Debug => VeilidConfigLogLevel::Debug,
-            Self::Trace => VeilidConfigLogLevel::Trace,
+            Self::Error => veilid_core::VeilidConfigLogLevel::Error,
+            Self::Warn => veilid_core::VeilidConfigLogLevel::Warn,
+            Self::Info => veilid_core::VeilidConfigLogLevel::Info,
+            Self::Debug => veilid_core::VeilidConfigLogLevel::Debug,
+            Self::Trace => veilid_core::VeilidConfigLogLevel::Trace,
         }
     }
 }
@@ -543,7 +550,7 @@ pub fn get_veilid_state() -> Result<VeilidState> {
 
 // xxx api functions
 
-pub fn change_api_log_level(level: VeilidLogLevel) -> Result<()> {
+pub fn change_api_log_level(log_level: VeilidLogLevel) -> Result<()> {
     async_std::task::block_on(async {
         let veilid_api = get_veilid_api().await?;
         veilid_api
