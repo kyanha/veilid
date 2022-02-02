@@ -1,5 +1,6 @@
 use anyhow::*;
 use async_std::sync::Mutex as AsyncMutex;
+use cfg_if::*;
 use flutter_rust_bridge::*;
 use log::*;
 use std::fmt;
@@ -118,12 +119,25 @@ pub struct VeilidConfig {
     pub network__leases__max_client_relay_leases: u32,
 }
 
+cfg_if! {
+    if #[cfg(target_arch="wasm32")] {
+
+    } else {
+
+    }
+}
+
+cfg_if! {
+    if #[cfg(target_arch="wasm32")] {
+        type ConfigReturn = Box<dyn std::any::Any + 'static>;
+    } else {
+        type ConfigReturn = Box<dyn std::any::Any + Send + 'static>;
+    }
+}
+
 impl VeilidConfig {
-    pub fn get_by_str(
-        &self,
-        key: &str,
-    ) -> std::result::Result<Box<dyn std::any::Any + Send + 'static>, String> {
-        let out: Box<dyn core::any::Any + Send> = match key {
+    pub fn get_by_str(&self, key: &str) -> std::result::Result<ConfigReturn, String> {
+        let out: ConfigReturn = match key {
             "program_name" => Box::new(self.program_name.clone()),
             "namespace" => Box::new(self.veilid_namespace.clone()),
             "api_log_level" => Box::new(self.api_log_level.to_config_log_level()),

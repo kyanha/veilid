@@ -1,8 +1,6 @@
 mod api;
 mod bridge_generated;
 
-use cfg_if::*;
-
 #[cfg(target_os = "android")]
 use jni::{objects::JClass, objects::JObject, JNIEnv};
 
