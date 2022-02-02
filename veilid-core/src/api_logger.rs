@@ -26,7 +26,11 @@ impl ApiLogger {
             loop {
                 match rx.recv().await {
                     Ok(v) => {
-                        (update_callback)(VeilidUpdate::Log(v.0, v.1)).await;
+                        (update_callback)(VeilidUpdate::Log {
+                            log_level: v.0,
+                            message: v.1,
+                        })
+                        .await;
                     }
                     Err(_) => {
                         // Nothing to be done here...

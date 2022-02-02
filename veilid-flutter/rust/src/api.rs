@@ -468,14 +468,20 @@ impl VeilidLogLevel {
 
 #[derive(Debug, Clone)]
 pub enum VeilidUpdate {
-    Log(VeilidLogLevel, String),
+    Log {
+        log_level: VeilidLogLevel,
+        message: String,
+    },
     Attachment(AttachmentState),
 }
 
 impl VeilidUpdate {
     fn from_core(veilid_update: veilid_core::VeilidUpdate) -> Self {
         match veilid_update {
-            veilid_core::VeilidUpdate::Log(ll, s) => Self::Log(VeilidLogLevel::from_core(ll), s),
+            veilid_core::VeilidUpdate::Log { log_level, message } => Self::Log {
+                log_level: VeilidLogLevel::from_core(log_level),
+                message,
+            },
             veilid_core::VeilidUpdate::Attachment(attachment) => {
                 Self::Attachment(AttachmentState::from_core(attachment))
             }

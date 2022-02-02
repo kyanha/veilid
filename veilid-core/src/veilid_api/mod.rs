@@ -130,7 +130,10 @@ impl VeilidLogLevel {
 
 #[derive(Debug, Clone)]
 pub enum VeilidUpdate {
-    Log(VeilidLogLevel, String),
+    Log {
+        log_level: VeilidLogLevel,
+        message: String,
+    },
     Attachment(AttachmentState),
 }
 
@@ -1167,7 +1170,10 @@ impl VeilidAPI {
         timeout_ms: Option<u32>,
     ) -> Result<(), VeilidAPIError> {
         match update {
-            VeilidUpdate::Log(_l, _s) => {
+            VeilidUpdate::Log {
+                log_level: _,
+                message: _,
+            } => {
                 // No point in waiting for a log
             }
             VeilidUpdate::Attachment(cs) => {

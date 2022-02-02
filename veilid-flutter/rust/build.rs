@@ -92,6 +92,33 @@ fn main() {
         .wait()
         .expect("flutter_rust_bridge_codegen was not running");
 
+    // Flutter pub get
+    // Run: flutter pub get
+
+    let mut command;
+    cfg_if! {
+        if #[cfg(target_os="windows")] {
+            command = Command::new("cmd");
+            command.args([
+                OsStr::new("/c"),
+                OsStr::new("flutter"),
+                OsStr::new("pub"),
+                OsStr::new("get"),
+            ]);
+        } else {
+            command = Command::new("flutter");
+            command.args([
+                OsStr::new("pub"),
+                OsStr::new("get"),
+            ]);
+        }
+    }
+
+    let mut child = command
+        .spawn()
+        .expect("'flutter pub get' did not execute correctly");
+    child.wait().expect("'flutter pub get' was not running");
+
     // Build freezed
     // Run: flutter pub run build_runner build
 

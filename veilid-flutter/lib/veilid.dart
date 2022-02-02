@@ -22,7 +22,7 @@ class Veilid {
     if (veilidApi == null) {
       throw PlatformException(
         code: 'Library missing',
-        details: 'veilid_core library could not be loaded dynamically',
+        details: 'veilid_flutter library could not be loaded dynamically',
       );
     }
     return veilidApi;
