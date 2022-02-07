@@ -158,6 +158,18 @@ macro_rules! logthru_pstore {
         logthru!($($level)? "pstore", $fmt, $($arg),+)
     }
 }
+#[macro_export]
+macro_rules! logthru_crypto {
+    ($($level:ident)?) => {
+        logthru!($($level)? "crypto")
+    };
+    ($($level:ident)? $text:literal) => {
+        logthru!($($level)? "crypto", $text)
+    };
+    ($($level:ident)? $fmt:literal, $($arg:expr),+) => {
+        logthru!($($level)? "crypto", $fmt, $($arg),+)
+    }
+}
 
 #[macro_export]
 macro_rules! logthru {

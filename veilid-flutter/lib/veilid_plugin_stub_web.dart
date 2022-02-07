@@ -11,7 +11,7 @@ import 'package:flutter_web_plugins/flutter_web_plugins.dart';
 // xxx link in WASM version of veilid-flutter
 
 /// A web implementation of the Veilid plugin.
-class VeilidWeb {
+class VeilidPluginStubWeb {
   static void registerWith(Registrar registrar) {
     // final MethodChannel channel = MethodChannel(
     //   'veilid',

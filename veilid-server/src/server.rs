@@ -24,9 +24,6 @@ pub fn shutdown() {
 pub async fn run_veilid_server(settings: Settings, logs: VeilidLogs) -> Result<(), String> {
     let settingsr = settings.read();
 
-    // Create Veilid Core
-    let veilid_core = veilid_core::VeilidCore::new();
-
     // Create client api state change pipe
     let (sender, receiver): (
         Sender<veilid_core::VeilidUpdate>,
@@ -49,8 +46,7 @@ pub async fn run_veilid_server(settings: Settings, logs: VeilidLogs) -> Result<(
     };
 
     // Start Veilid Core and get API
-    let veilid_api = veilid_core
-        .startup(vcs)
+    let veilid_api = veilid_core::api_startup(vcs)
         .await
         .map_err(|e| format!("VeilidCore startup failed: {}", e))?;
 

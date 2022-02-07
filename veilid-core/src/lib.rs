@@ -9,6 +9,7 @@ mod attachment_manager;
 mod callback_state_machine;
 mod connection_manager;
 mod connection_table;
+mod core_context;
 mod dht;
 mod intf;
 mod lease_manager;
@@ -19,16 +20,15 @@ mod routing_table;
 mod rpc_processor;
 mod veilid_api;
 mod veilid_config;
-mod veilid_core;
 mod veilid_rng;
 
 #[macro_use]
 pub mod xx;
 
 pub use self::attachment_manager::AttachmentState;
+pub use self::core_context::{api_startup, VeilidCoreSetup};
 pub use self::veilid_api::*;
 pub use self::veilid_config::*;
-pub use self::veilid_core::{VeilidCore, VeilidCoreSetup};
 
 pub mod veilid_capnp {
     include!(concat!(env!("OUT_DIR"), "/proto/veilid_capnp.rs"));
@@ -47,7 +47,7 @@ pub fn veilid_version() -> (u32, u32, u32) {
     )
 }
 
-pub static DEFAULT_LOG_IGNORE_LIST: [&'static str; 8] = [
+pub static DEFAULT_LOG_IGNORE_LIST: [&str; 8] = [
     "async_std",
     "async_io",
     "polling",

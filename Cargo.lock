@@ -126,15 +126,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ansi_term"
-version = "0.12.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d52a9bb7ec0cf484c551830a7ce27bd20d67eac647e1befb56b0be4ee39a55d2"
-dependencies = [
- "winapi",
-]
-
-[[package]]
 name = "anyhow"
 version = "1.0.53"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -707,13 +698,9 @@ version = "2.34.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a0610544180c38b88101fecf2dd634b174a62eef6946f84dfc6a7127512b381c"
 dependencies = [
- "ansi_term",
- "atty",
  "bitflags",
- "strsim 0.8.0",
  "textwrap 0.11.0",
  "unicode-width",
- "vec_map",
 ]
 
 [[package]]
@@ -726,7 +713,7 @@ dependencies = [
  "bitflags",
  "indexmap",
  "os_str_bytes",
- "strsim 0.10.0",
+ "strsim",
  "termcolor",
  "textwrap 0.14.2",
 ]
@@ -1148,7 +1135,7 @@ dependencies = [
  "ident_case",
  "proc-macro2",
  "quote",
- "strsim 0.10.0",
+ "strsim",
  "syn",
 ]
 
@@ -1400,6 +1387,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ffi-support"
+version = "0.4.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "27838c6815cfe9de2d3aeb145ffd19e565f577414b33f3bdbf42fe040e9e0ff6"
+dependencies = [
+ "lazy_static",
+ "log",
+]
+
+[[package]]
 name = "fixed-hash"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1426,26 +1423,6 @@ dependencies = [
  "thiserror",
  "yansi",
 ]
-
-[[package]]
-name = "flutter_rust_bridge"
-version = "1.15.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "39ad509fe9fd3ac5a4d10a30a7de9224b74192c65c22338cc958ab0f93f0c834"
-dependencies = [
- "allo-isolate",
- "anyhow",
- "flutter_rust_bridge_macros",
- "lazy_static",
- "parking_lot 0.11.2",
- "threadpool",
-]
-
-[[package]]
-name = "flutter_rust_bridge_macros"
-version = "1.15.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "99a2555456c9c12c5982543c61d79267327d522eaa1490ef4914f5ed87b16fe1"
 
 [[package]]
 name = "fnv"
@@ -1900,8 +1877,8 @@ dependencies = [
  "android_logger",
  "backtrace",
  "byteorder",
- "cfg-if 0.1.10",
- "clap 2.34.0",
+ "cfg-if 1.0.0",
+ "clap 3.0.13",
  "core-foundation 0.9.2",
  "core-foundation-sys 0.8.3",
  "directories",
@@ -1912,7 +1889,6 @@ dependencies = [
  "log",
  "ndk",
  "ndk-glue",
- "owning_ref",
  "rpassword",
  "secret-service",
  "security-framework",
@@ -3520,12 +3496,6 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "strsim"
-version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8ea5119cdb4c55b55d432abb513a0429384878c15dde60cc77b1c99de1a95a6a"
-
-[[package]]
-name = "strsim"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "73473c0e59e6d5812c5dfe2a064a6444949f089e20eec9a2e5506596494e4623"
@@ -3642,15 +3612,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
-]
-
-[[package]]
-name = "threadpool"
-version = "1.8.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d050e60b33d41c19108b32cea32164033a9013fe3b46cbd4457559bfbf77afaa"
-dependencies = [
- "num_cpus",
 ]
 
 [[package]]
@@ -3872,12 +3833,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
 
 [[package]]
-name = "vec_map"
-version = "0.8.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f1bddf1187be692e79c5ffeab891132dfb0f236ed36a43c7ed39f1165ee20191"
-
-[[package]]
 name = "veilid-cli"
 version = "0.1.0"
 dependencies = [
@@ -3990,13 +3945,26 @@ dependencies = [
 name = "veilid-flutter"
 version = "0.1.0"
 dependencies = [
+ "allo-isolate",
  "anyhow",
  "async-std",
+ "backtrace",
  "cfg-if 1.0.0",
- "flutter_rust_bridge",
+ "console_error_panic_hook",
+ "ffi-support",
+ "futures",
+ "js-sys",
+ "lazy_static",
  "log",
  "parking_lot 0.12.0",
+ "serde 1.0.136",
+ "serde_json",
  "veilid-core",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "wasm-bindgen-test",
+ "wasm-logger",
+ "wee_alloc",
 ]
 
 [[package]]
@@ -4028,6 +3996,22 @@ dependencies = [
  "url",
  "veilid-core",
  "windows-service",
+]
+
+[[package]]
+name = "veilid-wasm"
+version = "0.1.0"
+dependencies = [
+ "cfg-if 1.0.0",
+ "console_error_panic_hook",
+ "js-sys",
+ "log",
+ "veilid-core",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "wasm-bindgen-test",
+ "wasm-logger",
+ "wee_alloc",
 ]
 
 [[package]]

@@ -2,6 +2,7 @@
 // Debugging
 
 use super::*;
+use routing_table::*;
 
 fn get_bucket_entry_state(text: &str) -> Option<BucketEntryState> {
     if text == "dead" {

@@ -6,9 +6,10 @@ use crate::xx::*;
 use crate::*;
 use core::convert::TryFrom;
 use core::fmt;
+use serde::*;
 
 state_machine! {
-    derive(Debug, PartialEq, Eq, Clone, Copy)
+    derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)
     pub Attachment(Detached)
 //---
     Detached(AttachRequested) => Attaching [StartAttachment],
@@ -102,8 +103,6 @@ impl TryFrom<String> for AttachmentState {
 
 pub struct AttachmentManagerInner {
     config: VeilidConfig,
-    table_store: TableStore,
-    crypto: Crypto,
     attachment_machine: CallbackStateMachine<Attachment>,
     network_manager: NetworkManager,
     maintain_peers: bool,
@@ -125,8 +124,6 @@ impl AttachmentManager {
     ) -> AttachmentManagerInner {
         AttachmentManagerInner {
             config: config.clone(),
-            table_store: table_store.clone(),
-            crypto: crypto.clone(),
             attachment_machine: CallbackStateMachine::new(),
             network_manager: NetworkManager::new(config, table_store, crypto),
             maintain_peers: false,
@@ -143,14 +140,6 @@ impl AttachmentManager {
 
     pub fn config(&self) -> VeilidConfig {
         self.inner.lock().config.clone()
-    }
-
-    pub fn table_store(&self) -> TableStore {
-        self.inner.lock().table_store.clone()
-    }
-
-    pub fn crypto(&self) -> Crypto {
-        self.inner.lock().crypto.clone()
     }
 
     pub fn network_manager(&self) -> NetworkManager {
@@ -274,20 +263,26 @@ impl AttachmentManager {
         &self,
         state_change_callback: StateChangeCallback<Attachment>,
     ) -> Result<(), String> {
-        let inner = self.inner.lock();
-        inner
-            .attachment_machine
-            .set_state_change_callback(state_change_callback);
+        let network_manager = {
+            let inner = self.inner.lock();
+            inner
+                .attachment_machine
+                .set_state_change_callback(state_change_callback);
+            inner.network_manager.clone()
+        };
 
-        inner.network_manager.init().await?;
+        network_manager.init().await?;
 
         Ok(())
     }
     pub async fn terminate(&self) {
         // Ensure we detached
         self.detach().await;
-        let inner = self.inner.lock();
-        inner.network_manager.terminate().await;
+        let network_manager = {
+            let inner = self.inner.lock();
+            inner.network_manager.clone()
+        };
+        network_manager.terminate().await;
     }
 
     fn attach(&self) {

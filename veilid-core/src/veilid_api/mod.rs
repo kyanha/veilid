@@ -3,28 +3,38 @@
 mod debug;
 pub use debug::*;
 
-pub use crate::rpc_processor::InfoAnswer;
 use crate::*;
-use api_logger::*;
-use attachment_manager::*;
-use core::fmt;
-use network_manager::NetworkManager;
-use routing_table::*;
-use rpc_processor::{RPCError, RPCProcessor};
-use xx::*;
 
-pub use crate::dht::key::{generate_secret, DHTKey, DHTKeySecret};
 pub use crate::xx::{
     IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6, SystemPinBoxFuture,
     ToSocketAddrs,
 };
 pub use alloc::string::ToString;
+pub use attachment_manager::AttachmentManager;
 pub use core::str::FromStr;
+pub use dht::crypto::Crypto;
+pub use dht::key::{generate_secret, DHTKey, DHTKeySecret};
+pub use intf::BlockStore;
+pub use intf::ProtectedStore;
+pub use intf::TableStore;
+pub use network_manager::NetworkManager;
+pub use routing_table::RoutingTable;
+pub use rpc_processor::InfoAnswer;
+
+use api_logger::*;
+use core::fmt;
+use core_context::{api_shutdown, VeilidCoreContext};
+use rpc_processor::{RPCError, RPCProcessor};
+use serde::*;
+use xx::*;
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#[derive(Clone, Debug, PartialOrd, PartialEq, Eq, Ord)]
+#[derive(Clone, Debug, PartialOrd, PartialEq, Eq, Ord, Serialize, Deserialize)]
+#[serde(tag = "kind")]
 pub enum VeilidAPIError {
+    NotInitialized,
+    AlreadyInitialized,
     Timeout,
     Shutdown,
     NodeNotFound(NodeId),
@@ -49,6 +59,8 @@ pub enum VeilidAPIError {
 impl fmt::Display for VeilidAPIError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         match self {
+            VeilidAPIError::NotInitialized => write!(f, "VeilidAPIError::NotInitialized"),
+            VeilidAPIError::AlreadyInitialized => write!(f, "VeilidAPIError::AlreadyInitialized"),
             VeilidAPIError::Timeout => write!(f, "VeilidAPIError::Timeout"),
             VeilidAPIError::Shutdown => write!(f, "VeilidAPIError::Shutdown"),
             VeilidAPIError::NodeNotFound(ni) => write!(f, "VeilidAPIError::NodeNotFound({})", ni),
@@ -107,7 +119,7 @@ macro_rules! parse_error {
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum VeilidLogLevel {
     Error = 1,
     Warn,
@@ -128,7 +140,8 @@ impl VeilidLogLevel {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind")]
 pub enum VeilidUpdate {
     Log {
         log_level: VeilidLogLevel,
@@ -137,14 +150,14 @@ pub enum VeilidUpdate {
     Attachment(AttachmentState),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VeilidState {
     pub attachment: AttachmentState,
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 ///
-#[derive(Clone, Debug, Default, PartialOrd, PartialEq, Eq, Ord)]
+#[derive(Clone, Debug, Default, PartialOrd, PartialEq, Eq, Ord, Serialize, Deserialize)]
 pub struct NodeId {
     pub key: DHTKey,
 }
@@ -160,7 +173,7 @@ impl fmt::Display for NodeId {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialOrd, PartialEq, Eq, Ord)]
+#[derive(Clone, Debug, Default, PartialOrd, PartialEq, Eq, Ord, Serialize, Deserialize)]
 pub struct ValueKey {
     pub key: DHTKey,
     pub subkey: Option<String>,
@@ -181,7 +194,7 @@ impl ValueKey {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialOrd, PartialEq, Eq, Ord)]
+#[derive(Clone, Debug, Default, PartialOrd, PartialEq, Eq, Ord, Serialize, Deserialize)]
 pub struct BlockId {
     pub key: DHTKey,
 }
@@ -193,12 +206,12 @@ impl BlockId {
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#[derive(Clone, Debug, PartialEq, PartialOrd, Ord, Eq, Hash, Default)]
+#[derive(Clone, Debug, PartialEq, PartialOrd, Ord, Eq, Hash, Default, Serialize, Deserialize)]
 pub struct SenderInfo {
     pub socket_address: Option<SocketAddress>,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct NodeInfo {
     pub can_route: bool,
     pub will_route: bool,
@@ -212,7 +225,7 @@ pub struct NodeInfo {
     pub will_validate_dial_info: bool,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Ord, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Ord, Eq, Hash, Serialize, Deserialize)]
 // The derived ordering here is the order of preference, lower is preferred for connections
 // Must match DialInfo order
 pub enum ProtocolType {
@@ -222,13 +235,13 @@ pub enum ProtocolType {
     WSS,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Ord, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Ord, Eq, Hash, Serialize, Deserialize)]
 pub enum AddressType {
     IPV4,
     IPV6,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Ord, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Ord, Eq, Hash, Serialize, Deserialize)]
 pub enum Address {
     IPV4(Ipv4Addr),
     IPV6(Ipv6Addr),
@@ -310,7 +323,9 @@ impl FromStr for Address {
     }
 }
 
-#[derive(Copy, Default, Clone, Debug, PartialEq, PartialOrd, Ord, Eq, Hash)]
+#[derive(
+    Copy, Default, Clone, Debug, PartialEq, PartialOrd, Ord, Eq, Hash, Serialize, Deserialize,
+)]
 pub struct SocketAddress {
     address: Address,
     port: u16,
@@ -366,7 +381,7 @@ impl FromStr for SocketAddress {
 
 //////////////////////////////////////////////////////////////////
 
-#[derive(Clone, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct DialInfoFilter {
     pub peer_scope: PeerScope,
     pub protocol_type: Option<ProtocolType>,
@@ -435,29 +450,30 @@ pub trait MatchesDialInfoFilter {
     fn matches_filter(&self, filter: &DialInfoFilter) -> bool;
 }
 
-#[derive(Clone, Default, Debug, PartialEq, PartialOrd, Ord, Eq)]
+#[derive(Clone, Default, Debug, PartialEq, PartialOrd, Ord, Eq, Serialize, Deserialize)]
 pub struct DialInfoUDP {
     pub socket_address: SocketAddress,
 }
 
-#[derive(Clone, Default, Debug, PartialEq, PartialOrd, Ord, Eq)]
+#[derive(Clone, Default, Debug, PartialEq, PartialOrd, Ord, Eq, Serialize, Deserialize)]
 pub struct DialInfoTCP {
     pub socket_address: SocketAddress,
 }
 
-#[derive(Clone, Default, Debug, PartialEq, PartialOrd, Ord, Eq)]
+#[derive(Clone, Default, Debug, PartialEq, PartialOrd, Ord, Eq, Serialize, Deserialize)]
 pub struct DialInfoWS {
     pub socket_address: SocketAddress,
     pub request: String,
 }
 
-#[derive(Clone, Default, Debug, PartialEq, PartialOrd, Ord, Eq)]
+#[derive(Clone, Default, Debug, PartialEq, PartialOrd, Ord, Eq, Serialize, Deserialize)]
 pub struct DialInfoWSS {
     pub socket_address: SocketAddress,
     pub request: String,
 }
 
-#[derive(Clone, Debug, PartialEq, PartialOrd, Ord, Eq)]
+#[derive(Clone, Debug, PartialEq, PartialOrd, Ord, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind")]
 // The derived ordering here is the order of preference, lower is preferred for connections
 // Must match ProtocolType order
 pub enum DialInfo {
@@ -706,7 +722,7 @@ impl MatchesDialInfoFilter for DialInfo {
 
 //////////////////////////////////////////////////////////////////////////
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
 pub enum PeerScope {
     All,
     Global,
@@ -718,13 +734,13 @@ impl Default for PeerScope {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct PeerInfo {
     pub node_id: NodeId,
     pub dial_infos: Vec<DialInfo>,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Eq, Ord, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Eq, Ord, Hash, Serialize, Deserialize)]
 pub struct PeerAddress {
     pub socket_address: SocketAddress,
     pub protocol_type: ProtocolType,
@@ -747,7 +763,7 @@ impl PeerAddress {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct ConnectionDescriptor {
     pub remote: PeerAddress,
     pub local: Option<SocketAddress>,
@@ -802,7 +818,7 @@ impl MatchesDialInfoFilter for ConnectionDescriptor {
 
 //////////////////////////////////////////////////////////////////////////
 
-#[derive(Clone, Debug, Default, Eq, PartialEq, PartialOrd, Ord)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct NodeDialInfo {
     pub node_id: NodeId,
     pub dial_info: DialInfo,
@@ -837,20 +853,20 @@ impl FromStr for NodeDialInfo {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct LatencyStats {
     pub fastest: u64, // fastest latency in the ROLLING_LATENCIES_SIZE last latencies
     pub average: u64, // average latency over the ROLLING_LATENCIES_SIZE last latencies
     pub slowest: u64, // slowest latency in the ROLLING_LATENCIES_SIZE last latencies
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct TransferStatsDownUp {
     pub down: TransferStats,
     pub up: TransferStats,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct TransferStats {
     pub total: u64,   // total amount transferred ever
     pub maximum: u64, // maximum rate over the ROLLING_TRANSFERS_SIZE last amounts
@@ -858,7 +874,7 @@ pub struct TransferStats {
     pub minimum: u64, // minimum rate over the ROLLING_TRANSFERS_SIZE last amounts
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct PingStats {
     pub in_flight: u32,         // number of pings issued that have yet to be answered
     pub total_sent: u32,        // number of pings that have been sent in the total_time range
@@ -869,7 +885,7 @@ pub struct PingStats {
     pub recent_lost_pings: u32, // number of pings that have been lost since we lost reliability
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct PeerStats {
     pub time_added: u64,               // when the peer was added to the routing table
     pub last_seen: Option<u64>, // when the peer was last seen for any reason, including when we first attempted to reach out to it
@@ -889,7 +905,7 @@ cfg_if! {
     }
 }
 
-#[derive(Clone, Debug, PartialOrd, PartialEq, Eq, Ord)]
+#[derive(Clone, Debug, PartialOrd, PartialEq, Eq, Ord, Serialize, Deserialize)]
 pub enum TunnelMode {
     Raw,
     Turn,
@@ -897,7 +913,7 @@ pub enum TunnelMode {
 
 type TunnelId = u64;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TunnelEndpoint {
     pub node_id: NodeId,          // the node id of the tunnel endpoint
     pub dial_info: Vec<DialInfo>, // multiple ways of how to get to the node
@@ -914,7 +930,7 @@ impl Default for TunnelEndpoint {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct FullTunnel {
     pub id: TunnelId,
     pub timeout: u64,
@@ -922,7 +938,7 @@ pub struct FullTunnel {
     pub remote: TunnelEndpoint,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct PartialTunnel {
     pub id: TunnelId,
     pub timeout: u64,
@@ -931,12 +947,12 @@ pub struct PartialTunnel {
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct RouteHopSpec {
     pub dial_info: NodeDialInfo,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct PrivateRouteSpec {
     //
     pub public_key: DHTKey,
@@ -944,7 +960,7 @@ pub struct PrivateRouteSpec {
     pub hops: Vec<RouteHopSpec>,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct SafetyRouteSpec {
     pub public_key: DHTKey,
     pub secret_key: DHTKeySecret,
@@ -962,7 +978,7 @@ impl SafetyRouteSpec {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct RoutingContextOptions {
     pub safety_route_spec: Option<SafetyRouteSpec>,
     pub private_route_spec: Option<PrivateRouteSpec>,
@@ -970,7 +986,7 @@ pub struct RoutingContextOptions {
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct SearchDHTAnswer {
     pub node_id: NodeId,
     pub dial_info: Vec<DialInfo>,
@@ -1051,26 +1067,19 @@ impl RoutingContext {
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 
 struct VeilidAPIInner {
-    core: Option<VeilidCore>,
+    context: Option<VeilidCoreContext>,
 }
 
 impl fmt::Debug for VeilidAPIInner {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "VeilidAPIInner: {}",
-            match self.core {
-                Some(_) => "active",
-                None => "shutdown",
-            }
-        )
+        write!(f, "VeilidAPIInner")
     }
 }
 
 impl Drop for VeilidAPIInner {
     fn drop(&mut self) {
-        if let Some(core) = self.core.take() {
-            intf::spawn_local(core.shutdown()).detach();
+        if let Some(context) = self.context.take() {
+            intf::spawn_local(api_shutdown(context)).detach();
         }
     }
 }
@@ -1080,59 +1089,83 @@ pub struct VeilidAPI {
     inner: Arc<Mutex<VeilidAPIInner>>,
 }
 
-#[derive(Clone, Debug, Default)]
-pub struct VeilidAPIWeak {
-    inner: Weak<Mutex<VeilidAPIInner>>,
-}
-
-impl VeilidAPIWeak {
-    pub fn upgrade(&self) -> Option<VeilidAPI> {
-        self.inner.upgrade().map(|v| VeilidAPI { inner: v })
-    }
-}
-
 impl VeilidAPI {
-    pub(crate) fn new(core: VeilidCore) -> Self {
+    pub(crate) fn new(context: VeilidCoreContext) -> Self {
         Self {
-            inner: Arc::new(Mutex::new(VeilidAPIInner { core: Some(core) })),
+            inner: Arc::new(Mutex::new(VeilidAPIInner {
+                context: Some(context),
+            })),
         }
-    }
-    pub fn weak(&self) -> VeilidAPIWeak {
-        VeilidAPIWeak {
-            inner: Arc::downgrade(&self.inner),
-        }
-    }
-    fn core(&self) -> Result<VeilidCore, VeilidAPIError> {
-        Ok(self
-            .inner
-            .lock()
-            .core
-            .as_ref()
-            .ok_or(VeilidAPIError::Shutdown)?
-            .clone())
-    }
-    fn config(&self) -> Result<VeilidConfig, VeilidAPIError> {
-        Ok(self.core()?.config())
-    }
-    fn attachment_manager(&self) -> Result<AttachmentManager, VeilidAPIError> {
-        Ok(self.core()?.attachment_manager())
-    }
-    fn network_manager(&self) -> Result<NetworkManager, VeilidAPIError> {
-        Ok(self.attachment_manager()?.network_manager())
-    }
-    fn rpc_processor(&self) -> Result<RPCProcessor, VeilidAPIError> {
-        Ok(self.network_manager()?.rpc_processor())
     }
 
     pub async fn shutdown(self) {
-        let core = { self.inner.lock().core.take() };
-        if let Some(core) = core {
-            core.shutdown().await;
+        let context = { self.inner.lock().context.take() };
+        if let Some(context) = context {
+            api_shutdown(context).await;
         }
     }
 
     pub fn is_shutdown(&self) -> bool {
-        self.inner.lock().core.is_none()
+        self.inner.lock().context.is_none()
+    }
+
+    ////////////////////////////////////////////////////////////////
+    // Accessors
+    pub fn config(&self) -> Result<VeilidConfig, VeilidAPIError> {
+        let inner = self.inner.lock();
+        if let Some(context) = &inner.context {
+            return Ok(context.config.clone());
+        }
+        Err(VeilidAPIError::NotInitialized)
+    }
+    pub fn crypto(&self) -> Result<Crypto, VeilidAPIError> {
+        let inner = self.inner.lock();
+        if let Some(context) = &inner.context {
+            return Ok(context.crypto.clone());
+        }
+        Err(VeilidAPIError::NotInitialized)
+    }
+    pub fn table_store(&self) -> Result<TableStore, VeilidAPIError> {
+        let inner = self.inner.lock();
+        if let Some(context) = &inner.context {
+            return Ok(context.table_store.clone());
+        }
+        Err(VeilidAPIError::NotInitialized)
+    }
+    pub fn block_store(&self) -> Result<BlockStore, VeilidAPIError> {
+        let inner = self.inner.lock();
+        if let Some(context) = &inner.context {
+            return Ok(context.block_store.clone());
+        }
+        Err(VeilidAPIError::NotInitialized)
+    }
+    pub fn protected_store(&self) -> Result<ProtectedStore, VeilidAPIError> {
+        let inner = self.inner.lock();
+        if let Some(context) = &inner.context {
+            return Ok(context.protected_store.clone());
+        }
+        Err(VeilidAPIError::NotInitialized)
+    }
+    pub fn attachment_manager(&self) -> Result<AttachmentManager, VeilidAPIError> {
+        let inner = self.inner.lock();
+        if let Some(context) = &inner.context {
+            return Ok(context.attachment_manager.clone());
+        }
+        Err(VeilidAPIError::NotInitialized)
+    }
+    pub fn network_manager(&self) -> Result<NetworkManager, VeilidAPIError> {
+        let inner = self.inner.lock();
+        if let Some(context) = &inner.context {
+            return Ok(context.attachment_manager.network_manager());
+        }
+        Err(VeilidAPIError::NotInitialized)
+    }
+    pub fn rpc_processor(&self) -> Result<RPCProcessor, VeilidAPIError> {
+        let inner = self.inner.lock();
+        if let Some(context) = &inner.context {
+            return Ok(context.attachment_manager.network_manager().rpc_processor());
+        }
+        Err(VeilidAPIError::NotInitialized)
     }
 
     ////////////////////////////////////////////////////////////////

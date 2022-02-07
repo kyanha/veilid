@@ -4,9 +4,7 @@ use crate::*;
 
 pub async fn test_startup_shutdown() {
     trace!("test_startup_shutdown: starting");
-    let veilid_core = VeilidCore::new();
-    let api = veilid_core
-        .startup(setup_veilid_core())
+    let api = api_startup(setup_veilid_core())
         .await
         .expect("startup failed");
     trace!("test_startup_shutdown: shutting down");
@@ -15,11 +13,8 @@ pub async fn test_startup_shutdown() {
 }
 
 pub async fn test_attach_detach() {
-    let veilid_core = VeilidCore::new();
-
     info!("--- test normal order ---");
-    let api = veilid_core
-        .startup(setup_veilid_core())
+    let api = api_startup(setup_veilid_core())
         .await
         .expect("startup failed");
     api.attach().await.unwrap();
@@ -31,8 +26,7 @@ pub async fn test_attach_detach() {
     api.shutdown().await;
 
     info!("--- test auto detach ---");
-    let api = veilid_core
-        .startup(setup_veilid_core())
+    let api = api_startup(setup_veilid_core())
         .await
         .expect("startup failed");
     api.attach().await.unwrap();
@@ -40,8 +34,7 @@ pub async fn test_attach_detach() {
     api.shutdown().await;
 
     info!("--- test detach without attach ---");
-    let api = veilid_core
-        .startup(setup_veilid_core())
+    let api = api_startup(setup_veilid_core())
         .await
         .expect("startup failed");
     api.detach().await.unwrap();

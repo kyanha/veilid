@@ -36,7 +36,10 @@ fn convert_update(
     rpc_update: crate::veilid_client_capnp::veilid_update::Builder,
 ) {
     match update {
-        veilid_core::VeilidUpdate::Log(_ll, _s) => {
+        veilid_core::VeilidUpdate::Log {
+            log_level: _,
+            message: _,
+        } => {
             panic!("Should not be logging to api in server!");
         }
         veilid_core::VeilidUpdate::Attachment(state) => {

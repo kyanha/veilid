@@ -15,6 +15,8 @@ dependencies:
     sdk: flutter
   flutter_rust_bridge: ^1.14.0
   freezed_annotation: ^1.1.0
+  oxidized: ^5.1.0
+  ffi: ^1.1.2
 
 dev_dependencies:
   flutter_test:
@@ -46,8 +48,8 @@ flutter:
       windows:
         pluginClass: VeilidPlugin
       web:
-        pluginClass: VeilidWeb
-        fileName: veilid_web.dart
+        pluginClass: VeilidPluginStubWeb
+        fileName: veilid_plugin_stub_web.dart
 
   # To add assets to your plugin package, add an assets section, like this:
   # assets:

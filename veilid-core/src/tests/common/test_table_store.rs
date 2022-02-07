@@ -17,9 +17,9 @@ fn setup_veilid_core() -> VeilidCoreSetup {
     }
 }
 
-async fn startup(core: VeilidCore) -> VeilidAPI {
+async fn startup() -> VeilidAPI {
     trace!("test_table_store: starting");
-    core.startup(setup_veilid_core())
+    api_startup(setup_veilid_core())
         .await
         .expect("startup failed")
 }
@@ -169,10 +169,8 @@ pub async fn test_cbor(ts: TableStore) {
 }
 
 pub async fn test_all() {
-    let core = VeilidCore::new();
-    let api = startup(core.clone()).await;
-
-    let ts = core.table_store();
+    let api = startup().await;
+    let ts = api.table_store().unwrap();
     test_delete_open_delete(ts.clone()).await;
     test_store_delete_load(ts.clone()).await;
     test_cbor(ts.clone()).await;

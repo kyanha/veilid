@@ -1,6 +1,6 @@
+use crate::core_context::*;
 use crate::intf::*;
 use crate::veilid_api::*;
-use crate::veilid_core::*;
 use crate::xx::*;
 use log::{set_boxed_logger, set_max_level, Level, LevelFilter, Log, Metadata, Record};
 use once_cell::sync::OnceCell;
@@ -23,20 +23,12 @@ impl ApiLogger {
     fn new_inner(level: LevelFilter, update_callback: UpdateCallback) -> ApiLoggerInner {
         let (tx, rx) = async_channel::unbounded::<(VeilidLogLevel, String)>();
         let _join_handle: JoinHandle<()> = spawn(async move {
-            loop {
-                match rx.recv().await {
-                    Ok(v) => {
-                        (update_callback)(VeilidUpdate::Log {
-                            log_level: v.0,
-                            message: v.1,
-                        })
-                        .await;
-                    }
-                    Err(_) => {
-                        // Nothing to be done here...
-                        break;
-                    }
-                }
+            while let Ok(v) = rx.recv().await {
+                (update_callback)(VeilidUpdate::Log {
+                    log_level: v.0,
+                    message: v.1,
+                })
+                .await;
             }
         });
         ApiLoggerInner {

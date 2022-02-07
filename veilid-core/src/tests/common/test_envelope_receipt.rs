@@ -8,13 +8,12 @@ use crate::*;
 
 pub async fn test_envelope_round_trip() {
     info!("--- test envelope round trip ---");
-    let veilid_core = VeilidCore::new();
-    let api = veilid_core
-        .startup(setup_veilid_core())
+    let api = api_startup(setup_veilid_core())
         .await
         .expect("startup failed");
+
     // Get crypto
-    let crypto = veilid_core.crypto();
+    let crypto = api.crypto().unwrap();
 
     // Create envelope
     let ts = 0x12345678ABCDEF69u64;

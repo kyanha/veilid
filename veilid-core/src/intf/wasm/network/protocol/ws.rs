@@ -78,7 +78,7 @@ impl WebsocketProtocolHandler {
         assert!(local_address.is_none());
 
         // Split dial info up
-        let (tls, scheme) = match &dial_info {
+        let (_tls, scheme) = match &dial_info {
             DialInfo::WS(_) => (false, "ws"),
             DialInfo::WSS(_) => (true, "wss"),
             _ => panic!("invalid dialinfo for WS/WSS protocol"),

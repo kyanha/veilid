@@ -19,10 +19,9 @@ fn setup_veilid_core() -> VeilidCoreSetup {
     }
 }
 
-async fn startup(core: VeilidCore) -> VeilidAPI {
+async fn startup() -> VeilidAPI {
     trace!("test_table_store: starting");
-    let api = core
-        .startup(setup_veilid_core())
+    let api = api_startup(setup_veilid_core())
         .await
         .expect("startup failed");
     api
@@ -130,9 +129,8 @@ pub async fn test_dh(crypto: Crypto) {
 }
 
 pub async fn test_all() {
-    let core = VeilidCore::new();
-    let api = startup(core.clone()).await;
-    let crypto = core.crypto();
+    let api = startup().await;
+    let crypto = api.crypto().unwrap();
     test_enc_dec().await;
     test_dh(crypto).await;
     shutdown(api.clone()).await;

@@ -172,7 +172,7 @@ impl Envelope {
         crypto: Crypto,
         data: &[u8],
         node_id_secret: &DHTKeySecret,
-    ) -> Result<Vec<u8>, ()> {
+    ) -> Result<Vec<u8>, String> {
         // Get DH secret
         let dh_secret = crypto.cached_dh(&self.sender_id, node_id_secret)?;
 

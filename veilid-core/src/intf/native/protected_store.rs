@@ -44,8 +44,8 @@ impl ProtectedStore {
     }
 
     pub async fn init(&self) -> Result<(), String> {
-        let c = self.config.get();
-        {
+        let delete = {
+            let c = self.config.get();
             let mut inner = self.inner.lock();
             if !c.protected_store.always_use_insecure_storage {
                 cfg_if! {
@@ -74,9 +74,10 @@ impl ProtectedStore {
             if inner.keyring_manager.is_none() {
                 return Err("Could not initialize the protected store.".to_owned());
             }
-        }
+            c.protected_store.delete
+        };
 
-        if c.protected_store.delete {
+        if delete {
             self.delete_all().await?;
         }
 

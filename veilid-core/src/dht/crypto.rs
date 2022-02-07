@@ -94,38 +94,43 @@ impl Crypto {
         trace!("Crypto::init");
 
         // make local copy of node id for easy access
-        let mut inner = self.inner.lock();
-        let c = self.config.get();
-        inner.node_id = c.network.node_id;
-        inner.node_id_secret = c.network.node_id_secret;
+        let (table_store, node_id) = {
+            let mut inner = self.inner.lock();
+            let c = self.config.get();
+            inner.node_id = c.network.node_id;
+            inner.node_id_secret = c.network.node_id_secret;
+            (inner.table_store.clone(), c.network.node_id)
+        };
 
         // load caches if they are valid for this node id
-        let mut db = inner.table_store.open("crypto_caches", 1).await?;
+        let mut db = table_store.open("crypto_caches", 1).await?;
         let caches_valid = match db.load(0, b"node_id").await? {
-            Some(v) => v.as_slice() == inner.node_id.bytes,
+            Some(v) => v.as_slice() == node_id.bytes,
             None => false,
         };
         if caches_valid {
             if let Some(b) = db.load(0, b"dh_cache").await? {
+                let mut inner = self.inner.lock();
                 bytes_to_cache(&b, &mut inner.dh_cache);
             }
         } else {
             drop(db);
-            inner.table_store.delete("crypto_caches").await?;
-            db = inner.table_store.open("crypto_caches", 1).await?;
-            db.store(0, b"node_id", &inner.node_id.bytes).await?;
+            table_store.delete("crypto_caches").await?;
+            db = table_store.open("crypto_caches", 1).await?;
+            db.store(0, b"node_id", &node_id.bytes).await?;
         }
 
         // Schedule flushing
         let this = self.clone();
-        inner.flush_future = Some(Box::pin(interval(60000, move || {
+        let flush_future = interval(60000, move || {
             let this = this.clone();
             async move {
                 if let Err(e) = this.flush().await {
                     warn!("flush failed: {}", e);
                 }
             }
-        })));
+        });
+        self.inner.lock().flush_future = Some(flush_future);
 
         Ok(())
     }
@@ -161,21 +166,23 @@ impl Crypto {
         };
     }
 
-    fn ed25519_to_x25519_pk(key: &ed::PublicKey) -> Result<xd::PublicKey, ()> {
+    fn ed25519_to_x25519_pk(key: &ed::PublicKey) -> Result<xd::PublicKey, String> {
         let bytes = key.to_bytes();
         let compressed = cd::edwards::CompressedEdwardsY(bytes);
-        let point = compressed.decompress().ok_or(())?;
+        let point = compressed
+            .decompress()
+            .ok_or_else(fn_string!("ed25519_to_x25519_pk failed"))?;
         let mp = point.to_montgomery();
         Ok(xd::PublicKey::from(mp.to_bytes()))
     }
-    fn ed25519_to_x25519_sk(key: &ed::SecretKey) -> Result<xd::StaticSecret, ()> {
+    fn ed25519_to_x25519_sk(key: &ed::SecretKey) -> Result<xd::StaticSecret, String> {
         let exp = ed::ExpandedSecretKey::from(key);
         let bytes: [u8; ed::EXPANDED_SECRET_KEY_LENGTH] = exp.to_bytes();
-        let lowbytes: [u8; 32] = bytes[0..32].try_into().map_err(drop)?;
+        let lowbytes: [u8; 32] = bytes[0..32].try_into().map_err(map_to_string)?;
         Ok(xd::StaticSecret::from(lowbytes))
     }
 
-    pub fn cached_dh(&self, key: &DHTKey, secret: &DHTKeySecret) -> Result<SharedSecret, ()> {
+    pub fn cached_dh(&self, key: &DHTKey, secret: &DHTKeySecret) -> Result<SharedSecret, String> {
         if let Some(c) = self
             .inner
             .lock()
@@ -197,24 +204,12 @@ impl Crypto {
     ///////////
     // These are safe to use regardless of initialization status
 
-    pub fn compute_dh(key: &DHTKey, secret: &DHTKeySecret) -> Result<SharedSecret, ()> {
+    pub fn compute_dh(key: &DHTKey, secret: &DHTKeySecret) -> Result<SharedSecret, String> {
         assert!(key.valid);
         assert!(secret.valid);
-        let pk_ed = match ed::PublicKey::from_bytes(&key.bytes) {
-            Ok(v) => v,
-            Err(e) => {
-                trace!("compute_dh error: {:?}", e);
-                return Err(());
-            }
-        };
+        let pk_ed = ed::PublicKey::from_bytes(&key.bytes).map_err(map_to_string)?;
         let pk_xd = Self::ed25519_to_x25519_pk(&pk_ed)?;
-        let sk_ed = match ed::SecretKey::from_bytes(&secret.bytes) {
-            Ok(v) => v,
-            Err(e) => {
-                trace!("compute_dh error: {:?}", e);
-                return Err(());
-            }
-        };
+        let sk_ed = ed::SecretKey::from_bytes(&secret.bytes).map_err(map_to_string)?;
         let sk_xd = Self::ed25519_to_x25519_sk(&sk_ed)?;
         Ok(sk_xd.diffie_hellman(&pk_xd).to_bytes())
     }
@@ -236,12 +231,13 @@ impl Crypto {
         nonce: &Nonce,
         shared_secret: &SharedSecret,
         associated_data: Option<&[u8]>,
-    ) -> Result<(), ()> {
+    ) -> Result<(), String> {
         let key = ch::Key::from(*shared_secret);
         let xnonce = ch::XNonce::from(*nonce);
         let aead = ch::XChaCha20Poly1305::new(&key);
         aead.decrypt_in_place(&xnonce, associated_data.unwrap_or(b""), body)
-            .map_err(|e| trace!("decryption failure: {}", e))
+            .map_err(map_to_string)
+            .map_err(logthru_crypto!())
     }
 
     pub fn decrypt(
@@ -249,9 +245,11 @@ impl Crypto {
         nonce: &Nonce,
         shared_secret: &SharedSecret,
         associated_data: Option<&[u8]>,
-    ) -> Result<Vec<u8>, ()> {
+    ) -> Result<Vec<u8>, String> {
         let mut out = body.to_vec();
-        Self::decrypt_in_place(&mut out, nonce, shared_secret, associated_data)?;
+        Self::decrypt_in_place(&mut out, nonce, shared_secret, associated_data)
+            .map_err(map_to_string)
+            .map_err(logthru_crypto!())?;
         Ok(out)
     }
 
@@ -260,13 +258,14 @@ impl Crypto {
         nonce: &Nonce,
         shared_secret: &SharedSecret,
         associated_data: Option<&[u8]>,
-    ) -> Result<(), ()> {
+    ) -> Result<(), String> {
         let key = ch::Key::from(*shared_secret);
         let xnonce = ch::XNonce::from(*nonce);
         let aead = ch::XChaCha20Poly1305::new(&key);
 
         aead.encrypt_in_place(&xnonce, associated_data.unwrap_or(b""), body)
-            .map_err(|e| trace!("encryption failure: {}", e))
+            .map_err(map_to_string)
+            .map_err(logthru_crypto!())
     }
 
     pub fn encrypt(
@@ -274,9 +273,11 @@ impl Crypto {
         nonce: &Nonce,
         shared_secret: &SharedSecret,
         associated_data: Option<&[u8]>,
-    ) -> Result<Vec<u8>, ()> {
+    ) -> Result<Vec<u8>, String> {
         let mut out = body.to_vec();
-        Self::encrypt_in_place(&mut out, nonce, shared_secret, associated_data)?;
+        Self::encrypt_in_place(&mut out, nonce, shared_secret, associated_data)
+            .map_err(map_to_string)
+            .map_err(logthru_crypto!())?;
         Ok(out)
     }
 }

@@ -2,6 +2,8 @@ use crate::dht::key;
 use crate::intf;
 use crate::xx::*;
 
+use serde::*;
+
 cfg_if! {
     if #[cfg(target_arch = "wasm32")] {
         pub type ConfigCallbackReturn = Result<Box<dyn core::any::Any>, String>;
@@ -9,7 +11,7 @@ cfg_if! {
 
     } else {
         pub type ConfigCallbackReturn = Result<Box<dyn core::any::Any + Send>, String>;
-        pub type ConfigCallback = Arc<dyn Fn(String) -> ConfigCallbackReturn + Send>;
+        pub type ConfigCallback = Arc<dyn Fn(String) -> ConfigCallbackReturn + Send + Sync>;
     }
 }
 
@@ -172,7 +174,7 @@ pub struct VeilidConfigCapabilities {
     pub protocol_accept_wss: bool,
 }
 
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum VeilidConfigLogLevel {
     Off,
     Error,

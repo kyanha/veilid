@@ -170,10 +170,12 @@ impl NetworkManager {
         Ok(())
     }
     pub async fn terminate(&self) {
-        let mut inner = self.inner.lock();
-        if let Some(routing_table) = &inner.routing_table {
+        let routing_table = {
+            let mut inner = self.inner.lock();
+            inner.routing_table.take()
+        };
+        if let Some(routing_table) = routing_table {
             routing_table.terminate().await;
-            inner.routing_table = None;
         }
     }
 

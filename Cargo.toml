@@ -4,7 +4,8 @@ members = [
     "veilid-core",
     "veilid-server",
     "veilid-cli",
-    "veilid-flutter/rust"
+    "veilid-flutter/rust",
+    "veilid-wasm",
 ]
 
 exclude = [ "./external/keyring-rs", "./external/netlink", "./external/cursive" ]
