@@ -236,8 +236,10 @@ impl VeilidConfig {
     }
 
     pub async fn init_from_json(&mut self, config: String) -> Result<(), String> {
-        let mut inner = self.inner.write();
-        *inner = serde_json::from_str(&config).map_err(map_to_string)?;
+        {
+            let mut inner = self.inner.write();
+            *inner = serde_json::from_str(&config).map_err(map_to_string)?;
+        }
 
         // Validate settings
         self.validate().await?;

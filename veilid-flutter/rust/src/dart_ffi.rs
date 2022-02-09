@@ -1,4 +1,3 @@
-use crate::config::*;
 use crate::dart_isolate_wrapper::*;
 use crate::dart_serialize::*;
 
@@ -98,7 +97,16 @@ pub extern "C" fn startup_veilid_core(port: i64, config: FfiStr) {
     let config = config.into_opt_string();
     let stream = DartIsolateStream::new(port);
     async_std::task::spawn(async move {
-        let config: VeilidConfig = check_err_json!(stream, deserialize_opt_json(config));
+        let config_json = match config {
+            Some(v) => v,
+            None => {
+                stream.abort_json(veilid_core::VeilidAPIError::MissingArgument {
+                    context: "startup_veilid_core".to_owned(),
+                    argument: "config".to_owned(),
+                });
+                return;
+            }
+        };
 
         let mut api_lock = VEILID_API.lock().await;
         if api_lock.is_some() {
@@ -107,19 +115,16 @@ pub extern "C" fn startup_veilid_core(port: i64, config: FfiStr) {
         }
 
         let sink = stream.clone();
-        let setup = veilid_core::VeilidCoreSetup {
-            update_callback: Arc::new(
-                move |update: veilid_core::VeilidUpdate| -> veilid_core::SystemPinBoxFuture<()> {
-                    let sink = sink.clone();
-                    Box::pin(async move {
-                        sink.item_json(update);
-                    })
-                },
-            ),
-            config_callback: Arc::new(move |key| config.get_by_str(&key)),
-        };
+        let update_callback = Arc::new(
+            move |update: veilid_core::VeilidUpdate| -> veilid_core::SystemPinBoxFuture<()> {
+                let sink = sink.clone();
+                Box::pin(async move {
+                    sink.item_json(update);
+                })
+            },
+        );
 
-        let res = veilid_core::api_startup(setup).await;
+        let res = veilid_core::api_startup_json(update_callback, config_json).await;
         let veilid_api = check_err_json!(stream, res);
         *api_lock = Some(veilid_api);
     });

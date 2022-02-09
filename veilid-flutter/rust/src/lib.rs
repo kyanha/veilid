@@ -9,7 +9,6 @@ cfg_if! {
         mod wasm;
     }
 }
-mod config;
 
 #[cfg(target_os = "android")]
 use jni::{objects::JClass, objects::JObject, JNIEnv};
