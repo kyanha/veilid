@@ -42,7 +42,7 @@ fn convert_update(
         } => {
             panic!("Should not be logging to api in server!");
         }
-        veilid_core::VeilidUpdate::Attachment(state) => {
+        veilid_core::VeilidUpdate::Attachment { state } => {
             let mut att = rpc_update.init_attachment();
             att.set_state(convert_attachment_state(state));
         }

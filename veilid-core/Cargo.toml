@@ -63,6 +63,7 @@ keyvaluedb-sqlite = { path = "../external/keyvaluedb/keyvaluedb-sqlite" }
 data-encoding = { version = "^2" }
 serde = { version = "^1", features = ["derive" ] }
 serde_cbor = { version = "^0" }
+serde_json = { version = "^1" }
 async_executors = { version = "^0", default-features = false, features = [ "async_std" ]}
 socket2 = "^0"
 bugsalot = "^0"
@@ -84,6 +85,7 @@ keyvaluedb-web = { path = "../external/keyvaluedb/keyvaluedb-web" }
 data-encoding = { version = "^2", default_features = false, features = ["alloc"] }
 serde = { version = "^1", default-features = false, features = ["derive", "alloc"] }
 serde_cbor = { version = "^0", default-features = false, features = ["alloc"] }
+serde_json = { version = "^1", default-features = false, features = ["alloc"] }
 getrandom = { version = "^0", features = ["js"] }
 ws_stream_wasm = "^0"
 async_executors = { version = "^0", default-features = false, features = [ "bindgen" ]}

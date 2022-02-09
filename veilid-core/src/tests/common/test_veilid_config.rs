@@ -158,20 +158,20 @@ cfg_if! {
     }
 }
 
-pub fn setup_veilid_core() -> VeilidCoreSetup {
-    VeilidCoreSetup {
-        update_callback: Arc::new(
+pub fn setup_veilid_core() -> (UpdateCallback, ConfigCallback) {
+    (
+        Arc::new(
             move |veilid_update: VeilidUpdate| -> SystemPinBoxFuture<()> {
                 Box::pin(async move {
                     trace!("update_callback: {:?}", veilid_update);
                 })
             },
         ),
-        config_callback: Arc::new(config_callback),
-    }
+        Arc::new(config_callback),
+    )
 }
 
-pub fn config_callback(key: String) -> ConfigCallbackReturn {
+fn config_callback(key: String) -> ConfigCallbackReturn {
     match key.as_str() {
         "program_name" => Ok(Box::new(String::from("Veilid"))),
         "namespace" => Ok(Box::new(String::from(""))),

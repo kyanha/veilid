@@ -3,22 +3,10 @@ use crate::intf::*;
 use crate::xx::*;
 use crate::*;
 
-fn setup_veilid_core() -> VeilidCoreSetup {
-    VeilidCoreSetup {
-        update_callback: Arc::new(
-            move |veilid_update: VeilidUpdate| -> SystemPinBoxFuture<()> {
-                Box::pin(async move {
-                    trace!("update_callback: {:?}", veilid_update);
-                })
-            },
-        ),
-        config_callback: Arc::new(config_callback),
-    }
-}
-
 async fn startup() -> VeilidAPI {
     trace!("test_table_store: starting");
-    api_startup(setup_veilid_core())
+    let (update_callback, config_callback) = setup_veilid_core();
+    api_startup(update_callback, config_callback)
         .await
         .expect("startup failed")
 }

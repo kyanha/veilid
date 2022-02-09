@@ -31,22 +31,20 @@ pub async fn run_veilid_server(settings: Settings, logs: VeilidLogs) -> Result<(
     ) = bounded(1);
 
     // Create VeilidCore setup
-    let vcs = veilid_core::VeilidCoreSetup {
-        update_callback: Arc::new(
-            move |change: veilid_core::VeilidUpdate| -> veilid_core::SystemPinBoxFuture<()> {
-                let sender = sender.clone();
-                Box::pin(async move {
-                    if sender.send(change).await.is_err() {
-                        error!("error sending veilid update callback");
-                    }
-                })
-            },
-        ),
-        config_callback: settings.get_core_config_callback(),
-    };
+    let update_callback = Arc::new(
+        move |change: veilid_core::VeilidUpdate| -> veilid_core::SystemPinBoxFuture<()> {
+            let sender = sender.clone();
+            Box::pin(async move {
+                if sender.send(change).await.is_err() {
+                    error!("error sending veilid update callback");
+                }
+            })
+        },
+    );
+    let config_callback = settings.get_core_config_callback();
 
     // Start Veilid Core and get API
-    let veilid_api = veilid_core::api_startup(vcs)
+    let veilid_api = veilid_core::api_startup(update_callback, config_callback)
         .await
         .map_err(|e| format!("VeilidCore startup failed: {}", e))?;
 

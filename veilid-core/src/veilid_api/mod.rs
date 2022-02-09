@@ -37,10 +37,18 @@ pub enum VeilidAPIError {
     AlreadyInitialized,
     Timeout,
     Shutdown,
-    NodeNotFound(NodeId),
-    NoDialInfo(NodeId),
-    Internal(String),
-    Unimplemented(String),
+    NodeNotFound {
+        node_id: NodeId,
+    },
+    NoDialInfo {
+        node_id: NodeId,
+    },
+    Internal {
+        message: String,
+    },
+    Unimplemented {
+        message: String,
+    },
     ParseError {
         message: String,
         value: String,
@@ -63,10 +71,18 @@ impl fmt::Display for VeilidAPIError {
             VeilidAPIError::AlreadyInitialized => write!(f, "VeilidAPIError::AlreadyInitialized"),
             VeilidAPIError::Timeout => write!(f, "VeilidAPIError::Timeout"),
             VeilidAPIError::Shutdown => write!(f, "VeilidAPIError::Shutdown"),
-            VeilidAPIError::NodeNotFound(ni) => write!(f, "VeilidAPIError::NodeNotFound({})", ni),
-            VeilidAPIError::NoDialInfo(ni) => write!(f, "VeilidAPIError::NoDialInfo({})", ni),
-            VeilidAPIError::Internal(e) => write!(f, "VeilidAPIError::Internal({})", e),
-            VeilidAPIError::Unimplemented(e) => write!(f, "VeilidAPIError::Unimplemented({})", e),
+            VeilidAPIError::NodeNotFound { node_id } => {
+                write!(f, "VeilidAPIError::NodeNotFound({})", node_id)
+            }
+            VeilidAPIError::NoDialInfo { node_id } => {
+                write!(f, "VeilidAPIError::NoDialInfo({})", node_id)
+            }
+            VeilidAPIError::Internal { message } => {
+                write!(f, "VeilidAPIError::Internal({})", message)
+            }
+            VeilidAPIError::Unimplemented { message } => {
+                write!(f, "VeilidAPIError::Unimplemented({})", message)
+            }
             VeilidAPIError::ParseError { message, value } => {
                 write!(f, "VeilidAPIError::ParseError({}: {})", message, value)
             }
@@ -95,10 +111,12 @@ impl fmt::Display for VeilidAPIError {
 fn convert_rpc_error(x: RPCError) -> VeilidAPIError {
     match x {
         RPCError::Timeout => VeilidAPIError::Timeout,
-        RPCError::Unimplemented(s) => VeilidAPIError::Unimplemented(s),
-        RPCError::Internal(s) => VeilidAPIError::Internal(s),
-        RPCError::Protocol(s) => VeilidAPIError::Internal(s),
-        RPCError::InvalidFormat => VeilidAPIError::Internal("Invalid packet format".to_owned()),
+        RPCError::Unimplemented(s) => VeilidAPIError::Unimplemented { message: s },
+        RPCError::Internal(s) => VeilidAPIError::Internal { message: s },
+        RPCError::Protocol(s) => VeilidAPIError::Internal { message: s },
+        RPCError::InvalidFormat => VeilidAPIError::Internal {
+            message: "Invalid packet format".to_owned(),
+        },
     }
 }
 
@@ -147,7 +165,9 @@ pub enum VeilidUpdate {
         log_level: VeilidLogLevel,
         message: String,
     },
-    Attachment(AttachmentState),
+    Attachment {
+        state: AttachmentState,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1209,9 +1229,9 @@ impl VeilidAPI {
             } => {
                 // No point in waiting for a log
             }
-            VeilidUpdate::Attachment(cs) => {
+            VeilidUpdate::Attachment { state } => {
                 self.attachment_manager()?
-                    .wait_for_state(cs, timeout_ms)
+                    .wait_for_state(state, timeout_ms)
                     .await;
             }
         }
@@ -1230,7 +1250,7 @@ impl VeilidAPI {
         let rpc = self.rpc_processor()?;
         let routing_table = rpc.routing_table();
         let node_ref = match routing_table.lookup_node_ref(node_id.key) {
-            None => return Err(VeilidAPIError::NodeNotFound(node_id)),
+            None => return Err(VeilidAPIError::NodeNotFound { node_id }),
             Some(nr) => nr,
         };
         let info_answer = rpc
@@ -1250,7 +1270,7 @@ impl VeilidAPI {
         let rpc = self.rpc_processor()?;
         let routing_table = rpc.routing_table();
         let node_ref = match routing_table.lookup_node_ref(node_id.key) {
-            None => return Err(VeilidAPIError::NodeNotFound(node_id)),
+            None => return Err(VeilidAPIError::NodeNotFound { node_id }),
             Some(nr) => nr,
         };
         rpc.rpc_call_validate_dial_info(node_ref.clone(), dial_info, redirect, alternate_port)

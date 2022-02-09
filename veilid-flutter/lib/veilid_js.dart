@@ -6,14 +6,12 @@ import 'dart:typed_data';
 
 import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
-import 'package:oxidized/oxidized.dart';
 
 //////////////////////////////////////////////////////////
 
 Veilid getVeilid() => VeilidJS();
 
 class VeilidJS {
-  
   Stream<VeilidUpdate> startupVeilidCore(Object? configCallback(String key)) {
     throw UnimplementedError();
   }
@@ -25,7 +23,7 @@ class VeilidJS {
   Future<void> changeApiLogLevel(VeilidLogLevel logLevel) {
     throw UnimplementedError();
   }
-  
+
   Future<void> shutdownVeilidCore() {
     throw UnimplementedError();
   }
@@ -37,5 +35,4 @@ class VeilidJS {
   Future<VeilidVersion> veilidVersion() {
     throw UnimplementedError();
   }
-
 }

@@ -6,22 +6,10 @@ use crate::*;
 
 static LOREM_IPSUM:&[u8] = b"Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum. ";
 
-fn setup_veilid_core() -> VeilidCoreSetup {
-    VeilidCoreSetup {
-        update_callback: Arc::new(
-            move |veilid_update: VeilidUpdate| -> SystemPinBoxFuture<()> {
-                Box::pin(async move {
-                    trace!("update_callback: {:?}", veilid_update);
-                })
-            },
-        ),
-        config_callback: Arc::new(config_callback),
-    }
-}
-
 async fn startup() -> VeilidAPI {
     trace!("test_table_store: starting");
-    let api = api_startup(setup_veilid_core())
+    let (update_callback, config_callback) = setup_veilid_core();
+    let api = api_startup(update_callback, config_callback)
         .await
         .expect("startup failed");
     api

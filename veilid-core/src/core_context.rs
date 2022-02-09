@@ -14,11 +14,6 @@ cfg_if! {
     }
 }
 
-pub struct VeilidCoreSetup {
-    pub update_callback: UpdateCallback,
-    pub config_callback: ConfigCallback,
-}
-
 pub struct VeilidCoreContext {
     pub config: VeilidConfig,
     pub protected_store: ProtectedStore,
@@ -29,46 +24,56 @@ pub struct VeilidCoreContext {
 }
 
 impl VeilidCoreContext {
-    async fn new(setup: VeilidCoreSetup) -> Result<VeilidCoreContext, VeilidAPIError> {
-        // Start up api logging early if it's in the config
-        let api_log_level: VeilidConfigLogLevel =
-            *(setup.config_callback)("api_log_level".to_owned())
-                .map_err(|e| VeilidAPIError::ParseError {
-                    message: "Failed to get api_log_level".to_owned(),
-                    value: e,
-                })?
-                .downcast()
-                .map_err(|e| VeilidAPIError::ParseError {
-                    message: "Incorrect type for key 'api_log_level'".to_owned(),
-                    value: format!("Invalid type: {:?}", e.type_id()),
-                })?;
-        if api_log_level != VeilidConfigLogLevel::Off {
-            ApiLogger::init(
-                api_log_level.to_level_filter(),
-                setup.update_callback.clone(),
-            );
-            for ig in crate::DEFAULT_LOG_IGNORE_LIST {
-                ApiLogger::add_filter_ignore_str(ig);
-            }
+    async fn new_with_config_callback(
+        update_callback: UpdateCallback,
+        config_callback: ConfigCallback,
+    ) -> Result<VeilidCoreContext, VeilidAPIError> {
+        // Set up config from callback
+        trace!("VeilidCoreContext::new_with_config_callback init config");
+        let mut config = VeilidConfig::new();
+        if let Err(e) = config.init(config_callback).await {
+            return Err(VeilidAPIError::Internal { message: e });
         }
 
-        trace!("VeilidCoreContext::new starting");
+        Self::new_common(update_callback, config).await
+    }
 
+    async fn new_with_config_json(
+        update_callback: UpdateCallback,
+        config_json: String,
+    ) -> Result<VeilidCoreContext, VeilidAPIError> {
+        // Set up config from callback
+        trace!("VeilidCoreContext::new_with_config_json init config");
+        let mut config = VeilidConfig::new();
+        if let Err(e) = config.init_from_json(config_json).await {
+            return Err(VeilidAPIError::Internal { message: e });
+        }
+
+        Self::new_common(update_callback, config).await
+    }
+
+    async fn new_common(
+        update_callback: UpdateCallback,
+        config: VeilidConfig,
+    ) -> Result<VeilidCoreContext, VeilidAPIError> {
         cfg_if! {
             if #[cfg(target_os = "android")] {
                 if utils::android::ANDROID_GLOBALS.lock().is_none() {
                     error!("Android globals are not set up");
+                    config.terminate().await;
                     return Err("Android globals are not set up".to_owned());
                 }
             }
         }
 
-        // Set up config
-        trace!("VeilidCoreContext::new init config");
-        let mut config = VeilidConfig::new();
-        if let Err(e) = config.init(setup.config_callback).await {
-            ApiLogger::terminate();
-            return Err(VeilidAPIError::Internal(e));
+        // Start up api logging
+        let api_log_level: VeilidConfigLogLevel = config.get().api_log_level;
+        if api_log_level != VeilidConfigLogLevel::Off {
+            ApiLogger::init(api_log_level.to_level_filter(), update_callback.clone());
+            for ig in crate::DEFAULT_LOG_IGNORE_LIST {
+                ApiLogger::add_filter_ignore_str(ig);
+            }
+            info!("Veilid API logging initialized");
         }
 
         // Set up protected store
@@ -77,7 +82,7 @@ impl VeilidCoreContext {
         if let Err(e) = protected_store.init().await {
             config.terminate().await;
             ApiLogger::terminate();
-            return Err(VeilidAPIError::Internal(e));
+            return Err(VeilidAPIError::Internal { message: e });
         }
 
         // Init node id from config now that protected store is set up
@@ -85,7 +90,7 @@ impl VeilidCoreContext {
             protected_store.terminate().await;
             config.terminate().await;
             ApiLogger::terminate();
-            return Err(VeilidAPIError::Internal(e));
+            return Err(VeilidAPIError::Internal { message: e });
         }
 
         // Set up tablestore
@@ -95,7 +100,7 @@ impl VeilidCoreContext {
             protected_store.terminate().await;
             config.terminate().await;
             ApiLogger::terminate();
-            return Err(VeilidAPIError::Internal(e));
+            return Err(VeilidAPIError::Internal { message: e });
         }
 
         // Set up crypto
@@ -106,7 +111,7 @@ impl VeilidCoreContext {
             protected_store.terminate().await;
             config.terminate().await;
             ApiLogger::terminate();
-            return Err(VeilidAPIError::Internal(e));
+            return Err(VeilidAPIError::Internal { message: e });
         }
 
         // Set up block store
@@ -118,18 +123,17 @@ impl VeilidCoreContext {
             protected_store.terminate().await;
             config.terminate().await;
             ApiLogger::terminate();
-            return Err(VeilidAPIError::Internal(e));
+            return Err(VeilidAPIError::Internal { message: e });
         }
 
         // Set up attachment manager
         trace!("VeilidCoreContext::new init attachment manager");
-        let cb = setup.update_callback;
         let attachment_manager =
             AttachmentManager::new(config.clone(), table_store.clone(), crypto.clone());
         if let Err(e) = attachment_manager
             .init(Arc::new(
                 move |_old_state: AttachmentState, new_state: AttachmentState| {
-                    cb(VeilidUpdate::Attachment(new_state))
+                    update_callback(VeilidUpdate::Attachment { state: new_state })
                 },
             ))
             .await
@@ -140,7 +144,7 @@ impl VeilidCoreContext {
             protected_store.terminate().await;
             config.terminate().await;
             ApiLogger::terminate();
-            return Err(VeilidAPIError::Internal(e));
+            return Err(VeilidAPIError::Internal { message: e });
         }
 
         Ok(VeilidCoreContext {
@@ -172,7 +176,10 @@ impl VeilidCoreContext {
 
 static INITIALIZED: AsyncMutex<bool> = AsyncMutex::new(false);
 
-pub async fn api_startup(setup: VeilidCoreSetup) -> Result<VeilidAPI, VeilidAPIError> {
+pub async fn api_startup(
+    update_callback: UpdateCallback,
+    config_callback: ConfigCallback,
+) -> Result<VeilidAPI, VeilidAPIError> {
     // See if we have an API started up already
     let mut initialized_lock = INITIALIZED.lock().await;
     if *initialized_lock {
@@ -180,7 +187,29 @@ pub async fn api_startup(setup: VeilidCoreSetup) -> Result<VeilidAPI, VeilidAPIE
     }
 
     // Create core context
-    let context = VeilidCoreContext::new(setup).await?;
+    let context =
+        VeilidCoreContext::new_with_config_callback(update_callback, config_callback).await?;
+
+    // Return an API object around our context
+    let veilid_api = VeilidAPI::new(context);
+
+    *initialized_lock = true;
+
+    Ok(veilid_api)
+}
+
+pub async fn api_startup_json(
+    update_callback: UpdateCallback,
+    config_json: String,
+) -> Result<VeilidAPI, VeilidAPIError> {
+    // See if we have an API started up already
+    let mut initialized_lock = INITIALIZED.lock().await;
+    if *initialized_lock {
+        return Err(VeilidAPIError::AlreadyInitialized);
+    }
+
+    // Create core context
+    let context = VeilidCoreContext::new_with_config_json(update_callback, config_json).await?;
 
     // Return an API object around our context
     let veilid_api = VeilidAPI::new(context);

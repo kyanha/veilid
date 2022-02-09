@@ -8,7 +8,8 @@ use crate::*;
 
 pub async fn test_envelope_round_trip() {
     info!("--- test envelope round trip ---");
-    let api = api_startup(setup_veilid_core())
+    let (update_callback, config_callback) = setup_veilid_core();
+    let api = api_startup(update_callback, config_callback)
         .await
         .expect("startup failed");
 
