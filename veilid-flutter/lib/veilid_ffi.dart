@@ -74,39 +74,31 @@ const int MESSAGE_STREAM_CLOSE = 8;
 Veilid getVeilid() => VeilidFFI(_dylib);
 
 // Parse handle async returns
-Future<T> processSingleAsyncReturn<T>(Future<dynamic> future) async {
+Future<T> processFuturePlain<T>(
+    T Function(Map<String, dynamic>)? jsonConstructor,
+    Future<dynamic> future) {
   return future.then((value) {
     final list = value as List<dynamic>;
     switch (list[0] as int) {
       case MESSAGE_OK:
         {
-          if (list[1] != null) {
-            throw VeilidAPIExceptionInternal(
-                "Unexpected MESSAGE_OK value '${list[1]}' where null expected");
+          if (list[1] == null) {
+            throw VeilidAPIExceptionInternal("Null MESSAGE_OK value");
           }
           return list[1] as T;
         }
       case MESSAGE_ERR:
         {
-          throw VeilidAPIExceptionInternal("Internal API Error: ${value[1]}");
-        }
-      case MESSAGE_OK_JSON:
-        {
-          var ret = jsonDecode(list[1] as String);
-          if (ret != null) {
-            throw VeilidAPIExceptionInternal(
-                "Unexpected MESSAGE_OK_JSON value '$ret' where null expected");
-          }
-          return ret as T;
+          throw VeilidAPIExceptionInternal("Internal API Error: ${list[1]}");
         }
       case MESSAGE_ERR_JSON:
         {
-          throw VeilidAPIException.fromJson(value[1] as String);
+          throw VeilidAPIException.fromJson(jsonDecode(list[1]));
         }
       default:
         {
           throw VeilidAPIExceptionInternal(
-              "Unexpected async return message type: ${value[0]}");
+              "Unexpected async return message type: ${list[0]}");
         }
     }
   }).catchError((e) {
@@ -118,7 +110,44 @@ Future<T> processSingleAsyncReturn<T>(Future<dynamic> future) async {
   });
 }
 
-Future<void> processSingleAsyncVoid(Future<dynamic> future) async {
+Future<T> processFutureJson<T>(
+    T Function(Map<String, dynamic>) jsonConstructor,
+    Future<dynamic> future) {
+  return future.then((value) {
+    final list = value as List<dynamic>;
+    switch (list[0] as int) {
+      case MESSAGE_ERR:
+        {
+          throw VeilidAPIExceptionInternal("Internal API Error: ${list[1]}");
+        }
+      case MESSAGE_OK_JSON:
+        {
+          if (list[1] == null) {
+            throw VeilidAPIExceptionInternal("Null MESSAGE_OK_JSON value");
+          }
+          var ret = jsonDecode(list[1] as String);
+          return jsonConstructor(ret);
+        }
+      case MESSAGE_ERR_JSON:
+        {
+          throw VeilidAPIException.fromJson(jsonDecode(list[1]));
+        }
+      default:
+        {
+          throw VeilidAPIExceptionInternal(
+              "Unexpected async return message type: ${list[0]}");
+        }
+    }
+  }).catchError((e) {
+    // Wrap all other errors in VeilidAPIExceptionInternal
+    throw VeilidAPIExceptionInternal(e.toString());
+  }, test: (e) {
+    // Pass errors that are already VeilidAPIException through without wrapping
+    return e is! VeilidAPIException;
+  });
+}
+
+Future<void> processFutureVoid(Future<dynamic> future) {
   return future.then((value) {
     final list = value as List<dynamic>;
     switch (list[0] as int) {
@@ -132,7 +161,7 @@ Future<void> processSingleAsyncVoid(Future<dynamic> future) async {
         }
       case MESSAGE_ERR:
         {
-          throw VeilidAPIExceptionInternal("Internal API Error: ${value[1]}");
+          throw VeilidAPIExceptionInternal("Internal API Error: ${list[1]}");
         }
       case MESSAGE_OK_JSON:
         {
@@ -145,12 +174,12 @@ Future<void> processSingleAsyncVoid(Future<dynamic> future) async {
         }
       case MESSAGE_ERR_JSON:
         {
-          throw VeilidAPIException.fromJson(value[1] as String);
+          throw VeilidAPIException.fromJson(jsonDecode(list[1] as String));
         }
       default:
         {
           throw VeilidAPIExceptionInternal(
-              "Unexpected async return message type: ${value[0]}");
+              "Unexpected async return message type: ${list[0]}");
         }
     }
   }).catchError((e) {
@@ -202,32 +231,40 @@ class VeilidFFI implements Veilid {
   }
 
   @override
-  Stream<VeilidUpdate> startupVeilidCore(VeilidConfig config) async* {}
-
-  @override
-  Future<VeilidState> getVeilidState() async {
-    final recv_port = ReceivePort("shutdown_veilid_core");
-    final send_port = recv_port.sendPort;
-    _shutdownVeilidCore(send_port.nativePort);
-    processSingleAsyncReturn(recv_port.single);
+  Stream<VeilidUpdate> startupVeilidCore(VeilidConfig config) {
+    var nativeConfig = jsonEncode(config.json, toEncodable: veilidApiToEncodable).toNativeUtf8();
+    final recvPort = ReceivePort("startup_veilid_core");
+    final sendPort = recvPort.sendPort;
+    _startupVeilidCore(sendPort.nativePort, nativeConfig);
+    malloc.free(nativeConfig);
+xxx
+    return processStreamJson(VeilidUpdate.fromJson, recvPort);
   }
 
   @override
-  Future<void> changeApiLogLevel(VeilidLogLevel logLevel) async {
-    var nativeLogLevel = jsonEncode(logLevel).toNativeUtf8();
-    final recv_port = ReceivePort("change_api_log_level");
-    final send_port = recv_port.sendPort;
-    _changeApiLogLevel(send_port.nativePort, nativeLogLevel);
+  Future<VeilidState> getVeilidState() async {
+    final recvPort = ReceivePort("get_veilid_state");
+    final sendPort = recvPort.sendPort;
+    _shutdownVeilidCore(sendPort.nativePort);
+    return processFutureJson(VeilidState.fromJson, recvPort.single);
+  }
+
+  @override
+  Future<void> changeApiLogLevel(VeilidConfigLogLevel logLevel) async {
+    var nativeLogLevel = logLevel.json.toNativeUtf8();
+    final recvPort = ReceivePort("change_api_log_level");
+    final sendPort = recvPort.sendPort;
+    _changeApiLogLevel(sendPort.nativePort, nativeLogLevel);
     malloc.free(nativeLogLevel);
-    processSingleAsyncVoid(recv_port.single);
+    return processFutureVoid(recvPort.single);
   }
 
   @override
   Future<void> shutdownVeilidCore() async {
-    final recv_port = ReceivePort("shutdown_veilid_core");
-    final send_port = recv_port.sendPort;
-    _shutdownVeilidCore(send_port.nativePort);
-    processSingleAsyncVoid(recv_port.single);
+    final recvPort = ReceivePort("shutdown_veilid_core");
+    final sendPort = recvPort.sendPort;
+    _shutdownVeilidCore(sendPort.nativePort);
+    return processFutureVoid(recvPort.single);
   }
 
   @override
