@@ -30,7 +30,7 @@ class _MyAppState extends State<MyApp> {
     // Platform messages may fail, so we use a try/catch PlatformException.
     // We also handle the message potentially returning null.
     try {
-      veilidVersion = await Veilid.api.veilidVersionString();
+      veilidVersion = Veilid.instance.veilidVersionString();
     } on PlatformException {
       veilidVersion = 'Failed to get veilid version.';
     }

@@ -3,21 +3,15 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:veilid/veilid.dart';
 
 void main() {
-  const MethodChannel channel = MethodChannel('veilid');
+  Veilid api = Veilid.instance;
 
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  setUp(() {
-    channel.setMockMethodCallHandler((MethodCall methodCall) async {
-      return '42';
-    });
-  });
+  setUp(() {});
 
-  tearDown(() {
-    channel.setMockMethodCallHandler(null);
-  });
+  tearDown(() {});
 
-  test('getPlatformVersion', () async {
-    expect(await Veilid.platformVersion, '42');
+  test('veilidVersionString', () async {
+    expect(Veilid.instance.veilidVersionString(), '0.1.0');
   });
 }

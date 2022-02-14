@@ -4,15 +4,12 @@ import 'dart:js';
 import 'dart:async';
 import 'dart:typed_data';
 
-import 'package:flutter/services.dart';
-import 'package:flutter/material.dart';
-
 //////////////////////////////////////////////////////////
 
 Veilid getVeilid() => VeilidJS();
 
-class VeilidJS {
-  Stream<VeilidUpdate> startupVeilidCore(Object? configCallback(String key)) {
+class VeilidJS implements Veilid {
+  Stream<VeilidUpdate> startupVeilidCore(VeilidConfig config) {
     throw UnimplementedError();
   }
 
@@ -20,7 +17,7 @@ class VeilidJS {
     throw UnimplementedError();
   }
 
-  Future<void> changeApiLogLevel(VeilidLogLevel logLevel) {
+  Future<void> changeApiLogLevel(VeilidConfigLogLevel logLevel) {
     throw UnimplementedError();
   }
 
@@ -28,11 +25,11 @@ class VeilidJS {
     throw UnimplementedError();
   }
 
-  Future<String> veilidVersionString() {
+  String veilidVersionString() {
     throw UnimplementedError();
   }
 
-  Future<VeilidVersion> veilidVersion() {
+  VeilidVersion veilidVersion() {
     throw UnimplementedError();
   }
 }

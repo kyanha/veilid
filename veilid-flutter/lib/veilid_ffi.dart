@@ -21,30 +21,29 @@ late final _dylib =
     Platform.isIOS ? DynamicLibrary.process() : DynamicLibrary.open(_path);
 
 // Linkage for initialization
-typedef _dart_postCObject
+typedef _DartPostCObject
     = NativeFunction<Int8 Function(Int64, Pointer<Dart_CObject>)>;
 // fn free_string(s: *mut std::os::raw::c_char)
-typedef _free_string_C = Void Function(Pointer<Utf8>);
-typedef _free_string_Dart = void Function(Pointer<Utf8>);
+typedef _FreeStringC = Void Function(Pointer<Utf8>);
+typedef _FreeStringDart = void Function(Pointer<Utf8>);
 // fn initialize_veilid_flutter(dart_post_c_object_ptr: ffi::DartPostCObjectFnType)
-typedef _initializeVeilidFlutter_C = Void Function(Pointer<_dart_postCObject>);
-typedef _initializeVeilidFlutter_Dart = void Function(
-    Pointer<_dart_postCObject>);
+typedef _InitializeVeilidFlutterC = Void Function(Pointer<_DartPostCObject>);
+typedef _InitializeVeilidFlutterDart = void Function(Pointer<_DartPostCObject>);
 // fn startup_veilid_core(port: i64, config: FfiStr)
-typedef _startup_veilid_core_C = Void Function(Int64, Pointer<Utf8>);
-typedef _startup_veilid_core_Dart = void Function(int, Pointer<Utf8>);
+typedef _StartupVeilidCoreC = Void Function(Int64, Pointer<Utf8>);
+typedef _StartupVeilidCoreDart = void Function(int, Pointer<Utf8>);
 // fn get_veilid_state(port: i64)
-typedef _get_veilid_state_C = Void Function(Int64);
-typedef _get_veilid_state_Dart = void Function(int);
+typedef _GetVeilidStateC = Void Function(Int64);
+typedef _GetVeilidStateDart = void Function(int);
 // fn change_api_log_level(port: i64, log_level: FfiStr)
-typedef _change_api_log_level_C = Void Function(Int64, Pointer<Utf8>);
-typedef _change_api_log_level_Dart = void Function(int, Pointer<Utf8>);
+typedef _ChangeApiLogLevelC = Void Function(Int64, Pointer<Utf8>);
+typedef _ChangeApiLogLevelDart = void Function(int, Pointer<Utf8>);
 // fn shutdown_veilid_core(port: i64)
-typedef _shutdown_veilid_core_C = Void Function(Int64);
-typedef _shutdown_veilid_core_Dart = void Function(int);
+typedef _ShutdownVeilidCoreC = Void Function(Int64);
+typedef _ShutdownVeilidCoreDart = void Function(int);
 // fn veilid_version_string() -> *mut c_char
-typedef _veilid_version_string_C = Pointer<Utf8> Function();
-typedef _veilid_version_string_Dart = Pointer<Utf8> Function();
+typedef _VeilidVersionStringC = Pointer<Utf8> Function();
+typedef _VeilidVersionStringDart = Pointer<Utf8> Function();
 
 // fn veilid_version() -> VeilidVersion
 class VeilidVersionFFI extends Struct {
@@ -56,42 +55,41 @@ class VeilidVersionFFI extends Struct {
   external int patch;
 }
 
-typedef _veilid_version_C = VeilidVersionFFI Function();
-typedef _veilid_version_Dart = VeilidVersionFFI Function();
+typedef _VeilidVersionC = VeilidVersionFFI Function();
+typedef _VeilidVersionDart = VeilidVersionFFI Function();
 
 // Async message types
-const int MESSAGE_OK = 0;
-const int MESSAGE_ERR = 1;
-const int MESSAGE_OK_JSON = 2;
-const int MESSAGE_ERR_JSON = 3;
-const int MESSAGE_STREAM_ITEM = 4;
-const int MESSAGE_STREAM_ITEM_JSON = 5;
-const int MESSAGE_STREAM_ABORT = 6;
-const int MESSAGE_STREAM_ABORT_JSON = 7;
-const int MESSAGE_STREAM_CLOSE = 8;
+const int messageOk = 0;
+const int messageErr = 1;
+const int messageOkJson = 2;
+const int messageErrJson = 3;
+const int messageStreamItem = 4;
+const int messageStreamItemJson = 5;
+const int messageStreamAbort = 6;
+const int messageStreamAbortJson = 7;
+const int messageStreamClose = 8;
 
 // Interface factory for high level Veilid API
 Veilid getVeilid() => VeilidFFI(_dylib);
 
 // Parse handle async returns
 Future<T> processFuturePlain<T>(
-    T Function(Map<String, dynamic>)? jsonConstructor,
-    Future<dynamic> future) {
+    T Function(Map<String, dynamic>)? jsonConstructor, Future<dynamic> future) {
   return future.then((value) {
     final list = value as List<dynamic>;
     switch (list[0] as int) {
-      case MESSAGE_OK:
+      case messageOk:
         {
           if (list[1] == null) {
             throw VeilidAPIExceptionInternal("Null MESSAGE_OK value");
           }
           return list[1] as T;
         }
-      case MESSAGE_ERR:
+      case messageErr:
         {
           throw VeilidAPIExceptionInternal("Internal API Error: ${list[1]}");
         }
-      case MESSAGE_ERR_JSON:
+      case messageErrJson:
         {
           throw VeilidAPIException.fromJson(jsonDecode(list[1]));
         }
@@ -111,16 +109,15 @@ Future<T> processFuturePlain<T>(
 }
 
 Future<T> processFutureJson<T>(
-    T Function(Map<String, dynamic>) jsonConstructor,
-    Future<dynamic> future) {
+    T Function(Map<String, dynamic>) jsonConstructor, Future<dynamic> future) {
   return future.then((value) {
     final list = value as List<dynamic>;
     switch (list[0] as int) {
-      case MESSAGE_ERR:
+      case messageErr:
         {
           throw VeilidAPIExceptionInternal("Internal API Error: ${list[1]}");
         }
-      case MESSAGE_OK_JSON:
+      case messageOkJson:
         {
           if (list[1] == null) {
             throw VeilidAPIExceptionInternal("Null MESSAGE_OK_JSON value");
@@ -128,7 +125,7 @@ Future<T> processFutureJson<T>(
           var ret = jsonDecode(list[1] as String);
           return jsonConstructor(ret);
         }
-      case MESSAGE_ERR_JSON:
+      case messageErrJson:
         {
           throw VeilidAPIException.fromJson(jsonDecode(list[1]));
         }
@@ -151,7 +148,7 @@ Future<void> processFutureVoid(Future<dynamic> future) {
   return future.then((value) {
     final list = value as List<dynamic>;
     switch (list[0] as int) {
-      case MESSAGE_OK:
+      case messageOk:
         {
           if (list[1] != null) {
             throw VeilidAPIExceptionInternal(
@@ -159,11 +156,11 @@ Future<void> processFutureVoid(Future<dynamic> future) {
           }
           return;
         }
-      case MESSAGE_ERR:
+      case messageErr:
         {
           throw VeilidAPIExceptionInternal("Internal API Error: ${list[1]}");
         }
-      case MESSAGE_OK_JSON:
+      case messageOkJson:
         {
           var ret = jsonDecode(list[1] as String);
           if (ret != null) {
@@ -172,7 +169,7 @@ Future<void> processFutureVoid(Future<dynamic> future) {
           }
           return;
         }
-      case MESSAGE_ERR_JSON:
+      case messageErrJson:
         {
           throw VeilidAPIException.fromJson(jsonDecode(list[1] as String));
         }
@@ -191,53 +188,93 @@ Future<void> processFutureVoid(Future<dynamic> future) {
   });
 }
 
+Stream<T> processStreamJson<T>(
+    T Function(Map<String, dynamic>) jsonConstructor, Stream<dynamic> stream) {
+  return stream.map((value) {
+    final list = value as List<dynamic>;
+    switch (list[0] as int) {
+      case messageErr:
+        {
+          throw VeilidAPIExceptionInternal("Internal API Error: ${list[1]}");
+        }
+      case messageOkJson:
+        {
+          if (list[1] == null) {
+            throw VeilidAPIExceptionInternal("Null MESSAGE_OK_JSON value");
+          }
+          var ret = jsonDecode(list[1] as String);
+          return jsonConstructor(ret);
+        }
+      case messageErrJson:
+        {
+          throw VeilidAPIException.fromJson(jsonDecode(list[1]));
+        }
+      default:
+        {
+          throw VeilidAPIExceptionInternal(
+              "Unexpected async return message type: ${list[0]}");
+        }
+    }
+  }).handleError((e) {
+    // Wrap all other errors in VeilidAPIExceptionInternal
+    throw VeilidAPIExceptionInternal(e.toString());
+  }, test: (e) {
+    // Pass errors that are already VeilidAPIException through without wrapping
+    return e is! VeilidAPIException;
+  });
+}
+
 // FFI implementation of high level Veilid API
 class VeilidFFI implements Veilid {
   // veilid_core shared library
   final DynamicLibrary _dylib;
 
   // Shared library functions
-  final _free_string_Dart _freeString;
-  final _startup_veilid_core_Dart _startupVeilidCore;
-  final _get_veilid_state_Dart _getVeilidState;
-  final _change_api_log_level_Dart _changeApiLogLevel;
-  final _shutdown_veilid_core_Dart _shutdownVeilidCore;
-  final _veilid_version_string_Dart _veilidVersionString;
-  final _veilid_version_Dart _veilidVersion;
+  final _FreeStringDart _freeString;
+  final _StartupVeilidCoreDart _startupVeilidCore;
+  final _GetVeilidStateDart _getVeilidState;
+  final _ChangeApiLogLevelDart _changeApiLogLevel;
+  final _ShutdownVeilidCoreDart _shutdownVeilidCore;
+  final _VeilidVersionStringDart _veilidVersionString;
+  final _VeilidVersionDart _veilidVersion;
 
   VeilidFFI(DynamicLibrary dylib)
       : _dylib = dylib,
-        _freeString = dylib
-            .lookupFunction<_free_string_C, _free_string_Dart>('free_string'),
-        _startupVeilidCore = dylib.lookupFunction<_startup_veilid_core_C,
-            _startup_veilid_core_Dart>('startup_veilid_core'),
+        _freeString =
+            dylib.lookupFunction<_FreeStringC, _FreeStringDart>('free_string'),
+        _startupVeilidCore =
+            dylib.lookupFunction<_StartupVeilidCoreC, _StartupVeilidCoreDart>(
+                'startup_veilid_core'),
         _getVeilidState =
-            dylib.lookupFunction<_get_veilid_state_C, _get_veilid_state_Dart>(
+            dylib.lookupFunction<_GetVeilidStateC, _GetVeilidStateDart>(
                 'get_veilid_state'),
-        _changeApiLogLevel = dylib.lookupFunction<_change_api_log_level_C,
-            _change_api_log_level_Dart>('change_api_log_level'),
-        _shutdownVeilidCore = dylib.lookupFunction<_shutdown_veilid_core_C,
-            _shutdown_veilid_core_Dart>('shutdown_veilid_core'),
-        _veilidVersionString = dylib.lookupFunction<_veilid_version_string_C,
-            _veilid_version_string_Dart>('veilid_version_string'),
+        _changeApiLogLevel =
+            dylib.lookupFunction<_ChangeApiLogLevelC, _ChangeApiLogLevelDart>(
+                'change_api_log_level'),
+        _shutdownVeilidCore =
+            dylib.lookupFunction<_ShutdownVeilidCoreC, _ShutdownVeilidCoreDart>(
+                'shutdown_veilid_core'),
+        _veilidVersionString = dylib.lookupFunction<_VeilidVersionStringC,
+            _VeilidVersionStringDart>('veilid_version_string'),
         _veilidVersion =
-            dylib.lookupFunction<_veilid_version_C, _veilid_version_Dart>(
+            dylib.lookupFunction<_VeilidVersionC, _VeilidVersionDart>(
                 'veilid_version') {
     // Get veilid_flutter initializer
     var initializeVeilidFlutter = _dylib.lookupFunction<
-        _initializeVeilidFlutter_C,
-        _initializeVeilidFlutter_Dart>('initialize_veilid_flutter');
+        _InitializeVeilidFlutterC,
+        _InitializeVeilidFlutterDart>('initialize_veilid_flutter');
     initializeVeilidFlutter(NativeApi.postCObject);
   }
 
   @override
   Stream<VeilidUpdate> startupVeilidCore(VeilidConfig config) {
-    var nativeConfig = jsonEncode(config.json, toEncodable: veilidApiToEncodable).toNativeUtf8();
+    var nativeConfig =
+        jsonEncode(config.json, toEncodable: veilidApiToEncodable)
+            .toNativeUtf8();
     final recvPort = ReceivePort("startup_veilid_core");
     final sendPort = recvPort.sendPort;
     _startupVeilidCore(sendPort.nativePort, nativeConfig);
     malloc.free(nativeConfig);
-xxx
     return processStreamJson(VeilidUpdate.fromJson, recvPort);
   }
 
@@ -245,7 +282,7 @@ xxx
   Future<VeilidState> getVeilidState() async {
     final recvPort = ReceivePort("get_veilid_state");
     final sendPort = recvPort.sendPort;
-    _shutdownVeilidCore(sendPort.nativePort);
+    _getVeilidState(sendPort.nativePort);
     return processFutureJson(VeilidState.fromJson, recvPort.single);
   }
 
