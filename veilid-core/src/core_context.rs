@@ -21,6 +21,7 @@ pub struct VeilidCoreContext {
     pub block_store: BlockStore,
     pub crypto: Crypto,
     pub attachment_manager: AttachmentManager,
+    pub update_callback: UpdateCallback,
 }
 
 impl VeilidCoreContext {
@@ -128,12 +129,13 @@ impl VeilidCoreContext {
 
         // Set up attachment manager
         trace!("VeilidCoreContext::new init attachment manager");
+        let update_callback_move = update_callback.clone();
         let attachment_manager =
             AttachmentManager::new(config.clone(), table_store.clone(), crypto.clone());
         if let Err(e) = attachment_manager
             .init(Arc::new(
                 move |_old_state: AttachmentState, new_state: AttachmentState| {
-                    update_callback(VeilidUpdate::Attachment { state: new_state })
+                    update_callback_move(VeilidUpdate::Attachment { state: new_state })
                 },
             ))
             .await
@@ -154,6 +156,7 @@ impl VeilidCoreContext {
             block_store,
             crypto,
             attachment_manager,
+            update_callback,
         })
     }
 
@@ -166,6 +169,9 @@ impl VeilidCoreContext {
         self.table_store.terminate().await;
         self.protected_store.terminate().await;
         self.config.terminate().await;
+
+        // send final shutdown update
+        (self.update_callback)(VeilidUpdate::Shutdown).await;
 
         trace!("VeilidCoreContext::shutdown complete");
         ApiLogger::terminate();

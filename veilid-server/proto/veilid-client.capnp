@@ -18,7 +18,7 @@ struct Attachment {
 struct VeilidUpdate {
     union {
         attachment      @0 :Attachment;
-        dummy           @1 :Void;
+        shutdown        @1 :Void;
     } 
 }
 

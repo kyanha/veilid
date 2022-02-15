@@ -33,7 +33,7 @@ fn convert_attachment_state(state: &veilid_core::AttachmentState) -> AttachmentS
 
 fn convert_update(
     update: &veilid_core::VeilidUpdate,
-    rpc_update: crate::veilid_client_capnp::veilid_update::Builder,
+    mut rpc_update: crate::veilid_client_capnp::veilid_update::Builder,
 ) {
     match update {
         veilid_core::VeilidUpdate::Log {
@@ -45,6 +45,9 @@ fn convert_update(
         veilid_core::VeilidUpdate::Attachment { state } => {
             let mut att = rpc_update.init_attachment();
             att.set_state(convert_attachment_state(state));
+        }
+        veilid_core::VeilidUpdate::Shutdown => {
+            rpc_update.set_shutdown(());
         }
     }
 }

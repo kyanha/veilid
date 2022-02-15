@@ -275,12 +275,4 @@ impl JsVeilidCore {
         })
     }
 
-    pub fn wait_for_state(&self, state: JsVeilidState) -> Promise {
-        let core = self.core.clone();
-        future_to_promise(async move {
-            let state = Self::translate_veilid_state(state)?;
-            core.wait_for_state(state).await;
-            Ok(JsValue::UNDEFINED)
-        })
-    }
 }

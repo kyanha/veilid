@@ -119,7 +119,14 @@ pub extern "C" fn startup_veilid_core(port: i64, config: FfiStr) {
             move |update: veilid_core::VeilidUpdate| -> veilid_core::SystemPinBoxFuture<()> {
                 let sink = sink.clone();
                 Box::pin(async move {
-                    sink.item_json(update);
+                    match update {
+                        veilid_core::VeilidUpdate::Shutdown => {
+                            sink.close();
+                        }
+                        _ => {
+                            sink.item_json(update);
+                        }
+                    }
                 })
             },
         );
@@ -156,6 +163,16 @@ pub extern "C" fn shutdown_veilid_core(port: i64) {
         let veilid_api = take_veilid_api().await?;
         veilid_api.shutdown().await;
         APIRESULT_VOID
+    });
+}
+
+#[no_mangle]
+pub extern "C" fn debug(port: i64, command: FfiStr) {
+    let command = command.into_opt_string().unwrap_or_default();
+    DartIsolateWrapper::new(port).spawn_result(async move {
+        let veilid_api = get_veilid_api().await?;
+        let out = veilid_api.debug(command).await?;
+        APIResult::Ok(out)
     });
 }
 

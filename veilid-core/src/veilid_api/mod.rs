@@ -168,6 +168,7 @@ pub enum VeilidUpdate {
     Attachment {
         state: AttachmentState,
     },
+    Shutdown,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1213,28 +1214,6 @@ impl VeilidAPI {
         trace!("VeilidCore::detach");
         let attachment_manager = self.attachment_manager()?;
         attachment_manager.request_detach().await;
-        Ok(())
-    }
-
-    // wait for a matching update
-    pub async fn wait_for_update(
-        &self,
-        update: VeilidUpdate,
-        timeout_ms: Option<u32>,
-    ) -> Result<(), VeilidAPIError> {
-        match update {
-            VeilidUpdate::Log {
-                log_level: _,
-                message: _,
-            } => {
-                // No point in waiting for a log
-            }
-            VeilidUpdate::Attachment { state } => {
-                self.attachment_manager()?
-                    .wait_for_state(state, timeout_ms)
-                    .await;
-            }
-        }
         Ok(())
     }
 
