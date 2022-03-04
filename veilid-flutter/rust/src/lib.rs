@@ -21,5 +21,5 @@ pub extern "system" fn Java_com_veilid_veilid_VeilidPlugin_init_1android(
     _class: JClass,
     ctx: JObject,
 ) {
-    crate::intf::utils::android::veilid_core_setup_android_no_log(env, ctx);
+    veilid_core::veilid_core_setup_android_no_log(env, ctx);
 }

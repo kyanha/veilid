@@ -3954,6 +3954,7 @@ dependencies = [
  "console_error_panic_hook",
  "ffi-support",
  "futures",
+ "jni",
  "js-sys",
  "lazy_static",
  "log",

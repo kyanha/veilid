@@ -11,13 +11,13 @@ import io.flutter.plugin.common.MethodChannel.Result
 /** VeilidPlugin */
 class VeilidPlugin: FlutterPlugin, MethodCallHandler {
   
-  class object {
-    {
-      System.loadLibrary("veilid_flutter");
+  companion object {
+    init {
+      System.loadLibrary("veilid_flutter")
     }
   }
 
-  native fun init_android(ctx: Context)
+  external fun init_android(ctx: Context)
 
   override fun onAttachedToEngine(@NonNull flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
     init_android(flutterPluginBinding.getApplicationContext())

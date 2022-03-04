@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:change_case/change_case.dart';
 
@@ -996,6 +995,7 @@ abstract class Veilid {
   Future<VeilidState> getVeilidState();
   Future<void> changeApiLogLevel(VeilidConfigLogLevel logLevel);
   Future<void> shutdownVeilidCore();
+  Future<String> debug(String command);
   String veilidVersionString();
   VeilidVersion veilidVersion();
 }

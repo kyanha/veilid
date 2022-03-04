@@ -14,10 +14,9 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(Corrosion)
 
-corrosion_import_crate(MANIFEST_PATH ${CMAKE_SOURCE_DIR}/../../rust/Cargo.toml)
+corrosion_import_crate(MANIFEST_PATH ${CMAKE_SOURCE_DIR}/../../rust/Cargo.toml CRATES veilid-flutter)
 
 # Flutter-specific
 
 set(CRATE_NAME "veilid-flutter")
 target_link_libraries(${PLUGIN_NAME} PUBLIC ${CRATE_NAME})
-# list(APPEND PLUGIN_BUNDLED_LIBRARIES $<TARGET_FILE:${CRATE_NAME}-shared>)

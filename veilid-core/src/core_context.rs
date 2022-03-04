@@ -62,7 +62,7 @@ impl VeilidCoreContext {
                 if utils::android::ANDROID_GLOBALS.lock().is_none() {
                     error!("Android globals are not set up");
                     config.terminate().await;
-                    return Err("Android globals are not set up".to_owned());
+                    return Err(VeilidAPIError::Internal { message: "Android globals are not set up".to_owned() });
                 }
             }
         }

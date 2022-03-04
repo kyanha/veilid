@@ -38,6 +38,9 @@ typedef _GetVeilidStateDart = void Function(int);
 // fn change_api_log_level(port: i64, log_level: FfiStr)
 typedef _ChangeApiLogLevelC = Void Function(Int64, Pointer<Utf8>);
 typedef _ChangeApiLogLevelDart = void Function(int, Pointer<Utf8>);
+// fn debug(port: i64, log_level: FfiStr)
+typedef _DebugC = Void Function(Int64, Pointer<Utf8>);
+typedef _DebugDart = void Function(int, Pointer<Utf8>);
 // fn shutdown_veilid_core(port: i64)
 typedef _ShutdownVeilidCoreC = Void Function(Int64);
 typedef _ShutdownVeilidCoreDart = void Function(int);
@@ -73,8 +76,7 @@ const int messageStreamClose = 8;
 Veilid getVeilid() => VeilidFFI(_dylib);
 
 // Parse handle async returns
-Future<T> processFuturePlain<T>(
-    T Function(Map<String, dynamic>)? jsonConstructor, Future<dynamic> future) {
+Future<T> processFuturePlain<T>(Future<dynamic> future) {
   return future.then((value) {
     final list = value as List<dynamic>;
     switch (list[0] as int) {
@@ -235,6 +237,7 @@ class VeilidFFI implements Veilid {
   final _GetVeilidStateDart _getVeilidState;
   final _ChangeApiLogLevelDart _changeApiLogLevel;
   final _ShutdownVeilidCoreDart _shutdownVeilidCore;
+  final _DebugDart _debug;
   final _VeilidVersionStringDart _veilidVersionString;
   final _VeilidVersionDart _veilidVersion;
 
@@ -254,6 +257,7 @@ class VeilidFFI implements Veilid {
         _shutdownVeilidCore =
             dylib.lookupFunction<_ShutdownVeilidCoreC, _ShutdownVeilidCoreDart>(
                 'shutdown_veilid_core'),
+        _debug = dylib.lookupFunction<_DebugC, _DebugDart>('debug'),
         _veilidVersionString = dylib.lookupFunction<_VeilidVersionStringC,
             _VeilidVersionStringDart>('veilid_version_string'),
         _veilidVersion =
@@ -302,6 +306,15 @@ class VeilidFFI implements Veilid {
     final sendPort = recvPort.sendPort;
     _shutdownVeilidCore(sendPort.nativePort);
     return processFutureVoid(recvPort.single);
+  }
+
+  @override
+  Future<String> debug(String command) async {
+    var nativeCommand = command.toNativeUtf8();
+    final recvPort = ReceivePort("debug");
+    final sendPort = recvPort.sendPort;
+    _debug(sendPort.nativePort, nativeCommand);
+    return processFuturePlain(recvPort.single);
   }
 
   @override

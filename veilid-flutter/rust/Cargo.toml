@@ -34,6 +34,10 @@ wasm-logger = "^0"
 wasm-bindgen-futures = "^0"
 js-sys = "^0"
 
+# Dependencies for Android builds only
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "^0"
+
 # Dev Dependencies for WASM builds only
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 wasm-bindgen-test = "^0"
