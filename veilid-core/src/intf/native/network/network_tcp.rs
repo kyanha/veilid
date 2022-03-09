@@ -217,17 +217,15 @@ impl Network {
     // TCP listener that multiplexes ports so multiple protocols can exist on a single port
     pub(super) async fn start_tcp_listener(
         &self,
-        address: String,
+        ip_addrs: Vec<IpAddr>,
+        port: u16,
         is_tls: bool,
         new_protocol_accept_handler: Box<NewProtocolAcceptHandler>,
     ) -> Result<Vec<SocketAddress>, String> {
         let mut out = Vec::<SocketAddress>::new();
-        // convert to socketaddrs
-        let mut sockaddrs = address
-            .to_socket_addrs()
-            .await
-            .map_err(|e| format!("Unable to resolve address: {}\n{}", address, e))?;
-        for addr in &mut sockaddrs {
+
+        for ip_addr in ip_addrs {
+            let addr = SocketAddr::new(ip_addr, port);
             let ldi_addrs = Self::translate_unspecified_address(&*(self.inner.lock()), &addr);
 
             // see if we've already bound to this already

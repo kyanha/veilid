@@ -149,15 +149,14 @@ impl Network {
 
     pub(super) async fn create_udp_inbound_sockets(
         &self,
-        address: String,
+        ip_addrs: Vec<IpAddr>,
+        port: u16,
     ) -> Result<Vec<DialInfo>, String> {
         let mut out = Vec::<DialInfo>::new();
-        // convert to socketaddrs
-        let mut sockaddrs = address
-            .to_socket_addrs()
-            .await
-            .map_err(|e| format!("Unable to resolve address: {}\n{}", address, e))?;
-        for addr in &mut sockaddrs {
+
+        for ip_addr in ip_addrs {
+            let addr = SocketAddr::new(ip_addr, port);
+
             // see if we've already bound to this already
             // if not, spawn a listener
             if !self

@@ -98,45 +98,69 @@ impl Network {
         Ok(tcp_port)
     }
 
-    async fn allocate_udp_port(&self, listen_address: String) -> Result<u16, String> {
+    async fn allocate_udp_port(
+        &self,
+        listen_address: String,
+    ) -> Result<(u16, Vec<IpAddr>), String> {
         if listen_address.is_empty() {
             // If listen address is empty, find us a port iteratively
-            self.find_available_udp_port()
-        } else if let Some(sa) = listen_address
-            .to_socket_addrs()
-            .await
-            .map_err(|e| format!("Unable to resolve address: {}\n{}", listen_address, e))?
-            .next()
-        {
-            // If the address is specified, only use the specified port and fail otherwise
-            if self.bind_first_udp_port(sa.port()) {
-                Ok(sa.port())
-            } else {
-                Err("Could not find free udp port to listen on".to_owned())
-            }
+            let port = self.find_available_udp_port()?;
+            let ip_addrs = vec![
+                IpAddr::V4(Ipv4Addr::UNSPECIFIED),
+                IpAddr::V6(Ipv6Addr::UNSPECIFIED),
+            ];
+            Ok((port, ip_addrs))
         } else {
-            Err(format!("No valid listen address: {}", listen_address))
+            // If the address is specified, only use the specified port and fail otherwise
+            let sockaddrs: Vec<SocketAddr> = listen_address
+                .to_socket_addrs()
+                .await
+                .map_err(|e| format!("Unable to resolve address: {}\n{}", listen_address, e))?
+                .collect();
+
+            if sockaddrs.is_empty() {
+                Err(format!("No valid listen address: {}", listen_address))
+            } else {
+                let port = sockaddrs[0].port();
+                if self.bind_first_udp_port(port) {
+                    Ok((port, sockaddrs.iter().map(|s| s.ip()).collect()))
+                } else {
+                    Err("Could not find free udp port to listen on".to_owned())
+                }
+            }
         }
     }
 
-    async fn allocate_tcp_port(&self, listen_address: String) -> Result<u16, String> {
+    async fn allocate_tcp_port(
+        &self,
+        listen_address: String,
+    ) -> Result<(u16, Vec<IpAddr>), String> {
         if listen_address.is_empty() {
             // If listen address is empty, find us a port iteratively
-            self.find_available_tcp_port()
-        } else if let Some(sa) = listen_address
-            .to_socket_addrs()
-            .await
-            .map_err(|e| format!("Unable to resolve address: {}\n{}", listen_address, e))?
-            .next()
-        {
-            // If the address is specified, only use the specified port and fail otherwise
-            if self.bind_first_tcp_port(sa.port()) {
-                Ok(sa.port())
-            } else {
-                Err("Could not find free tcp port to listen on".to_owned())
-            }
+            let port = self.find_available_tcp_port()?;
+            let ip_addrs = vec![
+                IpAddr::V4(Ipv4Addr::UNSPECIFIED),
+                IpAddr::V6(Ipv6Addr::UNSPECIFIED),
+            ];
+            Ok((port, ip_addrs))
         } else {
-            Err(format!("No valid listen address: {}", listen_address))
+            // If the address is specified, only use the specified port and fail otherwise
+            let sockaddrs: Vec<SocketAddr> = listen_address
+                .to_socket_addrs()
+                .await
+                .map_err(|e| format!("Unable to resolve address: {}\n{}", listen_address, e))?
+                .collect();
+
+            if sockaddrs.is_empty() {
+                Err(format!("No valid listen address: {}", listen_address))
+            } else {
+                let port = sockaddrs[0].port();
+                if self.bind_first_tcp_port(port) {
+                    Ok((port, sockaddrs.iter().map(|s| s.ip()).collect()))
+                } else {
+                    Err("Could not find free tcp port to listen on".to_owned())
+                }
+            }
         }
     }
 
@@ -155,7 +179,7 @@ impl Network {
         // Pick out UDP port we're going to use everywhere
         // Keep sockets around until the end of this function
         // to keep anyone else from binding in front of us
-        let udp_port = self.allocate_udp_port(listen_address.clone()).await?;
+        let (udp_port, ip_addrs) = self.allocate_udp_port(listen_address.clone()).await?;
 
         // Save the bound udp port for use later on
         self.inner.lock().udp_port = udp_port;
@@ -166,10 +190,11 @@ impl Network {
         self.create_udp_outbound_sockets().await?;
 
         // Now create udp inbound sockets for whatever interfaces we're listening on
-        info!("UDP: starting listener at {:?}", listen_address);
-        let dial_infos = self
-            .create_udp_inbound_sockets(listen_address.clone())
-            .await?;
+        info!(
+            "UDP: starting listeners on port {} at {:?}",
+            udp_port, ip_addrs
+        );
+        let dial_infos = self.create_udp_inbound_sockets(ip_addrs, udp_port).await?;
         let mut static_public = false;
         for di in &dial_infos {
             // Register local dial info only here if we specify a public address
@@ -226,15 +251,20 @@ impl Network {
         // Pick out TCP port we're going to use everywhere
         // Keep sockets around until the end of this function
         // to keep anyone else from binding in front of us
-        let ws_port = self.allocate_tcp_port(listen_address.clone()).await?;
+        let (ws_port, ip_addrs) = self.allocate_tcp_port(listen_address.clone()).await?;
 
         // Save the bound ws port for use later on
         self.inner.lock().ws_port = ws_port;
 
-        trace!("WS: starting listener at {:?}", listen_address);
+        trace!(
+            "WS: starting listener on port {} at {:?}",
+            ws_port,
+            ip_addrs
+        );
         let socket_addresses = self
             .start_tcp_listener(
-                listen_address.clone(),
+                ip_addrs,
+                ws_port,
                 false,
                 Box::new(|c, t, a| Box::new(WebsocketProtocolHandler::new(c, t, a))),
             )
@@ -314,15 +344,20 @@ impl Network {
         // Pick out TCP port we're going to use everywhere
         // Keep sockets around until the end of this function
         // to keep anyone else from binding in front of us
-        let wss_port = self.allocate_tcp_port(listen_address.clone()).await?;
+        let (wss_port, ip_addrs) = self.allocate_tcp_port(listen_address.clone()).await?;
 
         // Save the bound wss port for use later on
         self.inner.lock().wss_port = wss_port;
 
-        trace!("WSS: starting listener at {}", listen_address);
+        trace!(
+            "WSS: starting listener on port {} at {:?}",
+            wss_port,
+            ip_addrs
+        );
         let _socket_addresses = self
             .start_tcp_listener(
-                listen_address.clone(),
+                ip_addrs,
+                wss_port,
                 true,
                 Box::new(|c, t, a| Box::new(WebsocketProtocolHandler::new(c, t, a))),
             )
@@ -380,15 +415,20 @@ impl Network {
         // Pick out TCP port we're going to use everywhere
         // Keep sockets around until the end of this function
         // to keep anyone else from binding in front of us
-        let tcp_port = self.allocate_tcp_port(listen_address.clone()).await?;
+        let (tcp_port, ip_addrs) = self.allocate_tcp_port(listen_address.clone()).await?;
 
         // Save the bound tcp port for use later on
         self.inner.lock().tcp_port = tcp_port;
 
-        trace!("TCP: starting listener at {}", &listen_address);
+        trace!(
+            "TCP: starting listener on port {} at {:?}",
+            tcp_port,
+            ip_addrs
+        );
         let socket_addresses = self
             .start_tcp_listener(
-                listen_address.clone(),
+                ip_addrs,
+                tcp_port,
                 false,
                 Box::new(|_, _, a| Box::new(RawTcpProtocolHandler::new(a))),
             )
