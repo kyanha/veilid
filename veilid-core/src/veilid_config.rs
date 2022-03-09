@@ -235,19 +235,19 @@ impl VeilidConfig {
         }
     }
 
-    pub async fn init_from_json(&mut self, config: String) -> Result<(), String> {
+    pub fn setup_from_json(&mut self, config: String) -> Result<(), String> {
         {
             let mut inner = self.inner.write();
             *inner = serde_json::from_str(&config).map_err(map_to_string)?;
         }
 
         // Validate settings
-        self.validate().await?;
+        self.validate()?;
 
         Ok(())
     }
 
-    pub async fn init(&mut self, cb: ConfigCallback) -> Result<(), String> {
+    pub fn setup(&mut self, cb: ConfigCallback) -> Result<(), String> {
         macro_rules! get_config {
             ($key:expr) => {
                 let keyname = &stringify!($key)[6..];
@@ -258,7 +258,6 @@ impl VeilidConfig {
                 })?;
             };
         }
-
         {
             let mut inner = self.inner.write();
             get_config!(inner.program_name);
@@ -345,20 +344,78 @@ impl VeilidConfig {
             get_config!(inner.network.leases.max_client_relay_leases);
         }
         // Validate settings
-        self.validate().await?;
+        self.validate()?;
 
         Ok(())
-    }
-
-    pub async fn terminate(&self) {
-        //
     }
 
     pub fn get(&self) -> RwLockReadGuard<VeilidConfigInner> {
         self.inner.read()
     }
 
-    async fn validate(&self) -> Result<(), String> {
+    pub fn get_mut(&self) -> RwLockWriteGuard<VeilidConfigInner> {
+        self.inner.write()
+    }
+
+    pub fn get_key_json(&self, key: &str) -> Result<String, String> {
+        let c = self.get();
+        // Split key into path parts
+        let keypath: Vec<&str> = key.split('.').collect();
+
+        // Generate json from whole config
+        let jc = serde_json::to_string(&*c).map_err(map_to_string)?;
+        let jvc = json::parse(&jc).map_err(map_to_string)?;
+
+        // Find requested subkey
+        let mut out = &jvc;
+        for k in keypath {
+            if !jvc.has_key(k) {
+                return Err(format!("invalid subkey '{}' in key '{}'", k, key));
+            }
+            out = &jvc[k];
+        }
+        Ok(out.to_string())
+    }
+    pub fn set_key_json(&self, key: &str, value: &str) -> Result<(), String> {
+        let mut c = self.get_mut();
+
+        // Split key into path parts
+        let keypath: Vec<&str> = key.split('.').collect();
+
+        // Convert value into jsonvalue
+        let newval = json::parse(value).map_err(map_to_string)?;
+
+        // Generate json from whole config
+        let jc = serde_json::to_string(&*c).map_err(map_to_string)?;
+        let mut jvc = json::parse(&jc).map_err(map_to_string)?;
+
+        // Find requested subkey
+        let newconfigstring = if let Some((objkeyname, objkeypath)) = keypath.split_last() {
+            // Replace subkey
+            let mut out = &mut jvc;
+            for k in objkeypath {
+                if !jvc.has_key(*k) {
+                    return Err(format!("invalid subkey '{}' in key '{}'", *k, key));
+                }
+                out = &mut jvc[*k];
+            }
+            if !out.has_key(objkeyname) {
+                return Err(format!("invalid subkey '{}' in key '{}'", objkeyname, key));
+            }
+            out[*objkeyname] = newval;
+            jvc.to_string()
+        } else {
+            newval.to_string()
+        };
+        // Generate and validate new config
+        let mut newconfig = VeilidConfig::new();
+        newconfig.setup_from_json(newconfigstring)?;
+        //  Replace whole config
+        *c = newconfig.get().clone();
+        Ok(())
+    }
+
+    fn validate(&self) -> Result<(), String> {
         let inner = self.inner.read();
 
         if inner.program_name.is_empty() {

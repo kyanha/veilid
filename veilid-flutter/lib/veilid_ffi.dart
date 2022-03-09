@@ -191,39 +191,47 @@ Future<void> processFutureVoid(Future<dynamic> future) {
 }
 
 Stream<T> processStreamJson<T>(
-    T Function(Map<String, dynamic>) jsonConstructor, Stream<dynamic> stream) {
-  return stream.map((value) {
-    final list = value as List<dynamic>;
-    switch (list[0] as int) {
-      case messageErr:
-        {
-          throw VeilidAPIExceptionInternal("Internal API Error: ${list[1]}");
-        }
-      case messageOkJson:
-        {
-          if (list[1] == null) {
-            throw VeilidAPIExceptionInternal("Null MESSAGE_OK_JSON value");
+    T Function(Map<String, dynamic>) jsonConstructor, ReceivePort port) async* {
+  try {
+    await for (var value in port) {
+      final list = value as List<dynamic>;
+      switch (list[0] as int) {
+        case messageStreamItemJson:
+          {
+            if (list[1] == null) {
+              throw VeilidAPIExceptionInternal(
+                  "Null MESSAGE_STREAM_ITEM_JSON value");
+            }
+            var ret = jsonDecode(list[1] as String);
+            yield jsonConstructor(ret);
+            break;
           }
-          var ret = jsonDecode(list[1] as String);
-          return jsonConstructor(ret);
-        }
-      case messageErrJson:
-        {
-          throw VeilidAPIException.fromJson(jsonDecode(list[1]));
-        }
-      default:
-        {
-          throw VeilidAPIExceptionInternal(
-              "Unexpected async return message type: ${list[0]}");
-        }
+        case messageStreamAbort:
+          {
+            port.close();
+            throw VeilidAPIExceptionInternal("Internal API Error: ${list[1]}");
+          }
+        case messageStreamAbortJson:
+          {
+            port.close();
+            throw VeilidAPIException.fromJson(jsonDecode(list[1]));
+          }
+        case messageStreamClose:
+          {
+            port.close();
+            break;
+          }
+        default:
+          {
+            throw VeilidAPIExceptionInternal(
+                "Unexpected async return message type: ${list[0]}");
+          }
+      }
     }
-  }).handleError((e) {
+  } catch (e) {
     // Wrap all other errors in VeilidAPIExceptionInternal
     throw VeilidAPIExceptionInternal(e.toString());
-  }, test: (e) {
-    // Pass errors that are already VeilidAPIException through without wrapping
-    return e is! VeilidAPIException;
-  });
+  }
 }
 
 // FFI implementation of high level Veilid API
@@ -287,7 +295,7 @@ class VeilidFFI implements Veilid {
     final recvPort = ReceivePort("get_veilid_state");
     final sendPort = recvPort.sendPort;
     _getVeilidState(sendPort.nativePort);
-    return processFutureJson(VeilidState.fromJson, recvPort.single);
+    return processFutureJson(VeilidState.fromJson, recvPort.first);
   }
 
   @override
@@ -297,7 +305,7 @@ class VeilidFFI implements Veilid {
     final sendPort = recvPort.sendPort;
     _changeApiLogLevel(sendPort.nativePort, nativeLogLevel);
     malloc.free(nativeLogLevel);
-    return processFutureVoid(recvPort.single);
+    return processFutureVoid(recvPort.first);
   }
 
   @override
@@ -305,7 +313,7 @@ class VeilidFFI implements Veilid {
     final recvPort = ReceivePort("shutdown_veilid_core");
     final sendPort = recvPort.sendPort;
     _shutdownVeilidCore(sendPort.nativePort);
-    return processFutureVoid(recvPort.single);
+    return processFutureVoid(recvPort.first);
   }
 
   @override
@@ -314,7 +322,7 @@ class VeilidFFI implements Veilid {
     final recvPort = ReceivePort("debug");
     final sendPort = recvPort.sendPort;
     _debug(sendPort.nativePort, nativeCommand);
-    return processFuturePlain(recvPort.single);
+    return processFuturePlain(recvPort.first);
   }
 
   @override

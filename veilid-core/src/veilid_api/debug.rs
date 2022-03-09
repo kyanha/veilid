@@ -63,11 +63,12 @@ fn get_debug_argument_at<T, G: FnOnce(&str) -> Option<T>>(
 }
 
 impl VeilidAPI {
-    async fn debug_buckets(&self, debug_args: &[String]) -> Result<String, VeilidAPIError> {
+    async fn debug_buckets(&self, args: String) -> Result<String, VeilidAPIError> {
+        let args: Vec<String> = args.split_whitespace().map(|s| s.to_owned()).collect();
         let mut min_state = BucketEntryState::Unreliable;
-        if debug_args.len() == 1 {
+        if args.len() == 1 {
             min_state = get_debug_argument(
-                &debug_args[0],
+                &args[0],
                 "debug_buckets",
                 "min_state",
                 get_bucket_entry_state,
@@ -79,26 +80,28 @@ impl VeilidAPI {
         Ok(routing_table.debug_info_buckets(min_state))
     }
 
-    async fn debug_dialinfo(&self, _debug_args: &[String]) -> Result<String, VeilidAPIError> {
+    async fn debug_dialinfo(&self, _args: String) -> Result<String, VeilidAPIError> {
         // Dump routing table dialinfo
         let rpc = self.rpc_processor()?;
         let routing_table = rpc.routing_table();
         Ok(routing_table.debug_info_dialinfo())
     }
 
-    async fn debug_entries(&self, debug_args: &[String]) -> Result<String, VeilidAPIError> {
+    async fn debug_entries(&self, args: String) -> Result<String, VeilidAPIError> {
+        let args: Vec<String> = args.split_whitespace().map(|s| s.to_owned()).collect();
+
         let mut min_state = BucketEntryState::Unreliable;
         let mut limit = 20;
-        for arg in debug_args {
-            if let Some(ms) = get_bucket_entry_state(arg) {
+        for arg in args {
+            if let Some(ms) = get_bucket_entry_state(&arg) {
                 min_state = ms;
-            } else if let Some(lim) = get_number(arg) {
+            } else if let Some(lim) = get_number(&arg) {
                 limit = lim;
             } else {
                 return Err(VeilidAPIError::InvalidArgument {
                     context: "debug_entries".to_owned(),
                     argument: "unknown".to_owned(),
-                    value: arg.clone(),
+                    value: arg,
                 });
             }
         }
@@ -109,8 +112,10 @@ impl VeilidAPI {
         Ok(routing_table.debug_info_entries(limit, min_state))
     }
 
-    async fn debug_entry(&self, debug_args: &[String]) -> Result<String, VeilidAPIError> {
-        let node_id = get_debug_argument_at(debug_args, 0, "debug_entry", "node_id", get_dht_key)?;
+    async fn debug_entry(&self, args: String) -> Result<String, VeilidAPIError> {
+        let args: Vec<String> = args.split_whitespace().map(|s| s.to_owned()).collect();
+
+        let node_id = get_debug_argument_at(&args, 0, "debug_entry", "node_id", get_dht_key)?;
 
         // Dump routing table entry
         let rpc = self.rpc_processor()?;
@@ -118,41 +123,149 @@ impl VeilidAPI {
         Ok(routing_table.debug_info_entry(node_id))
     }
 
-    async fn debug_nodeinfo(&self, _debug_args: &[String]) -> Result<String, VeilidAPIError> {
+    async fn debug_nodeinfo(&self, _args: String) -> Result<String, VeilidAPIError> {
         // Dump routing table entry
         let rpc = self.rpc_processor()?;
         let routing_table = rpc.routing_table();
         Ok(routing_table.debug_info_nodeinfo())
     }
 
-    pub async fn debug(&self, what: String) -> Result<String, VeilidAPIError> {
-        trace!("VeilidCore::debug");
-        let debug_args: Vec<String> = what
-            .split_ascii_whitespace()
-            .map(|s| s.to_owned())
-            .collect();
-        if debug_args.is_empty() {
-            return Ok(r#">>> Debug commands:
-    buckets [dead|reliable]
-    dialinfo
-    entries [dead|reliable] [limit]
-    entry [node_id]
-    nodeinfo
-"#
-            .to_owned());
+    async fn debug_config(&self, args: String) -> Result<String, VeilidAPIError> {
+        let config = self.config()?;
+        let args = args.trim_start();
+        if args.is_empty() {
+            return config
+                .get_key_json("")
+                .map_err(|e| VeilidAPIError::Internal { message: e });
         }
+        let (arg, rest) = args.split_once(' ').unwrap_or((args, ""));
+        let rest = rest.trim_start().to_owned();
+
+        // Must be detached
+        if matches!(
+            self.get_state().await?.attachment,
+            AttachmentState::Detached | AttachmentState::Detaching
+        ) {
+            return Err(VeilidAPIError::Internal {
+                message: "Must be detached to change config".to_owned(),
+            });
+        }
+
+        // One argument is 'config get'
+        if rest.is_empty() {
+            return config
+                .get_key_json(arg)
+                .map_err(|e| VeilidAPIError::Internal { message: e });
+        }
+        config
+            .set_key_json(arg, &rest)
+            .map_err(|e| VeilidAPIError::Internal { message: e })?;
+        Ok("Config value set".to_owned())
+    }
+
+    async fn debug_purge(&self, args: String) -> Result<String, VeilidAPIError> {
+        let args: Vec<String> = args.split_whitespace().map(|s| s.to_owned()).collect();
+        if !args.is_empty() {
+            if args[0] == "buckets" {
+                // Must be detached
+                if matches!(
+                    self.get_state().await?.attachment,
+                    AttachmentState::Detached | AttachmentState::Detaching
+                ) {
+                    return Err(VeilidAPIError::Internal {
+                        message: "Must be detached to purge".to_owned(),
+                    });
+                }
+                self.network_manager()?.routing_table().purge();
+                Ok("Buckets purged".to_owned())
+            } else {
+                Err(VeilidAPIError::InvalidArgument {
+                    context: "debug_purge".to_owned(),
+                    argument: "parameter".to_owned(),
+                    value: args[0].clone(),
+                })
+            }
+        } else {
+            Err(VeilidAPIError::MissingArgument {
+                context: "debug_purge".to_owned(),
+                argument: "parameter".to_owned(),
+            })
+        }
+    }
+
+    async fn debug_attach(&self, _args: String) -> Result<String, VeilidAPIError> {
+        if !matches!(
+            self.get_state().await?.attachment,
+            AttachmentState::Detached
+        ) {
+            return Err(VeilidAPIError::Internal {
+                message: "Not detached".to_owned(),
+            });
+        };
+
+        self.attach().await?;
+
+        Ok("Attached".to_owned())
+    }
+
+    async fn debug_detach(&self, _args: String) -> Result<String, VeilidAPIError> {
+        if matches!(
+            self.get_state().await?.attachment,
+            AttachmentState::Detaching
+        ) {
+            return Err(VeilidAPIError::Internal {
+                message: "Not attached".to_owned(),
+            });
+        };
+
+        self.detach().await?;
+
+        Ok("Detached".to_owned())
+    }
+
+    pub async fn debug_help(&self, _args: String) -> Result<String, VeilidAPIError> {
+        Ok(r#">>> Debug commands:
+        buckets [dead|reliable]
+        dialinfo
+        entries [dead|reliable] [limit]
+        entry [node_id]
+        nodeinfo
+        config [key [new value]]
+        purge buckets
+        attach
+        detach
+    "#
+        .to_owned())
+    }
+
+    pub async fn debug(&self, args: String) -> Result<String, VeilidAPIError> {
+        let args = args.trim_start();
+        if args.is_empty() {
+            // No arguments runs help command
+            return self.debug_help("".to_owned()).await;
+        }
+        let (arg, rest) = args.split_once(' ').unwrap_or((args, ""));
+        let rest = rest.trim_start().to_owned();
+
         let mut out = String::new();
-        let arg = &debug_args[0];
         if arg == "buckets" {
-            out += self.debug_buckets(&debug_args[1..]).await?.as_str();
+            out += self.debug_buckets(rest).await?.as_str();
         } else if arg == "dialinfo" {
-            out += self.debug_dialinfo(&debug_args[1..]).await?.as_str();
+            out += self.debug_dialinfo(rest).await?.as_str();
         } else if arg == "entries" {
-            out += self.debug_entries(&debug_args[1..]).await?.as_str();
+            out += self.debug_entries(rest).await?.as_str();
         } else if arg == "entry" {
-            out += self.debug_entry(&debug_args[1..]).await?.as_str();
+            out += self.debug_entry(rest).await?.as_str();
         } else if arg == "nodeinfo" {
-            out += self.debug_nodeinfo(&debug_args[1..]).await?.as_str();
+            out += self.debug_nodeinfo(rest).await?.as_str();
+        } else if arg == "purge" {
+            out += self.debug_purge(rest).await?.as_str();
+        } else if arg == "attach" {
+            out += self.debug_attach(rest).await?.as_str();
+        } else if arg == "detach" {
+            out += self.debug_detach(rest).await?.as_str();
+        } else if arg == "config" {
+            out += self.debug_config(rest).await?.as_str();
         } else {
             out += ">>> Unknown command\n";
         }

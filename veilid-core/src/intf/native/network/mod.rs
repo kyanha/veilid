@@ -52,10 +52,12 @@ struct NetworkInner {
     wss_port: u16,
     interfaces: NetworkInterfaces,
     // udp
+    bound_first_udp: BTreeMap<u16, (socket2::Socket, socket2::Socket)>,
     inbound_udp_protocol_handlers: BTreeMap<SocketAddr, RawUdpProtocolHandler>,
     outbound_udpv4_protocol_handler: Option<RawUdpProtocolHandler>,
     outbound_udpv6_protocol_handler: Option<RawUdpProtocolHandler>,
     //tcp
+    bound_first_tcp: BTreeMap<u16, (socket2::Socket, socket2::Socket)>,
     tls_acceptor: Option<TlsAcceptor>,
     listener_states: BTreeMap<SocketAddr, Arc<RwLock<ListenerState>>>,
 }
@@ -91,9 +93,11 @@ impl Network {
             ws_port: 0u16,
             wss_port: 0u16,
             interfaces: NetworkInterfaces::new(),
+            bound_first_udp: BTreeMap::new(),
             inbound_udp_protocol_handlers: BTreeMap::new(),
             outbound_udpv4_protocol_handler: None,
             outbound_udpv6_protocol_handler: None,
+            bound_first_tcp: BTreeMap::new(),
             tls_acceptor: None,
             listener_states: BTreeMap::new(),
         }
@@ -420,6 +424,10 @@ impl Network {
         if protocol_config.tcp_listen {
             self.start_tcp_listeners().await?;
         }
+        // release caches of available listener ports
+        // this releases the 'first bound' ports we use to guarantee
+        // that we have ports available to us
+        self.free_bound_first_ports();
 
         info!("network started");
         self.inner.lock().network_started = true;

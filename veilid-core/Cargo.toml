@@ -21,7 +21,6 @@ log = "^0"
 cfg-if = "^1"
 anyhow = "^1"
 thiserror = "^1"
-
 hex = "^0"
 generic-array = "^0"
 secrecy = "^0"
@@ -33,6 +32,7 @@ parking_lot = "^0"
 lazy_static = "^1"
 directories = "^4"
 once_cell = "^1"
+json = "^0"
 
 ed25519-dalek = { version = "^1", default_features = false, features = ["alloc", "u64_backend"] }
 x25519-dalek = { package = "x25519-dalek-ng", version = "^1", default_features = false, features = ["u64_backend"] }

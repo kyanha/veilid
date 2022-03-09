@@ -14,14 +14,175 @@ cfg_if! {
     }
 }
 
+struct ServicesContext {
+    pub config: VeilidConfig,
+    pub update_callback: UpdateCallback,
+
+    pub protected_store: Option<ProtectedStore>,
+    pub table_store: Option<TableStore>,
+    pub block_store: Option<BlockStore>,
+    pub crypto: Option<Crypto>,
+    pub attachment_manager: Option<AttachmentManager>,
+}
+
+impl ServicesContext {
+    pub fn new_empty(config: VeilidConfig, update_callback: UpdateCallback) -> Self {
+        Self {
+            config,
+            update_callback,
+            protected_store: None,
+            table_store: None,
+            block_store: None,
+            crypto: None,
+            attachment_manager: None,
+        }
+    }
+
+    pub fn new_full(
+        config: VeilidConfig,
+        update_callback: UpdateCallback,
+        protected_store: ProtectedStore,
+        table_store: TableStore,
+        block_store: BlockStore,
+        crypto: Crypto,
+        attachment_manager: AttachmentManager,
+    ) -> Self {
+        Self {
+            config,
+            update_callback,
+            protected_store: Some(protected_store),
+            table_store: Some(table_store),
+            block_store: Some(block_store),
+            crypto: Some(crypto),
+            attachment_manager: Some(attachment_manager),
+        }
+    }
+
+    pub async fn startup(&mut self) -> Result<(), VeilidAPIError> {
+        let api_log_level: VeilidConfigLogLevel = self.config.get().api_log_level;
+        if api_log_level != VeilidConfigLogLevel::Off {
+            ApiLogger::init(
+                api_log_level.to_level_filter(),
+                self.update_callback.clone(),
+            )
+            .await;
+            for ig in crate::DEFAULT_LOG_IGNORE_LIST {
+                ApiLogger::add_filter_ignore_str(ig);
+            }
+
+            info!("Veilid API logging initialized");
+        }
+
+        trace!("startup starting");
+
+        // Set up protected store
+        trace!("init protected store");
+        let protected_store = ProtectedStore::new(self.config.clone());
+        if let Err(e) = protected_store.init().await {
+            self.shutdown().await;
+            return Err(VeilidAPIError::Internal { message: e });
+        }
+        self.protected_store = Some(protected_store.clone());
+
+        // Init node id from config now that protected store is set up
+        if let Err(e) = self.config.init_node_id(protected_store.clone()).await {
+            self.shutdown().await;
+            return Err(VeilidAPIError::Internal { message: e });
+        }
+
+        // Set up tablestore
+        trace!("init table store");
+        let table_store = TableStore::new(self.config.clone());
+        if let Err(e) = table_store.init().await {
+            self.shutdown().await;
+            return Err(VeilidAPIError::Internal { message: e });
+        }
+        self.table_store = Some(table_store.clone());
+
+        // Set up crypto
+        trace!("init crypto");
+        let crypto = Crypto::new(self.config.clone(), table_store.clone());
+        if let Err(e) = crypto.init().await {
+            self.shutdown().await;
+            return Err(VeilidAPIError::Internal { message: e });
+        }
+        self.crypto = Some(crypto.clone());
+
+        // Set up block store
+        trace!("init block store");
+        let block_store = BlockStore::new(self.config.clone());
+        if let Err(e) = block_store.init().await {
+            self.shutdown().await;
+            return Err(VeilidAPIError::Internal { message: e });
+        }
+        self.block_store = Some(block_store.clone());
+
+        // Set up attachment manager
+        trace!("init attachment manager");
+        let update_callback_move = self.update_callback.clone();
+        let attachment_manager = AttachmentManager::new(self.config.clone(), table_store, crypto);
+        if let Err(e) = attachment_manager
+            .init(Arc::new(
+                move |_old_state: AttachmentState, new_state: AttachmentState| {
+                    update_callback_move(VeilidUpdate::Attachment { state: new_state })
+                },
+            ))
+            .await
+        {
+            self.shutdown().await;
+            return Err(VeilidAPIError::Internal { message: e });
+        }
+        self.attachment_manager = Some(attachment_manager);
+
+        trace!("startup complete");
+        Ok(())
+    }
+
+    pub async fn shutdown(&mut self) {
+        trace!("shutdown starting");
+
+        if let Some(attachment_manager) = &mut self.attachment_manager {
+            trace!("terminate attachment manager");
+            attachment_manager.terminate().await;
+        }
+        if let Some(block_store) = &mut self.block_store {
+            trace!("terminate block store");
+            block_store.terminate().await;
+        }
+        if let Some(crypto) = &mut self.crypto {
+            trace!("terminate crypto");
+            crypto.terminate().await;
+        }
+        if let Some(table_store) = &mut self.table_store {
+            trace!("terminate table store");
+            table_store.terminate().await;
+        }
+        if let Some(protected_store) = &mut self.protected_store {
+            trace!("terminate protected store");
+            protected_store.terminate().await;
+        }
+
+        trace!("shutdown complete");
+
+        // api logger terminate is idempotent
+        ApiLogger::terminate().await;
+
+        // send final shutdown update
+        (self.update_callback)(VeilidUpdate::Shutdown).await;
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////////
+///
 pub struct VeilidCoreContext {
     pub config: VeilidConfig,
+    pub update_callback: UpdateCallback,
+    // Services
     pub protected_store: ProtectedStore,
     pub table_store: TableStore,
     pub block_store: BlockStore,
     pub crypto: Crypto,
     pub attachment_manager: AttachmentManager,
-    pub update_callback: UpdateCallback,
 }
 
 impl VeilidCoreContext {
@@ -30,9 +191,9 @@ impl VeilidCoreContext {
         config_callback: ConfigCallback,
     ) -> Result<VeilidCoreContext, VeilidAPIError> {
         // Set up config from callback
-        trace!("VeilidCoreContext::new_with_config_callback init config");
+        trace!("setup config with callback");
         let mut config = VeilidConfig::new();
-        if let Err(e) = config.init(config_callback).await {
+        if let Err(e) = config.setup(config_callback) {
             return Err(VeilidAPIError::Internal { message: e });
         }
 
@@ -44,12 +205,11 @@ impl VeilidCoreContext {
         config_json: String,
     ) -> Result<VeilidCoreContext, VeilidAPIError> {
         // Set up config from callback
-        trace!("VeilidCoreContext::new_with_config_json init config");
+        trace!("setup config with json");
         let mut config = VeilidConfig::new();
-        if let Err(e) = config.init_from_json(config_json).await {
+        if let Err(e) = config.setup_from_json(config_json) {
             return Err(VeilidAPIError::Internal { message: e });
         }
-
         Self::new_common(update_callback, config).await
     }
 
@@ -67,114 +227,31 @@ impl VeilidCoreContext {
             }
         }
 
-        // Start up api logging
-        let api_log_level: VeilidConfigLogLevel = config.get().api_log_level;
-        if api_log_level != VeilidConfigLogLevel::Off {
-            ApiLogger::init(api_log_level.to_level_filter(), update_callback.clone());
-            for ig in crate::DEFAULT_LOG_IGNORE_LIST {
-                ApiLogger::add_filter_ignore_str(ig);
-            }
-            info!("Veilid API logging initialized");
-        }
-
-        // Set up protected store
-        trace!("VeilidCoreContext::new init protected store");
-        let protected_store = ProtectedStore::new(config.clone());
-        if let Err(e) = protected_store.init().await {
-            config.terminate().await;
-            ApiLogger::terminate();
-            return Err(VeilidAPIError::Internal { message: e });
-        }
-
-        // Init node id from config now that protected store is set up
-        if let Err(e) = config.init_node_id(protected_store.clone()).await {
-            protected_store.terminate().await;
-            config.terminate().await;
-            ApiLogger::terminate();
-            return Err(VeilidAPIError::Internal { message: e });
-        }
-
-        // Set up tablestore
-        trace!("VeilidCoreContext::new init table store");
-        let table_store = TableStore::new(config.clone());
-        if let Err(e) = table_store.init().await {
-            protected_store.terminate().await;
-            config.terminate().await;
-            ApiLogger::terminate();
-            return Err(VeilidAPIError::Internal { message: e });
-        }
-
-        // Set up crypto
-        trace!("VeilidCoreContext::new init crypto");
-        let crypto = Crypto::new(config.clone(), table_store.clone());
-        if let Err(e) = crypto.init().await {
-            table_store.terminate().await;
-            protected_store.terminate().await;
-            config.terminate().await;
-            ApiLogger::terminate();
-            return Err(VeilidAPIError::Internal { message: e });
-        }
-
-        // Set up block store
-        trace!("VeilidCoreContext::new init block store");
-        let block_store = BlockStore::new(config.clone());
-        if let Err(e) = block_store.init().await {
-            crypto.terminate().await;
-            table_store.terminate().await;
-            protected_store.terminate().await;
-            config.terminate().await;
-            ApiLogger::terminate();
-            return Err(VeilidAPIError::Internal { message: e });
-        }
-
-        // Set up attachment manager
-        trace!("VeilidCoreContext::new init attachment manager");
-        let update_callback_move = update_callback.clone();
-        let attachment_manager =
-            AttachmentManager::new(config.clone(), table_store.clone(), crypto.clone());
-        if let Err(e) = attachment_manager
-            .init(Arc::new(
-                move |_old_state: AttachmentState, new_state: AttachmentState| {
-                    update_callback_move(VeilidUpdate::Attachment { state: new_state })
-                },
-            ))
-            .await
-        {
-            block_store.terminate().await;
-            crypto.terminate().await;
-            table_store.terminate().await;
-            protected_store.terminate().await;
-            config.terminate().await;
-            ApiLogger::terminate();
-            return Err(VeilidAPIError::Internal { message: e });
-        }
+        let mut sc = ServicesContext::new_empty(config.clone(), update_callback);
+        sc.startup().await?;
 
         Ok(VeilidCoreContext {
-            config,
-            protected_store,
-            table_store,
-            block_store,
-            crypto,
-            attachment_manager,
-            update_callback,
+            update_callback: sc.update_callback,
+            config: sc.config,
+            protected_store: sc.protected_store.unwrap(),
+            table_store: sc.table_store.unwrap(),
+            block_store: sc.block_store.unwrap(),
+            crypto: sc.crypto.unwrap(),
+            attachment_manager: sc.attachment_manager.unwrap(),
         })
     }
 
     async fn shutdown(self) {
-        trace!("VeilidCoreContext::terminate_core_context starting");
-
-        self.attachment_manager.terminate().await;
-        self.block_store.terminate().await;
-        self.crypto.terminate().await;
-        self.table_store.terminate().await;
-        self.protected_store.terminate().await;
-        self.config.terminate().await;
-
-        // send final shutdown update
-        (self.update_callback)(VeilidUpdate::Shutdown).await;
-
-        trace!("VeilidCoreContext::shutdown complete");
-        ApiLogger::terminate();
+        let mut sc = ServicesContext::new_full(
+            self.config.clone(),
+            self.update_callback.clone(),
+            self.protected_store,
+            self.table_store,
+            self.block_store,
+            self.crypto,
+            self.attachment_manager,
+        );
+        sc.shutdown().await;
     }
 }
 
@@ -225,7 +302,7 @@ pub async fn api_startup_json(
     Ok(veilid_api)
 }
 
-pub async fn api_shutdown(context: VeilidCoreContext) {
+pub(crate) async fn api_shutdown(context: VeilidCoreContext) {
     let mut initialized_lock = INITIALIZED.lock().await;
     context.shutdown().await;
     *initialized_lock = false;

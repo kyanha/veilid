@@ -8,7 +8,7 @@ use once_cell::sync::OnceCell;
 struct ApiLoggerInner {
     level: LevelFilter,
     filter_ignore: Cow<'static, [Cow<'static, str>]>,
-    _join_handle: JoinHandle<()>,
+    join_handle: Option<JoinHandle<()>>,
     tx: async_channel::Sender<(VeilidLogLevel, String)>,
 }
 
@@ -22,7 +22,7 @@ static API_LOGGER: OnceCell<ApiLogger> = OnceCell::new();
 impl ApiLogger {
     fn new_inner(level: LevelFilter, update_callback: UpdateCallback) -> ApiLoggerInner {
         let (tx, rx) = async_channel::unbounded::<(VeilidLogLevel, String)>();
-        let _join_handle: JoinHandle<()> = spawn(async move {
+        let join_handle: Option<JoinHandle<()>> = Some(spawn(async move {
             while let Ok(v) = rx.recv().await {
                 (update_callback)(VeilidUpdate::Log {
                     log_level: v.0,
@@ -30,16 +30,16 @@ impl ApiLogger {
                 })
                 .await;
             }
-        });
+        }));
         ApiLoggerInner {
             level,
             filter_ignore: Default::default(),
-            _join_handle,
+            join_handle,
             tx,
         }
     }
 
-    pub fn init(log_level: LevelFilter, update_callback: UpdateCallback) {
+    pub async fn init(log_level: LevelFilter, update_callback: UpdateCallback) {
         set_max_level(log_level);
         let api_logger = API_LOGGER.get_or_init(|| {
             let api_logger = ApiLogger {
@@ -48,15 +48,28 @@ impl ApiLogger {
             set_boxed_logger(Box::new(api_logger.clone())).expect("failed to set api logger");
             api_logger
         });
-
-        let mut inner = api_logger.inner.lock();
-        *inner = Some(Self::new_inner(log_level, update_callback));
+        let apilogger_inner = Some(Self::new_inner(log_level, update_callback));
+        *api_logger.inner.lock() = apilogger_inner;
     }
 
-    pub fn terminate() {
+    pub async fn terminate() {
         if let Some(api_logger) = API_LOGGER.get() {
-            let mut inner = api_logger.inner.lock();
-            *inner = None;
+            let mut join_handle = None;
+            {
+                let mut inner = api_logger.inner.lock();
+
+                // Terminate channel
+                if let Some(inner) = (*inner).as_mut() {
+                    inner.tx.close();
+                    join_handle = inner.join_handle.take();
+                }
+                *inner = None;
+            }
+            if let Some(jh) = join_handle {
+                jh.await;
+            }
+
+            // Clear everything and we're done
             set_max_level(LevelFilter::Off);
         }
     }

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -24,6 +25,7 @@ LogOptions getLogOptions(LogLevel? level) {
 }
 
 void setRootLogLevel(LogLevel? level) {
+  print("setRootLogLevel: $level");
   Loggy('').level = getLogOptions(level);
 }
 
@@ -62,6 +64,7 @@ class MyApp extends StatefulWidget {
 class _MyAppState extends State<MyApp> with UiLoggy {
   String _veilidVersion = 'Unknown';
   Stream<VeilidUpdate>? _updateStream;
+  Future<void>? _updateProcessor;
 
   @override
   void initState() {
@@ -95,6 +98,39 @@ class _MyAppState extends State<MyApp> with UiLoggy {
     });
   }
 
+  Future<void> processUpdateLog(VeilidUpdateLog update) async {
+    switch (update.logLevel) {
+      case VeilidLogLevel.error:
+        loggy.error(update.message);
+        break;
+      case VeilidLogLevel.warn:
+        loggy.warning(update.message);
+        break;
+      case VeilidLogLevel.info:
+        loggy.info(update.message);
+        break;
+      case VeilidLogLevel.debug:
+        loggy.debug(update.message);
+        break;
+      case VeilidLogLevel.trace:
+        loggy.trace(update.message);
+        break;
+    }
+  }
+
+  Future<void> processUpdates() async {
+    var stream = _updateStream;
+    if (stream != null) {
+      await for (final update in stream) {
+        if (update is VeilidUpdateLog) {
+          await processUpdateLog(update);
+        } else {
+          loggy.trace("Update: " + update.toString());
+        }
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final ButtonStyle buttonStyle =
@@ -116,16 +152,32 @@ class _MyAppState extends State<MyApp> with UiLoggy {
               child: Row(children: [
                 ElevatedButton(
                   style: buttonStyle,
-                  onPressed: () async {
-                    //var await Veilid.instance.startupVeilidCore(await getDefaultVeilidConfig())
-                    // setState(() {
-                    // };
-                  },
+                  onPressed: _updateStream != null
+                      ? null
+                      : () async {
+                          var updateStream = Veilid.instance.startupVeilidCore(
+                              await getDefaultVeilidConfig());
+                          setState(() {
+                            _updateStream = updateStream;
+                            _updateProcessor = processUpdates();
+                          });
+                        },
                   child: const Text('Startup'),
                 ),
                 ElevatedButton(
                   style: buttonStyle,
-                  onPressed: () {},
+                  onPressed: _updateStream == null
+                      ? null
+                      : () async {
+                          await Veilid.instance.shutdownVeilidCore();
+                          if (_updateProcessor != null) {
+                            await _updateProcessor;
+                          }
+                          setState(() {
+                            _updateProcessor = null;
+                            _updateStream = null;
+                          });
+                        },
                   child: const Text('Shutdown'),
                 ),
               ])),

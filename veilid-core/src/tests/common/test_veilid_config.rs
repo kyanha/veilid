@@ -195,7 +195,7 @@ fn config_callback(key: String) -> ConfigCallbackReturn {
         "network.connection_initial_timeout_ms" => Ok(Box::new(2_000u32)),
         "network.node_id" => Ok(Box::new(dht::key::DHTKey::default())),
         "network.node_id_secret" => Ok(Box::new(dht::key::DHTKeySecret::default())),
-        "network.bootstrap" => Ok(Box::new(vec![String::from("asdf"), String::from("qwer")])),
+        "network.bootstrap" => Ok(Box::new(Vec::<String>::new())),
         "network.rpc.concurrency" => Ok(Box::new(2u32)),
         "network.rpc.queue_size" => Ok(Box::new(128u32)),
         "network.rpc.max_timestamp_behind_ms" => Ok(Box::new(Some(10_000u32))),
@@ -265,7 +265,7 @@ fn config_callback(key: String) -> ConfigCallbackReturn {
 
 pub async fn test_config() {
     let mut vc = VeilidConfig::new();
-    match vc.init(Arc::new(config_callback)).await {
+    match vc.setup(Arc::new(config_callback)) {
         Ok(()) => (),
         Err(e) => {
             error!("Error: {}", e);
@@ -299,10 +299,7 @@ pub async fn test_config() {
     assert_eq!(inner.network.connection_initial_timeout_ms, 2_000u32);
     assert!(!inner.network.node_id.valid);
     assert!(!inner.network.node_id_secret.valid);
-    assert_eq!(
-        inner.network.bootstrap,
-        vec![String::from("asdf"), String::from("qwer")]
-    );
+    assert_eq!(inner.network.bootstrap, Vec::<String>::new());
     assert_eq!(inner.network.rpc.concurrency, 2u32);
     assert_eq!(inner.network.rpc.queue_size, 128u32);
     assert_eq!(inner.network.rpc.timeout_ms, 10_000u32);

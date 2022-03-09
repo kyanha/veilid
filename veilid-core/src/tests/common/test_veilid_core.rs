@@ -39,7 +39,7 @@ pub async fn test_attach_detach() {
     let api = api_startup(update_callback, config_callback)
         .await
         .expect("startup failed");
-    api.detach().await.unwrap();
+    assert!(api.detach().await.is_err());
     api.shutdown().await;
 }
 

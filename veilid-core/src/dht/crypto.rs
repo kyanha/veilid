@@ -145,7 +145,6 @@ impl Crypto {
 
         let db = table_store.open("crypto_caches", 1).await?;
         db.store(0, b"dh_cache", &cache_bytes).await?;
-
         Ok(())
     }
 

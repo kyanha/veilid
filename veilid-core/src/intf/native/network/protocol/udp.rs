@@ -29,7 +29,6 @@ impl RawUdpProtocolHandler {
             remote_addr
         );
 
-        // Process envelope
         let peer_addr = PeerAddress::new(
             SocketAddress::from_socket_addr(remote_addr),
             ProtocolType::UDP,

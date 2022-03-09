@@ -1194,7 +1194,6 @@ impl VeilidAPI {
 
     // get a full copy of the current state
     pub async fn get_state(&self) -> Result<VeilidState, VeilidAPIError> {
-        trace!("VeilidCore::get_state");
         let attachment_manager = self.attachment_manager()?;
         Ok(VeilidState {
             attachment: attachment_manager.get_state(),
@@ -1203,18 +1202,20 @@ impl VeilidAPI {
 
     // connect to the network
     pub async fn attach(&self) -> Result<(), VeilidAPIError> {
-        trace!("VeilidCore::attach");
         let attachment_manager = self.attachment_manager()?;
-        attachment_manager.request_attach().await;
-        Ok(())
+        attachment_manager
+            .request_attach()
+            .await
+            .map_err(|e| VeilidAPIError::Internal { message: e })
     }
 
     // disconnect from the network
     pub async fn detach(&self) -> Result<(), VeilidAPIError> {
-        trace!("VeilidCore::detach");
         let attachment_manager = self.attachment_manager()?;
-        attachment_manager.request_detach().await;
-        Ok(())
+        attachment_manager
+            .request_detach()
+            .await
+            .map_err(|e| VeilidAPIError::Internal { message: e })
     }
 
     // Change api logging level if it is enabled

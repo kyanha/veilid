@@ -263,6 +263,7 @@ impl AttachmentManager {
         &self,
         state_change_callback: StateChangeCallback<Attachment>,
     ) -> Result<(), String> {
+        trace!("init");
         let network_manager = {
             let inner = self.inner.lock();
             inner
@@ -311,84 +312,39 @@ impl AttachmentManager {
         }
     }
 
-    async fn process_input(&self, input: &AttachmentInput) -> bool {
+    async fn process_input(&self, input: &AttachmentInput) -> Result<(), String> {
         let attachment_machine = self.inner.lock().attachment_machine.clone();
         let output = attachment_machine.consume(input).await;
         match output {
-            Err(_) => {
-                error!("invalid input for state machine: {:?}", input);
-                false
-            }
+            Err(e) => Err(format!(
+                "invalid input '{:?}' for state machine in state '{:?}': {:?}",
+                input,
+                attachment_machine.state(),
+                e
+            )),
             Ok(v) => {
                 if let Some(o) = v {
                     self.handle_output(&o).await;
                 }
-                true
+                Ok(())
             }
         }
     }
 
-    pub async fn request_attach(&self) {
-        if !self.is_detached() {
-            trace!("attach request ignored");
-            return;
-        }
-        if self.process_input(&AttachmentInput::AttachRequested).await {
-            trace!("attach requested");
-        } else {
-            error!("attach request failed");
-        }
+    pub async fn request_attach(&self) -> Result<(), String> {
+        self.process_input(&AttachmentInput::AttachRequested)
+            .await
+            .map_err(|e| format!("Attach request failed: {}", e))
     }
 
-    pub async fn request_detach(&self) {
-        if !self.is_attached() {
-            trace!("detach request ignored");
-            return;
-        }
-        if self.process_input(&AttachmentInput::DetachRequested).await {
-            trace!("detach requested");
-        } else {
-            error!("detach request failed");
-        }
+    pub async fn request_detach(&self) -> Result<(), String> {
+        self.process_input(&AttachmentInput::DetachRequested)
+            .await
+            .map_err(|e| format!("Attach request failed: {}", e))
     }
 
     pub fn get_state(&self) -> AttachmentState {
         let attachment_machine = self.inner.lock().attachment_machine.clone();
         attachment_machine.state()
     }
-
-    // pub async fn wait_for_state(&self, state: AttachmentState, timeout_ms: Option<u32>) -> bool {
-    //     let start_time = intf::get_timestamp();
-
-    //     loop {
-    //         let (current_state, eventual) = self
-    //             .inner
-    //             .lock()
-    //             .attachment_machine
-    //             .state_eventual_instance();
-    //         if current_state == state {
-    //             break;
-    //         }
-    //         if let Some(timeout_ms) = timeout_ms {
-    //             let timeout_time = start_time + (timeout_ms as u64 * 1000);
-    //             let cur_time = intf::get_timestamp();
-    //             if timeout_time > cur_time {
-    //                 let timeout_dur_ms = ((timeout_time - cur_time) / 1000) as u32;
-
-    //                 if match intf::timeout(timeout_dur_ms, eventual).await {
-    //                     Ok(v) => v,
-    //                     Err(_) => return false,
-    //                 } == state
-    //                 {
-    //                     return true;
-    //                 }
-    //             } else {
-    //                 return false;
-    //             }
-    //         } else if eventual.await == state {
-    //             break;
-    //         }
-    //     }
-    //     true
-    // }
 }

@@ -289,6 +289,23 @@ impl RoutingTable {
         *self.inner.lock() = Self::new_inner(self.network_manager());
     }
 
+    // Attempt to empty the routing table
+    // should only be performed when there are no node_refs (detached)
+    pub fn purge(&self) {
+        let mut inner = self.inner.lock();
+        log_rtab!(
+            "Starting routing table purge. Table currently has {} nodes",
+            inner.bucket_entry_count
+        );
+        for bucket in &mut inner.buckets {
+            bucket.kick(0);
+        }
+        log_rtab!(
+            "Routing table purge complete. Routing table now has {} nodes",
+            inner.bucket_entry_count
+        );
+    }
+
     // Attempt to settle buckets and remove entries down to the desired number
     // which may not be possible due extant NodeRefs
     fn kick_bucket(inner: &mut RoutingTableInner, idx: usize) {
