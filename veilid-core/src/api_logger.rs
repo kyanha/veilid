@@ -9,7 +9,7 @@ struct ApiLoggerInner {
     level: LevelFilter,
     filter_ignore: Cow<'static, [Cow<'static, str>]>,
     join_handle: Option<JoinHandle<()>>,
-    tx: async_channel::Sender<(VeilidLogLevel, String)>,
+    tx: Option<flume::Sender<(VeilidLogLevel, String)>>,
 }
 
 #[derive(Clone)]
@@ -21,9 +21,9 @@ static API_LOGGER: OnceCell<ApiLogger> = OnceCell::new();
 
 impl ApiLogger {
     fn new_inner(level: LevelFilter, update_callback: UpdateCallback) -> ApiLoggerInner {
-        let (tx, rx) = async_channel::unbounded::<(VeilidLogLevel, String)>();
+        let (tx, rx) = flume::unbounded::<(VeilidLogLevel, String)>();
         let join_handle: Option<JoinHandle<()>> = Some(spawn(async move {
-            while let Ok(v) = rx.recv().await {
+            while let Ok(v) = rx.recv_async().await {
                 (update_callback)(VeilidUpdate::Log {
                     log_level: v.0,
                     message: v.1,
@@ -35,7 +35,7 @@ impl ApiLogger {
             level,
             filter_ignore: Default::default(),
             join_handle,
-            tx,
+            tx: Some(tx),
         }
     }
 
@@ -60,7 +60,7 @@ impl ApiLogger {
 
                 // Terminate channel
                 if let Some(inner) = (*inner).as_mut() {
-                    inner.tx.close();
+                    inner.tx = None;
                     join_handle = inner.join_handle.take();
                 }
                 *inner = None;
@@ -139,7 +139,9 @@ impl Log for ApiLogger {
 
                 let s = format!("{}{}{}", tgt, loc, record.args());
 
-                let _ = inner.tx.try_send((ll, s));
+                if let Some(tx) = &inner.tx {
+                    let _ = tx.try_send((ll, s));
+                }
             }
         }
     }

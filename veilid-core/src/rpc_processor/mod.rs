@@ -144,7 +144,7 @@ pub struct RPCProcessorInner {
     routing_table: RoutingTable,
     node_id: key::DHTKey,
     node_id_secret: key::DHTKeySecret,
-    send_channel: Option<async_channel::Sender<RPCMessage>>,
+    send_channel: Option<flume::Sender<RPCMessage>>,
     timeout: u64,
     max_route_hop_count: usize,
     waiting_rpc_table: BTreeMap<OperationId, EventualValue<RPCMessageReader>>,
@@ -1246,8 +1246,8 @@ impl RPCProcessor {
         }
     }
 
-    async fn rpc_worker(self, receiver: async_channel::Receiver<RPCMessage>) {
-        while let Ok(msg) = receiver.recv().await {
+    async fn rpc_worker(self, receiver: flume::Receiver<RPCMessage>) {
+        while let Ok(msg) = receiver.recv_async().await {
             let _ = self
                 .process_rpc_message(msg)
                 .await
@@ -1285,7 +1285,7 @@ impl RPCProcessor {
         }
         inner.timeout = timeout;
         inner.max_route_hop_count = max_route_hop_count;
-        let channel = async_channel::bounded(queue_size as usize);
+        let channel = flume::bounded(queue_size as usize);
         inner.send_channel = Some(channel.0.clone());
 
         // spin up N workers

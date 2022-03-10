@@ -70,7 +70,6 @@ cfg_if! {
         pub use async_std::pin::Pin;
         pub use async_std::sync::Mutex as AsyncMutex;
         pub use async_std::sync::MutexGuard as AsyncMutexGuard;
-        pub use async_std::channel as async_channel;
         pub use std::net::{ SocketAddr, SocketAddrV4, SocketAddrV6, ToSocketAddrs, IpAddr, Ipv4Addr, Ipv6Addr };
         pub type SystemPinBoxFuture<T> = PinBox<dyn Future<Output = T> + Send + 'static>;
         pub type SystemPinBoxFutureLifetime<'a, T> = PinBox<dyn Future<Output = T> + Send + 'a>;

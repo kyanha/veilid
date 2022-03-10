@@ -33,6 +33,7 @@ lazy_static = "^1"
 directories = "^4"
 once_cell = "^1"
 json = "^0"
+flume = { version = "^0", features = ["async"] }
 
 ed25519-dalek = { version = "^1", default_features = false, features = ["alloc", "u64_backend"] }
 x25519-dalek = { package = "x25519-dalek-ng", version = "^1", default_features = false, features = ["u64_backend"] }
@@ -90,7 +91,6 @@ getrandom = { version = "^0", features = ["js"] }
 ws_stream_wasm = "^0"
 async_executors = { version = "^0", default-features = false, features = [ "bindgen" ]}
 async-lock = "^2"
-async-channel = { version = "^1" }
 
 # Configuration for WASM32 'web-sys' crate
 [target.'cfg(target_arch = "wasm32")'.dependencies.web-sys]

@@ -15,7 +15,7 @@ const CONNECTION_PROCESSOR_CHANNEL_SIZE: usize = 128usize;
 struct ConnectionManagerInner {
     connection_table: ConnectionTable,
     connection_processor_jh: Option<JoinHandle<()>>,
-    connection_add_channel_tx: Option<async_channel::Sender<SystemPinBoxFuture<()>>>,
+    connection_add_channel_tx: Option<flume::Sender<SystemPinBoxFuture<()>>>,
 }
 
 impl core::fmt::Debug for ConnectionManagerInner {
@@ -70,7 +70,7 @@ impl ConnectionManager {
     pub async fn startup(&self) {
         trace!("startup connection manager");
         let mut inner = self.arc.inner.lock().await;
-        let cac = async_channel::bounded(CONNECTION_PROCESSOR_CHANNEL_SIZE); // xxx move to config
+        let cac = flume::bounded(CONNECTION_PROCESSOR_CHANNEL_SIZE); // xxx move to config
         inner.connection_add_channel_tx = Some(cac.0);
         let rx = cac.1.clone();
         let this = self.clone();
@@ -196,12 +196,12 @@ impl ConnectionManager {
     // Process connection oriented sockets in the background
     // This never terminates and must have its task cancelled once started
     // Task cancellation is performed by shutdown() by dropping the join handle
-    async fn connection_processor(self, rx: async_channel::Receiver<SystemPinBoxFuture<()>>) {
+    async fn connection_processor(self, rx: flume::Receiver<SystemPinBoxFuture<()>>) {
         let mut connection_futures: FuturesUnordered<SystemPinBoxFuture<()>> =
             FuturesUnordered::new();
         loop {
             // Either process an existing connection, or receive a new one to add to our list
-            match select(connection_futures.next(), Box::pin(rx.recv())).await {
+            match select(connection_futures.next(), Box::pin(rx.recv_async())).await {
                 Either::Left((x, _)) => {
                     // Processed some connection to completion, or there are none left
                     match x {
@@ -210,7 +210,7 @@ impl ConnectionManager {
                         }
                         None => {
                             // No connections to process, wait for one
-                            match rx.recv().await {
+                            match rx.recv_async().await {
                                 Ok(v) => {
                                     connection_futures.push(v);
                                 }
