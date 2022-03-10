@@ -75,15 +75,13 @@ impl VeilidAPI {
             )?;
         }
         // Dump routing table bucket info
-        let rpc = self.rpc_processor()?;
-        let routing_table = rpc.routing_table();
+        let routing_table = self.network_manager()?.routing_table();
         Ok(routing_table.debug_info_buckets(min_state))
     }
 
     async fn debug_dialinfo(&self, _args: String) -> Result<String, VeilidAPIError> {
         // Dump routing table dialinfo
-        let rpc = self.rpc_processor()?;
-        let routing_table = rpc.routing_table();
+        let routing_table = self.network_manager()?.routing_table();
         Ok(routing_table.debug_info_dialinfo())
     }
 
@@ -107,8 +105,7 @@ impl VeilidAPI {
         }
 
         // Dump routing table entries
-        let rpc = self.rpc_processor()?;
-        let routing_table = rpc.routing_table();
+        let routing_table = self.network_manager()?.routing_table();
         Ok(routing_table.debug_info_entries(limit, min_state))
     }
 
@@ -118,15 +115,13 @@ impl VeilidAPI {
         let node_id = get_debug_argument_at(&args, 0, "debug_entry", "node_id", get_dht_key)?;
 
         // Dump routing table entry
-        let rpc = self.rpc_processor()?;
-        let routing_table = rpc.routing_table();
+        let routing_table = self.network_manager()?.routing_table();
         Ok(routing_table.debug_info_entry(node_id))
     }
 
     async fn debug_nodeinfo(&self, _args: String) -> Result<String, VeilidAPIError> {
         // Dump routing table entry
-        let rpc = self.rpc_processor()?;
-        let routing_table = rpc.routing_table();
+        let routing_table = self.network_manager()?.routing_table();
         Ok(routing_table.debug_info_nodeinfo())
     }
 
@@ -141,22 +136,26 @@ impl VeilidAPI {
         let (arg, rest) = args.split_once(' ').unwrap_or((args, ""));
         let rest = rest.trim_start().to_owned();
 
-        // Must be detached
-        if matches!(
-            self.get_state().await?.attachment,
-            AttachmentState::Detached | AttachmentState::Detaching
-        ) {
-            return Err(VeilidAPIError::Internal {
-                message: "Must be detached to change config".to_owned(),
-            });
-        }
-
         // One argument is 'config get'
         if rest.is_empty() {
             return config
                 .get_key_json(arg)
                 .map_err(|e| VeilidAPIError::Internal { message: e });
         }
+
+        // More than one argument is 'config set'
+
+        // Must be detached
+        if !matches!(
+            self.get_state().await?.attachment,
+            AttachmentState::Detached
+        ) {
+            return Err(VeilidAPIError::Internal {
+                message: "Must be detached to change config".to_owned(),
+            });
+        }
+
+        // Change the config key
         config
             .set_key_json(arg, &rest)
             .map_err(|e| VeilidAPIError::Internal { message: e })?;
@@ -225,6 +224,7 @@ impl VeilidAPI {
 
     pub async fn debug_help(&self, _args: String) -> Result<String, VeilidAPIError> {
         Ok(r#">>> Debug commands:
+        help
         buckets [dead|reliable]
         dialinfo
         entries [dead|reliable] [limit]
@@ -247,28 +247,28 @@ impl VeilidAPI {
         let (arg, rest) = args.split_once(' ').unwrap_or((args, ""));
         let rest = rest.trim_start().to_owned();
 
-        let mut out = String::new();
-        if arg == "buckets" {
-            out += self.debug_buckets(rest).await?.as_str();
+        if arg == "help" {
+            self.debug_help(rest).await
+        } else if arg == "buckets" {
+            self.debug_buckets(rest).await
         } else if arg == "dialinfo" {
-            out += self.debug_dialinfo(rest).await?.as_str();
+            self.debug_dialinfo(rest).await
         } else if arg == "entries" {
-            out += self.debug_entries(rest).await?.as_str();
+            self.debug_entries(rest).await
         } else if arg == "entry" {
-            out += self.debug_entry(rest).await?.as_str();
+            self.debug_entry(rest).await
         } else if arg == "nodeinfo" {
-            out += self.debug_nodeinfo(rest).await?.as_str();
+            self.debug_nodeinfo(rest).await
         } else if arg == "purge" {
-            out += self.debug_purge(rest).await?.as_str();
+            self.debug_purge(rest).await
         } else if arg == "attach" {
-            out += self.debug_attach(rest).await?.as_str();
+            self.debug_attach(rest).await
         } else if arg == "detach" {
-            out += self.debug_detach(rest).await?.as_str();
+            self.debug_detach(rest).await
         } else if arg == "config" {
-            out += self.debug_config(rest).await?.as_str();
+            self.debug_config(rest).await
         } else {
-            out += ">>> Unknown command\n";
+            Ok(">>> Unknown command\n".to_owned())
         }
-        Ok(out)
     }
 }

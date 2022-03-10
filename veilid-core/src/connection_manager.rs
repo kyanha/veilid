@@ -68,6 +68,7 @@ impl ConnectionManager {
     }
 
     pub async fn startup(&self) {
+        trace!("startup connection manager");
         let mut inner = self.arc.inner.lock().await;
         let cac = async_channel::bounded(CONNECTION_PROCESSOR_CHANNEL_SIZE); // xxx move to config
         inner.connection_add_channel_tx = Some(cac.0);

@@ -1256,7 +1256,7 @@ impl RPCProcessor {
     }
 
     pub async fn startup(&self) -> Result<(), String> {
-        trace!("VeilidCore::startup init RPC processor");
+        trace!("startup rpc processor");
         let mut inner = self.inner.lock();
         // make local copy of node id for easy access
         let c = self.config.get();

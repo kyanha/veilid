@@ -197,6 +197,7 @@ impl ReceiptManager {
     }
 
     pub async fn startup(&self) -> Result<(), String> {
+        trace!("startup receipt manager");
         // Retrieve config
         /*
                 {
@@ -319,9 +320,7 @@ impl ReceiptManager {
             callback,
         )));
         let mut inner = self.inner.lock();
-        inner
-            .receipts_by_nonce
-            .insert(receipt.get_nonce(), record);
+        inner.receipts_by_nonce.insert(receipt.get_nonce(), record);
     }
 
     pub fn record_single_shot_receipt(
@@ -334,9 +333,7 @@ impl ReceiptManager {
             &receipt, expiration, eventual,
         )));
         let mut inner = self.inner.lock();
-        inner
-            .receipts_by_nonce
-            .insert(receipt.get_nonce(), record);
+        inner.receipts_by_nonce.insert(receipt.get_nonce(), record);
     }
 
     fn update_next_oldest_timestamp(inner: &mut ReceiptManagerInner) {

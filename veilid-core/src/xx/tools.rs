@@ -135,3 +135,36 @@ where
         }
     }
 }
+
+pub fn listen_address_to_socket_addrs(listen_address: &str) -> Result<Vec<SocketAddr>, String> {
+    // If no address is specified, but the port is, use ipv4 and ipv6 unspecified
+    // If the address is specified, only use the specified port and fail otherwise
+    let ip_addrs = vec![
+        IpAddr::V4(Ipv4Addr::UNSPECIFIED),
+        IpAddr::V6(Ipv6Addr::UNSPECIFIED),
+    ];
+
+    Ok(if let Some(portstr) = listen_address.strip_prefix(':') {
+        let port = portstr.parse::<u16>().map_err(|_| {
+            format!(
+                "Invalid port format in udp listen address: {}",
+                listen_address
+            )
+        })?;
+        ip_addrs.iter().map(|a| SocketAddr::new(*a, port)).collect()
+    } else if let Ok(port) = listen_address.parse::<u16>() {
+        ip_addrs.iter().map(|a| SocketAddr::new(*a, port)).collect()
+    } else {
+        cfg_if! {
+            if #[cfg(target_arch = "wasm32")] {
+                use core::str::FromStr;
+                vec![SocketAddr::from_str(listen_address).map_err(|_| format!("Unable to parse address: {}", listen_address))?]
+            } else {
+                listen_address
+                    .to_socket_addrs()
+                    .map_err(|_| format!("Unable to resolve address: {}", listen_address))?
+                    .collect()
+            }
+        }
+    })
+}

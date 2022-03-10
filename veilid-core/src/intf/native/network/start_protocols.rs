@@ -111,22 +111,17 @@ impl Network {
             ];
             Ok((port, ip_addrs))
         } else {
+            // If no address is specified, but the port is, use ipv4 and ipv6 unspecified
             // If the address is specified, only use the specified port and fail otherwise
-            let sockaddrs: Vec<SocketAddr> = listen_address
-                .to_socket_addrs()
-                .await
-                .map_err(|e| format!("Unable to resolve address: {}\n{}", listen_address, e))?
-                .collect();
-
+            let sockaddrs = listen_address_to_socket_addrs(&listen_address)?;
             if sockaddrs.is_empty() {
-                Err(format!("No valid listen address: {}", listen_address))
+                return Err(format!("No valid listen address: {}", listen_address));
+            }
+            let port = sockaddrs[0].port();
+            if self.bind_first_udp_port(port) {
+                Ok((port, sockaddrs.iter().map(|s| s.ip()).collect()))
             } else {
-                let port = sockaddrs[0].port();
-                if self.bind_first_udp_port(port) {
-                    Ok((port, sockaddrs.iter().map(|s| s.ip()).collect()))
-                } else {
-                    Err("Could not find free udp port to listen on".to_owned())
-                }
+                Err("Could not find free udp port to listen on".to_owned())
             }
         }
     }
@@ -144,22 +139,17 @@ impl Network {
             ];
             Ok((port, ip_addrs))
         } else {
+            // If no address is specified, but the port is, use ipv4 and ipv6 unspecified
             // If the address is specified, only use the specified port and fail otherwise
-            let sockaddrs: Vec<SocketAddr> = listen_address
-                .to_socket_addrs()
-                .await
-                .map_err(|e| format!("Unable to resolve address: {}\n{}", listen_address, e))?
-                .collect();
-
+            let sockaddrs = listen_address_to_socket_addrs(&listen_address)?;
             if sockaddrs.is_empty() {
-                Err(format!("No valid listen address: {}", listen_address))
+                return Err(format!("No valid listen address: {}", listen_address));
+            }
+            let port = sockaddrs[0].port();
+            if self.bind_first_tcp_port(port) {
+                Ok((port, sockaddrs.iter().map(|s| s.ip()).collect()))
             } else {
-                let port = sockaddrs[0].port();
-                if self.bind_first_tcp_port(port) {
-                    Ok((port, sockaddrs.iter().map(|s| s.ip()).collect()))
-                } else {
-                    Err("Could not find free tcp port to listen on".to_owned())
-                }
+                Err("Could not find free tcp port to listen on".to_owned())
             }
         }
     }
@@ -167,6 +157,7 @@ impl Network {
     /////////////////////////////////////////////////////
 
     pub(super) async fn start_udp_listeners(&self) -> Result<(), String> {
+        trace!("starting udp listeners");
         let routing_table = self.routing_table();
         let (listen_address, public_address) = {
             let c = self.config.get();
@@ -238,6 +229,7 @@ impl Network {
     }
 
     pub(super) async fn start_ws_listeners(&self) -> Result<(), String> {
+        trace!("starting ws listeners");
         let routing_table = self.routing_table();
         let (listen_address, url, path) = {
             let c = self.config.get();
@@ -332,6 +324,8 @@ impl Network {
     }
 
     pub(super) async fn start_wss_listeners(&self) -> Result<(), String> {
+        trace!("starting wss listeners");
+
         let routing_table = self.routing_table();
         let (listen_address, url) = {
             let c = self.config.get();
@@ -403,6 +397,8 @@ impl Network {
     }
 
     pub(super) async fn start_tcp_listeners(&self) -> Result<(), String> {
+        trace!("starting tcp listeners");
+
         let routing_table = self.routing_table();
         let (listen_address, public_address) = {
             let c = self.config.get();

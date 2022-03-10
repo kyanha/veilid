@@ -389,7 +389,7 @@ impl Network {
     }
 
     pub async fn startup(&self) -> Result<(), String> {
-        info!("starting network");
+        trace!("startup network");
 
         // initialize interfaces
         let mut interfaces = NetworkInterfaces::new();
@@ -424,6 +424,7 @@ impl Network {
         if protocol_config.tcp_listen {
             self.start_tcp_listeners().await?;
         }
+
         // release caches of available listener ports
         // this releases the 'first bound' ports we use to guarantee
         // that we have ports available to us

@@ -6,11 +6,12 @@ use parking_lot::*;
 
 use serde_derive::*;
 use std::ffi::OsStr;
-use std::net::{SocketAddr, ToSocketAddrs};
+use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::Arc;
 use url::Url;
+use veilid_core::xx::*;
 
 pub fn load_default_config(cfg: &mut config::Config) -> Result<(), config::ConfigError> {
     let default_config = String::from(
@@ -84,38 +85,38 @@ core:
         application:
             https:
                 enabled: false
-                listen_address: '[::]:5150'
+                listen_address: ':5150'
                 path: 'app'
                 # url: 'https://localhost:5150'
             http:
                 enabled: false
-                listen_address: '[::]:5150'
+                listen_address: ':5150'
                 path: 'app'
                 # url: 'http://localhost:5150'
         protocol:
             udp:
                 enabled: true
                 socket_pool_size: 0
-                listen_address: '[::]:5150'
+                listen_address: ':5150'
                 # public_address: ''
             tcp:
                 connect: true
                 listen: true
                 max_connections: 32
-                listen_address: '[::]:5150'
+                listen_address: ':5150'
                 #'public_address: ''
             ws:
                 connect: true
                 listen: true
                 max_connections: 16
-                listen_address: '[::]:5150'
+                listen_address: ':5150'
                 path: 'ws'
                 # url: 'ws://localhost:5150/ws'
             wss:
                 connect: true
                 listen: false
                 max_connections: 16
-                listen_address: '[::]:5150'
+                listen_address: ':5150'
                 path: 'ws'
                 # url: ''
         leases:
@@ -323,10 +324,11 @@ pub struct NamedSocketAddrs {
 impl FromStr for NamedSocketAddrs {
     type Err = std::io::Error;
     fn from_str(s: &str) -> Result<NamedSocketAddrs, std::io::Error> {
-        let addr_iter = s.to_socket_addrs()?;
+        let addr_iter = listen_address_to_socket_addrs(s)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
         Ok(NamedSocketAddrs {
             name: s.to_owned(),
-            addrs: addr_iter.collect(),
+            addrs: addr_iter,
         })
     }
 }
@@ -1102,10 +1104,7 @@ mod tests {
         assert_eq!(s.client_api.listen_address.name, "localhost:5959");
         assert_eq!(
             s.client_api.listen_address.addrs,
-            "localhost:5959"
-                .to_socket_addrs()
-                .unwrap()
-                .collect::<Vec<SocketAddr>>()
+            listen_address_to_socket_addrs("localhost:5959").unwrap()
         );
         assert_eq!(s.auto_attach, true);
         assert_eq!(s.logging.terminal.enabled, true);
@@ -1190,14 +1189,11 @@ mod tests {
         assert_eq!(s.core.network.application.https.enabled, false);
         assert_eq!(
             s.core.network.application.https.listen_address.name,
-            "[::]:5150"
+            ":5150"
         );
         assert_eq!(
             s.core.network.application.https.listen_address.addrs,
-            "[::]:5150"
-                .to_socket_addrs()
-                .unwrap()
-                .collect::<Vec<SocketAddr>>()
+            listen_address_to_socket_addrs(":5150").unwrap()
         );
         assert_eq!(
             s.core.network.application.https.path,
@@ -1205,16 +1201,10 @@ mod tests {
         );
         assert_eq!(s.core.network.application.https.url, None);
         assert_eq!(s.core.network.application.http.enabled, false);
-        assert_eq!(
-            s.core.network.application.http.listen_address.name,
-            "[::]:5150"
-        );
+        assert_eq!(s.core.network.application.http.listen_address.name, ":5150");
         assert_eq!(
             s.core.network.application.http.listen_address.addrs,
-            "[::]:5150"
-                .to_socket_addrs()
-                .unwrap()
-                .collect::<Vec<SocketAddr>>()
+            listen_address_to_socket_addrs(":5150").unwrap()
         );
         assert_eq!(
             s.core.network.application.http.path,
@@ -1227,10 +1217,7 @@ mod tests {
         assert_eq!(s.core.network.protocol.udp.listen_address.name, "[::]:5150");
         assert_eq!(
             s.core.network.protocol.udp.listen_address.addrs,
-            "[::]:5150"
-                .to_socket_addrs()
-                .unwrap()
-                .collect::<Vec<SocketAddr>>()
+            listen_address_to_socket_addrs(":5150").unwrap()
         );
         assert_eq!(s.core.network.protocol.udp.public_address, None);
 
@@ -1241,10 +1228,7 @@ mod tests {
         assert_eq!(s.core.network.protocol.tcp.listen_address.name, "[::]:5150");
         assert_eq!(
             s.core.network.protocol.tcp.listen_address.addrs,
-            "[::]:5150"
-                .to_socket_addrs()
-                .unwrap()
-                .collect::<Vec<SocketAddr>>()
+            listen_address_to_socket_addrs(":5150").unwrap()
         );
         assert_eq!(s.core.network.protocol.tcp.public_address, None);
 
@@ -1255,10 +1239,7 @@ mod tests {
         assert_eq!(s.core.network.protocol.ws.listen_address.name, "[::]:5150");
         assert_eq!(
             s.core.network.protocol.ws.listen_address.addrs,
-            "[::]:5150"
-                .to_socket_addrs()
-                .unwrap()
-                .collect::<Vec<SocketAddr>>()
+            listen_address_to_socket_addrs(":5150").unwrap()
         );
         assert_eq!(
             s.core.network.protocol.ws.path,
@@ -1272,10 +1253,7 @@ mod tests {
         assert_eq!(s.core.network.protocol.wss.listen_address.name, "[::]:5150");
         assert_eq!(
             s.core.network.protocol.wss.listen_address.addrs,
-            "[::]:5150"
-                .to_socket_addrs()
-                .unwrap()
-                .collect::<Vec<SocketAddr>>()
+            listen_address_to_socket_addrs(":5150").unwrap()
         );
         assert_eq!(
             s.core.network.protocol.wss.path,

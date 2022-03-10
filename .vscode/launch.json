@@ -13,6 +13,13 @@
     },
     {
       "type": "lldb",
+      "request": "attach",
+      "name": "Attach to veilid-flutter example",
+      "program": "${workspaceFolder}/veilid-flutter/example/build/linux/x64/debug/bundle/veilid_example",
+      "pid": "${command:pickMyProcess}"
+    },
+    {
+      "type": "lldb",
       "request": "launch",
       "name": "Launch veilid-cli",
       "args": ["--debug"],

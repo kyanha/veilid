@@ -329,13 +329,14 @@ impl NetworkInterfaces {
     // returns Ok(false) if refresh had no changes, Ok(true) if changes were present
     pub async fn refresh(&mut self) -> Result<bool, String> {
         self.valid = false;
-
+        eprintln!("a");
         let last_interfaces = core::mem::take(&mut self.interfaces);
 
         let mut platform_support = PlatformSupport::new().map_err(logthru_net!())?;
         platform_support
             .get_interfaces(&mut self.interfaces)
             .await?;
+        eprintln!("b");
 
         self.valid = true;
 
@@ -343,6 +344,8 @@ impl NetworkInterfaces {
         if changed {
             trace!("NetworkInterfaces refreshed: {:#?}?", self);
         }
+        eprintln!("c");
+xxx investigate why things get stuck here. threading and dart issue with logging ?
         Ok(changed)
     }
     pub fn len(&self) -> usize {

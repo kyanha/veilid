@@ -12,6 +12,18 @@ import 'config.dart';
 // Loggy tools
 const LogLevel traceLevel = LogLevel('trace', 1);
 
+class ConsolePrinter extends LoggyPrinter {
+  ConsolePrinter(this.childPrinter) : super();
+
+  final LoggyPrinter childPrinter;
+
+  @override
+  void onLog(LogRecord record) {
+    debugPrint(record.toString());
+    childPrinter.onLog(record);
+  }
+}
+
 extension TraceLoggy on Loggy {
   void trace(dynamic message, [Object? error, StackTrace? stackTrace]) =>
       log(traceLevel, message, error, stackTrace);
@@ -25,13 +37,12 @@ LogOptions getLogOptions(LogLevel? level) {
 }
 
 void setRootLogLevel(LogLevel? level) {
-  print("setRootLogLevel: $level");
   Loggy('').level = getLogOptions(level);
 }
 
 void initLoggy() {
   Loggy.initLoggy(
-    logPrinter: StreamPrinter(
+    logPrinter: ConsolePrinter(
       const PrettyDeveloperPrinter(),
     ),
     logOptions: getLogOptions(null),

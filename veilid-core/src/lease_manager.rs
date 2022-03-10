@@ -54,6 +54,7 @@ impl LeaseManager {
         self.inner.lock().network_manager.clone()
     }
     pub async fn startup(&self) -> Result<(), String> {
+        trace!("startup lease manager");
         // Retrieve config
         {
             let mut inner = self.inner.lock();

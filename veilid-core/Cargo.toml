@@ -80,7 +80,7 @@ wasm-bindgen-futures = "^0"
 wasm-logger = "^0"
 hashbrown = "^0"
 lru = {version = "^0", features = ["hashbrown"] }
-no-std-net = "^0"
+no-std-net = { path = "../external/no-std-net", features = ["serde"] }
 keyvaluedb-web = { path = "../external/keyvaluedb/keyvaluedb-web" }
 data-encoding = { version = "^2", default_features = false, features = ["alloc"] }
 serde = { version = "^1", default-features = false, features = ["derive", "alloc"] }

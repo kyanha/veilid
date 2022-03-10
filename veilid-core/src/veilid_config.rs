@@ -359,22 +359,26 @@ impl VeilidConfig {
 
     pub fn get_key_json(&self, key: &str) -> Result<String, String> {
         let c = self.get();
-        // Split key into path parts
-        let keypath: Vec<&str> = key.split('.').collect();
 
         // Generate json from whole config
         let jc = serde_json::to_string(&*c).map_err(map_to_string)?;
         let jvc = json::parse(&jc).map_err(map_to_string)?;
 
         // Find requested subkey
-        let mut out = &jvc;
-        for k in keypath {
-            if !jvc.has_key(k) {
-                return Err(format!("invalid subkey '{}' in key '{}'", k, key));
+        if key.is_empty() {
+            Ok(jvc.to_string())
+        } else {
+            // Split key into path parts
+            let keypath: Vec<&str> = key.split('.').collect();
+            let mut out = &jvc;
+            for k in keypath {
+                if !out.has_key(k) {
+                    return Err(format!("invalid subkey '{}' in key '{}'", k, key));
+                }
+                out = &out[k];
             }
-            out = &jvc[k];
+            Ok(out.to_string())
         }
-        Ok(out.to_string())
     }
     pub fn set_key_json(&self, key: &str, value: &str) -> Result<(), String> {
         let mut c = self.get_mut();
@@ -394,10 +398,10 @@ impl VeilidConfig {
             // Replace subkey
             let mut out = &mut jvc;
             for k in objkeypath {
-                if !jvc.has_key(*k) {
+                if !out.has_key(*k) {
                     return Err(format!("invalid subkey '{}' in key '{}'", *k, key));
                 }
-                out = &mut jvc[*k];
+                out = &mut out[*k];
             }
             if !out.has_key(objkeyname) {
                 return Err(format!("invalid subkey '{}' in key '{}'", objkeyname, key));

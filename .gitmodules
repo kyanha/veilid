@@ -16,3 +16,6 @@
 [submodule "external/netlink"]
 	path = external/netlink
 	url = ../netlink.git
+[submodule "external/no-std-net"]
+	path = external/no-std-net
+	url = git@gitlab.hackers.town:veilid/no-std-net.git
