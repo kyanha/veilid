@@ -1,10 +1,10 @@
 use crate::settings::*;
-use clap::{App, Arg, ArgMatches};
+use clap::{Arg, ArgMatches, Command};
 use std::ffi::OsStr;
 use std::str::FromStr;
 
 fn do_clap_matches(default_config_path: &OsStr) -> Result<clap::ArgMatches, clap::Error> {
-    let matches = App::new("veilid-server")
+    let matches = Command::new("veilid-server")
         .version("0.1")
         .about("Veilid Server")
         .color(clap::ColorChoice::Auto)
@@ -111,10 +111,11 @@ pub fn process_command_line() -> Result<(Settings, ArgMatches), String> {
     }
 
     // Attempt to load configuration
-    let settings = Settings::new(
-        matches.occurrences_of("config-file") == 0,
-        matches.value_of_os("config-file").unwrap(),
-    )
+    let settings = Settings::new(if matches.occurrences_of("config-file") == 0 {
+        None
+    } else {
+        Some(matches.value_of_os("config-file").unwrap())
+    })
     .map_err(|e| format!("configuration is invalid: {}", e))?;
 
     // write lock the settings

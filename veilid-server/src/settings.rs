@@ -13,7 +13,7 @@ use std::sync::Arc;
 use url::Url;
 use veilid_core::xx::*;
 
-pub fn load_default_config(cfg: &mut config::Config) -> Result<(), config::ConfigError> {
+pub fn load_default_config() -> Result<config::Config, config::ConfigError> {
     let default_config = String::from(
         r#"---
 daemon: false
@@ -138,20 +138,23 @@ core:
         "%INSECURE_FALLBACK_DIRECTORY%",
         &Settings::get_default_protected_store_insecure_fallback_directory().to_string_lossy(),
     );
-    cfg.merge(config::File::from_str(
-        &default_config,
-        config::FileFormat::Yaml,
-    ))
-    .map(drop)
+    config::Config::builder()
+        .add_source(config::File::from_str(
+            &default_config,
+            config::FileFormat::Yaml,
+        ))
+        .build()
 }
 
 pub fn load_config(
-    cfg: &mut config::Config,
+    cfg: config::Config,
     config_file: &Path,
-) -> Result<(), config::ConfigError> {
+) -> Result<config::Config, config::ConfigError> {
     if let Some(config_file_str) = config_file.to_str() {
-        cfg.merge(config::File::new(config_file_str, config::FileFormat::Yaml))
-            .map(drop)
+        config::Config::builder()
+            .add_source(cfg)
+            .add_source(config::File::new(config_file_str, config::FileFormat::Yaml))
+            .build()
     } else {
         Err(config::ConfigError::Message(
             "config file path is not valid UTF-8".to_owned(),
@@ -584,25 +587,19 @@ pub struct Settings {
 }
 
 impl Settings {
-    pub fn new(
-        config_file_is_default: bool,
-        config_file: &OsStr,
-    ) -> Result<Self, config::ConfigError> {
-        // Create a config
-        let mut cfg = config::Config::default();
-
+    pub fn new(config_file: Option<&OsStr>) -> Result<Self, config::ConfigError> {
         // Load the default config
-        load_default_config(&mut cfg)?;
+        let mut cfg = load_default_config()?;
 
         // Merge in the config file if we have one
-        let config_file_path = Path::new(config_file);
-        if !config_file_is_default || config_file_path.exists() {
+        if let Some(config_file) = config_file {
+            let config_file_path = Path::new(config_file);
             // If the user specifies a config file on the command line then it must exist
-            load_config(&mut cfg, config_file_path)?;
+            cfg = load_config(cfg, config_file_path)?;
         }
 
         // Generate config
-        let inner: SettingsInner = cfg.try_into()?;
+        let inner: SettingsInner = cfg.try_deserialize()?;
 
         //
         Ok(Self {
@@ -1087,16 +1084,15 @@ mod tests {
     #[test]
     #[serial]
     fn test_default_config() {
-        let mut cfg = config::Config::default();
-        load_default_config(&mut cfg).unwrap();
-        let inner = cfg.try_into::<SettingsInner>().unwrap();
+        let cfg = load_default_config().unwrap();
+        let inner = cfg.try_deserialize::<SettingsInner>().unwrap();
         println!("default settings: {:?}", inner);
     }
 
     #[test]
     #[serial]
     fn test_default_config_settings() {
-        let settings = Settings::new(true, OsStr::new("!!!")).unwrap();
+        let settings = Settings::new(None).unwrap();
 
         let s = settings.read();
         assert_eq!(s.daemon, false);
@@ -1214,7 +1210,7 @@ mod tests {
         //
         assert_eq!(s.core.network.protocol.udp.enabled, true);
         assert_eq!(s.core.network.protocol.udp.socket_pool_size, 0);
-        assert_eq!(s.core.network.protocol.udp.listen_address.name, "[::]:5150");
+        assert_eq!(s.core.network.protocol.udp.listen_address.name, ":5150");
         assert_eq!(
             s.core.network.protocol.udp.listen_address.addrs,
             listen_address_to_socket_addrs(":5150").unwrap()
@@ -1225,7 +1221,7 @@ mod tests {
         assert_eq!(s.core.network.protocol.tcp.connect, true);
         assert_eq!(s.core.network.protocol.tcp.listen, true);
         assert_eq!(s.core.network.protocol.tcp.max_connections, 32);
-        assert_eq!(s.core.network.protocol.tcp.listen_address.name, "[::]:5150");
+        assert_eq!(s.core.network.protocol.tcp.listen_address.name, ":5150");
         assert_eq!(
             s.core.network.protocol.tcp.listen_address.addrs,
             listen_address_to_socket_addrs(":5150").unwrap()
@@ -1236,7 +1232,7 @@ mod tests {
         assert_eq!(s.core.network.protocol.ws.connect, true);
         assert_eq!(s.core.network.protocol.ws.listen, true);
         assert_eq!(s.core.network.protocol.ws.max_connections, 16);
-        assert_eq!(s.core.network.protocol.ws.listen_address.name, "[::]:5150");
+        assert_eq!(s.core.network.protocol.ws.listen_address.name, ":5150");
         assert_eq!(
             s.core.network.protocol.ws.listen_address.addrs,
             listen_address_to_socket_addrs(":5150").unwrap()
@@ -1250,7 +1246,7 @@ mod tests {
         assert_eq!(s.core.network.protocol.wss.connect, true);
         assert_eq!(s.core.network.protocol.wss.listen, false);
         assert_eq!(s.core.network.protocol.wss.max_connections, 16);
-        assert_eq!(s.core.network.protocol.wss.listen_address.name, "[::]:5150");
+        assert_eq!(s.core.network.protocol.wss.listen_address.name, ":5150");
         assert_eq!(
             s.core.network.protocol.wss.listen_address.addrs,
             listen_address_to_socket_addrs(":5150").unwrap()
