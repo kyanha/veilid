@@ -1,12 +1,12 @@
-use crate::client_log_channel::*;
+use crate::log_safe_channel::*;
 use crate::settings::*;
 use simplelog::*;
 use std::fs::OpenOptions;
 use std::path::Path;
 
 pub struct VeilidLogs {
-    pub client_log_channel: Option<ClientLogChannel>,
-    pub client_log_channel_closer: Option<ClientLogChannelCloser>,
+    pub client_log_channel: Option<LogSafeChannel>,
+    pub client_log_channel_closer: Option<LogSafeChannelCloser>,
 }
 
 impl VeilidLogs {
@@ -15,8 +15,8 @@ impl VeilidLogs {
 
         // Set up loggers
         let mut logs: Vec<Box<dyn SharedLogger>> = Vec::new();
-        let mut client_log_channel: Option<ClientLogChannel> = None;
-        let mut client_log_channel_closer: Option<ClientLogChannelCloser> = None;
+        let mut client_log_channel: Option<LogSafeChannel> = None;
+        let mut client_log_channel_closer: Option<LogSafeChannelCloser> = None;
         let mut cb = ConfigBuilder::new();
         for ig in veilid_core::DEFAULT_LOG_IGNORE_LIST {
             cb.add_filter_ignore_str(ig);
@@ -55,7 +55,7 @@ impl VeilidLogs {
             ))
         }
         if settingsr.logging.client.enabled {
-            let (clog, clogwriter, clogcloser) = ClientLogChannel::new();
+            let (clog, clogwriter, clogcloser) = LogSafeChannel::new();
             client_log_channel = Some(clog);
             client_log_channel_closer = Some(clogcloser);
             logs.push(WriteLogger::new(

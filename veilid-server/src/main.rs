@@ -3,8 +3,8 @@
 #![deny(unused_must_use)]
 
 mod client_api;
-mod client_log_channel;
 mod cmdline;
+mod log_safe_channel;
 mod server;
 mod settings;
 #[cfg(unix)]

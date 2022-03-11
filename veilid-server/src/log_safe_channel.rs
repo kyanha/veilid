@@ -13,11 +13,11 @@ use std::sync::mpsc::TrySendError as StdTrySendError;
 
 //////////////////////////////////////////
 #[derive(Clone)]
-pub struct ClientLogChannelCloser {
+pub struct LogSafeChannelCloser {
     sender: Arc<Mutex<Option<StdSender<String>>>>,
 }
 
-impl ClientLogChannelCloser {
+impl LogSafeChannelCloser {
     pub fn close(&self) {
         // Drop the sender
         self.sender.lock().take();
@@ -25,11 +25,11 @@ impl ClientLogChannelCloser {
 }
 
 //////////////////////////////////////////
-pub struct ClientLogChannelWriterShim {
+pub struct LogSafeChannelWriterShim {
     sender: Arc<Mutex<Option<StdSender<String>>>>,
 }
 
-impl std::io::Write for ClientLogChannelWriterShim {
+impl std::io::Write for LogSafeChannelWriterShim {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         let bufstr = String::from_utf8_lossy(buf).to_string();
         let sender = self.sender.lock();
@@ -55,17 +55,17 @@ impl std::io::Write for ClientLogChannelWriterShim {
     }
 }
 
-pub type ClientLogChannelWriter = std::io::LineWriter<ClientLogChannelWriterShim>;
+pub type LogSafeChannelWriter = std::io::LineWriter<LogSafeChannelWriterShim>;
 
 //////////////////////////////////////////
 
 #[derive(Clone)]
-pub struct ClientLogChannel {
+pub struct LogSafeChannel {
     async_receiver: AsyncReceiver<String>,
 }
 
-impl ClientLogChannel {
-    pub fn new() -> (Self, ClientLogChannelWriter, ClientLogChannelCloser) {
+impl LogSafeChannel {
+    pub fn new() -> (Self, LogSafeChannelWriter, LogSafeChannelCloser) {
         let (async_sender, async_receiver) = async_bounded(1024);
         let (std_sender, std_receiver) = std_sync_channel(1024);
         let shared_std_sender = Arc::new(Mutex::new(Some(std_sender)));
@@ -86,13 +86,13 @@ impl ClientLogChannel {
 
         (
             Self { async_receiver },
-            ClientLogChannelWriter::with_capacity(
+            LogSafeChannelWriter::with_capacity(
                 65536,
-                ClientLogChannelWriterShim {
+                LogSafeChannelWriterShim {
                     sender: shared_std_sender.clone(),
                 },
             ),
-            ClientLogChannelCloser {
+            LogSafeChannelCloser {
                 sender: shared_std_sender,
             },
         )
