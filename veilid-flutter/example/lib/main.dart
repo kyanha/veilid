@@ -42,9 +42,9 @@ void setRootLogLevel(LogLevel? level) {
 
 void initLoggy() {
   Loggy.initLoggy(
-    logPrinter: ConsolePrinter(
+    logPrinter: StreamPrinter(ConsolePrinter(
       const PrettyDeveloperPrinter(),
-    ),
+    )),
     logOptions: getLogOptions(null),
   );
 }
@@ -90,14 +90,16 @@ class _MyAppState extends State<MyApp> with UiLoggy {
     // We also handle the message potentially returning null.
     try {
       veilidVersion = Veilid.instance.veilidVersionString();
-    } on PlatformException {
+    } on Exception {
       veilidVersion = 'Failed to get veilid version.';
     }
-    loggy.error("Error test");
-    loggy.warning("Warning test");
-    loggy.info("Info test");
-    loggy.debug("Debug test");
-    loggy.trace("Trace test");
+
+    // In case of hot restart shut down first
+    try {
+      await Veilid.instance.shutdownVeilidCore();
+    } on Exception {
+      //
+    }
 
     // If the widget was removed from the tree while the asynchronous platform
     // message was in flight, we want to discard the reply rather than calling

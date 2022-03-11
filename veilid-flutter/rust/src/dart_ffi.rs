@@ -115,21 +115,17 @@ pub extern "C" fn startup_veilid_core(port: i64, config: FfiStr) {
         }
 
         let sink = stream.clone();
-        let update_callback = Arc::new(
-            move |update: veilid_core::VeilidUpdate| -> veilid_core::SystemPinBoxFuture<()> {
-                let sink = sink.clone();
-                Box::pin(async move {
-                    match update {
-                        veilid_core::VeilidUpdate::Shutdown => {
-                            sink.close();
-                        }
-                        _ => {
-                            sink.item_json(update);
-                        }
-                    }
-                })
-            },
-        );
+        let update_callback = Arc::new(move |update: veilid_core::VeilidUpdate| {
+            let sink = sink.clone();
+            match update {
+                veilid_core::VeilidUpdate::Shutdown => {
+                    sink.close();
+                }
+                _ => {
+                    sink.item_json(update);
+                }
+            }
+        });
 
         let res = veilid_core::api_startup_json(update_callback, config_json).await;
         let veilid_api = check_err_json!(stream, res);

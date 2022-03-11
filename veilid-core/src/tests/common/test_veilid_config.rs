@@ -160,13 +160,9 @@ cfg_if! {
 
 pub fn setup_veilid_core() -> (UpdateCallback, ConfigCallback) {
     (
-        Arc::new(
-            move |veilid_update: VeilidUpdate| -> SystemPinBoxFuture<()> {
-                Box::pin(async move {
-                    trace!("update_callback: {:?}", veilid_update);
-                })
-            },
-        ),
+        Arc::new(move |veilid_update: VeilidUpdate| {
+            println!("update_callback: {:?}", veilid_update);
+        }),
         Arc::new(config_callback),
     )
 }

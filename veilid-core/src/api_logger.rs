@@ -1,5 +1,4 @@
 use crate::core_context::*;
-use crate::intf::*;
 use crate::veilid_api::*;
 use crate::xx::*;
 use log::{set_boxed_logger, set_max_level, Level, LevelFilter, Log, Metadata, Record};
@@ -8,8 +7,7 @@ use once_cell::sync::OnceCell;
 struct ApiLoggerInner {
     level: LevelFilter,
     filter_ignore: Cow<'static, [Cow<'static, str>]>,
-    join_handle: Option<JoinHandle<()>>,
-    tx: Option<flume::Sender<(VeilidLogLevel, String)>>,
+    update_callback: UpdateCallback,
 }
 
 #[derive(Clone)]
@@ -21,21 +19,10 @@ static API_LOGGER: OnceCell<ApiLogger> = OnceCell::new();
 
 impl ApiLogger {
     fn new_inner(level: LevelFilter, update_callback: UpdateCallback) -> ApiLoggerInner {
-        let (tx, rx) = flume::unbounded::<(VeilidLogLevel, String)>();
-        let join_handle: Option<JoinHandle<()>> = Some(spawn(async move {
-            while let Ok(v) = rx.recv_async().await {
-                (update_callback)(VeilidUpdate::Log {
-                    log_level: v.0,
-                    message: v.1,
-                })
-                .await;
-            }
-        }));
         ApiLoggerInner {
             level,
             filter_ignore: Default::default(),
-            join_handle,
-            tx: Some(tx),
+            update_callback,
         }
     }
 
@@ -54,20 +41,8 @@ impl ApiLogger {
 
     pub async fn terminate() {
         if let Some(api_logger) = API_LOGGER.get() {
-            let mut join_handle = None;
-            {
-                let mut inner = api_logger.inner.lock();
-
-                // Terminate channel
-                if let Some(inner) = (*inner).as_mut() {
-                    inner.tx = None;
-                    join_handle = inner.join_handle.take();
-                }
-                *inner = None;
-            }
-            if let Some(jh) = join_handle {
-                jh.await;
-            }
+            let mut inner = api_logger.inner.lock();
+            *inner = None;
 
             // Clear everything and we're done
             set_max_level(LevelFilter::Off);
@@ -139,9 +114,10 @@ impl Log for ApiLogger {
 
                 let s = format!("{}{}{}", tgt, loc, record.args());
 
-                if let Some(tx) = &inner.tx {
-                    let _ = tx.try_send((ll, s));
-                }
+                (inner.update_callback)(VeilidUpdate::Log {
+                    log_level: ll,
+                    message: s,
+                })
             }
         }
     }

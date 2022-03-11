@@ -4,7 +4,7 @@
 use veilid_core::xx::*;
 
 use async_std::prelude::*;
-use clap::{App, Arg, ColorChoice};
+use clap::{Arg, ColorChoice, Command};
 use flexi_logger::*;
 use std::ffi::OsStr;
 use std::net::ToSocketAddrs;
@@ -20,7 +20,7 @@ pub mod veilid_client_capnp {
 }
 
 fn parse_command_line(default_config_path: &OsStr) -> Result<clap::ArgMatches, String> {
-    let matches = App::new("veilid-cli")
+    let matches = Command::new("veilid-cli")
         .version("0.1")
         .color(ColorChoice::Auto)
         .about("Veilid Console Client")

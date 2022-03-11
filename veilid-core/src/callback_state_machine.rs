@@ -4,12 +4,12 @@ pub use rust_fsm::*;
 cfg_if! {
     if #[cfg(target_arch = "wasm32")] {
         pub type StateChangeCallback<T> = Arc<
-            dyn Fn(<T as StateMachineImpl>::State, <T as StateMachineImpl>::State) -> SystemPinBoxFuture<()>
+            dyn Fn(<T as StateMachineImpl>::State, <T as StateMachineImpl>::State)
                 + 'static,
         >;
     } else {
         pub type StateChangeCallback<T> = Arc<
-            dyn Fn(<T as StateMachineImpl>::State, <T as StateMachineImpl>::State) -> SystemPinBoxFuture<()>
+            dyn Fn(<T as StateMachineImpl>::State, <T as StateMachineImpl>::State)
                 + Send
                 + Sync
                 + 'static,
@@ -88,7 +88,7 @@ where
                 (inner.callback.clone(), eventual)
             };
             if let Some(cb) = callback {
-                cb(old_state, new_state).await;
+                cb(old_state, new_state);
             }
             eventual.resolve(new_state).await;
             Ok(output)

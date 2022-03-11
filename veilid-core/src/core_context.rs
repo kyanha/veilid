@@ -8,9 +8,9 @@ use crate::xx::*;
 
 cfg_if! {
     if #[cfg(target_arch = "wasm32")] {
-        pub type UpdateCallback = Arc<dyn Fn(VeilidUpdate) -> SystemPinBoxFuture<()>>;
+        pub type UpdateCallback = Arc<dyn Fn(VeilidUpdate)>;
     } else {
-        pub type UpdateCallback = Arc<dyn Fn(VeilidUpdate) -> SystemPinBoxFuture<()> + Send + Sync>;
+        pub type UpdateCallback = Arc<dyn Fn(VeilidUpdate) + Send + Sync>;
     }
 }
 
@@ -73,7 +73,7 @@ impl ServicesContext {
             info!("Veilid API logging initialized");
         }
 
-        trace!("startup starting");
+        info!("Veilid API starting up");
 
         // Set up protected store
         trace!("init protected store");
@@ -134,12 +134,12 @@ impl ServicesContext {
         }
         self.attachment_manager = Some(attachment_manager);
 
-        trace!("startup complete");
+        info!("Veilid API startup complete");
         Ok(())
     }
 
     pub async fn shutdown(&mut self) {
-        trace!("shutdown starting");
+        info!("Veilid API shutting down");
 
         if let Some(attachment_manager) = &mut self.attachment_manager {
             trace!("terminate attachment manager");
@@ -162,13 +162,13 @@ impl ServicesContext {
             protected_store.terminate().await;
         }
 
-        trace!("shutdown complete");
+        info!("Veilid API shutdown complete");
 
         // api logger terminate is idempotent
         ApiLogger::terminate().await;
 
         // send final shutdown update
-        (self.update_callback)(VeilidUpdate::Shutdown).await;
+        (self.update_callback)(VeilidUpdate::Shutdown);
     }
 }
 
@@ -221,7 +221,6 @@ impl VeilidCoreContext {
             if #[cfg(target_os = "android")] {
                 if utils::android::ANDROID_GLOBALS.lock().is_none() {
                     error!("Android globals are not set up");
-                    config.terminate().await;
                     return Err(VeilidAPIError::Internal { message: "Android globals are not set up".to_owned() });
                 }
             }

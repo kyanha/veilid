@@ -4295,6 +4295,7 @@ dependencies = [
  "daemonize",
  "directories",
  "failure",
+ "flume",
  "futures",
  "lazy_static",
  "log",

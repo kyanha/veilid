@@ -1,7 +1,7 @@
 use crate::client_api;
 use crate::settings::*;
 use crate::veilid_logs::*;
-use async_std::channel::{bounded, Receiver, Sender};
+use flume::{bounded, Receiver, Sender};
 use lazy_static::*;
 use log::*;
 use parking_lot::Mutex;
@@ -31,16 +31,11 @@ pub async fn run_veilid_server(settings: Settings, logs: VeilidLogs) -> Result<(
     ) = bounded(1);
 
     // Create VeilidCore setup
-    let update_callback = Arc::new(
-        move |change: veilid_core::VeilidUpdate| -> veilid_core::SystemPinBoxFuture<()> {
-            let sender = sender.clone();
-            Box::pin(async move {
-                if sender.send(change).await.is_err() {
-                    error!("error sending veilid update callback");
-                }
-            })
-        },
-    );
+    let update_callback = Arc::new(move |change: veilid_core::VeilidUpdate| {
+        if sender.send(change).is_err() {
+            error!("error sending veilid update callback");
+        }
+    });
     let config_callback = settings.get_core_config_callback();
 
     // Start Veilid Core and get API
@@ -66,7 +61,7 @@ pub async fn run_veilid_server(settings: Settings, logs: VeilidLogs) -> Result<(
     // Handle state changes on main thread for capnproto rpc
     let update_receiver_jh = capi.clone().map(|capi| {
         async_std::task::spawn_local(async move {
-            while let Ok(change) = receiver.recv().await {
+            while let Ok(change) = receiver.recv_async().await {
                 capi.clone().handle_update(change);
             }
         })
