@@ -1,5 +1,6 @@
 package com.veilid.veilid
 
+import android.util.Log;
 import androidx.annotation.NonNull
 import android.content.Context
 import io.flutter.embedding.engine.plugins.FlutterPlugin
@@ -20,7 +21,7 @@ class VeilidPlugin: FlutterPlugin, MethodCallHandler {
   external fun init_android(ctx: Context)
 
   override fun onAttachedToEngine(@NonNull flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
-    init_android(flutterPluginBinding.getApplicationContext())
+    init_android(flutterPluginBinding.applicationContext)
   }
 
   override fun onMethodCall(@NonNull call: MethodCall, @NonNull result: Result) {

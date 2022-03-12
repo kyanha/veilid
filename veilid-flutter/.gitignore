@@ -28,3 +28,5 @@
 .packages
 build/
 .flutter
+.gradle
+local.properties

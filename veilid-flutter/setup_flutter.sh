@@ -40,47 +40,44 @@ else
     exit 1
 fi
 
-# install cargo cbindgen
-cargo install cbindgen
+# # install cargo cbindgen
+# cargo install cbindgen
 
-# install dart ffigen
-dart pub global activate ffigen
+# # install dart ffigen
+# dart pub global activate ffigen
 
-# install flutter_rust_bridge_codegen
-cargo install flutter_rust_bridge_codegen
-
-# install just
-cargo install just
+# # install flutter_rust_bridge_codegen
+# cargo install flutter_rust_bridge_codegen
 
 # platform specific stuff
 if [ "$OS" == "linux" ]; then
-    # ensure packages are installed
-    echo "Must sudo to root to install LLVM package:"
-    sudo apt-get install libclang-dev
+    # # ensure packages are installed
+    # echo "Must sudo to root to install LLVM package:"
+    # sudo apt-get install libclang-dev
     
     # ensure platforms are enabled in flutter
     flutter config --enable-linux-desktop --enable-android
 
 elif [ "$OS" == "macos" ]; then
 
-    # ensure x86_64 homebrew is installed
-    if [ -f /usr/local/bin/brew ] &> /dev/null; then 
-        echo '[X] x86_64 homebrew is available'
-    else
-        echo 'x86_64 homebrew is not available, run this:'
-        echo 'arch -x86_64 zsh'
-        echo '/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
-        exit 1
-    fi
+    # # ensure x86_64 homebrew is installed
+    # if [ -f /usr/local/bin/brew ] &> /dev/null; then 
+    #     echo '[X] x86_64 homebrew is available'
+    # else
+    #     echo 'x86_64 homebrew is not available, run this:'
+    #     echo 'arch -x86_64 zsh'
+    #     echo '/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
+    #     exit 1
+    # fi
 
     # ensure packages are installed
-    if [ "$BREW_USER" == "" ]; then
-        BREW_USER=`ls -lad /usr/local/bin/. | cut -d\  -f4`
-        echo "Must sudo to homebrew user \"$BREW_USER\" to install LLVM package:"
-    fi
-    sudo -H -u $BREW_USER arch -x86_64 /usr/local/bin/brew install llvm
+    # if [ "$BREW_USER" == "" ]; then
+    #     BREW_USER=`ls -lad /usr/local/bin/. | cut -d\  -f4`
+    #     echo "Must sudo to homebrew user \"$BREW_USER\" to install LLVM package:"
+    # fi
+    # sudo -H -u $BREW_USER arch -x86_64 /usr/local/bin/brew install llvm
     echo "Must sudo to root to install CocoaPods gem:"
-    sudo arch -x86_64 gem install ffi
+    # sudo arch -x86_64 gem install ffi
     sudo arch -x86_64 gem install cocoapods
 
     # ensure platforms are enabled in flutter

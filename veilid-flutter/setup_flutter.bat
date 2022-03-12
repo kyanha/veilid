@@ -29,29 +29,29 @@ IF NOT DEFINED CARGO_FOUND (
 )
 echo [X] Cargo is available in the path
 
-REM ensure winget is installed
-FOR %%X IN (winget.exe) DO (SET WINGET_FOUND=%%~$PATH:X)
-IF NOT DEFINED WINGET_FOUND (
-    echo Winget is not available in the path, ensure your version of Windows is new enough and has Winget installed from the Microsoft Store
-    echo https://docs.microsoft.com/en-us/windows/package-manager/winget/
-    goto end
-)
-echo [X] Winget is available in the path
+@REM REM ensure winget is installed
+@REM FOR %%X IN (winget.exe) DO (SET WINGET_FOUND=%%~$PATH:X)
+@REM IF NOT DEFINED WINGET_FOUND (
+@REM     echo Winget is not available in the path, ensure your version of Windows is new enough and has Winget installed from the Microsoft Store
+@REM     echo https://docs.microsoft.com/en-us/windows/package-manager/winget/
+@REM     goto end
+@REM )
+@REM echo [X] Winget is available in the path
 
-rem install cargo cbindgen
-cargo install cbindgen
+@REM rem install cargo cbindgen
+@REM cargo install cbindgen
 
-rem install dart ffigen
-call dart pub global activate ffigen
+@REM rem install dart ffigen
+@REM call dart pub global activate ffigen
 
-rem install flutter_rust_bridge_codegen
-cargo install flutter_rust_bridge_codegen
+@REM rem install flutter_rust_bridge_codegen
+@REM cargo install flutter_rust_bridge_codegen
 
-rem install just
-cargo install just
+@REM rem install just
+@REM cargo install just
 
-rem ensure packages are installed
-winget install -e --id LLVM.LLVM --accept-package-agreements --accept-source-agreements
+@REM rem ensure packages are installed
+@REM winget install -e --id LLVM.LLVM --accept-package-agreements --accept-source-agreements
 
 rem ensure windows is enabled in flutter
 call flutter config --enable-windows-desktop --no-enable-android
