@@ -36,7 +36,7 @@ impl Network {
                     drop(bfs6);
                     inner.bound_first_udp.insert(udp_port, None);
                 } else {
-                    inner.bound_first_udp.insert(udp_port, Some(bfs4, bfs6));
+                    inner.bound_first_udp.insert(udp_port, Some((bfs4, bfs6)));
                 }
             }
             true
@@ -74,7 +74,7 @@ impl Network {
                     drop(bfs6);
                     inner.bound_first_tcp.insert(tcp_port, None);
                 } else {
-                    inner.bound_first_tcp.insert(tcp_port, Some(bfs4, bfs6));
+                    inner.bound_first_tcp.insert(tcp_port, Some((bfs4, bfs6)));
                 }
             }
             true
