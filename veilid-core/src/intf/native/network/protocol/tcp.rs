@@ -1,3 +1,4 @@
+use super::sockets::*;
 use super::*;
 use crate::intf::*;
 use crate::network_manager::MAX_MESSAGE_SIZE;
@@ -139,7 +140,9 @@ impl RawTcpProtocolHandler {
         // Make a shared socket
         let socket = match local_address {
             Some(a) => new_bound_shared_tcp_socket(a)?,
-            None => new_unbound_shared_tcp_socket(Domain::for_address(remote_socket_addr))?,
+            None => {
+                new_unbound_shared_tcp_socket(socket2::Domain::for_address(remote_socket_addr))?
+            }
         };
 
         // Connect to the remote address

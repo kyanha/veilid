@@ -52,12 +52,12 @@ struct NetworkInner {
     wss_port: u16,
     interfaces: NetworkInterfaces,
     // udp
-    bound_first_udp: BTreeMap<u16, (socket2::Socket, socket2::Socket)>,
+    bound_first_udp: BTreeMap<u16, Option<(socket2::Socket, socket2::Socket)>>,
     inbound_udp_protocol_handlers: BTreeMap<SocketAddr, RawUdpProtocolHandler>,
     outbound_udpv4_protocol_handler: Option<RawUdpProtocolHandler>,
     outbound_udpv6_protocol_handler: Option<RawUdpProtocolHandler>,
     //tcp
-    bound_first_tcp: BTreeMap<u16, (socket2::Socket, socket2::Socket)>,
+    bound_first_tcp: BTreeMap<u16, Option<(socket2::Socket, socket2::Socket)>>,
     tls_acceptor: Option<TlsAcceptor>,
     listener_states: BTreeMap<SocketAddr, Arc<RwLock<ListenerState>>>,
 }

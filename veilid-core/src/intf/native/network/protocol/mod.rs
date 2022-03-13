@@ -1,3 +1,4 @@
+pub mod sockets;
 pub mod tcp;
 pub mod udp;
 pub mod wrtc;
@@ -6,7 +7,6 @@ pub mod ws;
 use crate::network_connection::*;
 use crate::xx::*;
 use crate::*;
-use socket2::{Domain, Protocol, Socket, Type};
 
 #[derive(Debug)]
 pub enum ProtocolNetworkConnection {
@@ -84,142 +84,4 @@ impl ProtocolNetworkConnection {
             Self::Wss(w) => w.recv().await,
         }
     }
-}
-
-pub fn new_unbound_shared_udp_socket(domain: Domain) -> Result<socket2::Socket, String> {
-    let socket = Socket::new(domain, Type::DGRAM, Some(Protocol::UDP))
-        .map_err(|e| format!("Couldn't create UDP socket: {}", e))?;
-    if domain == Domain::IPV6 {
-        socket
-            .set_only_v6(true)
-            .map_err(|e| format!("Couldn't set IPV6_V6ONLY: {}", e))?;
-    }
-    socket
-        .set_reuse_address(true)
-        .map_err(|e| format!("Couldn't set reuse address: {}", e))?;
-    cfg_if! {
-        if #[cfg(unix)] {
-            socket.set_reuse_port(true).map_err(|e| format!("Couldn't set reuse port: {}", e))?;
-        }
-    }
-    Ok(socket)
-}
-
-pub fn new_bound_shared_udp_socket(local_address: SocketAddr) -> Result<socket2::Socket, String> {
-    let domain = Domain::for_address(local_address);
-    let socket = new_unbound_shared_udp_socket(domain)?;
-    let socket2_addr = socket2::SockAddr::from(local_address);
-    socket
-        .bind(&socket2_addr)
-        .map_err(|e| format!("failed to bind UDP socket: {}", e))?;
-
-    log_net!("created shared udp socket on {:?}", &local_address);
-
-    Ok(socket)
-}
-
-pub fn new_bound_first_udp_socket(local_address: SocketAddr) -> Result<socket2::Socket, String> {
-    let domain = Domain::for_address(local_address);
-    let socket = Socket::new(domain, Type::DGRAM, Some(Protocol::UDP))
-        .map_err(|e| format!("Couldn't create UDP socket: {}", e))?;
-    if domain == Domain::IPV6 {
-        socket
-            .set_only_v6(true)
-            .map_err(|e| format!("Couldn't set IPV6_V6ONLY: {}", e))?;
-    }
-    // Bind the socket -first- before turning on 'reuse address' this way it will
-    // fail if the port is already taken
-    let socket2_addr = socket2::SockAddr::from(local_address);
-    socket
-        .bind(&socket2_addr)
-        .map_err(|e| format!("failed to bind UDP socket: {}", e))?;
-
-    // Set 'reuse address' so future binds to this port will succeed
-    socket
-        .set_reuse_address(true)
-        .map_err(|e| format!("Couldn't set reuse address: {}", e))?;
-    cfg_if! {
-        if #[cfg(unix)] {
-            socket.set_reuse_port(true).map_err(|e| format!("Couldn't set reuse port: {}", e))?;
-        }
-    }
-    log_net!("created shared udp socket on {:?}", &local_address);
-
-    Ok(socket)
-}
-
-pub fn new_unbound_shared_tcp_socket(domain: Domain) -> Result<socket2::Socket, String> {
-    let socket = Socket::new(domain, Type::STREAM, Some(Protocol::TCP))
-        .map_err(map_to_string)
-        .map_err(logthru_net!("failed to create TCP socket"))?;
-    if let Err(e) = socket.set_linger(None) {
-        log_net!(error "Couldn't set TCP linger: {}", e);
-    }
-    if let Err(e) = socket.set_nodelay(true) {
-        log_net!(error "Couldn't set TCP nodelay: {}", e);
-    }
-    if domain == Domain::IPV6 {
-        socket
-            .set_only_v6(true)
-            .map_err(|e| format!("Couldn't set IPV6_V6ONLY: {}", e))?;
-    }
-    socket
-        .set_reuse_address(true)
-        .map_err(|e| format!("Couldn't set reuse address: {}", e))?;
-    cfg_if! {
-        if #[cfg(unix)] {
-            socket.set_reuse_port(true).map_err(|e| format!("Couldn't set reuse port: {}", e))?;
-        }
-    }
-    Ok(socket)
-}
-
-pub fn new_bound_shared_tcp_socket(local_address: SocketAddr) -> Result<socket2::Socket, String> {
-    let domain = Domain::for_address(local_address);
-
-    let socket = new_unbound_shared_tcp_socket(domain)?;
-
-    let socket2_addr = socket2::SockAddr::from(local_address);
-    socket
-        .bind(&socket2_addr)
-        .map_err(|e| format!("failed to bind TCP socket: {}", e))?;
-
-    Ok(socket)
-}
-
-pub fn new_bound_first_tcp_socket(local_address: SocketAddr) -> Result<socket2::Socket, String> {
-    let domain = Domain::for_address(local_address);
-
-    let socket = Socket::new(domain, Type::STREAM, Some(Protocol::TCP))
-        .map_err(map_to_string)
-        .map_err(logthru_net!("failed to create TCP socket"))?;
-    if let Err(e) = socket.set_linger(None) {
-        log_net!(error "Couldn't set TCP linger: {}", e);
-    }
-    if let Err(e) = socket.set_nodelay(true) {
-        log_net!(error "Couldn't set TCP nodelay: {}", e);
-    }
-    if domain == Domain::IPV6 {
-        socket
-            .set_only_v6(true)
-            .map_err(|e| format!("Couldn't set IPV6_V6ONLY: {}", e))?;
-    }
-    // Bind the socket -first- before turning on 'reuse address' this way it will
-    // fail if the port is already taken
-
-    let socket2_addr = socket2::SockAddr::from(local_address);
-    socket
-        .bind(&socket2_addr)
-        .map_err(|e| format!("failed to bind TCP socket: {}", e))?;
-
-    // Set 'reuse address' so future binds to this port will succeed
-    socket
-        .set_reuse_address(true)
-        .map_err(|e| format!("Couldn't set reuse address: {}", e))?;
-    cfg_if! {
-        if #[cfg(unix)] {
-            socket.set_reuse_port(true).map_err(|e| format!("Couldn't set reuse port: {}", e))?;
-        }
-    }
-    Ok(socket)
 }

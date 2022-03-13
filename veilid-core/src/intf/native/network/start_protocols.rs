@@ -1,3 +1,4 @@
+use super::sockets::*;
 use super::*;
 
 impl Network {
@@ -26,7 +27,18 @@ impl Network {
             }
         }
         if let (Some(bfs4), Some(bfs6)) = (bound_first_socket_v4, bound_first_socket_v6) {
-            inner.bound_first_udp.insert(udp_port, (bfs4, bfs6));
+            cfg_if! {
+                if #[cfg(windows)] {
+                    // On windows, drop the socket. This is a race condition, but there's
+                    // no way around it. This isn't for security anyway, it's to prevent multiple copies of the
+                    // app from binding on the same port.
+                    drop(bfs4);
+                    drop(bfs6);
+                    inner.bound_first_udp.insert(udp_port, None);
+                } else {
+                    inner.bound_first_udp.insert(udp_port, Some(bfs4, bfs6));
+                }
+            }
             true
         } else {
             false
@@ -53,7 +65,18 @@ impl Network {
             }
         }
         if let (Some(bfs4), Some(bfs6)) = (bound_first_socket_v4, bound_first_socket_v6) {
-            inner.bound_first_tcp.insert(tcp_port, (bfs4, bfs6));
+            cfg_if! {
+                if #[cfg(windows)] {
+                    // On windows, drop the socket. This is a race condition, but there's
+                    // no way around it. This isn't for security anyway, it's to prevent multiple copies of the
+                    // app from binding on the same port.
+                    drop(bfs4);
+                    drop(bfs6);
+                    inner.bound_first_tcp.insert(tcp_port, None);
+                } else {
+                    inner.bound_first_tcp.insert(tcp_port, Some(bfs4, bfs6));
+                }
+            }
             true
         } else {
             false
