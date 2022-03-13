@@ -295,8 +295,8 @@ impl Address {
     }
     pub fn address_string_with_port(&self, port: u16) -> String {
         match self {
-            Address::IPV4(v4) => format!("{}:{}", v4.to_string(), port),
-            Address::IPV6(v6) => format!("[{}]:{}", v6.to_string(), port),
+            Address::IPV4(v4) => format!("{}:{}", v4, port),
+            Address::IPV6(v6) => format!("[{}]:{}", v6, port),
         }
     }
     pub fn is_global(&self) -> bool {

@@ -363,7 +363,7 @@ impl NamedSocketAddrs {
             let portstr = &self.name[split + 1..];
             let port: u16 = portstr.parse::<u16>().map_err(drop)? + offset;
 
-            self.name = format!("{}:{}", hoststr, port.to_string());
+            self.name = format!("{}:{}", hoststr, port);
         } else {
             return Err(());
         }
@@ -684,13 +684,12 @@ impl Settings {
 
     pub fn get_default_config_path() -> PathBuf {
         // Get default configuration file location
-        let mut default_config_path;
-
-        if let Some(my_proj_dirs) = ProjectDirs::from("org", "Veilid", "Veilid") {
-            default_config_path = PathBuf::from(my_proj_dirs.config_dir());
-        } else {
-            default_config_path = PathBuf::from("./");
-        }
+        let mut default_config_path =
+            if let Some(my_proj_dirs) = ProjectDirs::from("org", "Veilid", "Veilid") {
+                PathBuf::from(my_proj_dirs.config_dir())
+            } else {
+                PathBuf::from("./")
+            };
         default_config_path.push("veilid-server.conf");
 
         default_config_path
@@ -698,13 +697,12 @@ impl Settings {
 
     pub fn get_default_table_store_path() -> PathBuf {
         // Get default configuration file location
-        let mut default_config_path;
-
-        if let Some(my_proj_dirs) = ProjectDirs::from("org", "Veilid", "Veilid") {
-            default_config_path = PathBuf::from(my_proj_dirs.data_local_dir());
-        } else {
-            default_config_path = PathBuf::from("./");
-        }
+        let mut default_config_path =
+            if let Some(my_proj_dirs) = ProjectDirs::from("org", "Veilid", "Veilid") {
+                PathBuf::from(my_proj_dirs.data_local_dir())
+            } else {
+                PathBuf::from("./")
+            };
         default_config_path.push("table_store");
 
         default_config_path
@@ -712,13 +710,12 @@ impl Settings {
 
     pub fn get_default_block_store_path() -> PathBuf {
         // Get default configuration file location
-        let mut default_config_path;
-
-        if let Some(my_proj_dirs) = ProjectDirs::from("org", "Veilid", "Veilid") {
-            default_config_path = PathBuf::from(my_proj_dirs.data_local_dir());
-        } else {
-            default_config_path = PathBuf::from("./");
-        }
+        let mut default_config_path =
+            if let Some(my_proj_dirs) = ProjectDirs::from("org", "Veilid", "Veilid") {
+                PathBuf::from(my_proj_dirs.data_local_dir())
+            } else {
+                PathBuf::from("./")
+            };
         default_config_path.push("block_store");
 
         default_config_path
@@ -726,13 +723,12 @@ impl Settings {
 
     pub fn get_default_protected_store_insecure_fallback_directory() -> PathBuf {
         // Get default configuration file location
-        let mut default_config_path;
-
-        if let Some(my_proj_dirs) = ProjectDirs::from("org", "Veilid", "Veilid") {
-            default_config_path = PathBuf::from(my_proj_dirs.data_local_dir());
-        } else {
-            default_config_path = PathBuf::from("./");
-        }
+        let mut default_config_path =
+            if let Some(my_proj_dirs) = ProjectDirs::from("org", "Veilid", "Veilid") {
+                PathBuf::from(my_proj_dirs.data_local_dir())
+            } else {
+                PathBuf::from("./")
+            };
         default_config_path.push("protected_store");
 
         default_config_path

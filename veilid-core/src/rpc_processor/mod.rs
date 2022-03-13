@@ -1455,9 +1455,9 @@ impl RPCProcessor {
         match eventual_value.await {
             ReceiptEvent::Returned => Ok(true),
             ReceiptEvent::Expired => Ok(false),
-            ReceiptEvent::Cancelled => Err(rpc_error_internal(
-                "receipt was dropped before expiration".to_owned(),
-            )),
+            ReceiptEvent::Cancelled => {
+                Err(rpc_error_internal("receipt was dropped before expiration"))
+            }
         }
     }
 

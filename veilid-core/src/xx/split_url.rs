@@ -262,7 +262,7 @@ impl FromStr for SplitUrl {
                 return Err("Invalid scheme specified".to_owned());
             }
             let userinfo = {
-                if let Some((userinfo_str, after)) = rest.split_once("@") {
+                if let Some((userinfo_str, after)) = rest.split_once('@') {
                     rest = after;
                     Some(url_decode(userinfo_str)?)
                 } else {

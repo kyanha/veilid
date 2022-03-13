@@ -33,21 +33,20 @@ impl VeilidLogs {
         if settingsr.logging.file.enabled {
             let log_path = Path::new(&settingsr.logging.file.path);
 
-            let logfile;
-            if settingsr.logging.file.append {
-                logfile = OpenOptions::new()
+            let logfile = if settingsr.logging.file.append {
+                OpenOptions::new()
                     .create(true)
                     .append(true)
                     .open(log_path)
                     .map_err(|e| format!("failed to open log file: {}", e))?
             } else {
-                logfile = OpenOptions::new()
+                OpenOptions::new()
                     .create(true)
                     .truncate(true)
                     .write(true)
                     .open(log_path)
                     .map_err(|e| format!("failed to open log file: {}", e))?
-            }
+            };
             logs.push(WriteLogger::new(
                 convert_loglevel(settingsr.logging.file.level),
                 cb.build(),

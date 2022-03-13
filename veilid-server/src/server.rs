@@ -67,43 +67,40 @@ pub async fn run_veilid_server(settings: Settings, logs: VeilidLogs) -> Result<(
         })
     });
     // Handle log messages on main thread for capnproto rpc
-    let client_log_receiver_jh = capi
-        .clone()
-        .map(|capi| {
-            logs.client_log_channel
-                .clone()
-                .map(|mut client_log_channel| {
-                    async_std::task::spawn_local(async move {
-                        // Batch messages to either 16384 chars at once or every second to minimize packets
-                        let rate = Duration::from_secs(1);
-                        let mut start = Instant::now();
-                        let mut messages = String::new();
-                        loop {
-                            let timeout_dur =
-                                rate.checked_sub(start.elapsed()).unwrap_or(Duration::ZERO);
-                            match async_std::future::timeout(timeout_dur, client_log_channel.recv())
-                                .await
-                            {
-                                Ok(Ok(message)) => {
-                                    messages += &message;
-                                    if messages.len() > 16384 {
-                                        capi.clone()
-                                            .handle_client_log(core::mem::take(&mut messages));
-                                        start = Instant::now();
-                                    }
-                                }
-                                Ok(Err(_)) => break,
-                                Err(_) => {
+    let client_log_receiver_jh = capi.clone().and_then(|capi| {
+        logs.client_log_channel
+            .clone()
+            .map(|mut client_log_channel| {
+                async_std::task::spawn_local(async move {
+                    // Batch messages to either 16384 chars at once or every second to minimize packets
+                    let rate = Duration::from_secs(1);
+                    let mut start = Instant::now();
+                    let mut messages = String::new();
+                    loop {
+                        let timeout_dur =
+                            rate.checked_sub(start.elapsed()).unwrap_or(Duration::ZERO);
+                        match async_std::future::timeout(timeout_dur, client_log_channel.recv())
+                            .await
+                        {
+                            Ok(Ok(message)) => {
+                                messages += &message;
+                                if messages.len() > 16384 {
                                     capi.clone()
                                         .handle_client_log(core::mem::take(&mut messages));
                                     start = Instant::now();
                                 }
                             }
+                            Ok(Err(_)) => break,
+                            Err(_) => {
+                                capi.clone()
+                                    .handle_client_log(core::mem::take(&mut messages));
+                                start = Instant::now();
+                            }
                         }
-                    })
+                    }
                 })
-        })
-        .flatten();
+            })
+    });
 
     // Auto-attach if desired
     if auto_attach {

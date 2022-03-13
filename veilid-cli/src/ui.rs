@@ -557,14 +557,14 @@ impl UI {
             }
             ConnectionState::Retrying(addr, _) => {
                 status.append_styled(
-                    format!("Reconnecting to {} ", addr.to_string()),
+                    format!("Reconnecting to {} ", addr),
                     ColorStyle::highlight_inactive(),
                 );
                 status.append_styled("|", ColorStyle::highlight_inactive());
             }
             ConnectionState::Connected(addr, _) => {
                 status.append_styled(
-                    format!("Connected to {} ", addr.to_string()),
+                    format!("Connected to {} ", addr),
                     ColorStyle::highlight_inactive(),
                 );
                 status.append_styled("|", ColorStyle::highlight_inactive());

@@ -279,13 +279,13 @@ async fn test_operations() {
     assert_eq!(d1, d2);
     assert!(d1 <= d2);
     assert!(d1 >= d2);
-    assert!(!(d1 < d2));
-    assert!(!(d1 > d2));
+    assert!(d1 >= d2);
+    assert!(d1 <= d2);
     assert_eq!(d2, d1);
     assert!(d2 <= d1);
     assert!(d2 >= d1);
-    assert!(!(d2 < d1));
-    assert!(!(d2 > d1));
+    assert!(d2 >= d1);
+    assert!(d2 <= d1);
 
     // Verify nibbles
     assert_eq!(d1.nibble(0), 0x9u8);

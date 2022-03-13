@@ -1,6 +1,4 @@
-
 use directories::*;
-
 
 use serde_derive::*;
 use std::ffi::OsStr;
@@ -116,9 +114,7 @@ impl<'de> serde::Deserialize<'de> for NamedSocketAddrs {
         D: serde::Deserializer<'de>,
     {
         let s = String::deserialize(deserializer)?;
-        let addr_iter = s
-            .to_socket_addrs()
-            .map_err(serde::de::Error::custom)?;
+        let addr_iter = s.to_socket_addrs().map_err(serde::de::Error::custom)?;
         Ok(NamedSocketAddrs {
             name: s,
             addrs: addr_iter.collect(),
@@ -206,13 +202,12 @@ pub struct Settings {
 impl Settings {
     pub fn get_default_config_path() -> PathBuf {
         // Get default configuration file location
-        let mut default_config_path;
-
-        if let Some(my_proj_dirs) = ProjectDirs::from("org", "Veilid", "Veilid") {
-            default_config_path = PathBuf::from(my_proj_dirs.config_dir());
-        } else {
-            default_config_path = PathBuf::from("./");
-        }
+        let mut default_config_path =
+            if let Some(my_proj_dirs) = ProjectDirs::from("org", "Veilid", "Veilid") {
+                PathBuf::from(my_proj_dirs.config_dir())
+            } else {
+                PathBuf::from("./")
+            };
         default_config_path.push("veilid-client.conf");
 
         default_config_path
@@ -220,13 +215,12 @@ impl Settings {
 
     pub fn get_default_log_directory() -> PathBuf {
         // Get default configuration file location
-        let mut default_log_directory;
-
-        if let Some(my_proj_dirs) = ProjectDirs::from("org", "Veilid", "Veilid") {
-            default_log_directory = PathBuf::from(my_proj_dirs.config_dir());
-        } else {
-            default_log_directory = PathBuf::from("./");
-        }
+        let mut default_log_directory =
+            if let Some(my_proj_dirs) = ProjectDirs::from("org", "Veilid", "Veilid") {
+                PathBuf::from(my_proj_dirs.config_dir())
+            } else {
+                PathBuf::from("./")
+            };
         default_log_directory.push("logs/");
 
         default_log_directory

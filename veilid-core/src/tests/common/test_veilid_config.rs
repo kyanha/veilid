@@ -83,21 +83,19 @@ cfg_if! {
     else {
 
         fn get_data_dir() -> PathBuf {
-            let out;
             cfg_if! {
                 if #[cfg(target_os = "android")] {
-                    out = PathBuf::from(intf::utils::android::get_files_dir());
+                    PathBuf::from(intf::utils::android::get_files_dir())
                 } else {
                     use directories::*;
 
                     if let Some(my_proj_dirs) = ProjectDirs::from("org", "Veilid", "VeilidCoreTests") {
-                        out = PathBuf::from(my_proj_dirs.data_local_dir());
+                        PathBuf::from(my_proj_dirs.data_local_dir())
                     } else {
-                        out = PathBuf::from("./");
+                        PathBuf::from("./")
                     }
                 }
             }
-            out
         }
 
         pub fn get_table_store_path() -> String {

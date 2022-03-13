@@ -133,15 +133,14 @@ async fn main() -> Result<(), String> {
         }
     }
     // Get client address
-    let server_addrs;
-    if let Some(address_arg) = matches.value_of("address") {
-        server_addrs = address_arg
+    let server_addrs = if let Some(address_arg) = matches.value_of("address") {
+        address_arg
             .to_socket_addrs()
             .map_err(|e| format!("Invalid server address '{}'", e))?
             .collect()
     } else {
-        server_addrs = settings.address.addrs.clone();
-    }
+        settings.address.addrs.clone()
+    };
     let server_addr = server_addrs.first().cloned();
 
     // Create command processor
