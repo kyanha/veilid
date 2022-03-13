@@ -26,7 +26,7 @@ Veilid Network Plugin
   cargo_target_dir = File.join(File.dirname(JSON.parse(`cargo locate-project`)['root']), 'target')
 
   s.xcconfig = { 
-    'OTHER_LDFLAGS' => '-lveilid_flutter',
+    'OTHER_LDFLAGS' => "-Wl,-force_load,#{File.join(cargo_target_dir, 'ios_lib', 'libveilid_flutter.a')}",
     "LIBRARY_SEARCH_PATHS" => File.join(cargo_target_dir, 'ios_lib')
   }
 

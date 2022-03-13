@@ -31,19 +31,4 @@ Veilid Network Plugin
     :output_files => [ File.join(cargo_target_dir, 'macos_lib', 'libveilid_flutter.dylib') ]
   }
 
-  # s.prepare_command = <<-CMD
-  #   mkdir -p lib/Release/
-  #   cp /dev/null lib/Release/libveilid_flutter.dylib
-  # CMD
-
-  # require 'json'
-  # require 'pathname'
-  # rust_dylib_absolute = File.join(File.dirname(JSON.parse(`cargo locate-project`)['root']), 'target', 'x86_64-apple-darwin', 'release', 'libveilid_flutter.dylib')
-  # rust_dylib_relative = Pathname.new(rust_dylib_absolute).relative_path_from(Pathname.new(Dir.pwd)).to_s
-  # require 'pp' 
-  # print 'Rust dylib: '
-  # pp rust_dylib_relative
-  # s.vendored_libraries = 'lib/Release/libveilid_flutter.dylib'
-  # s.libraries = [ 'veilid_flutter' ]
-
 end
