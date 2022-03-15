@@ -705,7 +705,7 @@ class VeilidConfigCapabilities {
 class VeilidConfig {
   String programName;
   String namespace;
-  VeilidConfigLogLevel apiLogLevel;
+  VeilidConfigLogLevel logLevel;
   VeilidConfigCapabilities capabilities;
   VeilidConfigProtectedStore protectedStore;
   VeilidConfigTableStore tableStore;
@@ -715,7 +715,7 @@ class VeilidConfig {
   VeilidConfig({
     required this.programName,
     required this.namespace,
-    required this.apiLogLevel,
+    required this.logLevel,
     required this.capabilities,
     required this.protectedStore,
     required this.tableStore,
@@ -727,7 +727,7 @@ class VeilidConfig {
     return {
       'program_name': programName,
       'namespace': namespace,
-      'api_log_level': apiLogLevel.json,
+      'log_level': logLevel.json,
       'capabilities': capabilities.json,
       'protected_store': protectedStore.json,
       'table_store': tableStore.json,
@@ -739,7 +739,7 @@ class VeilidConfig {
   VeilidConfig.fromJson(Map<String, dynamic> json)
       : programName = json['program_name'],
         namespace = json['namespace'],
-        apiLogLevel = json['api_log_level'],
+        logLevel = json['log_level'],
         capabilities = VeilidConfigCapabilities.fromJson(json['capabilities']),
         protectedStore =
             VeilidConfigProtectedStore.fromJson(json['protected_store']),
@@ -993,7 +993,7 @@ abstract class Veilid {
 
   Stream<VeilidUpdate> startupVeilidCore(VeilidConfig config);
   Future<VeilidState> getVeilidState();
-  Future<void> changeApiLogLevel(VeilidConfigLogLevel logLevel);
+  Future<void> changeLogLevel(VeilidConfigLogLevel logLevel);
   Future<void> shutdownVeilidCore();
   Future<String> debug(String command);
   String veilidVersionString();

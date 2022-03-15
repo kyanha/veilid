@@ -746,7 +746,7 @@ impl Settings {
                 } else {
                     format!("subnode{}", inner.testing.subnode_index)
                 })),
-                "api_log_level" => Ok(Box::new(veilid_core::VeilidConfigLogLevel::Off)),
+                "log_level" => Ok(Box::new(veilid_core::VeilidConfigLogLevel::Off)),
                 "capabilities.protocol_udp" => Ok(Box::new(true)),
                 "capabilities.protocol_connect_tcp" => Ok(Box::new(true)),
                 "capabilities.protocol_accept_tcp" => Ok(Box::new(true)),

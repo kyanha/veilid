@@ -20,7 +20,7 @@ class VeilidJS implements Veilid {
   }
 
   @override
-  Future<void> changeApiLogLevel(VeilidConfigLogLevel logLevel) {
+  Future<void> changeLogLevel(VeilidConfigLogLevel logLevel) {
     throw UnimplementedError();
   }
 

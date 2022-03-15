@@ -4,16 +4,6 @@ use crate::xx::*;
 use core::sync::atomic::{AtomicI8, Ordering};
 use js_sys::{global, Reflect};
 
-cfg_if! {
-    if #[cfg(feature = "wee_alloc")] {
-        // When the `wee_alloc` feature is enabled, use `wee_alloc` as the global
-        // allocator.
-        extern crate wee_alloc;
-        #[global_allocator]
-        static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
-    }
-}
-
 #[wasm_bindgen]
 extern "C" {
     // Use `js_namespace` here to bind `console.log(..)` instead of just

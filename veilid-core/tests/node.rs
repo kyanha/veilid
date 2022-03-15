@@ -8,6 +8,10 @@ use wasm_bindgen_test::*;
 
 wasm_bindgen_test_configure!();
 
+extern crate wee_alloc;
+#[global_allocator]
+static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
+
 static SETUP_ONCE: Once = Once::new();
 pub fn setup() -> () {
     SETUP_ONCE.call_once(|| {

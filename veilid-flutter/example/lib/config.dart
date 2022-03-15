@@ -7,7 +7,7 @@ Future<VeilidConfig> getDefaultVeilidConfig() async {
   return VeilidConfig(
     programName: "Veilid Plugin Test",
     namespace: "",
-    apiLogLevel: VeilidConfigLogLevel.info,
+    logLevel: VeilidConfigLogLevel.info,
     capabilities: VeilidConfigCapabilities(
       protocolUDP: !kIsWeb,
       protocolConnectTCP: !kIsWeb,
@@ -24,13 +24,17 @@ Future<VeilidConfig> getDefaultVeilidConfig() async {
       delete: false,
     ),
     tableStore: VeilidConfigTableStore(
-      directory: p.join((await getApplicationSupportDirectory()).absolute.path,
-          "table_store"),
+      directory: kIsWeb
+          ? ""
+          : p.join((await getApplicationSupportDirectory()).absolute.path,
+              "table_store"),
       delete: false,
     ),
     blockStore: VeilidConfigBlockStore(
-      directory: p.join((await getApplicationSupportDirectory()).absolute.path,
-          "block_store"),
+      directory: kIsWeb
+          ? ""
+          : p.join((await getApplicationSupportDirectory()).absolute.path,
+              "block_store"),
       delete: false,
     ),
     network: VeilidConfigNetwork(

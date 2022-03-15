@@ -6,7 +6,7 @@ cfg_if! {
         mod dart_isolate_wrapper;
         mod dart_serialize;
     } else {
-        mod wasm;
+        //mod wasm;
     }
 }
 

@@ -63,6 +63,6 @@ cargo install cargo-ndk
 cargo install cargo-apk
 
 # Ensure packages are installed
-sudo apt-get install libc6-dev-i386 libc6:i386 libncurses5:i386 libstdc++6:i386 lib32z1 libbz2-1.0:i386 openjdk-11-jdk
+sudo apt-get install libc6-dev-i386 libc6:i386 libncurses5:i386 libstdc++6:i386 lib32z1 libbz2-1.0:i386 openjdk-11-jdk llvm
 
 

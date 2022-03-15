@@ -74,11 +74,8 @@ libc = "^0"
 # Dependencies for WASM builds only
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "^0"
-console_error_panic_hook = "^0"
-wee_alloc = "^0"
 js-sys = "^0"
 wasm-bindgen-futures = "^0"
-wasm-logger = "^0"
 hashbrown = "^0"
 lru = {version = "^0", features = ["hashbrown"] }
 no-std-net = { path = "../external/no-std-net", features = ["serde"] }
@@ -149,6 +146,9 @@ simplelog = { version = "^0", features=["test"] }
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 wasm-bindgen-test = "^0"
+console_error_panic_hook = "^0"
+wee_alloc = "^0"
+wasm-logger = "^0"
 
 ### BUILD OPTIONS
 

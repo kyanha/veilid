@@ -1,4 +1,3 @@
-use crate::api_logger::*;
 use crate::attachment_manager::*;
 use crate::dht::crypto::Crypto;
 use crate::intf::*;
@@ -10,6 +9,8 @@ cfg_if! {
     if #[cfg(target_arch = "wasm32")] {
         pub type UpdateCallback = Arc<dyn Fn(VeilidUpdate)>;
     } else {
+        use crate::api_logger::*;
+
         pub type UpdateCallback = Arc<dyn Fn(VeilidUpdate) + Send + Sync>;
     }
 }
@@ -59,18 +60,23 @@ impl ServicesContext {
     }
 
     pub async fn startup(&mut self) -> Result<(), VeilidAPIError> {
-        let api_log_level: VeilidConfigLogLevel = self.config.get().api_log_level;
-        if api_log_level != VeilidConfigLogLevel::Off {
-            ApiLogger::init(
-                api_log_level.to_level_filter(),
-                self.update_callback.clone(),
-            )
-            .await;
-            for ig in crate::DEFAULT_LOG_IGNORE_LIST {
-                ApiLogger::add_filter_ignore_str(ig);
+        let log_level: VeilidConfigLogLevel = self.config.get().log_level;
+        if log_level != VeilidConfigLogLevel::Off {
+            cfg_if! {
+                if #[cfg(target_arch = "wasm32")] {
+                    // Logging is managed by application
+                } else {
+                    ApiLogger::init(
+                        log_level.to_level_filter(),
+                        self.update_callback.clone(),
+                    )
+                    .await;
+                    for ig in crate::DEFAULT_LOG_IGNORE_LIST {
+                        ApiLogger::add_filter_ignore_str(ig);
+                    }
+                    info!("Veilid logging initialized");
+                }
             }
-
-            info!("Veilid API logging initialized");
         }
 
         info!("Veilid API starting up");
@@ -165,7 +171,13 @@ impl ServicesContext {
         info!("Veilid API shutdown complete");
 
         // api logger terminate is idempotent
-        ApiLogger::terminate().await;
+        cfg_if! {
+            if #[cfg(target_arch = "wasm32")] {
+                // Logging is managed by application
+            } else {
+                ApiLogger::terminate().await;
+            }
+        }
 
         // send final shutdown update
         (self.update_callback)(VeilidUpdate::Shutdown);

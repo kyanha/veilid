@@ -4,7 +4,9 @@
 #[macro_use]
 extern crate alloc;
 
+#[cfg(not(target_arch = "wasm32"))]
 mod api_logger;
+
 mod attachment_manager;
 mod callback_state_machine;
 mod connection_manager;

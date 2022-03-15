@@ -21,7 +21,6 @@ pub use network_manager::NetworkManager;
 pub use routing_table::RoutingTable;
 pub use rpc_processor::InfoAnswer;
 
-use api_logger::*;
 use core::fmt;
 use core_context::{api_shutdown, VeilidCoreContext};
 use rpc_processor::{RPCError, RPCProcessor};
@@ -1219,8 +1218,15 @@ impl VeilidAPI {
     }
 
     // Change api logging level if it is enabled
-    pub async fn change_api_log_level(&self, log_level: VeilidConfigLogLevel) {
-        ApiLogger::change_log_level(log_level.to_level_filter());
+    pub async fn change_log_level(&self, log_level: VeilidConfigLogLevel) {
+        cfg_if! {
+            if #[cfg(target_arch = "wasm32")] {
+                set_max_level(log_level.to_level_filter());
+            } else {
+                use api_logger::ApiLogger;
+                ApiLogger::change_log_level(log_level.to_level_filter());
+            }
+        }
     }
 
     ////////////////////////////////////////////////////////////////

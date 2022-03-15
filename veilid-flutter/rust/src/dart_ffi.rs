@@ -143,12 +143,12 @@ pub extern "C" fn get_veilid_state(port: i64) {
 }
 
 #[no_mangle]
-pub extern "C" fn change_api_log_level(port: i64, log_level: FfiStr) {
+pub extern "C" fn change_log_level(port: i64, log_level: FfiStr) {
     let log_level = log_level.into_opt_string();
     DartIsolateWrapper::new(port).spawn_result_json(async move {
         let log_level: veilid_core::VeilidConfigLogLevel = deserialize_opt_json(log_level)?;
         let veilid_api = get_veilid_api().await?;
-        veilid_api.change_api_log_level(log_level).await;
+        veilid_api.change_log_level(log_level).await;
         APIRESULT_VOID
     });
 }
