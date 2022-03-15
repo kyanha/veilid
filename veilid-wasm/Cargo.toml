@@ -12,7 +12,6 @@ crate-type = ["cdylib", "rlib"]
 wasm-bindgen = { version = "^0", features = ["serde-serialize"] }
 console_error_panic_hook = "^0"
 wee_alloc = "^0"
-wasm-logger = "^0"
 log = "^0"
 veilid-core = { path = "../veilid-core" }
 cfg-if = "^1"

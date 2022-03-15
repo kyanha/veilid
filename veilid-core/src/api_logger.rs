@@ -4,10 +4,22 @@ use crate::xx::*;
 use log::{set_boxed_logger, set_max_level, Level, LevelFilter, Log, Metadata, Record};
 use once_cell::sync::OnceCell;
 
-struct ApiLoggerInner {
-    level: LevelFilter,
-    filter_ignore: Cow<'static, [Cow<'static, str>]>,
-    update_callback: UpdateCallback,
+cfg_if! {
+    if #[cfg(target_arch = "wasm32")] {
+        use send_wrapper::*;
+
+        struct ApiLoggerInner {
+            level: LevelFilter,
+            filter_ignore: Cow<'static, [Cow<'static, str>]>,
+            update_callback: SendWrapper<UpdateCallback>,
+        }
+    } else {
+        struct ApiLoggerInner {
+            level: LevelFilter,
+            filter_ignore: Cow<'static, [Cow<'static, str>]>,
+            update_callback: UpdateCallback,
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -19,10 +31,20 @@ static API_LOGGER: OnceCell<ApiLogger> = OnceCell::new();
 
 impl ApiLogger {
     fn new_inner(level: LevelFilter, update_callback: UpdateCallback) -> ApiLoggerInner {
-        ApiLoggerInner {
-            level,
-            filter_ignore: Default::default(),
-            update_callback,
+        cfg_if! {
+            if #[cfg(target_arch = "wasm32")] {
+                ApiLoggerInner {
+                    level,
+                    filter_ignore: Default::default(),
+                    update_callback: SendWrapper::new(update_callback),
+                }
+            } else {
+                ApiLoggerInner {
+                    level,
+                    filter_ignore: Default::default(),
+                    update_callback,
+                }
+            }
         }
     }
 

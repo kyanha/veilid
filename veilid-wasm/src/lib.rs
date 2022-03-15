@@ -103,7 +103,6 @@ where
 #[wasm_bindgen(js_namespace = veilid)]
 pub fn initialize_veilid_wasm() {
     console_error_panic_hook::set_once();
-    wasm_logger::init(wasm_logger::Config::new(Level::Info));
 }
 
 #[wasm_bindgen(js_namespace = veilid)]
