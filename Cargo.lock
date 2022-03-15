@@ -4260,23 +4260,15 @@ dependencies = [
  "anyhow",
  "async-std",
  "backtrace",
- "cfg-if 1.0.0",
- "console_error_panic_hook",
  "ffi-support",
  "futures",
  "jni",
- "js-sys",
  "lazy_static",
  "log",
  "parking_lot 0.12.0",
  "serde 1.0.136",
  "serde_json",
  "veilid-core",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "wasm-bindgen-test",
- "wasm-logger",
- "wee_alloc",
 ]
 
 [[package]]

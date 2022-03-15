@@ -7,7 +7,7 @@ if [[ "$1" == "release" ]]; then
 else 
     RELEASE=
     RUSTFLAGS="-O -g"
-    GENERATE_SOURCE_MAP="./wasm-sourcemap.py ../target/wasm32-unknown-unknown/debug/veilid_flutter.wasm -o ../target/wasm32-unknown-unknown/debug/veilid_flutter.wasm.map --dwarfdump `which llvm-dwarfdump`"
+    GENERATE_SOURCE_MAP="./wasm-sourcemap.py ../target/wasm32-unknown-unknown/debug/veilid_wasm.wasm -o ../target/wasm32-unknown-unknown/debug/veilid_wasm.wasm.map --dwarfdump `which llvm-dwarfdump`"
 fi
 
 pushd $SCRIPTDIR 2> /dev/null
