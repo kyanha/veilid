@@ -996,6 +996,6 @@ abstract class Veilid {
   Future<void> changeLogLevel(VeilidConfigLogLevel logLevel);
   Future<void> shutdownVeilidCore();
   Future<String> debug(String command);
-  String veilidVersionString();
-  VeilidVersion veilidVersion();
+  Future<String> veilidVersionString();
+  Future<VeilidVersion> veilidVersion();
 }

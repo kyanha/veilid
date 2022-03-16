@@ -100,12 +100,12 @@ where
 
 // WASM Bindings
 
-#[wasm_bindgen(js_namespace = veilid)]
+#[wasm_bindgen()]
 pub fn initialize_veilid_wasm() {
     console_error_panic_hook::set_once();
 }
 
-#[wasm_bindgen(js_namespace = veilid)]
+#[wasm_bindgen()]
 pub fn startup_veilid_core(update_callback: Function, json_config: String) -> Promise {
     wrap_api_future(async move {
         let update_callback = Arc::new(move |update: VeilidUpdate| {
@@ -129,7 +129,7 @@ pub fn startup_veilid_core(update_callback: Function, json_config: String) -> Pr
     })
 }
 
-#[wasm_bindgen(js_namespace = veilid)]
+#[wasm_bindgen()]
 pub fn get_veilid_state() -> Promise {
     wrap_api_future(async move {
         let veilid_api = get_veilid_api()?;
@@ -148,7 +148,7 @@ pub fn change_log_level(log_level: String) -> Promise {
     })
 }
 
-#[wasm_bindgen(js_namespace = veilid)]
+#[wasm_bindgen()]
 pub fn shutdown_veilid_core() -> Promise {
     wrap_api_future(async move {
         let veilid_api = take_veilid_api()?;
@@ -157,7 +157,7 @@ pub fn shutdown_veilid_core() -> Promise {
     })
 }
 
-#[wasm_bindgen(js_namespace = veilid)]
+#[wasm_bindgen()]
 pub fn debug(command: String) -> Promise {
     wrap_api_future(async move {
         let veilid_api = get_veilid_api()?;
@@ -166,7 +166,7 @@ pub fn debug(command: String) -> Promise {
     })
 }
 
-#[wasm_bindgen(js_namespace = veilid)]
+#[wasm_bindgen()]
 pub fn veilid_version_string() -> String {
     veilid_core::veilid_version_string()
 }
@@ -178,7 +178,7 @@ pub struct VeilidVersion {
     pub patch: u32,
 }
 
-#[wasm_bindgen(js_namespace = veilid)]
+#[wasm_bindgen()]
 pub fn veilid_version() -> JsValue {
     let (major, minor, patch) = veilid_core::veilid_version();
     let vv = VeilidVersion {

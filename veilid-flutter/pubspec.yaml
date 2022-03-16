@@ -17,6 +17,8 @@ dependencies:
   change_case: ^1.0.1
   path_provider: ^2.0.9
   path: ^1.8.0
+  wasm_interop: ^2.0.1
+  mutex: ^3.0.0
 
 dev_dependencies:
   flutter_test:
