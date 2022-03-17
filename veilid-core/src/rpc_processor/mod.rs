@@ -1484,9 +1484,6 @@ impl RPCProcessor {
             let own_peer_info = self
                 .routing_table()
                 .get_own_peer_info(self.default_peer_scope);
-            if own_peer_info.dial_infos.is_empty() {
-                return Err(rpc_error_internal("No valid public dial info for own node"));
-            }
 
             encode_peer_info(&own_peer_info, &mut peer_info_builder)?;
 

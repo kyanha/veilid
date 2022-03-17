@@ -6,15 +6,19 @@ if [ ! "$(uname)" == "Darwin" ]; then
     exit 1
 fi
 
-# install android targets
+# install targets
 rustup target add aarch64-apple-darwin aarch64-apple-ios x86_64-apple-darwin x86_64-apple-ios
 
+# install cargo packages
+cargo install wasm-bindgen-cli
+
+# install bitcode compatible ios toolchain
 echo Manual Step:
 echo   install +ios-arm64-1.57.0 toolchain for bitcode from https://github.com/getditto/rust-bitcode/releases/latest and unzip
 echo   xattr -d -r com.apple.quarantine .
 echo   ./install.sh
 
-# Ensure brew is installed
+# ensure brew is installed
 if command -v brew &> /dev/null; then 
     echo '[X] brew is available in the path'
 else
@@ -22,7 +26,7 @@ else
     exit 1
 fi
 
-# Ensure xcode is installed
+# ensure xcode is installed
 if command -v xcode-select &> /dev/null; then 
     echo '[X] XCode is available in the path'
 else
@@ -30,10 +34,10 @@ else
     exit 1
 fi
 
-# Ensure we have command line tools
+# ensure we have command line tools
 xcode-select --install
 
-# Ensure packages are installed
+# ensure packages are installed
 if [ "$BREW_USER" == "" ]; then
     BREW_USER=`ls -lad /opt/homebrew/. | cut -d\  -f4`
     echo "Must sudo to homebrew user \"$BREW_USER\" to install capnp package:"

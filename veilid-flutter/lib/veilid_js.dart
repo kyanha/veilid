@@ -1,81 +1,76 @@
 import 'veilid.dart';
 
-import 'dart:js';
-import 'dart:js_util';
+import 'dart:html' as html;
+import 'dart:js' as js;
+import 'dart:js_util' as js_util;
 import 'dart:async';
 import 'dart:convert';
-import 'package:flutter/services.dart' show NetworkAssetBundle;
-import 'package:wasm_interop/wasm_interop.dart';
-import 'package:mutex/mutex.dart';
 
 //////////////////////////////////////////////////////////
 
 Veilid getVeilid() => VeilidJS();
 
-Instance? _wasmInstance;
-final _wasmInstanceMutex = Mutex();
+Object wasm = js_util.getProperty(html.window, "veilid_wasm");
 
-Future<Instance> getWasmInstance() async {
-  await _wasmInstanceMutex.acquire();
-  var _wi = _wasmInstance;
-  if (_wi == null) {
-    final bytes = await http???.get(Uri.parse("/wasm/veilid_wasm.wasm"));
-    _wi = await Instance.fromBufferAsync(bytes.buffer);
-    _wasmInstance = _wi;
-  }
-  _wasmInstanceMutex.release();
-  return _wi;
+Future<T> _wrapApiPromise<T>(Object p) {
+  return js_util.promiseToFuture(p).then((value) => value as T).catchError(
+      (error) => Future<T>.error(
+          VeilidAPIException.fromJson(jsonDecode(error as String))));
 }
 
 class VeilidJS implements Veilid {
   @override
   Stream<VeilidUpdate> startupVeilidCore(VeilidConfig config) async* {
-    var wasm = (await getWasmInstance());
     var streamController = StreamController<VeilidUpdate>();
-    await promiseToFuture(
-        wasm.functions["startup_veilid_core"]!.call((String update) {
-      streamController.add(VeilidUpdate.fromJson(jsonDecode(update)));
-    }, jsonEncode(config.json, toEncodable: veilidApiToEncodable)));
+    updateCallback(String update) {
+      var updateJson = jsonDecode(update);
+      if (updateJson["kind"] == "Shutdown") {
+        streamController.close();
+      } else {
+        var update = VeilidUpdate.fromJson(updateJson);
+        streamController.add(update);
+      }
+    }
+
+    await _wrapApiPromise(js_util.callMethod(wasm, "startup_veilid_core", [
+      js.allowInterop(updateCallback),
+      jsonEncode(config.json, toEncodable: veilidApiToEncodable)
+    ]));
     yield* streamController.stream;
   }
 
   @override
   Future<VeilidState> getVeilidState() async {
-    var wasm = (await getWasmInstance());
-    return VeilidState.fromJson(jsonDecode(
-        await promiseToFuture(wasm.functions["get_veilid_state"]!.call())));
+    return VeilidState.fromJson(jsonDecode(await _wrapApiPromise(
+        js_util.callMethod(wasm, "get_veilid_state", []))));
   }
 
   @override
-  Future<void> changeLogLevel(VeilidConfigLogLevel logLevel) async {
-    var wasm = (await getWasmInstance());
-    await promiseToFuture(wasm.functions["change_log_level"]!
-        .call(jsonEncode(logLevel.json, toEncodable: veilidApiToEncodable)));
+  Future<void> changeLogLevel(VeilidConfigLogLevel logLevel) {
+    return _wrapApiPromise(js_util.callMethod(wasm, "change_log_level",
+        [jsonEncode(logLevel.json, toEncodable: veilidApiToEncodable)]));
   }
 
   @override
-  Future<void> shutdownVeilidCore() async {
-    var wasm = (await getWasmInstance());
-    await promiseToFuture(wasm.functions["shutdown_veilid_core"]!.call());
+  Future<void> shutdownVeilidCore() {
+    return _wrapApiPromise(
+        js_util.callMethod(wasm, "shutdown_veilid_core", []));
   }
 
   @override
-  Future<String> debug(String command) async {
-    var wasm = (await getWasmInstance());
-    return await promiseToFuture(wasm.functions["debug"]!.call(command));
+  Future<String> debug(String command) {
+    return _wrapApiPromise(js_util.callMethod(wasm, "debug", [command]));
   }
 
   @override
-  Future<String> veilidVersionString() async {
-    var wasm = (await getWasmInstance());
-    return await promiseToFuture(wasm.functions["debug"]!.call());
+  String veilidVersionString() {
+    return js_util.callMethod(wasm, "veilid_version_string", []);
   }
 
   @override
-  Future<VeilidVersion> veilidVersion() async {
-    var wasm = (await getWasmInstance());
-    var jsonVersion = jsonDecode(
-        await promiseToFuture(wasm.functions["get_veilid_state"]!.call()));
+  VeilidVersion veilidVersion() {
+    var jsonVersion =
+        jsonDecode(js_util.callMethod(wasm, "veilid_version", []));
     return VeilidVersion(
         jsonVersion["major"], jsonVersion["minor"], jsonVersion["patch"]);
   }

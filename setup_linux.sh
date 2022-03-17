@@ -55,14 +55,13 @@ else
     exit 1
 fi
 
-# install android targets
+# install targets
 rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
 
-# install cargo ndk
-cargo install cargo-ndk
-cargo install cargo-apk
+# install cargo packages
+cargo install wasm-bindgen-cli
 
 # Ensure packages are installed
-sudo apt-get install libc6-dev-i386 libc6:i386 libncurses5:i386 libstdc++6:i386 lib32z1 libbz2-1.0:i386 openjdk-11-jdk llvm
+sudo apt-get install libc6-dev-i386 libc6:i386 libncurses5:i386 libstdc++6:i386 lib32z1 libbz2-1.0:i386 openjdk-11-jdk llvm wabt
 
 

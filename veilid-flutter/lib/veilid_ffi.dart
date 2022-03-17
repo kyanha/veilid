@@ -326,7 +326,7 @@ class VeilidFFI implements Veilid {
   }
 
   @override
-  Future<String> veilidVersionString() async {
+  String veilidVersionString() {
     final versionString = _veilidVersionString();
     String ret = versionString.toDartString();
     _freeString(versionString);
@@ -334,7 +334,7 @@ class VeilidFFI implements Veilid {
   }
 
   @override
-  Future<VeilidVersion> veilidVersion() async {
+  VeilidVersion veilidVersion() {
     final version = _veilidVersion();
     return VeilidVersion(
       version.major,

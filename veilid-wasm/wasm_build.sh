@@ -1,16 +1,25 @@
 #!/bin/bash
 SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 
+pushd $SCRIPTDIR &> /dev/null
+
 if [[ "$1" == "release" ]]; then 
-    RELEASE=-r
-    GENERATE_SOURCE_MAP=
+    OUTPUTDIR=../target/wasm32-unknown-unknown/release/pkg
+    INPUTDIR=../target/wasm32-unknown-unknown/release
+
+    cargo build --target wasm32-unknown-unknown --release
+    mkdir -p $OUTPUTDIR
+    wasm-bindgen --out-dir $OUTPUTDIR --target web --no-typescript $INPUTDIR/veilid_wasm.wasm
+    wasm-strip $OUTPUTDIR/veilid_wasm_bg.wasm    
 else 
-    RELEASE=
-    RUSTFLAGS="-O -g"
-    GENERATE_SOURCE_MAP="./wasm-sourcemap.py ../target/wasm32-unknown-unknown/debug/veilid_wasm.wasm -o ../target/wasm32-unknown-unknown/debug/veilid_wasm.wasm.map --dwarfdump `which llvm-dwarfdump`"
+    OUTPUTDIR=../target/wasm32-unknown-unknown/debug/pkg
+    INPUTDIR=../target/wasm32-unknown-unknown/debug
+
+    RUSTFLAGS="-O -g" cargo build --target wasm32-unknown-unknown
+    mkdir -p $OUTPUTDIR
+    wasm-bindgen --out-dir $OUTPUTDIR --target web --no-typescript --keep-debug --debug $INPUTDIR/veilid_wasm.wasm
+    ./wasm-sourcemap.py $OUTPUTDIR/veilid_wasm_bg.wasm -o $OUTPUTDIR/veilid_wasm_bg.wasm.map --dwarfdump `which llvm-dwarfdump`
+    wasm-strip $OUTPUTDIR/veilid_wasm_bg.wasm
 fi
 
-pushd $SCRIPTDIR 2> /dev/null
-cargo build --target wasm32-unknown-unknown $RELEASE
-$GENERATE_SOURCE_MAP
-popd 2> /dev/null
+popd &> /dev/null

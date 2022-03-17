@@ -89,10 +89,11 @@ class _MyAppState extends State<MyApp> with UiLoggy {
     // Platform messages may fail, so we use a try/catch PlatformException.
     // We also handle the message potentially returning null.
     try {
-      veilidVersion = await Veilid.instance.veilidVersionString();
+      veilidVersion = Veilid.instance.veilidVersionString();
     } on Exception {
       veilidVersion = 'Failed to get veilid version.';
     }
+    print("veilidVersionString $veilidVersion");
 
     // In case of hot restart shut down first
     try {

@@ -138,7 +138,7 @@ pub fn get_veilid_state() -> Promise {
     })
 }
 
-#[wasm_bindgen(js_namespace = veilid)]
+#[wasm_bindgen()]
 pub fn change_log_level(log_level: String) -> Promise {
     wrap_api_future(async move {
         let veilid_api = get_veilid_api()?;

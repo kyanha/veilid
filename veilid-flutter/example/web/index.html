@@ -31,8 +31,27 @@
 
   <title>veilid_example</title>
   <link rel="manifest" href="manifest.json">
+
 </head>
 <body>
+  
+  <!-- Load WASM modules -->
+
+  xxx figure out how to switch to debug, maybe do this from dart land
+
+  <script type="module">
+    async function run() {
+        import * as veilid_wasm_module from './wasm/veilid_wasm.js';
+        // save the wasm exports
+        window.veilid_wasm = veilid_wasm_module;
+        // init the js module
+        await veilid_wasm_module.default();
+        // init the wasm library
+        await veilid_wasm_module.initialize_veilid_wasm();
+    }
+    run();
+  </script>
+
   <!-- This script installs service_worker.js to provide PWA functionality to
        application. For more information, see:
        https://developers.google.com/web/fundamentals/primers/service-workers -->
