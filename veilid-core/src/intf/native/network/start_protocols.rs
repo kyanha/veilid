@@ -1,5 +1,78 @@
 use super::sockets::*;
 use super::*;
+use lazy_static::*;
+
+lazy_static! {
+    static ref BAD_PORTS: BTreeSet<u16> = BTreeSet::from([
+        1,    // tcpmux
+        7,    // echo
+        9,    // discard
+        11,   // systat
+        13,   // daytime
+        15,   // netstat
+        17,   // qotd
+        19,   // chargen
+        20,   // ftp data
+        21,   // ftp access
+        22,   // ssh
+        23,   // telnet
+        25,   // smtp
+        37,   // time
+        42,   // name
+        43,   // nicname
+        53,   // domain
+        77,   // priv-rjs
+        79,   // finger
+        87,   // ttylink
+        95,   // supdup
+        101,  // hostriame
+        102,  // iso-tsap
+        103,  // gppitnp
+        104,  // acr-nema
+        109,  // pop2
+        110,  // pop3
+        111,  // sunrpc
+        113,  // auth
+        115,  // sftp
+        117,  // uucp-path
+        119,  // nntp
+        123,  // NTP
+        135,  // loc-srv /epmap
+        139,  // netbios
+        143,  // imap2
+        179,  // BGP
+        389,  // ldap
+        427,  // SLP (Also used by Apple Filing Protocol)
+        465,  // smtp+ssl
+        512,  // print / exec
+        513,  // login
+        514,  // shell
+        515,  // printer
+        526,  // tempo
+        530,  // courier
+        531,  // chat
+        532,  // netnews
+        540,  // uucp
+        548,  // AFP (Apple Filing Protocol)
+        556,  // remotefs
+        563,  // nntp+ssl
+        587,  // smtp (rfc6409)
+        601,  // syslog-conn (rfc3195)
+        636,  // ldap+ssl
+        993,  // ldap+ssl
+        995,  // pop3+ssl
+        2049, // nfs
+        3659, // apple-sasl / PasswordServer
+        4045, // lockd
+        6000, // X11
+        6665, // Alternate IRC [Apple addition]
+        6666, // Alternate IRC [Apple addition]
+        6667, // Standard IRC [Apple addition]
+        6668, // Alternate IRC [Apple addition]
+        6669, // Alternate IRC [Apple addition]
+        6697, // IRC + TLS
+    ]);
+}
 
 impl Network {
     /////////////////////////////////////////////////////
@@ -95,6 +168,9 @@ impl Network {
         // If the address is empty, iterate ports until we find one we can use.
         let mut udp_port = 5150u16;
         loop {
+            if BAD_PORTS.contains(&udp_port) {
+                continue;
+            }
             if self.bind_first_udp_port(udp_port) {
                 break;
             }
@@ -110,6 +186,9 @@ impl Network {
         // If the address is empty, iterate ports until we find one we can use.
         let mut tcp_port = 5150u16;
         loop {
+            if BAD_PORTS.contains(&tcp_port) {
+                continue;
+            }
             if self.bind_first_tcp_port(tcp_port) {
                 break;
             }
