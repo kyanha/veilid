@@ -18,10 +18,10 @@
 	url = ../netlink.git
 [submodule "external/no-std-net"]
 	path = external/no-std-net
-	url = git@gitlab.hackers.town:veilid/no-std-net.git
+	url = ../no-std-net.git
 [submodule "external/libmdns"]
 	path = external/libmdns
-	url = git@gitlab.hackers.town:veilid/libmdns.git
+	url = ../libmdns.git
 [submodule "external/mdns"]
 	path = external/mdns
-	url = git@gitlab.hackers.town:veilid/mdns.git
+	url = ../mdns.git
