@@ -36,12 +36,9 @@
 <body>
   
   <!-- Load WASM modules -->
-
-  xxx figure out how to switch to debug, maybe do this from dart land
-
   <script type="module">
+    import * as veilid_wasm_module from './wasm/veilid_wasm.js';
     async function run() {
-        import * as veilid_wasm_module from './wasm/veilid_wasm.js';
         // save the wasm exports
         window.veilid_wasm = veilid_wasm_module;
         // init the js module

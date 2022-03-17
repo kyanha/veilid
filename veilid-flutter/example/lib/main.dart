@@ -93,7 +93,6 @@ class _MyAppState extends State<MyApp> with UiLoggy {
     } on Exception {
       veilidVersion = 'Failed to get veilid version.';
     }
-    print("veilidVersionString $veilidVersion");
 
     // In case of hot restart shut down first
     try {
