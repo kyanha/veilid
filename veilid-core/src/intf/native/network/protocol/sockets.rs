@@ -52,7 +52,7 @@ pub fn new_bound_shared_udp_socket(local_address: SocketAddr) -> Result<Socket, 
         )
     })?;
 
-    log_net!("created shared udp socket on {:?}", &local_address);
+    log_net!("created bound shared udp socket on {:?}", &local_address);
 
     Ok(socket)
 }
@@ -83,15 +83,15 @@ pub fn new_bound_first_udp_socket(local_address: SocketAddr) -> Result<Socket, S
 
     // Set 'reuse address' so future binds to this port will succeed
     // This does not work on Windows, where reuse options can not be set after the bind
-    cfg_if! {
-        if #[cfg(unix)] {
-            socket
-                .set_reuse_address(true)
-                .map_err(|e| format!("Couldn't set reuse address: {}", e))?;
-            socket.set_reuse_port(true).map_err(|e| format!("Couldn't set reuse port: {}", e))?;
-        }
-    }
-    log_net!("created shared udp socket on {:?}", &local_address);
+    // cfg_if! {
+    //     if #[cfg(unix)] {
+    //         socket
+    //             .set_reuse_address(true)
+    //             .map_err(|e| format!("Couldn't set reuse address: {}", e))?;
+    //         socket.set_reuse_port(true).map_err(|e| format!("Couldn't set reuse port: {}", e))?;
+    //     }
+    // }
+    log_net!("created bound first udp socket on {:?}", &local_address);
 
     Ok(socket)
 }
@@ -119,6 +119,7 @@ pub fn new_unbound_shared_tcp_socket(domain: Domain) -> Result<Socket, String> {
             socket.set_reuse_port(true).map_err(|e| format!("Couldn't set reuse port: {}", e))?;
         }
     }
+
     Ok(socket)
 }
 
@@ -131,6 +132,8 @@ pub fn new_bound_shared_tcp_socket(local_address: SocketAddr) -> Result<Socket, 
     socket
         .bind(&socket2_addr)
         .map_err(|e| format!("failed to bind TCP socket: {}", e))?;
+
+    log_net!("created bound shared tcp socket on {:?}", &local_address);
 
     Ok(socket)
 }
@@ -167,15 +170,17 @@ pub fn new_bound_first_tcp_socket(local_address: SocketAddr) -> Result<Socket, S
         .bind(&socket2_addr)
         .map_err(|e| format!("failed to bind TCP socket: {}", e))?;
 
-    // Set 'reuse address' so future binds to this port will succeed
-    // This does not work on Windows, where reuse options can not be set after the bind
-    cfg_if! {
-        if #[cfg(unix)] {
-        socket
-            .set_reuse_address(true)
-            .map_err(|e| format!("Couldn't set reuse address: {}", e))?;
-        socket.set_reuse_port(true).map_err(|e| format!("Couldn't set reuse port: {}", e))?;
-        }
-    }
+    // // Set 'reuse address' so future binds to this port will succeed
+    // // This does not work on Windows, where reuse options can not be set after the bind
+    // cfg_if! {
+    //     if #[cfg(unix)] {
+    //     socket
+    //         .set_reuse_address(true)
+    //         .map_err(|e| format!("Couldn't set reuse address: {}", e))?;
+    //     socket.set_reuse_port(true).map_err(|e| format!("Couldn't set reuse port: {}", e))?;
+    //     }
+    // }
+    log_net!("created bound first tcp socket on {:?}", &local_address);
+
     Ok(socket)
 }
