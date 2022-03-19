@@ -11,6 +11,8 @@ use xx::*;
 ////////////////////////////////////////////////////////////////////////////////////////
 
 pub const MAX_MESSAGE_SIZE: usize = MAX_ENVELOPE_SIZE;
+pub const IPADDR_TABLE_SIZE: usize = 1024;
+pub const IPADDR_MAX_INACTIVE_DURATION_US: u64 = 300_000_000u64; // 5 minutes
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub enum NetworkClass {
@@ -79,11 +81,33 @@ struct NetworkComponents {
     receipt_manager: ReceiptManager,
 }
 
+// Statistics per address
+#[derive(Clone, Default)]
+pub struct PerAddressStats {
+    last_seen_ts: u64,
+    transfer_stats_accounting: TransferStatsAccounting,
+    transfer_stats: TransferStatsDownUp,
+}
+
+// Statistics about the low-level network
+#[derive(Clone, Default)]
+pub struct NetworkManagerStats {
+    self_stats: PerAddressStats,
+    per_address_stats: HashMap<IpAddr, PerAddressStats>,
+    recent_addresses: VecDeque<IpAddr>,
+}
+
 // The mutable state of the network manager
-pub struct NetworkManagerInner {
+struct NetworkManagerInner {
     routing_table: Option<RoutingTable>,
     components: Option<NetworkComponents>,
     network_class: Option<NetworkClass>,
+    stats: NetworkManagerStats,
+}
+
+struct NetworkManagerUnlockedInner {
+    // Background processes
+    rolling_transfers_task: TickTask,
 }
 
 #[derive(Clone)]
@@ -92,6 +116,7 @@ pub struct NetworkManager {
     table_store: TableStore,
     crypto: Crypto,
     inner: Arc<Mutex<NetworkManagerInner>>,
+    unlocked_inner: Arc<NetworkManagerUnlockedInner>,
 }
 
 impl NetworkManager {
@@ -100,16 +125,34 @@ impl NetworkManager {
             routing_table: None,
             components: None,
             network_class: None,
+            stats: NetworkManagerStats::default(),
+        }
+    }
+    fn new_unlocked_inner(_config: VeilidConfig) -> NetworkManagerUnlockedInner {
+        //let c = config.get();
+        NetworkManagerUnlockedInner {
+            rolling_transfers_task: TickTask::new(ROLLING_TRANSFERS_INTERVAL_SECS),
         }
     }
 
     pub fn new(config: VeilidConfig, table_store: TableStore, crypto: Crypto) -> Self {
-        Self {
-            config,
+        let this = Self {
+            config: config.clone(),
             table_store,
             crypto,
             inner: Arc::new(Mutex::new(Self::new_inner())),
+            unlocked_inner: Arc::new(Self::new_unlocked_inner(config)),
+        };
+        // Set rolling transfers tick task
+        {
+            let this2 = this.clone();
+            this.unlocked_inner
+                .rolling_transfers_task
+                .set_routine(move |l, t| {
+                    Box::pin(this2.clone().rolling_transfers_task_routine(l, t))
+                });
         }
+        this
     }
     pub fn config(&self) -> VeilidConfig {
         self.config.clone()
@@ -545,5 +588,77 @@ impl NetworkManager {
 
         // Inform caller that we dealt with the envelope locally
         Ok(true)
+    }
+
+    // Compute transfer statistics for the low level network
+    async fn rolling_transfers_task_routine(self, last_ts: u64, cur_ts: u64) -> Result<(), String> {
+        log_net!("--- network manager rolling_transfers task");
+        let inner = &mut *self.inner.lock();
+
+        // Roll the low level network transfer stats for our address
+        inner
+            .stats
+            .self_stats
+            .transfer_stats_accounting
+            .roll_transfers(last_ts, cur_ts, &mut inner.stats.self_stats.transfer_stats);
+
+        // Roll all per-address transfers
+        let mut dead_addrs: HashSet<IpAddr> = HashSet::new();
+        for (addr, stats) in &mut inner.stats.per_address_stats {
+            stats.transfer_stats_accounting.roll_transfers(
+                last_ts,
+                cur_ts,
+                &mut stats.transfer_stats,
+            );
+
+            // While we're here, lets see if this address has timed out
+            if cur_ts - stats.last_seen_ts >= IPADDR_MAX_INACTIVE_DURATION_US {
+                // it's dead, put it in the dead list
+                dead_addrs.insert(*addr);
+            }
+        }
+
+        // Remove the dead addresses from our tables
+        for da in &dead_addrs {
+            inner.stats.per_address_stats.remove(da);
+        }
+        inner
+            .stats
+            .recent_addresses
+            .retain(|a| !dead_addrs.contains(a));
+        Ok(())
+    }
+
+    // Callbacks from low level network for statistics gathering
+    fn packet_sent(&self, addr: IpAddr, bytes: u64) {
+        let inner = &mut *self.inner.lock();
+        inner
+            .stats
+            .self_stats
+            .transfer_stats_accounting
+            .add_up(bytes);
+        inner
+            .stats
+            .per_address_stats
+            .entry(addr)
+            .or_default()
+            .transfer_stats_accounting
+            .add_up(bytes);
+    }
+
+    fn packet_rcvd(&self, addr: IpAddr, bytes: u64) {
+        let inner = &mut *self.inner.lock();
+        inner
+            .stats
+            .self_stats
+            .transfer_stats_accounting
+            .add_down(bytes);
+        inner
+            .stats
+            .per_address_stats
+            .entry(addr)
+            .or_default()
+            .transfer_stats_accounting
+            .add_down(bytes);
     }
 }

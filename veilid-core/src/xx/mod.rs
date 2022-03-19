@@ -31,8 +31,12 @@ cfg_if! {
     if #[cfg(target_arch = "wasm32")] {
         pub use alloc::string::String;
         pub use alloc::vec::Vec;
+        pub use alloc::collections::LinkedList;
+        pub use alloc::collections::VecDeque;
         pub use alloc::collections::btree_map::BTreeMap;
         pub use alloc::collections::btree_set::BTreeSet;
+        pub use hashbrown::hash_map::HashMap;
+        pub use hashbrown::hash_set::HashSet;
         pub use alloc::boxed::Box;
         pub use alloc::borrow::{Cow, ToOwned};
         pub use wasm_bindgen::prelude::*;
@@ -54,8 +58,12 @@ cfg_if! {
     } else {
         pub use std::string::String;
         pub use std::vec::Vec;
+        pub use std::collections::LinkedList;
+        pub use std::collections::VecDeque;
         pub use std::collections::btree_map::BTreeMap;
         pub use std::collections::btree_set::BTreeSet;
+        pub use std::collections::hash_map::HashMap;
+        pub use std::collections::hash_set::HashSet;
         pub use std::boxed::Box;
         pub use std::borrow::{Cow, ToOwned};
         pub use std::cmp;

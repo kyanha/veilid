@@ -516,6 +516,7 @@ class VeilidConfigLeases {
 class VeilidConfigNetwork {
   int maxConnections;
   int connectionInitialTimeoutMs;
+  int connectionInactivityTimeoutMs;
   String nodeId;
   String nodeIdSecret;
   List<String> bootstrap;
@@ -533,6 +534,7 @@ class VeilidConfigNetwork {
   VeilidConfigNetwork({
     required this.maxConnections,
     required this.connectionInitialTimeoutMs,
+    required this.connectionInactivityTimeoutMs,
     required this.nodeId,
     required this.nodeIdSecret,
     required this.bootstrap,
@@ -552,6 +554,7 @@ class VeilidConfigNetwork {
     return {
       'max_connections': maxConnections,
       'connection_initial_timeout_ms': connectionInitialTimeoutMs,
+      'connection_inactivity_timeout_ms': connectionInactivityTimeoutMs,
       'node_id': nodeId,
       'node_id_secret': nodeIdSecret,
       'bootstrap': bootstrap,
@@ -571,6 +574,8 @@ class VeilidConfigNetwork {
   VeilidConfigNetwork.fromJson(Map<String, dynamic> json)
       : maxConnections = json['max_connections'],
         connectionInitialTimeoutMs = json['connection_initial_timeout_ms'],
+        connectionInactivityTimeoutMs =
+            json['connection_inactivity_timeout_ms'],
         nodeId = json['node_id'],
         nodeIdSecret = json['node_id_secret'],
         bootstrap = json['bootstrap'],

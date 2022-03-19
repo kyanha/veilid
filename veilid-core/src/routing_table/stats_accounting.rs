@@ -19,16 +19,14 @@ pub struct TransferCount {
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct StatsAccounting {
-    rolling_latencies: VecDeque<u64>,
+pub struct TransferStatsAccounting {
     rolling_transfers: VecDeque<TransferCount>,
     current_transfer: TransferCount,
 }
 
-impl StatsAccounting {
+impl TransferStatsAccounting {
     pub fn new() -> Self {
         Self {
-            rolling_latencies: VecDeque::new(),
             rolling_transfers: VecDeque::new(),
             current_transfer: TransferCount::default(),
         }
@@ -78,6 +76,19 @@ impl StatsAccounting {
         let len = self.rolling_transfers.len() as u64;
         transfer_stats.down.average /= len;
         transfer_stats.up.average /= len;
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct LatencyStatsAccounting {
+    rolling_latencies: VecDeque<u64>,
+}
+
+impl LatencyStatsAccounting {
+    pub fn new() -> Self {
+        Self {
+            rolling_latencies: VecDeque::new(),
+        }
     }
 
     pub fn record_latency(&mut self, latency: u64) -> veilid_api::LatencyStats {

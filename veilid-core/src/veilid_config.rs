@@ -128,6 +128,7 @@ pub struct VeilidConfigLeases {
 pub struct VeilidConfigNetwork {
     pub max_connections: u32,
     pub connection_initial_timeout_ms: u32,
+    pub connection_inactivity_timeout_ms: u32,
     pub node_id: key::DHTKey,
     pub node_id_secret: key::DHTKeySecret,
     pub bootstrap: Vec<String>,
@@ -282,6 +283,7 @@ impl VeilidConfig {
             get_config!(inner.network.node_id_secret);
             get_config!(inner.network.max_connections);
             get_config!(inner.network.connection_initial_timeout_ms);
+            get_config!(inner.network.connection_inactivity_timeout_ms);
             get_config!(inner.network.bootstrap);
             get_config!(inner.network.dht.resolve_node_timeout_ms);
             get_config!(inner.network.dht.resolve_node_count);

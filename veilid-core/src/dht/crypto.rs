@@ -8,7 +8,6 @@ use core::convert::TryInto;
 use curve25519_dalek as cd;
 use ed25519_dalek as ed;
 use serde::{Deserialize, Serialize};
-use serde_big_array::*;
 use uluru;
 use x25519_dalek as xd;
 
@@ -17,11 +16,6 @@ pub type Nonce = [u8; 24];
 
 const DH_CACHE_SIZE: usize = 1024;
 pub const ENCRYPTION_OVERHEAD: usize = 16;
-
-big_array! {
-    BigArray;
-    DH_CACHE_SIZE
-}
 
 type DHCache = uluru::LRUCache<DHCacheEntry, DH_CACHE_SIZE>;
 

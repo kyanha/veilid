@@ -50,12 +50,14 @@ struct RoutingTableInner {
     buckets: Vec<Bucket>,
     dial_info_details: Vec<DialInfoDetail>,
     bucket_entry_count: usize,
+
     // Waiters
     eventual_changed_dial_info: Eventual,
+
     // Transfer stats for this node
-    stats_accounting: StatsAccounting,
-    // latency: Option<LatencyStats>,
-    transfer_stats: TransferStatsDownUp,
+    self_latency_stats_accounting: LatencyStatsAccounting,
+    self_transfer_stats_accounting: TransferStatsAccounting,
+    self_transfer_stats: TransferStatsDownUp,
 }
 
 struct RoutingTableUnlockedInner {
@@ -83,8 +85,9 @@ impl RoutingTable {
             dial_info_details: Vec::new(),
             bucket_entry_count: 0,
             eventual_changed_dial_info: Eventual::new(),
-            stats_accounting: StatsAccounting::new(),
-            transfer_stats: TransferStatsDownUp::default(),
+            self_latency_stats_accounting: LatencyStatsAccounting::new(),
+            self_transfer_stats_accounting: TransferStatsAccounting::new(),
+            self_transfer_stats: TransferStatsDownUp::default(),
         }
     }
     fn new_unlocked_inner(config: VeilidConfig) -> RoutingTableUnlockedInner {
@@ -609,9 +612,11 @@ impl RoutingTable {
         let inner = &mut *self.inner.lock();
 
         // Roll our own node's transfers
-        inner
-            .stats_accounting
-            .roll_transfers(last_ts, cur_ts, &mut inner.transfer_stats);
+        inner.self_transfer_stats_accounting.roll_transfers(
+            last_ts,
+            cur_ts,
+            &mut inner.self_transfer_stats,
+        );
 
         // Roll all bucket entry transfers
         for b in &mut inner.buckets {
@@ -649,25 +654,37 @@ impl RoutingTable {
     // Stats Accounting
 
     pub fn ping_sent(&self, node_ref: NodeRef, ts: u64, bytes: u64) {
-        self.inner.lock().stats_accounting.add_up(bytes);
+        self.inner
+            .lock()
+            .self_transfer_stats_accounting
+            .add_up(bytes);
         node_ref.operate(|e| {
             e.ping_sent(ts, bytes);
         })
     }
     pub fn ping_rcvd(&self, node_ref: NodeRef, ts: u64, bytes: u64) {
-        self.inner.lock().stats_accounting.add_down(bytes);
+        self.inner
+            .lock()
+            .self_transfer_stats_accounting
+            .add_down(bytes);
         node_ref.operate(|e| {
             e.ping_rcvd(ts, bytes);
         })
     }
     pub fn pong_sent(&self, node_ref: NodeRef, ts: u64, bytes: u64) {
-        self.inner.lock().stats_accounting.add_up(bytes);
+        self.inner
+            .lock()
+            .self_transfer_stats_accounting
+            .add_up(bytes);
         node_ref.operate(|e| {
             e.pong_sent(ts, bytes);
         })
     }
     pub fn pong_rcvd(&self, node_ref: NodeRef, send_ts: u64, recv_ts: u64, bytes: u64) {
-        self.inner.lock().stats_accounting.add_down(bytes);
+        self.inner
+            .lock()
+            .self_transfer_stats_accounting
+            .add_down(bytes);
         node_ref.operate(|e| {
             e.pong_rcvd(send_ts, recv_ts, bytes);
         })
@@ -678,25 +695,37 @@ impl RoutingTable {
         })
     }
     pub fn question_sent(&self, node_ref: NodeRef, ts: u64, bytes: u64) {
-        self.inner.lock().stats_accounting.add_up(bytes);
+        self.inner
+            .lock()
+            .self_transfer_stats_accounting
+            .add_up(bytes);
         node_ref.operate(|e| {
             e.question_sent(ts, bytes);
         })
     }
     pub fn question_rcvd(&self, node_ref: NodeRef, ts: u64, bytes: u64) {
-        self.inner.lock().stats_accounting.add_down(bytes);
+        self.inner
+            .lock()
+            .self_transfer_stats_accounting
+            .add_down(bytes);
         node_ref.operate(|e| {
             e.question_rcvd(ts, bytes);
         })
     }
     pub fn answer_sent(&self, node_ref: NodeRef, ts: u64, bytes: u64) {
-        self.inner.lock().stats_accounting.add_up(bytes);
+        self.inner
+            .lock()
+            .self_transfer_stats_accounting
+            .add_up(bytes);
         node_ref.operate(|e| {
             e.answer_sent(ts, bytes);
         })
     }
     pub fn answer_rcvd(&self, node_ref: NodeRef, send_ts: u64, recv_ts: u64, bytes: u64) {
-        self.inner.lock().stats_accounting.add_down(bytes);
+        self.inner
+            .lock()
+            .self_transfer_stats_accounting
+            .add_down(bytes);
         node_ref.operate(|e| {
             e.answer_rcvd(send_ts, recv_ts, bytes);
         })

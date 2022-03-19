@@ -4201,6 +4201,7 @@ dependencies = [
  "generic-array 0.14.5",
  "getrandom 0.2.5",
  "hashbrown 0.12.0",
+ "hashlink",
  "hex",
  "ifstructs",
  "jni",

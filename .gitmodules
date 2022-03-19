@@ -25,3 +25,6 @@
 [submodule "external/mdns"]
 	path = external/mdns
 	url = ../mdns.git
+[submodule "external/hashlink"]
+	path = external/hashlink
+	url = ../hashlink.git

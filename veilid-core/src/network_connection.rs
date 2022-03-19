@@ -55,16 +55,21 @@ impl DummyNetworkConnection {
 ///////////////////////////////////////////////////////////
 // Top-level protocol independent network connection object
 
-#[derive(Debug)]
-struct NetworkConnectionInner {
+#[derive(Debug, Clone)]
+pub struct NetworkConnectionStats {
     last_message_sent_time: Option<u64>,
     last_message_recv_time: Option<u64>,
+    established_time: u64,
+}
+
+#[derive(Debug)]
+struct NetworkConnectionInner {
+    stats: NetworkConnectionStats,
 }
 
 #[derive(Debug)]
 struct NetworkConnectionArc {
     descriptor: ConnectionDescriptor,
-    established_time: u64,
     protocol_connection: ProtocolNetworkConnection,
     inner: Mutex<NetworkConnectionInner>,
 }
@@ -84,8 +89,11 @@ impl Eq for NetworkConnection {}
 impl NetworkConnection {
     fn new_inner() -> NetworkConnectionInner {
         NetworkConnectionInner {
-            last_message_sent_time: None,
-            last_message_recv_time: None,
+            stats: NetworkConnectionStats {
+                last_message_sent_time: None,
+                last_message_recv_time: None,
+                established_time: intf::get_timestamp(),
+            },
         }
     }
     fn new_arc(
@@ -94,7 +102,6 @@ impl NetworkConnection {
     ) -> NetworkConnectionArc {
         NetworkConnectionArc {
             descriptor,
-            established_time: intf::get_timestamp(),
             protocol_connection,
             inner: Mutex::new(Self::new_inner()),
         }
@@ -136,7 +143,7 @@ impl NetworkConnection {
         let out = self.arc.protocol_connection.send(message).await;
         if out.is_ok() {
             let mut inner = self.arc.inner.lock();
-            inner.last_message_sent_time.max_assign(Some(ts));
+            inner.stats.last_message_sent_time.max_assign(Some(ts));
         }
         out
     }
@@ -145,8 +152,13 @@ impl NetworkConnection {
         let out = self.arc.protocol_connection.recv().await;
         if out.is_ok() {
             let mut inner = self.arc.inner.lock();
-            inner.last_message_recv_time.max_assign(Some(ts));
+            inner.stats.last_message_recv_time.max_assign(Some(ts));
         }
         out
+    }
+
+    pub fn stats(&self) -> NetworkConnectionStats {
+        let inner = self.arc.inner.lock();
+        inner.stats.clone()
     }
 }

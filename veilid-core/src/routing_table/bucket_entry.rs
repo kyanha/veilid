@@ -32,7 +32,8 @@ pub struct BucketEntry {
     min_max_version: Option<(u8, u8)>,
     last_connection: Option<(ConnectionDescriptor, u64)>,
     dial_infos: Vec<DialInfo>,
-    stats_accounting: StatsAccounting,
+    latency_stats_accounting: LatencyStatsAccounting,
+    transfer_stats_accounting: TransferStatsAccounting,
     peer_stats: PeerStats,
 }
 
@@ -44,7 +45,8 @@ impl BucketEntry {
             min_max_version: None,
             last_connection: None,
             dial_infos: Vec::new(),
-            stats_accounting: StatsAccounting::new(),
+            latency_stats_accounting: LatencyStatsAccounting::new(),
+            transfer_stats_accounting: TransferStatsAccounting::new(),
             peer_stats: PeerStats {
                 time_added: now,
                 last_seen: None,
@@ -133,13 +135,16 @@ impl BucketEntry {
     ///// stats methods
     // called every ROLLING_TRANSFERS_INTERVAL_SECS seconds
     pub(super) fn roll_transfers(&mut self, last_ts: u64, cur_ts: u64) {
-        self.stats_accounting
-            .roll_transfers(last_ts, cur_ts, &mut self.peer_stats.transfer);
+        self.transfer_stats_accounting.roll_transfers(
+            last_ts,
+            cur_ts,
+            &mut self.peer_stats.transfer,
+        );
     }
 
     // Called for every round trip packet we receive
     fn record_latency(&mut self, latency: u64) {
-        self.peer_stats.latency = Some(self.stats_accounting.record_latency(latency));
+        self.peer_stats.latency = Some(self.latency_stats_accounting.record_latency(latency));
     }
 
     ///// state machine handling
@@ -255,7 +260,7 @@ impl BucketEntry {
 
     pub(super) fn ping_sent(&mut self, ts: u64, bytes: u64) {
         self.peer_stats.ping_stats.total_sent += 1;
-        self.stats_accounting.add_up(bytes);
+        self.transfer_stats_accounting.add_up(bytes);
         self.peer_stats.ping_stats.in_flight += 1;
         self.peer_stats.ping_stats.last_pinged = Some(ts);
         // if we haven't heard from this node yet and it's our first attempt at contacting it
@@ -265,14 +270,14 @@ impl BucketEntry {
         }
     }
     pub(super) fn ping_rcvd(&mut self, ts: u64, bytes: u64) {
-        self.stats_accounting.add_down(bytes);
+        self.transfer_stats_accounting.add_down(bytes);
         self.touch_last_seen(ts);
     }
     pub(super) fn pong_sent(&mut self, _ts: u64, bytes: u64) {
-        self.stats_accounting.add_up(bytes);
+        self.transfer_stats_accounting.add_up(bytes);
     }
     pub(super) fn pong_rcvd(&mut self, send_ts: u64, recv_ts: u64, bytes: u64) {
-        self.stats_accounting.add_down(bytes);
+        self.transfer_stats_accounting.add_down(bytes);
         self.peer_stats.ping_stats.in_flight -= 1;
         self.peer_stats.ping_stats.total_returned += 1;
         self.peer_stats.ping_stats.consecutive_pongs += 1;
@@ -294,7 +299,7 @@ impl BucketEntry {
         self.peer_stats.ping_stats.first_consecutive_pong_time = None;
     }
     pub(super) fn question_sent(&mut self, ts: u64, bytes: u64) {
-        self.stats_accounting.add_up(bytes);
+        self.transfer_stats_accounting.add_up(bytes);
         // if we haven't heard from this node yet and it's our first attempt at contacting it
         // then we set the last_seen time
         if self.peer_stats.last_seen.is_none() {
@@ -302,14 +307,14 @@ impl BucketEntry {
         }
     }
     pub(super) fn question_rcvd(&mut self, ts: u64, bytes: u64) {
-        self.stats_accounting.add_down(bytes);
+        self.transfer_stats_accounting.add_down(bytes);
         self.touch_last_seen(ts);
     }
     pub(super) fn answer_sent(&mut self, _ts: u64, bytes: u64) {
-        self.stats_accounting.add_up(bytes);
+        self.transfer_stats_accounting.add_up(bytes);
     }
     pub(super) fn answer_rcvd(&mut self, send_ts: u64, recv_ts: u64, bytes: u64) {
-        self.stats_accounting.add_down(bytes);
+        self.transfer_stats_accounting.add_down(bytes);
         self.record_latency(recv_ts - send_ts);
         self.touch_last_seen(recv_ts);
     }

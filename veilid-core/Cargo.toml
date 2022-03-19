@@ -26,6 +26,7 @@ generic-array = "^0"
 secrecy = "^0"
 chacha20poly1305 = "^0"
 uluru = "^3"
+hashlink = "^0"
 serde-big-array = "^0"
 futures-util = { version = "^0", default_features = false, features = ["alloc"] }
 parking_lot = "^0"

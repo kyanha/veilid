@@ -4,8 +4,8 @@ use crate::network_connection::*;
 use crate::network_manager::*;
 use crate::xx::*;
 use crate::*;
-use futures_util::future::{select, Either};
 use futures_util::stream::{FuturesUnordered, StreamExt};
+use futures_util::{select, FutureExt};
 
 const CONNECTION_PROCESSOR_CHANNEL_SIZE: usize = 128usize;
 
@@ -162,12 +162,28 @@ impl ConnectionManager {
         Box::pin(async move {
             //
             let descriptor = conn.connection_descriptor();
+            let inactivity_timeout = this
+                .network_manager()
+                .config()
+                .get()
+                .network
+                .connection_inactivity_timeout_ms;
             loop {
-                let res = conn.clone().recv().await;
-                let message = match res {
-                    Ok(v) => v,
-                    Err(e) => {
-                        log_net!(error e);
+                // process inactivity timeout on receives only
+                // if you want a keepalive, it has to be requested from the other side
+                let message = select! {
+                    res = conn.recv().fuse() => {
+                        match res {
+                            Ok(v) => v,
+                            Err(e) => {
+                                log_net!(error e);
+                                break;
+                            }
+                        }
+                    }
+                    _ = intf::sleep(inactivity_timeout).fuse()=> {
+                        // timeout
+                        log_net!("connection timeout on {:?}", descriptor);
                         break;
                     }
                 };
@@ -201,8 +217,8 @@ impl ConnectionManager {
             FuturesUnordered::new();
         loop {
             // Either process an existing connection, or receive a new one to add to our list
-            match select(connection_futures.next(), Box::pin(rx.recv_async())).await {
-                Either::Left((x, _)) => {
+            select! {
+                x = connection_futures.next().fuse() => {
                     // Processed some connection to completion, or there are none left
                     match x {
                         Some(()) => {
@@ -222,7 +238,7 @@ impl ConnectionManager {
                         }
                     }
                 }
-                Either::Right((x, _)) => {
+                x = rx.recv_async().fuse() => {
                     // Got a new connection future
                     match x {
                         Ok(v) => {

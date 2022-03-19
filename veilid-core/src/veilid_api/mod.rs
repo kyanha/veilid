@@ -881,17 +881,17 @@ pub struct LatencyStats {
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub struct TransferStatsDownUp {
-    pub down: TransferStats,
-    pub up: TransferStats,
-}
-
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct TransferStats {
     pub total: u64,   // total amount transferred ever
     pub maximum: u64, // maximum rate over the ROLLING_TRANSFERS_SIZE last amounts
     pub average: u64, // average rate over the ROLLING_TRANSFERS_SIZE last amounts
     pub minimum: u64, // minimum rate over the ROLLING_TRANSFERS_SIZE last amounts
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct TransferStatsDownUp {
+    pub down: TransferStats,
+    pub up: TransferStats,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]

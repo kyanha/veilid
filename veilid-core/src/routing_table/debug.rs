@@ -7,8 +7,14 @@ impl RoutingTable {
         out += "Routing Table Info:\n";
 
         out += &format!("   Node Id: {}\n", inner.node_id.encode());
-        out += &format!("   Stats Accounting: {:#?}\n\n", inner.stats_accounting);
-        out += &format!("   Transfer Stats: {:#?}\n\n", inner.transfer_stats);
+        out += &format!(
+            "   Self Transfer Stats Accounting: {:#?}\n\n",
+            inner.self_transfer_stats_accounting
+        );
+        out += &format!(
+            "   Self Transfer Stats: {:#?}\n\n",
+            inner.self_transfer_stats
+        );
 
         out
     }
