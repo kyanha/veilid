@@ -261,7 +261,8 @@ impl Network {
         dial_info: DialInfo,
         data: Vec<u8>,
     ) -> Result<(), String> {
-        match dial_info.protocol_type() {
+        let data_len = data.len();
+        let res = match dial_info.protocol_type() {
             ProtocolType::UDP => {
                 let peer_socket_addr = dial_info.to_socket_addr();
                 RawUdpProtocolHandler::send_unbound_message(peer_socket_addr, data)
@@ -275,11 +276,17 @@ impl Network {
                     .map_err(logthru_net!())
             }
             ProtocolType::WS | ProtocolType::WSS => {
-                WebsocketProtocolHandler::send_unbound_message(dial_info, data)
+                WebsocketProtocolHandler::send_unbound_message(dial_info.clone(), data)
                     .await
                     .map_err(logthru_net!())
             }
+        };
+        if res.is_ok() {
+            // Network accounting
+            self.network_manager()
+                .stats_packet_sent(dial_info.to_ip_addr(), data_len as u64);
         }
+        res
     }
 
     async fn send_data_to_existing_connection(
@@ -287,6 +294,8 @@ impl Network {
         descriptor: ConnectionDescriptor,
         data: Vec<u8>,
     ) -> Result<Option<Vec<u8>>, String> {
+        let data_len = data.len();
+
         // Handle connectionless protocol
         if descriptor.protocol_type() == ProtocolType::UDP {
             // send over the best udp socket we have bound since UDP is not connection oriented
@@ -299,6 +308,11 @@ impl Network {
                     .send_message(data, peer_socket_addr)
                     .await
                     .map_err(logthru_net!())?;
+
+                // Network accounting
+                self.network_manager()
+                    .stats_packet_sent(peer_socket_addr.ip(), data_len as u64);
+
                 // Data was consumed
                 return Ok(None);
             }
@@ -310,6 +324,10 @@ impl Network {
         if let Some(conn) = self.connection_manager().get_connection(descriptor).await {
             // connection exists, send over it
             conn.send(data).await.map_err(logthru_net!())?;
+
+            // Network accounting
+            self.network_manager()
+                .stats_packet_sent(descriptor.remote.to_socket_addr().ip(), data_len as u64);
 
             // Data was consumed
             Ok(None)
@@ -326,14 +344,21 @@ impl Network {
         dial_info: DialInfo,
         data: Vec<u8>,
     ) -> Result<(), String> {
+        let data_len = data.len();
         // Handle connectionless protocol
         if dial_info.protocol_type() == ProtocolType::UDP {
             let peer_socket_addr = dial_info.to_socket_addr();
             if let Some(ph) = self.find_best_udp_protocol_handler(&peer_socket_addr, &None) {
-                return ph
+                let res = ph
                     .send_message(data, peer_socket_addr)
                     .await
                     .map_err(logthru_net!());
+                if res.is_ok() {
+                    // Network accounting
+                    self.network_manager()
+                        .stats_packet_sent(peer_socket_addr.ip(), data_len as u64);
+                }
+                return res;
             }
             return Err("no appropriate UDP protocol handler for dial_info".to_owned())
                 .map_err(logthru_net!(error));
@@ -343,10 +368,16 @@ impl Network {
         let local_addr = self.get_preferred_local_address(&dial_info);
         let conn = self
             .connection_manager()
-            .get_or_create_connection(Some(local_addr), dial_info)
+            .get_or_create_connection(Some(local_addr), dial_info.clone())
             .await?;
 
-        conn.send(data).await.map_err(logthru_net!(error))
+        let res = conn.send(data).await.map_err(logthru_net!(error));
+        if res.is_ok() {
+            // Network accounting
+            self.network_manager()
+                .stats_packet_sent(dial_info.to_ip_addr(), data_len as u64);
+        }
+        res
     }
 
     // Send data to node

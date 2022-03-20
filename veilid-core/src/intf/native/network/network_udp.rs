@@ -54,6 +54,13 @@ impl Network {
                             // XXX: Limit the number of packets from the same IP address?
                             log_net!("UDP packet: {:?}", descriptor);
 
+                            // Network accounting
+                            network_manager.stats_packet_rcvd(
+                                descriptor.remote.to_socket_addr().ip(),
+                                size as u64,
+                            );
+
+                            // Pass it up for processing
                             if let Err(e) = network_manager
                                 .on_recv_envelope(&data[..size], descriptor)
                                 .await

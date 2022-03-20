@@ -49,6 +49,32 @@ impl Network {
 
     /////////////////////////////////////////////////////////////////
 
+    pub async fn send_data_unbound_to_dial_info(
+        &self,
+        dial_info: DialInfo,
+        data: Vec<u8>,
+    ) -> Result<(), String> {
+        let res = match dial_info.protocol_type() {
+            ProtocolType::UDP => {
+                return Err("no support for UDP protocol".to_owned()).map_err(logthru_net!(error))
+            }
+            ProtocolType::TCP => {
+                return Err("no support for TCP protocol".to_owned()).map_err(logthru_net!(error))
+            }
+            ProtocolType::WS | ProtocolType::WSS => {
+                WebsocketProtocolHandler::send_unbound_message(dial_info, data)
+                    .await
+                    .map_err(logthru_net!())
+            }
+        };
+        if res.is_ok() {
+            // Network accounting
+            self.network_manager()
+                .stats_packet_sent(dial_info.to_ip_addr(), data_len as u64);
+        }
+        res
+    }
+
     async fn send_data_to_existing_connection(
         &self,
         descriptor: ConnectionDescriptor,
@@ -71,32 +97,16 @@ impl Network {
             // connection exists, send over it
             conn.send(data).await.map_err(logthru_net!())?;
 
+            // Network accounting
+            self.network_manager()
+                .stats_packet_sent(descriptor.remote.to_socket_addr().ip(), data_len as u64);
+
             // Data was consumed
             Ok(None)
         } else {
             // Connection or didn't exist
             // Pass the data back out so we don't own it any more
             Ok(Some(data))
-        }
-    }
-
-    pub async fn send_data_unbound_to_dial_info(
-        &self,
-        dial_info: DialInfo,
-        data: Vec<u8>,
-    ) -> Result<(), String> {
-        match dial_info.protocol_type() {
-            ProtocolType::UDP => {
-                return Err("no support for UDP protocol".to_owned()).map_err(logthru_net!(error))
-            }
-            ProtocolType::TCP => {
-                return Err("no support for TCP protocol".to_owned()).map_err(logthru_net!(error))
-            }
-            ProtocolType::WS | ProtocolType::WSS => {
-                WebsocketProtocolHandler::send_unbound_message(dial_info, data)
-                    .await
-                    .map_err(logthru_net!())
-            }
         }
     }
 
@@ -118,7 +128,13 @@ impl Network {
             .get_or_create_connection(None, dial_info)
             .await?;
 
-        conn.send(data).await.map_err(logthru_net!(error))
+        let res = conn.send(data).await.map_err(logthru_net!(error));
+        if res.is_ok() {
+            // Network accounting
+            self.network_manager()
+                .stats_packet_sent(dial_info.to_ip_addr(), data_len as u64);
+        }
+        res
     }
 
     pub async fn send_data(&self, node_ref: NodeRef, data: Vec<u8>) -> Result<(), String> {

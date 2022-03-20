@@ -7,8 +7,9 @@ use chacha20poly1305::aead::{AeadInPlace, NewAead};
 use core::convert::TryInto;
 use curve25519_dalek as cd;
 use ed25519_dalek as ed;
+use hashlink::linked_hash_map::Entry;
+use hashlink::LruCache;
 use serde::{Deserialize, Serialize};
-use uluru;
 use x25519_dalek as xd;
 
 pub type SharedSecret = [u8; 32];
@@ -17,22 +18,25 @@ pub type Nonce = [u8; 24];
 const DH_CACHE_SIZE: usize = 1024;
 pub const ENCRYPTION_OVERHEAD: usize = 16;
 
-type DHCache = uluru::LRUCache<DHCacheEntry, DH_CACHE_SIZE>;
-
-#[derive(Serialize, Deserialize)]
-struct DHCacheEntry {
+#[derive(Serialize, Deserialize, PartialEq, Eq, Hash)]
+struct DHCacheKey {
     key: DHTKey,
     secret: DHTKeySecret,
+}
+
+#[derive(Serialize, Deserialize)]
+struct DHCacheValue {
     shared_secret: SharedSecret,
 }
+type DHCache = LruCache<DHCacheKey, DHCacheValue>;
 
 fn cache_to_bytes(cache: &DHCache) -> Vec<u8> {
     let cnt: usize = cache.len();
     let mut out: Vec<u8> = Vec::with_capacity(cnt * (32 + 32 + 32));
     for e in cache.iter() {
-        out.extend(&e.key.bytes);
-        out.extend(&e.secret.bytes);
-        out.extend(&e.shared_secret);
+        out.extend(&e.0.key.bytes);
+        out.extend(&e.0.secret.bytes);
+        out.extend(&e.1.shared_secret);
     }
     let mut rev: Vec<u8> = Vec::with_capacity(out.len());
     for d in out.chunks(32 + 32 + 32).rev() {
@@ -43,12 +47,14 @@ fn cache_to_bytes(cache: &DHCache) -> Vec<u8> {
 
 fn bytes_to_cache(bytes: &[u8], cache: &mut DHCache) {
     for d in bytes.chunks(32 + 32 + 32) {
-        let e = DHCacheEntry {
+        let k = DHCacheKey {
             key: DHTKey::new(d[0..32].try_into().expect("asdf")),
             secret: DHTKeySecret::new(d[32..64].try_into().expect("asdf")),
+        };
+        let v = DHCacheValue {
             shared_secret: d[64..96].try_into().expect("asdf"),
         };
-        cache.insert(e);
+        cache.insert(k, v);
     }
 }
 
@@ -72,7 +78,7 @@ impl Crypto {
             table_store,
             node_id: Default::default(),
             node_id_secret: Default::default(),
-            dh_cache: DHCache::default(),
+            dh_cache: DHCache::new(DH_CACHE_SIZE),
             flush_future: None,
         }
     }
@@ -176,22 +182,19 @@ impl Crypto {
     }
 
     pub fn cached_dh(&self, key: &DHTKey, secret: &DHTKeySecret) -> Result<SharedSecret, String> {
-        if let Some(c) = self
-            .inner
-            .lock()
-            .dh_cache
-            .find(|entry| entry.key == *key && entry.secret == *secret)
-        {
-            return Ok(c.shared_secret);
-        }
-
-        let shared_secret = Self::compute_dh(key, secret)?;
-        self.inner.lock().dh_cache.insert(DHCacheEntry {
-            key: *key,
-            secret: *secret,
-            shared_secret,
-        });
-        Ok(shared_secret)
+        Ok(
+            match self.inner.lock().dh_cache.entry(DHCacheKey {
+                key: *key,
+                secret: *secret,
+            }) {
+                Entry::Occupied(e) => e.get().shared_secret,
+                Entry::Vacant(e) => {
+                    let shared_secret = Self::compute_dh(key, secret)?;
+                    e.insert(DHCacheValue { shared_secret });
+                    shared_secret
+                }
+            },
+        )
     }
 
     ///////////

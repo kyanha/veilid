@@ -8,6 +8,10 @@ impl RoutingTable {
 
         out += &format!("   Node Id: {}\n", inner.node_id.encode());
         out += &format!(
+            "   Self Latency Stats Accounting: {:#?}\n\n",
+            inner.self_latency_stats_accounting
+        );
+        out += &format!(
             "   Self Transfer Stats Accounting: {:#?}\n\n",
             inner.self_transfer_stats_accounting
         );

@@ -1,6 +1,7 @@
 use crate::*;
 use connection_manager::*;
 use dht::*;
+use hashlink::LruCache;
 use intf::*;
 use lease_manager::*;
 use receipt_manager::*;
@@ -89,14 +90,30 @@ pub struct PerAddressStats {
     transfer_stats: TransferStatsDownUp,
 }
 
-// Statistics about the low-level network
-#[derive(Clone, Default)]
-pub struct NetworkManagerStats {
-    self_stats: PerAddressStats,
-    per_address_stats: HashMap<IpAddr, PerAddressStats>,
-    recent_addresses: VecDeque<IpAddr>,
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct PerAddressStatsKey(IpAddr);
+
+impl Default for PerAddressStatsKey {
+    fn default() -> Self {
+        Self(IpAddr::V4(Ipv4Addr::UNSPECIFIED))
+    }
 }
 
+// Statistics about the low-level network
+#[derive(Clone)]
+pub struct NetworkManagerStats {
+    self_stats: PerAddressStats,
+    per_address_stats: LruCache<PerAddressStatsKey, PerAddressStats>,
+}
+
+impl Default for NetworkManagerStats {
+    fn default() -> Self {
+        Self {
+            self_stats: PerAddressStats::default(),
+            per_address_stats: LruCache::new(IPADDR_TABLE_SIZE),
+        }
+    }
+}
 // The mutable state of the network manager
 struct NetworkManagerInner {
     routing_table: Option<RoutingTable>,
@@ -487,6 +504,10 @@ impl NetworkManager {
             data.len(),
             descriptor
         );
+
+        // Network accounting
+        self.stats_packet_rcvd(descriptor.remote.to_socket_addr().ip(), data.len() as u64);
+
         // Is this an out-of-band receipt instead of an envelope?
         if data[0..4] == *RECEIPT_MAGIC {
             self.process_receipt(data).await?;
@@ -603,7 +624,7 @@ impl NetworkManager {
             .roll_transfers(last_ts, cur_ts, &mut inner.stats.self_stats.transfer_stats);
 
         // Roll all per-address transfers
-        let mut dead_addrs: HashSet<IpAddr> = HashSet::new();
+        let mut dead_addrs: HashSet<PerAddressStatsKey> = HashSet::new();
         for (addr, stats) in &mut inner.stats.per_address_stats {
             stats.transfer_stats_accounting.roll_transfers(
                 last_ts,
@@ -622,15 +643,11 @@ impl NetworkManager {
         for da in &dead_addrs {
             inner.stats.per_address_stats.remove(da);
         }
-        inner
-            .stats
-            .recent_addresses
-            .retain(|a| !dead_addrs.contains(a));
         Ok(())
     }
 
     // Callbacks from low level network for statistics gathering
-    fn packet_sent(&self, addr: IpAddr, bytes: u64) {
+    pub fn stats_packet_sent(&self, addr: IpAddr, bytes: u64) {
         let inner = &mut *self.inner.lock();
         inner
             .stats
@@ -640,13 +657,13 @@ impl NetworkManager {
         inner
             .stats
             .per_address_stats
-            .entry(addr)
-            .or_default()
+            .entry(PerAddressStatsKey(addr))
+            .or_insert(PerAddressStats::default())
             .transfer_stats_accounting
             .add_up(bytes);
     }
 
-    fn packet_rcvd(&self, addr: IpAddr, bytes: u64) {
+    pub fn stats_packet_rcvd(&self, addr: IpAddr, bytes: u64) {
         let inner = &mut *self.inner.lock();
         inner
             .stats
@@ -656,8 +673,8 @@ impl NetworkManager {
         inner
             .stats
             .per_address_stats
-            .entry(addr)
-            .or_default()
+            .entry(PerAddressStatsKey(addr))
+            .or_insert(PerAddressStats::default())
             .transfer_stats_accounting
             .add_down(bytes);
     }

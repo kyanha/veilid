@@ -348,24 +348,26 @@ impl RPCProcessor {
                 self.cancel_op_id_waiter(waitable_reply.op_id);
                 if waitable_reply.is_ping {
                     self.routing_table()
-                        .ping_lost(waitable_reply.node_ref.clone(), waitable_reply.send_ts);
+                        .stats_ping_lost(waitable_reply.node_ref.clone(), waitable_reply.send_ts);
                 } else {
-                    self.routing_table()
-                        .question_lost(waitable_reply.node_ref.clone(), waitable_reply.send_ts);
+                    self.routing_table().stats_question_lost(
+                        waitable_reply.node_ref.clone(),
+                        waitable_reply.send_ts,
+                    );
                 }
             }
             Ok((rpcreader, _)) => {
                 // Reply received
                 let recv_ts = get_timestamp();
                 if waitable_reply.is_ping {
-                    self.routing_table().pong_rcvd(
+                    self.routing_table().stats_pong_rcvd(
                         waitable_reply.node_ref,
                         waitable_reply.send_ts,
                         recv_ts,
                         rpcreader.header.body_len,
                     )
                 } else {
-                    self.routing_table().answer_rcvd(
+                    self.routing_table().stats_answer_rcvd(
                         waitable_reply.node_ref,
                         waitable_reply.send_ts,
                         recv_ts,
@@ -538,10 +540,10 @@ impl RPCProcessor {
         let send_ts = get_timestamp();
         if is_ping {
             self.routing_table()
-                .ping_sent(node_ref.clone(), send_ts, bytes);
+                .stats_ping_sent(node_ref.clone(), send_ts, bytes);
         } else {
             self.routing_table()
-                .question_sent(node_ref.clone(), send_ts, bytes);
+                .stats_question_sent(node_ref.clone(), send_ts, bytes);
         }
 
         // Pass back waitable reply completion
@@ -718,9 +720,11 @@ impl RPCProcessor {
         let send_ts = get_timestamp();
 
         if is_pong {
-            self.routing_table().pong_sent(node_ref, send_ts, bytes);
+            self.routing_table()
+                .stats_pong_sent(node_ref, send_ts, bytes);
         } else {
-            self.routing_table().answer_sent(node_ref, send_ts, bytes);
+            self.routing_table()
+                .stats_answer_sent(node_ref, send_ts, bytes);
         }
 
         Ok(())
@@ -1190,13 +1194,13 @@ impl RPCProcessor {
                 .lookup_node_ref(rpcreader.header.envelope.get_sender_id())
             {
                 if which == 0u32 {
-                    self.routing_table().ping_rcvd(
+                    self.routing_table().stats_ping_rcvd(
                         sender_nr,
                         rpcreader.header.timestamp,
                         rpcreader.header.body_len,
                     );
                 } else {
-                    self.routing_table().question_rcvd(
+                    self.routing_table().stats_question_rcvd(
                         sender_nr,
                         rpcreader.header.timestamp,
                         rpcreader.header.body_len,

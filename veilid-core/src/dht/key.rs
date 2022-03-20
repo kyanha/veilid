@@ -2,6 +2,7 @@ use crate::xx::*;
 use core::cmp::{Eq, Ord, Ordering, PartialEq, PartialOrd};
 use core::convert::{TryFrom, TryInto};
 use core::fmt;
+use core::hash::{Hash, Hasher};
 use hex;
 
 use crate::veilid_rng::*;
@@ -203,6 +204,14 @@ macro_rules! byte_array_type {
             }
         }
         impl Eq for $name {}
+        impl Hash for $name {
+            fn hash<H: Hasher>(&self, state: &mut H) {
+                self.valid.hash(state);
+                if self.valid {
+                    self.bytes.hash(state);
+                }
+            }
+        }
         impl Default for $name {
             fn default() -> Self {
                 let mut this = $name::new([0u8; $size]);

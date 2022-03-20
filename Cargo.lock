@@ -1783,6 +1783,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "hashlink"
+version = "0.8.0"
+dependencies = [
+ "hashbrown 0.12.0",
+ "serde 1.0.136",
+]
+
+[[package]]
 name = "hermit-abi"
 version = "0.1.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3293,7 +3301,7 @@ dependencies = [
  "bitflags",
  "fallible-iterator",
  "fallible-streaming-iterator",
- "hashlink",
+ "hashlink 0.7.0",
  "libsqlite3-sys",
  "memchr",
  "smallvec",
@@ -4043,15 +4051,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "uluru"
-version = "3.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "794a32261a1f5eb6a4462c81b59cec87b5c27d5deea7dd1ac8fc781c41d226db"
-dependencies = [
- "arrayvec 0.7.2",
-]
-
-[[package]]
 name = "unicode-bidi"
 version = "0.3.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4201,7 +4200,7 @@ dependencies = [
  "generic-array 0.14.5",
  "getrandom 0.2.5",
  "hashbrown 0.12.0",
- "hashlink",
+ "hashlink 0.8.0",
  "hex",
  "ifstructs",
  "jni",
@@ -4239,7 +4238,6 @@ dependencies = [
  "socket2",
  "static_assertions",
  "thiserror",
- "uluru",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "wasm-bindgen-test",

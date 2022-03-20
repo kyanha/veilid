@@ -653,7 +653,7 @@ impl RoutingTable {
     //////////////////////////////////////////////////////////////////////
     // Stats Accounting
 
-    pub fn ping_sent(&self, node_ref: NodeRef, ts: u64, bytes: u64) {
+    pub fn stats_ping_sent(&self, node_ref: NodeRef, ts: u64, bytes: u64) {
         self.inner
             .lock()
             .self_transfer_stats_accounting
@@ -662,7 +662,7 @@ impl RoutingTable {
             e.ping_sent(ts, bytes);
         })
     }
-    pub fn ping_rcvd(&self, node_ref: NodeRef, ts: u64, bytes: u64) {
+    pub fn stats_ping_rcvd(&self, node_ref: NodeRef, ts: u64, bytes: u64) {
         self.inner
             .lock()
             .self_transfer_stats_accounting
@@ -671,7 +671,7 @@ impl RoutingTable {
             e.ping_rcvd(ts, bytes);
         })
     }
-    pub fn pong_sent(&self, node_ref: NodeRef, ts: u64, bytes: u64) {
+    pub fn stats_pong_sent(&self, node_ref: NodeRef, ts: u64, bytes: u64) {
         self.inner
             .lock()
             .self_transfer_stats_accounting
@@ -680,21 +680,25 @@ impl RoutingTable {
             e.pong_sent(ts, bytes);
         })
     }
-    pub fn pong_rcvd(&self, node_ref: NodeRef, send_ts: u64, recv_ts: u64, bytes: u64) {
+    pub fn stats_pong_rcvd(&self, node_ref: NodeRef, send_ts: u64, recv_ts: u64, bytes: u64) {
         self.inner
             .lock()
             .self_transfer_stats_accounting
             .add_down(bytes);
+        self.inner
+            .lock()
+            .self_latency_stats_accounting
+            .record_latency(recv_ts - send_ts);
         node_ref.operate(|e| {
             e.pong_rcvd(send_ts, recv_ts, bytes);
         })
     }
-    pub fn ping_lost(&self, node_ref: NodeRef, ts: u64) {
+    pub fn stats_ping_lost(&self, node_ref: NodeRef, ts: u64) {
         node_ref.operate(|e| {
             e.ping_lost(ts);
         })
     }
-    pub fn question_sent(&self, node_ref: NodeRef, ts: u64, bytes: u64) {
+    pub fn stats_question_sent(&self, node_ref: NodeRef, ts: u64, bytes: u64) {
         self.inner
             .lock()
             .self_transfer_stats_accounting
@@ -703,7 +707,7 @@ impl RoutingTable {
             e.question_sent(ts, bytes);
         })
     }
-    pub fn question_rcvd(&self, node_ref: NodeRef, ts: u64, bytes: u64) {
+    pub fn stats_question_rcvd(&self, node_ref: NodeRef, ts: u64, bytes: u64) {
         self.inner
             .lock()
             .self_transfer_stats_accounting
@@ -712,7 +716,7 @@ impl RoutingTable {
             e.question_rcvd(ts, bytes);
         })
     }
-    pub fn answer_sent(&self, node_ref: NodeRef, ts: u64, bytes: u64) {
+    pub fn stats_answer_sent(&self, node_ref: NodeRef, ts: u64, bytes: u64) {
         self.inner
             .lock()
             .self_transfer_stats_accounting
@@ -721,16 +725,20 @@ impl RoutingTable {
             e.answer_sent(ts, bytes);
         })
     }
-    pub fn answer_rcvd(&self, node_ref: NodeRef, send_ts: u64, recv_ts: u64, bytes: u64) {
+    pub fn stats_answer_rcvd(&self, node_ref: NodeRef, send_ts: u64, recv_ts: u64, bytes: u64) {
         self.inner
             .lock()
             .self_transfer_stats_accounting
             .add_down(bytes);
+        self.inner
+            .lock()
+            .self_latency_stats_accounting
+            .record_latency(recv_ts - send_ts);
         node_ref.operate(|e| {
             e.answer_rcvd(send_ts, recv_ts, bytes);
         })
     }
-    pub fn question_lost(&self, node_ref: NodeRef, ts: u64) {
+    pub fn stats_question_lost(&self, node_ref: NodeRef, ts: u64) {
         node_ref.operate(|e| {
             e.question_lost(ts);
         })
