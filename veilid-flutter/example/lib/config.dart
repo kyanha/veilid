@@ -44,6 +44,13 @@ Future<VeilidConfig> getDefaultVeilidConfig() async {
         nodeId: "",
         nodeIdSecret: "",
         bootstrap: [],
+        routingTable: VeilidConfigRoutingTable(
+          limitOverAttached: 64,
+          limitFullyAttached: 32,
+          limitAttachedStrong: 16,
+          limitAttachedGood: 8,
+          limitAttachedWeak: 4,
+        ),
         rpc: VeilidConfigRPC(
           concurrency: 0,
           queueSize: 1024,

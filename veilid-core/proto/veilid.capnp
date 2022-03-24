@@ -119,7 +119,7 @@ struct RouteHopData {
 }
 
 struct RouteHop {
-    dialInfo                @0  :NodeDialInfo;    # dial info for this hop
+    dialInfo                @0  :NodeDialInfo;          # dial info for this hop
     nextHop                 @1  :RouteHopData;          # Optional: next hop in encrypted blob 
                                                         # Null means no next hop, at destination (only used in private route, safety routes must enclose a stub private route)
 }
@@ -188,7 +188,7 @@ struct SenderInfo {
 
 struct OperationInfoA {
     nodeInfo                @0  :NodeInfo;              # returned node information
-    senderInfo              @1  :SenderInfo;            # info about InfoQ sender
+    senderInfo              @1  :SenderInfo;            # info about InfoQ sender from the perspective of the replier
 }
 
 struct OperationValidateDialInfo {
@@ -204,7 +204,7 @@ struct OperationReturnReceipt {
 
 struct OperationFindNodeQ {    
     nodeId                  @0  :NodeID;                # node id to locate
-    peerInfo                @1  :PeerInfo;              # The peer info for node asking the question
+    dialInfoList            @1  :List(DialInfo);        # dial info for the node asking the question
 }
 
 struct PeerInfo {
@@ -368,7 +368,7 @@ struct Operation {
 
     respondTo :union {
         none                @1  :Void;                  # no response is desired
-        sender              @2  :Void;                  # envelope sender node id to be used for reply
+        sender              @2  :DialInfo;              # (Optional) envelope sender node id to be used for reply
                                                         # possibly through a relay if the request arrived that way
         privateRoute        @3  :PrivateRoute;          # embedded private route to be used for reply
     }                              
@@ -399,7 +399,7 @@ struct Operation {
         signalQ             @21 :OperationSignalQ;
         signalA             @22 :OperationSignalA;
         
-        returnReceipt       @23  :OperationReturnReceipt;
+        returnReceipt       @23 :OperationReturnReceipt;
         
         # Tunnel operations
         startTunnelQ        @24 :OperationStartTunnelQ;

@@ -70,7 +70,7 @@ impl ConnectionManager {
     pub async fn startup(&self) {
         trace!("startup connection manager");
         let mut inner = self.arc.inner.lock().await;
-        let cac = flume::bounded(CONNECTION_PROCESSOR_CHANNEL_SIZE); // xxx move to config
+        let cac = flume::bounded(CONNECTION_PROCESSOR_CHANNEL_SIZE);
         inner.connection_add_channel_tx = Some(cac.0);
         let rx = cac.1.clone();
         let this = self.clone();

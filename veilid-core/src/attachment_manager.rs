@@ -2,6 +2,7 @@ use crate::callback_state_machine::*;
 use crate::dht::crypto::Crypto;
 use crate::intf::*;
 use crate::network_manager::*;
+use crate::routing_table::*;
 use crate::xx::*;
 use crate::*;
 use core::convert::TryFrom;
@@ -106,8 +107,8 @@ pub struct AttachmentManagerInner {
     attachment_machine: CallbackStateMachine<Attachment>,
     network_manager: NetworkManager,
     maintain_peers: bool,
-    peer_count: u32,
     attach_timestamp: Option<u64>,
+    update_callback: Option<UpdateCallback>,
     attachment_maintainer_jh: Option<JoinHandle<()>>,
 }
 
@@ -127,8 +128,8 @@ impl AttachmentManager {
             attachment_machine: CallbackStateMachine::new(),
             network_manager: NetworkManager::new(config, table_store, crypto),
             maintain_peers: false,
-            peer_count: 0,
             attach_timestamp: None,
+            update_callback: None,
             attachment_maintainer_jh: None,
         }
     }
@@ -159,24 +160,30 @@ impl AttachmentManager {
         self.inner.lock().attach_timestamp
     }
 
-    pub fn get_peer_count(&self) -> u32 {
-        self.inner.lock().peer_count
-    }
-
-    fn translate_peer_input(cur: u32, max: u32) -> AttachmentInput {
-        if cur > max {
+    fn translate_routing_table_health(
+        health: RoutingTableHealth,
+        config: &VeilidConfigRoutingTable,
+    ) -> AttachmentInput {
+        if health.reliable_entry_count >= config.limit_over_attached.try_into().unwrap() {
             return AttachmentInput::TooManyPeers;
         }
-        match cmp::min(4, 4 * cur / max) {
-            4 => AttachmentInput::FullPeers,
-            3 => AttachmentInput::StrongPeers,
-            2 => AttachmentInput::GoodPeers,
-            1 => AttachmentInput::WeakPeers,
-            0 => AttachmentInput::NoPeers,
-            _ => panic!("Invalid state"),
+        if health.reliable_entry_count >= config.limit_fully_attached.try_into().unwrap() {
+            return AttachmentInput::FullPeers;
         }
+        if health.reliable_entry_count >= config.limit_attached_strong.try_into().unwrap() {
+            return AttachmentInput::StrongPeers;
+        }
+        if health.reliable_entry_count >= config.limit_attached_good.try_into().unwrap() {
+            return AttachmentInput::GoodPeers;
+        }
+        if health.reliable_entry_count >= config.limit_attached_weak.try_into().unwrap()
+            || health.unreliable_entry_count >= config.limit_attached_weak.try_into().unwrap()
+        {
+            return AttachmentInput::WeakPeers;
+        }
+        AttachmentInput::NoPeers
     }
-    fn translate_peer_state(state: &AttachmentState) -> AttachmentInput {
+    fn translate_attachment_state(state: &AttachmentState) -> AttachmentInput {
         match state {
             AttachmentState::OverAttached => AttachmentInput::TooManyPeers,
             AttachmentState::FullyAttached => AttachmentInput::FullPeers,
@@ -188,19 +195,20 @@ impl AttachmentManager {
         }
     }
 
-    async fn update_peer_count(&self) {
+    async fn update_attachment(&self) {
         let new_peer_state_input = {
             let inner = self.inner.lock();
 
             let old_peer_state_input =
-                AttachmentManager::translate_peer_state(&inner.attachment_machine.state());
+                AttachmentManager::translate_attachment_state(&inner.attachment_machine.state());
 
-            let max_connections = inner.config.get().network.max_connections;
-
-            // get active peer count from routing table
+            // get reliable peer count from routing table
+            let routing_table = inner.network_manager.routing_table();
+            let health = routing_table.get_routing_table_health();
+            let routing_table_config = &inner.config.get().network.routing_table;
 
             let new_peer_state_input =
-                AttachmentManager::translate_peer_input(inner.peer_count, max_connections);
+                AttachmentManager::translate_routing_table_health(health, routing_table_config);
 
             if old_peer_state_input == new_peer_state_input {
                 None
@@ -238,8 +246,7 @@ impl AttachmentManager {
                     break;
                 }
 
-                // xxx: ?update peer count?
-                self.update_peer_count().await;
+                self.update_attachment().await;
 
                 // sleep should be at the end in case maintain_peers changes state
                 intf::sleep(1000).await;
@@ -259,16 +266,16 @@ impl AttachmentManager {
         self.inner.lock().attach_timestamp = None;
     }
 
-    pub async fn init(
-        &self,
-        state_change_callback: StateChangeCallback<Attachment>,
-    ) -> Result<(), String> {
+    pub async fn init(&self, update_callback: UpdateCallback) -> Result<(), String> {
         trace!("init");
         let network_manager = {
-            let inner = self.inner.lock();
-            inner
-                .attachment_machine
-                .set_state_change_callback(state_change_callback);
+            let mut inner = self.inner.lock();
+            inner.update_callback = Some(update_callback.clone());
+            inner.attachment_machine.set_state_change_callback(Arc::new(
+                move |_old_state: AttachmentState, new_state: AttachmentState| {
+                    update_callback(VeilidUpdate::Attachment { state: new_state })
+                },
+            ));
             inner.network_manager.clone()
         };
 
@@ -284,6 +291,8 @@ impl AttachmentManager {
             inner.network_manager.clone()
         };
         network_manager.terminate().await;
+        let mut inner = self.inner.lock();
+        inner.update_callback = None;
     }
 
     fn attach(&self) {

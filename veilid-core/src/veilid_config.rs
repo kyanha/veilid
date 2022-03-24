@@ -104,6 +104,7 @@ pub struct VeilidConfigDHT {
     pub min_peer_count: u32,
     pub min_peer_refresh_time_ms: u32,
     pub validate_dial_info_receipt_time_ms: u32,
+    pub nearby_node_percentage: u32,
 }
 
 #[derive(Default, Clone, Serialize, Deserialize)]
@@ -123,6 +124,14 @@ pub struct VeilidConfigLeases {
     pub max_client_signal_leases: u32,
     pub max_client_relay_leases: u32,
 }
+#[derive(Default, Clone, Serialize, Deserialize)]
+pub struct VeilidConfigRoutingTable {
+    pub limit_over_attached: u32,
+    pub limit_fully_attached: u32,
+    pub limit_attached_strong: u32,
+    pub limit_attached_good: u32,
+    pub limit_attached_weak: u32,
+}
 
 #[derive(Default, Clone, Serialize, Deserialize)]
 pub struct VeilidConfigNetwork {
@@ -132,6 +141,7 @@ pub struct VeilidConfigNetwork {
     pub node_id: key::DHTKey,
     pub node_id_secret: key::DHTKeySecret,
     pub bootstrap: Vec<String>,
+    pub routing_table: VeilidConfigRoutingTable,
     pub rpc: VeilidConfigRPC,
     pub dht: VeilidConfigDHT,
     pub upnp: bool,
@@ -285,6 +295,11 @@ impl VeilidConfig {
             get_config!(inner.network.connection_initial_timeout_ms);
             get_config!(inner.network.connection_inactivity_timeout_ms);
             get_config!(inner.network.bootstrap);
+            get_config!(inner.network.routing_table.limit_over_attached);
+            get_config!(inner.network.routing_table.limit_fully_attached);
+            get_config!(inner.network.routing_table.limit_attached_strong);
+            get_config!(inner.network.routing_table.limit_attached_good);
+            get_config!(inner.network.routing_table.limit_attached_weak);
             get_config!(inner.network.dht.resolve_node_timeout_ms);
             get_config!(inner.network.dht.resolve_node_count);
             get_config!(inner.network.dht.resolve_node_fanout);

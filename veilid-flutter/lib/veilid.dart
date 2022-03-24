@@ -483,6 +483,41 @@ class VeilidConfigRPC {
 
 ////////////
 
+class VeilidConfigRoutingTable {
+  int limitOverAttached;
+  int limitFullyAttached;
+  int limitAttachedStrong;
+  int limitAttachedGood;
+  int limitAttachedWeak;
+
+  VeilidConfigRoutingTable({
+    required this.limitOverAttached,
+    required this.limitFullyAttached,
+    required this.limitAttachedStrong,
+    required this.limitAttachedGood,
+    required this.limitAttachedWeak,
+  });
+
+  Map<String, dynamic> get json {
+    return {
+      'limit_over_attached': limitOverAttached,
+      'limit_fully_attached': limitFullyAttached,
+      'limit_attached_strong': limitAttachedStrong,
+      'limit_attached_good': limitAttachedGood,
+      'limit_attached_weak': limitAttachedWeak,
+    };
+  }
+
+  VeilidConfigRoutingTable.fromJson(Map<String, dynamic> json)
+      : limitOverAttached = json['limit_over_attached'],
+        limitFullyAttached = json['limit_fully_attached'],
+        limitAttachedStrong = json['limit_attached_strong'],
+        limitAttachedGood = json['limit_attached_good'],
+        limitAttachedWeak = json['limit_attached_weak'];
+}
+
+////////////
+
 class VeilidConfigLeases {
   int maxServerSignalLeases;
   int maxServerRelayLeases;
@@ -520,6 +555,7 @@ class VeilidConfigNetwork {
   String nodeId;
   String nodeIdSecret;
   List<String> bootstrap;
+  VeilidConfigRoutingTable routingTable;
   VeilidConfigRPC rpc;
   VeilidConfigDHT dht;
   bool upnp;
@@ -538,6 +574,7 @@ class VeilidConfigNetwork {
     required this.nodeId,
     required this.nodeIdSecret,
     required this.bootstrap,
+    required this.routingTable,
     required this.rpc,
     required this.dht,
     required this.upnp,
@@ -558,6 +595,7 @@ class VeilidConfigNetwork {
       'node_id': nodeId,
       'node_id_secret': nodeIdSecret,
       'bootstrap': bootstrap,
+      'routing_table': routingTable.json,
       'rpc': rpc.json,
       'dht': dht.json,
       'upnp': upnp,
@@ -579,6 +617,7 @@ class VeilidConfigNetwork {
         nodeId = json['node_id'],
         nodeIdSecret = json['node_id_secret'],
         bootstrap = json['bootstrap'],
+        routingTable = VeilidConfigRoutingTable.fromJson(json['routing_table']),
         rpc = VeilidConfigRPC.fromJson(json['rpc']),
         dht = VeilidConfigDHT.fromJson(json['dht']),
         upnp = json['upnp'],

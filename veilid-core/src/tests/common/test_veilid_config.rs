@@ -191,6 +191,11 @@ fn config_callback(key: String) -> ConfigCallbackReturn {
         "network.node_id" => Ok(Box::new(dht::key::DHTKey::default())),
         "network.node_id_secret" => Ok(Box::new(dht::key::DHTKeySecret::default())),
         "network.bootstrap" => Ok(Box::new(Vec::<String>::new())),
+        "network.routing_table.limit_over_attached" => Ok(Box::new(64u32)),
+        "network.routing_table.limit_fully_attached" => Ok(Box::new(32u32)),
+        "network.routing_table.limit_attached_strong" => Ok(Box::new(16u32)),
+        "network.routing_table.limit_attached_good" => Ok(Box::new(8u32)),
+        "network.routing_table.limit_attached_weak" => Ok(Box::new(4u32)),
         "network.rpc.concurrency" => Ok(Box::new(2u32)),
         "network.rpc.queue_size" => Ok(Box::new(128u32)),
         "network.rpc.max_timestamp_behind_ms" => Ok(Box::new(Some(10_000u32))),
@@ -300,6 +305,12 @@ pub async fn test_config() {
     assert_eq!(inner.network.rpc.queue_size, 128u32);
     assert_eq!(inner.network.rpc.timeout_ms, 10_000u32);
     assert_eq!(inner.network.rpc.max_route_hop_count, 7u8);
+    assert_eq!(inner.network.routing_table.limit_over_attached, 64u32);
+    assert_eq!(inner.network.routing_table.limit_fully_attached, 32u32);
+    assert_eq!(inner.network.routing_table.limit_attached_strong, 16u32);
+    assert_eq!(inner.network.routing_table.limit_attached_good, 8u32);
+    assert_eq!(inner.network.routing_table.limit_attached_weak, 4u32);
+
     assert_eq!(
         inner.network.dht.resolve_node_timeout_ms,
         Option::<u32>::None

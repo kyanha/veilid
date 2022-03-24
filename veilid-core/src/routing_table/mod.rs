@@ -60,6 +60,13 @@ struct RoutingTableInner {
     self_transfer_stats: TransferStatsDownUp,
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct RoutingTableHealth {
+    pub reliable_entry_count: usize,
+    pub unreliable_entry_count: usize,
+    pub dead_entry_count: usize,
+}
+
 struct RoutingTableUnlockedInner {
     // Background processes
     rolling_transfers_task: TickTask,
@@ -742,5 +749,30 @@ impl RoutingTable {
         node_ref.operate(|e| {
             e.question_lost(ts);
         })
+    }
+
+    //////////////////////////////////////////////////////////////////////
+    // Routing Table Health Metrics
+
+    pub fn get_routing_table_health(&self) -> RoutingTableHealth {
+        let mut health = RoutingTableHealth::default();
+        let cur_ts = intf::get_timestamp();
+        let inner = self.inner.lock();
+        for bucket in &inner.buckets {
+            for entry in bucket.entries() {
+                match entry.1.state(cur_ts) {
+                    BucketEntryState::Reliable => {
+                        health.reliable_entry_count += 1;
+                    }
+                    BucketEntryState::Unreliable => {
+                        health.unreliable_entry_count += 1;
+                    }
+                    BucketEntryState::Dead => {
+                        health.dead_entry_count += 1;
+                    }
+                }
+            }
+        }
+        health
     }
 }

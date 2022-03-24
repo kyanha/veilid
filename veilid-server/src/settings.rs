@@ -54,6 +54,12 @@ core:
         node_id: ''
         node_id_secret: ''
         bootstrap: []
+        routing_table:
+            limit_over_attached: 64
+            limit_fully_attached: 32
+            limit_attached_strong: 16
+            limit_attached_good: 8
+            limit_attached_weak: 4
         rpc: 
             concurrency: 0
             queue_size: 1024
@@ -521,6 +527,15 @@ pub struct Leases {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+pub struct RoutingTable {
+    pub limit_over_attached: u32,
+    pub limit_fully_attached: u32,
+    pub limit_attached_strong: u32,
+    pub limit_attached_good: u32,
+    pub limit_attached_weak: u32,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Network {
     pub max_connections: u32,
     pub connection_initial_timeout_ms: u32,
@@ -528,6 +543,7 @@ pub struct Network {
     pub node_id: veilid_core::DHTKey,
     pub node_id_secret: veilid_core::DHTKeySecret,
     pub bootstrap: Vec<ParsedNodeDialInfo>,
+    pub routing_table: RoutingTable,
     pub rpc: Rpc,
     pub dht: Dht,
     pub upnp: bool,
@@ -810,6 +826,21 @@ impl Settings {
                         .into_iter()
                         .map(|e| e.node_dial_info_string)
                         .collect::<Vec<String>>(),
+                )),
+                "network.routing_table.limit_over_attached" => Ok(Box::new(
+                    inner.core.network.routing_table.limit_over_attached,
+                )),
+                "network.routing_table.limit_fully_attached" => Ok(Box::new(
+                    inner.core.network.routing_table.limit_fully_attached,
+                )),
+                "network.routing_table.limit_attached_strong" => Ok(Box::new(
+                    inner.core.network.routing_table.limit_attached_strong,
+                )),
+                "network.routing_table.limit_attached_good" => Ok(Box::new(
+                    inner.core.network.routing_table.limit_attached_good,
+                )),
+                "network.routing_table.limit_attached_weak" => Ok(Box::new(
+                    inner.core.network.routing_table.limit_attached_weak,
                 )),
                 "network.rpc.concurrency" => Ok(Box::new(inner.core.network.rpc.concurrency)),
                 "network.rpc.queue_size" => Ok(Box::new(inner.core.network.rpc.queue_size)),
