@@ -35,15 +35,25 @@ impl NodeRef {
         self.node_id
     }
 
-    // pub fn dial_info_filter(&self) -> DialInfoFilter {
-    //     self.dial_info_filter.clone()
-    // }
+    pub fn dial_info_filter(&self) -> &DialInfoFilter {
+        &self.dial_info_filter
+    }
 
     pub fn operate<T, F>(&self, f: F) -> T
     where
         F: FnOnce(&mut BucketEntry) -> T,
     {
         self.routing_table.operate_on_bucket_entry(self.node_id, f)
+    }
+
+    // Returns if this node has seen and acknowledged our node's dial info yet
+    pub fn has_seen_our_dial_info(&self) -> bool {
+        let nm = self.routing_table.network_manager();
+        self.operate(|e| e.has_seen_our_dial_info())
+    }
+    pub fn set_seen_our_dial_info(&self) {
+        let nm = self.routing_table.network_manager();
+        self.operate(|e| e.set_seen_our_dial_info(true));
     }
 
     // Returns the best dial info to attempt a connection to this node

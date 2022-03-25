@@ -31,7 +31,7 @@ pub enum Destination {
 #[derive(Debug, Clone)]
 pub enum RespondTo {
     None,
-    Sender,
+    Sender(Option<DialInfo>),
     PrivateRoute(PrivateRoute),
 }
 
@@ -44,8 +44,12 @@ impl RespondTo {
             Self::None => {
                 builder.set_none(());
             }
-            Self::Sender => {
-                builder.set_sender(());
+            Self::Sender(Some(di)) => {
+                let mut di_builder = builder.init_sender();
+                encode_dial_info(di, &mut di_builder)?;
+            }
+            Self::Sender(None) => {
+                builder.init_sender();
             }
             Self::PrivateRoute(pr) => {
                 let mut pr_builder = builder.reborrow().init_private_route();
@@ -357,6 +361,9 @@ impl RPCProcessor {
                 }
             }
             Ok((rpcreader, _)) => {
+                // Note that we definitely received this peer info since we got a reply
+                waitable_reply.node_ref.set_seen_our_dial_info();
+
                 // Reply received
                 let recv_ts = get_timestamp();
                 if waitable_reply.is_ping {
@@ -1333,6 +1340,21 @@ impl RPCProcessor {
         Ok(())
     }
 
+    // Gets a 'RespondTo::Sender' that contains either our dial info,
+    // or None if the peer has seen our dial info before
+    pub fn get_respond_to_sender(&self, peer: NodeRef) -> RespondTo {
+        if peer.has_seen_our_dial_info() {
+            RespondTo::Sender(None)
+        } else if let Some(did) = self
+            .routing_table()
+            .first_filtered_dial_info_detail(peer.dial_info_filter())
+        {
+            RespondTo::Sender(Some(did.dial_info.clone()))
+        } else {
+            RespondTo::Sender(None)
+        }
+    }
+
     // Send InfoQ RPC request, receive InfoA answer
     pub async fn rpc_call_info(self, peer: NodeRef) -> Result<InfoAnswer, RPCError> {
         let info_q_msg = {
@@ -1340,7 +1362,8 @@ impl RPCProcessor {
             let mut question = info_q_msg.init_root::<veilid_capnp::operation::Builder>();
             question.set_op_id(self.get_next_op_id());
             let mut respond_to = question.reborrow().init_respond_to();
-            respond_to.set_sender(());
+            self.get_respond_to_sender(peer.clone())
+                .encode(&mut respond_to);
             let detail = question.reborrow().init_detail();
             detail.init_info_q();
 

@@ -30,6 +30,7 @@ pub enum BucketEntryState {
 pub struct BucketEntry {
     pub(super) ref_count: u32,
     min_max_version: Option<(u8, u8)>,
+    seen_our_dial_info: bool,
     last_connection: Option<(ConnectionDescriptor, u64)>,
     dial_infos: Vec<DialInfo>,
     latency_stats_accounting: LatencyStatsAccounting,
@@ -43,6 +44,7 @@ impl BucketEntry {
         Self {
             ref_count: 0,
             min_max_version: None,
+            seen_our_dial_info: false,
             last_connection: None,
             dial_infos: Vec::new(),
             latency_stats_accounting: LatencyStatsAccounting::new(),
@@ -132,6 +134,14 @@ impl BucketEntry {
         self.peer_stats.node_info = Some(node_info);
     }
 
+    pub fn set_seen_our_dial_info(&mut self, seen: bool) {
+        self.seen_our_dial_info = seen;
+    }
+
+    pub fn has_seen_our_dial_info(&self) -> bool {
+        self.seen_our_dial_info
+    }
+
     ///// stats methods
     // called every ROLLING_TRANSFERS_INTERVAL_SECS seconds
     pub(super) fn roll_transfers(&mut self, last_ts: u64, cur_ts: u64) {
@@ -168,8 +178,17 @@ impl BucketEntry {
         }
     }
 
+    // Check if this node needs a ping right now to validate it is still reachable
     pub(super) fn needs_ping(&self, cur_ts: u64) -> bool {
-        // if we need a ping right now to validate us
+        // See which ping pattern we are to use
+        let mut state = self.state(cur_ts);
+
+        // If the current dial info hasn't been recognized,
+        // then we gotta ping regardless so treat the node as unreliable, briefly
+        if !self.seen_our_dial_info && matches!(state, BucketEntryState::Reliable) {
+            state = BucketEntryState::Unreliable;
+        }
+
         match self.state(cur_ts) {
             BucketEntryState::Reliable => {
                 // If we are in a reliable state, we need a ping on an exponential scale

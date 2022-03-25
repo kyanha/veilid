@@ -220,6 +220,11 @@ impl RoutingTable {
             timestamp,
         });
 
+        // Re-sort dial info to endure preference ordering
+        inner
+            .dial_info_details
+            .sort_by(|a, b| a.dial_info.cmp(&b.dial_info));
+
         info!(
             "{}Dial Info: {}",
             if dial_info.is_local() {
@@ -257,6 +262,14 @@ impl RoutingTable {
     }
 
     fn trigger_changed_dial_info(inner: &mut RoutingTableInner) {
+        // Clear 'seen dial info' bits on routing table entries so we know to ping them
+        for b in inner.buckets {
+            for e in b.entries_mut() {
+                e.1.set_seen_our_dial_info(false);
+            }
+        }
+
+        // Release any waiters
         let mut new_eventual = Eventual::new();
         core::mem::swap(&mut inner.eventual_changed_dial_info, &mut new_eventual);
         spawn(new_eventual.resolve()).detach();
@@ -454,11 +467,12 @@ impl RoutingTable {
         let rpc_processor = self.rpc_processor();
 
         let res = rpc_processor
+            .clone()
             .rpc_call_find_node(
                 Destination::Direct(node_ref.clone()),
                 node_id,
                 None,
-                RespondTo::Sender,
+                rpc_processor.get_respond_to_sender(node_ref.clone()),
             )
             .await
             .map_err(map_to_string)
