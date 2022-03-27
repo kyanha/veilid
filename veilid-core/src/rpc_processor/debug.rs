@@ -201,23 +201,34 @@ impl RPCProcessor {
                         return format!("(invalid node id: {})", e);
                     }
                 };
-                let pir = match fnqr.get_peer_info() {
-                    Ok(pir) => pir,
+
+                let dil_reader = match fnqr.reborrow().get_dial_info_list() {
+                    Ok(dilr) => dilr,
                     Err(e) => {
-                        return format!("(invalid peer_info: {})", e);
+                        return format!("(invalid dial info list: {})", e);
                     }
                 };
+                let mut dial_infos =
+                    Vec::<DialInfo>::with_capacity(match dil_reader.len().try_into() {
+                        Ok(v) => v,
+                        Err(e) => {
+                            return format!("(too many dial infos: {})", e);
+                        }
+                    });
+                for di in dil_reader.iter() {
+                    dial_infos.push(match decode_dial_info(&di) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            return format!("(unable to decode dial info: {})", e);
+                        }
+                    });
+                }
+
                 let node_id = decode_public_key(&nidr);
-                let peer_info = match decode_peer_info(&pir) {
-                    Ok(pi) => pi,
-                    Err(e) => {
-                        return e.to_string();
-                    }
-                };
                 format!(
-                    "FindNodeQ: node_id={} peer_info={:?}",
+                    "FindNodeQ: node_id={} dial_infos={:?}",
                     node_id.encode(),
-                    peer_info
+                    dial_infos
                 )
             }
             veilid_capnp::operation::detail::FindNodeA(_) => {

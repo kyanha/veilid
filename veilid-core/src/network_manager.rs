@@ -534,19 +534,22 @@ impl NetworkManager {
         let recipient_id = envelope.get_recipient_id();
         if recipient_id != routing_table.node_id() {
             // Ensure a lease exists for this node before we relay it
-            if !lease_manager.server_has_valid_relay_lease(&recipient_id)
-                && !lease_manager.server_has_valid_relay_lease(&sender_id)
+            let relay_nr = if let Some(lease_nr) =
+                lease_manager.server_has_valid_relay_lease(&recipient_id)
             {
+                // Inbound lease
+                lease_nr
+            } else if let Some(lease_nr) = lease_manager.server_has_valid_relay_lease(&sender_id) {
+                // Resolve the node to send this to
+                rpc.resolve_node(recipient_id, Some(lease_nr.clone())).await.map_err(|e| {
+                    format!(
+                        "failed to resolve recipient node for relay, dropping outbound relayed packet...: {:?}",
+                        e
+                    )
+                })?
+            } else {
                 return Err("received envelope not intended for this node".to_owned());
-            }
-
-            // Resolve the node to send this to
-            let relay_nr = rpc.resolve_node(recipient_id).await.map_err(|e| {
-                format!(
-                    "failed to resolve recipient node for relay, dropping packet...: {:?}",
-                    e
-                )
-            })?;
+            };
 
             // Re-send the packet to the leased node
             self.net()

@@ -48,11 +48,9 @@ impl NodeRef {
 
     // Returns if this node has seen and acknowledged our node's dial info yet
     pub fn has_seen_our_dial_info(&self) -> bool {
-        let nm = self.routing_table.network_manager();
         self.operate(|e| e.has_seen_our_dial_info())
     }
     pub fn set_seen_our_dial_info(&self) {
-        let nm = self.routing_table.network_manager();
         self.operate(|e| e.set_seen_our_dial_info(true));
     }
 

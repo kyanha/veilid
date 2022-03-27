@@ -1,5 +1,6 @@
 use crate::*;
 use network_manager::*;
+use routing_table::*;
 use xx::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -102,9 +103,9 @@ impl LeaseManager {
     // Server-side
 
     // Signal leases
-    pub fn server_has_valid_signal_lease(&self, _recipient_id: &DHTKey) -> bool {
+    pub fn server_has_valid_signal_lease(&self, _recipient_id: &DHTKey) -> Option<NodeRef> {
         error!("unimplemented");
-        false
+        None
     }
     pub fn server_can_provide_signal_lease(&self) -> bool {
         let inner = self.inner.lock();
@@ -147,9 +148,9 @@ impl LeaseManager {
     }
 
     // Relay leases
-    pub fn server_has_valid_relay_lease(&self, _recipient_id: &DHTKey) -> bool {
+    pub fn server_has_valid_relay_lease(&self, _recipient_id: &DHTKey) -> Option<NodeRef> {
         error!("unimplemented");
-        false
+        None
     }
     pub fn server_can_provide_relay_lease(&self) -> bool {
         let inner = self.inner.lock();

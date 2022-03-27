@@ -86,6 +86,7 @@ cfg_if! {
 
 // pub use bump_port::*;
 pub use async_peek_stream::*;
+pub use async_recursion::async_recursion;
 pub use clone_stream::*;
 pub use eventual::*;
 pub use eventual_base::{EventualCommon, EventualResolvedFuture};

@@ -45,11 +45,11 @@ impl RespondTo {
                 builder.set_none(());
             }
             Self::Sender(Some(di)) => {
-                let mut di_builder = builder.init_sender();
+                let mut di_builder = builder.reborrow().init_sender();
                 encode_dial_info(di, &mut di_builder)?;
             }
             Self::Sender(None) => {
-                builder.init_sender();
+                builder.reborrow().init_sender();
             }
             Self::PrivateRoute(pr) => {
                 let mut pr_builder = builder.reborrow().init_private_route();
@@ -232,7 +232,7 @@ impl RPCProcessor {
 
     //////////////////////////////////////////////////////////////////////
 
-    // Search the DHT for a single node closest to a key unless we have that node in our routing table already, and return the node reference
+    // Search the DHT for a single node closest to a key and add it to the routing table and return the node reference
     pub async fn search_dht_single_key(
         &self,
         node_id: key::DHTKey,
@@ -241,15 +241,6 @@ impl RPCProcessor {
         _timeout: Option<u64>,
     ) -> Result<NodeRef, RPCError> {
         let routing_table = self.routing_table();
-
-        // First see if we have the node in our routing table already
-        if let Some(nr) = routing_table.lookup_node_ref(node_id) {
-            // ensure we have dial_info for the entry already,
-            // if not, we should do the find_node anyway
-            if !nr.operate(|e| e.dial_infos().is_empty()) {
-                return Ok(nr);
-            }
-        }
 
         // xxx find node but stop if we find the exact node we want
         // xxx return whatever node is closest after the timeout
@@ -269,26 +260,66 @@ impl RPCProcessor {
     }
 
     // Search the DHT for a specific node corresponding to a key unless we have that node in our routing table already, and return the node reference
-    pub async fn resolve_node(&self, node_id: key::DHTKey) -> Result<NodeRef, RPCError> {
-        let (count, fanout, timeout) = {
-            let c = self.config.get();
-            (
-                c.network.dht.resolve_node_count,
-                c.network.dht.resolve_node_fanout,
-                c.network.dht.resolve_node_timeout_ms.map(ms_to_us),
-            )
-        };
+    // Note: This routine can possible be recursive, hence the SystemPinBoxFuture async form
+    pub fn resolve_node(
+        &self,
+        node_id: key::DHTKey,
+        lease_holder: Option<NodeRef>,
+    ) -> SystemPinBoxFuture<Result<NodeRef, RPCError>> {
+        let this = self.clone();
+        Box::pin(async move {
+            let routing_table = this.routing_table();
 
-        let nr = self
-            .search_dht_single_key(node_id, count, fanout, timeout)
-            .await?;
+            // First see if we have the node in our routing table already
+            if let Some(nr) = routing_table.lookup_node_ref(node_id) {
+                // ensure we have dial_info for the entry already,
+                // if not, we should do the find_node anyway
+                if !nr.operate(|e| e.dial_infos().is_empty()) {
+                    return Ok(nr);
+                }
+            }
 
-        if nr.node_id() != node_id {
-            // found a close node, but not exact within our configured resolve_node timeout
-            return Err(RPCError::Timeout).map_err(logthru_rpc!());
-        }
+            // If not, if we are resolving on behalf of a lease holder, ask them for their routing table around the node first
+            if let Some(lhnr) = lease_holder {
+                let fna = this
+                    .clone()
+                    .rpc_call_find_node(
+                        Destination::Direct(lhnr.clone()),
+                        node_id,
+                        None,
+                        RespondTo::Sender(None),
+                    )
+                    .await?;
+                if let Ok(nrefs) = routing_table.register_find_node_answer(fna) {
+                    for nr in nrefs {
+                        if !nr.operate(|e| e.dial_infos().is_empty()) {
+                            return Ok(nr);
+                        }
+                    }
+                }
+            }
 
-        Ok(nr)
+            // If nobody knows where this node is, ask the DHT for it
+            let (count, fanout, timeout) = {
+                let c = this.config.get();
+                (
+                    c.network.dht.resolve_node_count,
+                    c.network.dht.resolve_node_fanout,
+                    c.network.dht.resolve_node_timeout_ms.map(ms_to_us),
+                )
+            };
+
+            let nr = this
+                .search_dht_single_key(node_id, count, fanout, timeout)
+                .await?;
+
+            if nr.node_id() != node_id {
+                // found a close node, but not exact within our configured resolve_node timeout
+                return Err(RPCError::Timeout).map_err(logthru_rpc!());
+            }
+
+            Ok(nr)
+        })
     }
 
     // set up wait for reply
@@ -510,7 +541,7 @@ impl RPCProcessor {
         let node_ref = match out_noderef {
             None => {
                 // resolve node
-                self.resolve_node(out_node_id)
+                self.resolve_node(out_node_id, None)
                     .await
                     .map_err(logthru_rpc!(error))?
             }
@@ -708,7 +739,7 @@ impl RPCProcessor {
         let node_ref = match out_noderef {
             None => {
                 // resolve node
-                self.resolve_node(out_node_id).await?
+                self.resolve_node(out_node_id, None).await?
             }
             Some(nr) => {
                 // got the node in the routing table already
@@ -983,22 +1014,32 @@ impl RPCProcessor {
                 _ => panic!("invalid operation type in process_find_node_q"),
             };
 
-            // ensure find_node peerinfo matches the envelope
+            // get the node id we want to look up
             let target_node_id = decode_public_key(
                 &fnq_reader
                     .get_node_id()
                     .map_err(map_error_capnp_error!())
                     .map_err(logthru_rpc!())?,
             );
-            let peer_info = decode_peer_info(
-                &fnq_reader
-                    .get_peer_info()
-                    .map_err(map_error_capnp_error!())
-                    .map_err(logthru_rpc!())?,
-            )?;
-            if peer_info.node_id.key != rpcreader.header.envelope.get_sender_id() {
-                return Err(RPCError::InvalidFormat);
+
+            // get the peerinfo/dialinfos of the requesting node
+            let dil_reader = fnq_reader
+                .reborrow()
+                .get_dial_info_list()
+                .map_err(map_error_capnp_error!())?;
+            let mut dial_infos = Vec::<DialInfo>::with_capacity(
+                dil_reader
+                    .len()
+                    .try_into()
+                    .map_err(map_error_protocol!("too many dial infos"))?,
+            );
+            for di in dil_reader.iter() {
+                dial_infos.push(decode_dial_info(&di)?)
             }
+            let peer_info = PeerInfo {
+                node_id: NodeId::new(rpcreader.header.envelope.get_sender_id()),
+                dial_infos,
+            };
 
             // filter out attempts to pass non-public addresses in for peers
             if !self.filter_peer_scope(&peer_info) {
@@ -1153,14 +1194,14 @@ impl RPCProcessor {
             reader,
         };
 
-        let (which, is_q) = {
+        let which = {
             let operation = rpcreader
                 .reader
                 .get_root::<veilid_capnp::operation::Reader>()
                 .map_err(map_error_capnp_error!())
                 .map_err(logthru_rpc!())?;
 
-            match operation
+            let (which, is_q) = match operation
                 .get_detail()
                 .which()
                 .map_err(map_error_capnp_notinschema!())?
@@ -1191,30 +1232,54 @@ impl RPCProcessor {
                 veilid_capnp::operation::detail::CompleteTunnelA(_) => (23u32, false),
                 veilid_capnp::operation::detail::CancelTunnelQ(_) => (24u32, true),
                 veilid_capnp::operation::detail::CancelTunnelA(_) => (25u32, false),
-            }
-        };
-        // Accounting for questions we receive
-        if is_q {
-            // look up sender node, in case it's different than our peer due to relaying
-            if let Some(sender_nr) = self
-                .routing_table()
-                .lookup_node_ref(rpcreader.header.envelope.get_sender_id())
-            {
-                if which == 0u32 {
-                    self.routing_table().stats_ping_rcvd(
-                        sender_nr,
-                        rpcreader.header.timestamp,
-                        rpcreader.header.body_len,
-                    );
-                } else {
-                    self.routing_table().stats_question_rcvd(
-                        sender_nr,
-                        rpcreader.header.timestamp,
-                        rpcreader.header.body_len,
-                    );
+            };
+
+            // Accounting for questions we receive
+            if is_q {
+                // See if we have some Sender DialInfo to incorporate
+                let opt_sender_nr =
+                    if let veilid_capnp::operation::respond_to::Sender(Ok(sender_di_reader)) =
+                        operation
+                            .get_respond_to()
+                            .which()
+                            .map_err(map_error_capnp_notinschema!())?
+                    {
+                        // Sender DialInfo was specified, update our routing table with it
+                        let sender_di = decode_dial_info(&sender_di_reader)?;
+                        let nr = self
+                            .routing_table()
+                            .update_node_with_single_dial_info(
+                                rpcreader.header.envelope.get_sender_id(),
+                                &sender_di,
+                            )
+                            .map_err(RPCError::Internal)?;
+                        Some(nr)
+                    } else {
+                        self.routing_table()
+                            .lookup_node_ref(rpcreader.header.envelope.get_sender_id())
+                    };
+
+                // look up sender node, in case it's different than our peer due to relaying
+                if let Some(sender_nr) = opt_sender_nr {
+                    if which == 0u32 {
+                        self.routing_table().stats_ping_rcvd(
+                            sender_nr,
+                            rpcreader.header.timestamp,
+                            rpcreader.header.body_len,
+                        );
+                    } else {
+                        self.routing_table().stats_question_rcvd(
+                            sender_nr,
+                            rpcreader.header.timestamp,
+                            rpcreader.header.body_len,
+                        );
+                    }
                 }
-            }
+            };
+
+            which
         };
+
         match which {
             0 => self.process_info_q(rpcreader).await, // InfoQ
             1 => self.process_answer(rpcreader).await, // InfoA
@@ -1349,7 +1414,7 @@ impl RPCProcessor {
             .routing_table()
             .first_filtered_dial_info_detail(peer.dial_info_filter())
         {
-            RespondTo::Sender(Some(did.dial_info.clone()))
+            RespondTo::Sender(Some(did.dial_info))
         } else {
             RespondTo::Sender(None)
         }
@@ -1363,7 +1428,7 @@ impl RPCProcessor {
             question.set_op_id(self.get_next_op_id());
             let mut respond_to = question.reborrow().init_respond_to();
             self.get_respond_to_sender(peer.clone())
-                .encode(&mut respond_to);
+                .encode(&mut respond_to)?;
             let detail = question.reborrow().init_detail();
             detail.init_info_q();
 
@@ -1506,13 +1571,23 @@ impl RPCProcessor {
             let mut fnq = detail.init_find_node_q();
             let mut node_id_builder = fnq.reborrow().init_node_id();
             encode_public_key(&key, &mut node_id_builder)?;
-            let mut peer_info_builder = fnq.reborrow().init_peer_info();
 
             let own_peer_info = self
                 .routing_table()
                 .get_own_peer_info(self.default_peer_scope);
 
-            encode_peer_info(&own_peer_info, &mut peer_info_builder)?;
+            let mut dil_builder = fnq.reborrow().init_dial_info_list(
+                own_peer_info
+                    .dial_infos
+                    .len()
+                    .try_into()
+                    .map_err(map_error_internal!("too many dial infos in peer info"))?,
+            );
+
+            for idx in 0..own_peer_info.dial_infos.len() {
+                let mut di_builder = dil_builder.reborrow().get(idx as u32);
+                encode_dial_info(&own_peer_info.dial_infos[idx], &mut di_builder)?;
+            }
 
             find_node_q_msg.into_reader()
         };

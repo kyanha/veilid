@@ -65,6 +65,13 @@ impl BucketEntry {
         self.dial_infos.sort();
     }
 
+    pub fn update_single_dial_info(&mut self, dial_info: &DialInfo) {
+        let dif = dial_info.make_filter(true);
+        self.dial_infos.retain(|di| !di.matches_filter(&dif));
+        self.dial_infos.push(dial_info.clone());
+        self.dial_infos.sort();
+    }
+
     pub fn first_filtered_dial_info<F>(&self, filter: F) -> Option<DialInfo>
     where
         F: Fn(&DialInfo) -> bool,
@@ -189,7 +196,7 @@ impl BucketEntry {
             state = BucketEntryState::Unreliable;
         }
 
-        match self.state(cur_ts) {
+        match state {
             BucketEntryState::Reliable => {
                 // If we are in a reliable state, we need a ping on an exponential scale
                 match self.peer_stats.ping_stats.last_pinged {

@@ -263,7 +263,7 @@ impl RoutingTable {
 
     fn trigger_changed_dial_info(inner: &mut RoutingTableInner) {
         // Clear 'seen dial info' bits on routing table entries so we know to ping them
-        for b in inner.buckets {
+        for b in &mut inner.buckets {
             for e in b.entries_mut() {
                 e.1.set_seen_our_dial_info(false);
             }
@@ -451,6 +451,21 @@ impl RoutingTable {
         Ok(nr)
     }
 
+    // Add a node if it doesn't exist, or update a single dial info on an already registered node
+    pub fn update_node_with_single_dial_info(
+        &self,
+        node_id: DHTKey,
+        dial_info: &DialInfo,
+    ) -> Result<NodeRef, String> {
+        let nr = self.create_node_ref(node_id)?;
+        nr.operate(move |e| -> Result<(), String> {
+            e.update_single_dial_info(dial_info);
+            Ok(())
+        })?;
+
+        Ok(nr)
+    }
+
     fn operate_on_bucket_entry<T, F>(&self, node_id: DHTKey, f: F) -> T
     where
         F: FnOnce(&mut BucketEntry) -> T,
@@ -484,8 +499,15 @@ impl RoutingTable {
         );
 
         // register nodes we'd found
-        let mut out = Vec::<NodeRef>::with_capacity(res.peers.len());
-        for p in res.peers {
+        self.register_find_node_answer(res)
+    }
+
+    pub fn register_find_node_answer(&self, fna: FindNodeAnswer) -> Result<Vec<NodeRef>, String> {
+        let node_id = self.node_id();
+
+        // register nodes we'd found
+        let mut out = Vec::<NodeRef>::with_capacity(fna.peers.len());
+        for p in fna.peers {
             // if our own node if is in the list then ignore it, as we don't add ourselves to our own routing table
             if p.node_id.key == node_id {
                 continue;
