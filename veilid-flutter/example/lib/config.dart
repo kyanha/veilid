@@ -41,6 +41,7 @@ Future<VeilidConfig> getDefaultVeilidConfig() async {
         maxConnections: 16,
         connectionInitialTimeoutMs: 2000,
         connectionInactivityTimeoutMs: 60000,
+        clientWhitelistTimeoutMs: 300000,
         nodeId: "",
         nodeIdSecret: "",
         bootstrap: [],

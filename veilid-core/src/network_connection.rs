@@ -59,7 +59,7 @@ impl DummyNetworkConnection {
 pub struct NetworkConnectionStats {
     last_message_sent_time: Option<u64>,
     last_message_recv_time: Option<u64>,
-    established_time: u64,
+    _established_time: u64,
 }
 
 #[derive(Debug)]
@@ -92,7 +92,7 @@ impl NetworkConnection {
             stats: NetworkConnectionStats {
                 last_message_sent_time: None,
                 last_message_recv_time: None,
-                established_time: intf::get_timestamp(),
+                _established_time: intf::get_timestamp(),
             },
         }
     }

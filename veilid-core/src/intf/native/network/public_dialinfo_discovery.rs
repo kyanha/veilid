@@ -1,7 +1,6 @@
 use super::*;
 
 use crate::intf::*;
-use crate::network_manager::*;
 use crate::routing_table::*;
 use crate::*;
 
@@ -178,7 +177,7 @@ impl Network {
                         routing_table.register_dial_info(
                             external1_dial_info,
                             DialInfoOrigin::Discovered,
-                            Some(NetworkClass::FullNAT),
+                            Some(NetworkClass::FullConeNAT),
                         );
 
                         // No more retries

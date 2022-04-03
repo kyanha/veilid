@@ -5,19 +5,11 @@ pub fn encode_node_info(
     node_info: &NodeInfo,
     builder: &mut veilid_capnp::node_info::Builder,
 ) -> Result<(), RPCError> {
-    builder.set_can_route(node_info.can_route);
+    builder.set_network_class(encode_network_class(node_info.network_class));
     builder.set_will_route(node_info.will_route);
-
-    builder.set_can_tunnel(node_info.can_tunnel);
     builder.set_will_tunnel(node_info.will_tunnel);
-
-    builder.set_can_signal_lease(node_info.can_signal_lease);
-    builder.set_will_signal_lease(node_info.will_signal_lease);
-
-    builder.set_can_relay_lease(node_info.can_relay_lease);
-    builder.set_will_relay_lease(node_info.will_relay_lease);
-
-    builder.set_can_validate_dial_info(node_info.can_validate_dial_info);
+    builder.set_will_signal(node_info.will_signal);
+    builder.set_will_relay(node_info.will_relay);
     builder.set_will_validate_dial_info(node_info.will_validate_dial_info);
 
     Ok(())
@@ -25,15 +17,16 @@ pub fn encode_node_info(
 
 pub fn decode_node_info(reader: &veilid_capnp::node_info::Reader) -> Result<NodeInfo, RPCError> {
     Ok(NodeInfo {
-        can_route: reader.reborrow().get_can_route(),
+        network_class: decode_network_class(
+            reader
+                .reborrow()
+                .get_network_class()
+                .map_err(map_error_capnp_notinschema!())?,
+        ),
         will_route: reader.reborrow().get_will_route(),
-        can_tunnel: reader.reborrow().get_can_tunnel(),
         will_tunnel: reader.reborrow().get_will_tunnel(),
-        can_signal_lease: reader.reborrow().get_can_signal_lease(),
-        will_signal_lease: reader.reborrow().get_will_signal_lease(),
-        can_relay_lease: reader.reborrow().get_can_relay_lease(),
-        will_relay_lease: reader.reborrow().get_will_relay_lease(),
-        can_validate_dial_info: reader.reborrow().get_can_validate_dial_info(),
+        will_signal: reader.reborrow().get_will_signal(),
+        will_relay: reader.reborrow().get_will_relay(),
         will_validate_dial_info: reader.reborrow().get_will_validate_dial_info(),
     })
 }

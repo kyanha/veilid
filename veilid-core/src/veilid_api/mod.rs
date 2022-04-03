@@ -231,17 +231,62 @@ pub struct SenderInfo {
     pub socket_address: Option<SocketAddress>,
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
+pub enum NetworkClass {
+    Server = 0,               // S = Device with public IP and no UDP firewall
+    Mapped = 1,               // M = Device with portmap behind any NAT
+    FullConeNAT = 2,          // F = Device without portmap behind full-cone NAT
+    AddressRestrictedNAT = 3, // R1 = Device without portmap behind address-only restricted NAT
+    PortRestrictedNAT = 4,    // R2 = Device without portmap behind address-and-port restricted NAT
+    OutboundOnly = 5,         // O = Outbound only
+    WebApp = 6,               // W = PWA
+    Invalid = 7,              // I = Invalid network class, unreachable or can not send packets
+}
+
+impl NetworkClass {
+    pub fn inbound_capable(&self) -> bool {
+        matches!(
+            self,
+            Self::Server
+                | Self::Mapped
+                | Self::FullConeNAT
+                | Self::AddressRestrictedNAT
+                | Self::PortRestrictedNAT
+        )
+    }
+    pub fn inbound_requires_signal(&self) -> bool {
+        matches!(self, Self::AddressRestrictedNAT | Self::PortRestrictedNAT)
+    }
+    pub fn dialinfo_requires_keepalive(&self) -> bool {
+        matches!(
+            self,
+            Self::FullConeNAT | Self::AddressRestrictedNAT | Self::PortRestrictedNAT
+        )
+    }
+    pub fn can_signal(&self) -> bool {
+        self.inbound_capable() && !self.inbound_requires_signal()
+    }
+    pub fn can_relay(&self) -> bool {
+        matches!(self, Self::Server | Self::Mapped | Self::FullConeNAT)
+    }
+    pub fn can_validate_dial_info(&self) -> bool {
+        matches!(self, Self::Server | Self::Mapped | Self::FullConeNAT)
+    }
+}
+
+impl Default for NetworkClass {
+    fn default() -> Self {
+        Self::Invalid
+    }
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct NodeInfo {
-    pub can_route: bool,
+    pub network_class: NetworkClass,
     pub will_route: bool,
-    pub can_tunnel: bool,
     pub will_tunnel: bool,
-    pub can_signal_lease: bool,
-    pub will_signal_lease: bool,
-    pub can_relay_lease: bool,
-    pub will_relay_lease: bool,
-    pub can_validate_dial_info: bool,
+    pub will_signal: bool,
+    pub will_relay: bool,
     pub will_validate_dial_info: bool,
 }
 

@@ -188,6 +188,7 @@ fn config_callback(key: String) -> ConfigCallbackReturn {
         "network.max_connections" => Ok(Box::new(16u32)),
         "network.connection_initial_timeout_ms" => Ok(Box::new(2_000u32)),
         "network.connection_inactivity_timeout_ms" => Ok(Box::new(60_000u32)),
+        "network.client_whitelist_timeout_ms" => Ok(Box::new(300_000u32)),
         "network.node_id" => Ok(Box::new(dht::key::DHTKey::default())),
         "network.node_id_secret" => Ok(Box::new(dht::key::DHTKeySecret::default())),
         "network.bootstrap" => Ok(Box::new(Vec::<String>::new())),
@@ -298,6 +299,7 @@ pub async fn test_config() {
     assert_eq!(inner.network.max_connections, 16);
     assert_eq!(inner.network.connection_initial_timeout_ms, 2_000u32);
     assert_eq!(inner.network.connection_inactivity_timeout_ms, 60_000u32);
+    assert_eq!(inner.network.client_whitelist_timeout_ms, 300_000u32);
     assert!(!inner.network.node_id.valid);
     assert!(!inner.network.node_id_secret.valid);
     assert_eq!(inner.network.bootstrap, Vec::<String>::new());

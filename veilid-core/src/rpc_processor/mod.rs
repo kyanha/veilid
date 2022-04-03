@@ -13,7 +13,6 @@ use capnp::message::ReaderSegments;
 use coders::*;
 use core::convert::{TryFrom, TryInto};
 use core::fmt;
-use lease_manager::*;
 use network_manager::*;
 use receipt_manager::*;
 use routing_table::*;
@@ -92,6 +91,7 @@ struct RPCMessage {
 struct RPCMessageReader {
     header: RPCMessageHeader,
     reader: capnp::message::Reader<RPCMessageData>,
+    opt_sender_nr: Option<NodeRef>,
 }
 
 fn builder_to_vec<'a, T>(builder: capnp::message::Builder<T>) -> Result<Vec<u8>, RPCError>
@@ -264,7 +264,6 @@ impl RPCProcessor {
     pub fn resolve_node(
         &self,
         node_id: key::DHTKey,
-        lease_holder: Option<NodeRef>,
     ) -> SystemPinBoxFuture<Result<NodeRef, RPCError>> {
         let this = self.clone();
         Box::pin(async move {
@@ -276,26 +275,6 @@ impl RPCProcessor {
                 // if not, we should do the find_node anyway
                 if !nr.operate(|e| e.dial_infos().is_empty()) {
                     return Ok(nr);
-                }
-            }
-
-            // If not, if we are resolving on behalf of a lease holder, ask them for their routing table around the node first
-            if let Some(lhnr) = lease_holder {
-                let fna = this
-                    .clone()
-                    .rpc_call_find_node(
-                        Destination::Direct(lhnr.clone()),
-                        node_id,
-                        None,
-                        RespondTo::Sender(None),
-                    )
-                    .await?;
-                if let Ok(nrefs) = routing_table.register_find_node_answer(fna) {
-                    for nr in nrefs {
-                        if !nr.operate(|e| e.dial_infos().is_empty()) {
-                            return Ok(nr);
-                        }
-                    }
                 }
             }
 
@@ -541,7 +520,7 @@ impl RPCProcessor {
         let node_ref = match out_noderef {
             None => {
                 // resolve node
-                self.resolve_node(out_node_id, None)
+                self.resolve_node(out_node_id)
                     .await
                     .map_err(logthru_rpc!(error))?
             }
@@ -739,7 +718,7 @@ impl RPCProcessor {
         let node_ref = match out_noderef {
             None => {
                 // resolve node
-                self.resolve_node(out_node_id, None).await?
+                self.resolve_node(out_node_id).await?
             }
             Some(nr) => {
                 // got the node in the routing table already
@@ -768,8 +747,8 @@ impl RPCProcessor {
         Ok(())
     }
 
-    fn wants_answer(&self, request: &veilid_capnp::operation::Reader) -> Result<bool, RPCError> {
-        match request.get_respond_to().which() {
+    fn wants_answer(&self, operation: &veilid_capnp::operation::Reader) -> Result<bool, RPCError> {
+        match operation.get_respond_to().which() {
             Ok(veilid_capnp::operation::respond_to::None(_)) => Ok(false),
             Ok(veilid_capnp::operation::respond_to::Sender(_)) => Ok(true),
             Ok(veilid_capnp::operation::respond_to::PrivateRoute(_)) => Ok(true),
@@ -777,71 +756,23 @@ impl RPCProcessor {
         }
     }
 
-    fn can_validate_dial_info(&self) -> bool {
-        let nman = self.network_manager();
-        if let Some(nc) = nman.get_network_class() {
-            match nc {
-                NetworkClass::Server => true,
-                NetworkClass::Mapped => true,
-                NetworkClass::FullNAT => true,
-                NetworkClass::AddressRestrictedNAT => false,
-                NetworkClass::PortRestrictedNAT => false,
-                NetworkClass::OutboundOnly => false,
-                NetworkClass::WebApp => false,
-                NetworkClass::TorWebApp => false,
-                NetworkClass::Invalid => false,
-            }
+    fn get_respond_to_sender_dial_info(
+        &self,
+        operation: &veilid_capnp::operation::Reader,
+    ) -> Result<Option<DialInfo>, RPCError> {
+        if let veilid_capnp::operation::respond_to::Sender(Ok(sender_di_reader)) = operation
+            .get_respond_to()
+            .which()
+            .map_err(map_error_capnp_notinschema!())?
+        {
+            // Sender DialInfo was specified, update our routing table with it
+            Ok(Some(decode_dial_info(&sender_di_reader)?))
         } else {
-            false
+            Ok(None)
         }
     }
 
-    fn will_validate_dial_info(&self) -> bool {
-        if !self.can_validate_dial_info() {
-            return false;
-        }
-
-        // only accept info redirects if we aren't using a relay lease
-        // which means our dial info refers to our own actual ip address and not some other node
-        let nman = self.network_manager();
-        let lman = nman.lease_manager();
-        if lman.client_get_relay_mode() != RelayMode::Disabled {
-            return false;
-        }
-        // xxx: bandwidth limiting here, don't commit to doing info redirects if our network quality sucks
-
-        true
-    }
     //////////////////////////////////////////////////////////////////////
-
-    fn generate_node_info(&self) -> NodeInfo {
-        let nman = self.network_manager();
-        let lman = nman.lease_manager();
-
-        let can_route = false; // xxx: until we implement this we dont have accounting for it
-        let will_route = false;
-        let can_tunnel = false; // xxx: until we implement this we dont have accounting for it
-        let will_tunnel = false;
-        let can_signal_lease = lman.server_can_provide_signal_lease();
-        let will_signal_lease = lman.server_will_provide_signal_lease();
-        let can_relay_lease = lman.server_can_provide_relay_lease();
-        let will_relay_lease = lman.server_will_provide_relay_lease();
-        let can_validate_dial_info = self.can_validate_dial_info();
-        let will_validate_dial_info = self.will_validate_dial_info();
-
-        NodeInfo {
-            can_route,
-            will_route,
-            can_tunnel,
-            will_tunnel,
-            can_signal_lease,
-            will_signal_lease,
-            can_relay_lease,
-            will_relay_lease,
-            can_validate_dial_info,
-            will_validate_dial_info,
-        }
-    }
 
     fn generate_sender_info(&self, rpcreader: &RPCMessageReader) -> SenderInfo {
         let socket_address = rpcreader
@@ -865,6 +796,27 @@ impl RPCProcessor {
                 return Ok(());
             }
 
+            // get InfoQ reader
+            let iq_reader = match operation.get_detail().which() {
+                Ok(veilid_capnp::operation::detail::Which::InfoQ(Ok(x))) => x,
+                _ => panic!("invalid operation type in process_info_q"),
+            };
+
+            // Parse out fields
+            let node_info = decode_node_info(
+                &iq_reader
+                    .get_node_info()
+                    .map_err(map_error_internal!("no valid node info"))?,
+            )?;
+
+            // add node information for the requesting node to our routing table
+            if let Some(sender_nr) = rpcreader.opt_sender_nr.clone() {
+                // Update latest node info in routing table for the infoq sender
+                sender_nr.operate(|e| {
+                    e.update_node_info(node_info);
+                });
+            }
+
             // Send info answer
             let mut reply_msg = ::capnp::message::Builder::new_default();
             let mut answer = reply_msg.init_root::<veilid_capnp::operation::Builder>();
@@ -874,7 +826,7 @@ impl RPCProcessor {
             let detail = answer.reborrow().init_detail();
             let mut info_a = detail.init_info_a();
             // Add node info
-            let node_info = self.generate_node_info();
+            let node_info = self.network_manager().generate_node_info();
             let mut nib = info_a.reborrow().init_node_info();
             encode_node_info(&node_info, &mut nib)?;
             // Add sender info
@@ -1189,14 +1141,9 @@ impl RPCProcessor {
     //////////////////////////////////////////////////////////////////////
     async fn process_rpc_message_version_0(&self, msg: RPCMessage) -> Result<(), RPCError> {
         let reader = capnp::message::Reader::new(msg.data, Default::default());
-        let rpcreader = RPCMessageReader {
-            header: msg.header,
-            reader,
-        };
-
+        let mut opt_sender_nr: Option<NodeRef> = None;
         let which = {
-            let operation = rpcreader
-                .reader
+            let operation = reader
                 .get_root::<veilid_capnp::operation::Reader>()
                 .map_err(map_error_capnp_error!())
                 .map_err(logthru_rpc!())?;
@@ -1237,47 +1184,47 @@ impl RPCProcessor {
             // Accounting for questions we receive
             if is_q {
                 // See if we have some Sender DialInfo to incorporate
-                let opt_sender_nr =
-                    if let veilid_capnp::operation::respond_to::Sender(Ok(sender_di_reader)) =
-                        operation
-                            .get_respond_to()
-                            .which()
-                            .map_err(map_error_capnp_notinschema!())?
-                    {
+                opt_sender_nr =
+                    if let Some(sender_di) = self.get_respond_to_sender_dial_info(&operation)? {
                         // Sender DialInfo was specified, update our routing table with it
-                        let sender_di = decode_dial_info(&sender_di_reader)?;
                         let nr = self
                             .routing_table()
                             .update_node_with_single_dial_info(
-                                rpcreader.header.envelope.get_sender_id(),
+                                msg.header.envelope.get_sender_id(),
                                 &sender_di,
                             )
                             .map_err(RPCError::Internal)?;
                         Some(nr)
                     } else {
+                        // look up sender node, in case it's different than our peer due to relaying
                         self.routing_table()
-                            .lookup_node_ref(rpcreader.header.envelope.get_sender_id())
+                            .lookup_node_ref(msg.header.envelope.get_sender_id())
                     };
 
-                // look up sender node, in case it's different than our peer due to relaying
-                if let Some(sender_nr) = opt_sender_nr {
+                if let Some(sender_nr) = opt_sender_nr.clone() {
                     if which == 0u32 {
                         self.routing_table().stats_ping_rcvd(
                             sender_nr,
-                            rpcreader.header.timestamp,
-                            rpcreader.header.body_len,
+                            msg.header.timestamp,
+                            msg.header.body_len,
                         );
                     } else {
                         self.routing_table().stats_question_rcvd(
                             sender_nr,
-                            rpcreader.header.timestamp,
-                            rpcreader.header.body_len,
+                            msg.header.timestamp,
+                            msg.header.body_len,
                         );
                     }
                 }
             };
 
             which
+        };
+
+        let rpcreader = RPCMessageReader {
+            header: msg.header,
+            reader,
+            opt_sender_nr,
         };
 
         match which {
@@ -1430,7 +1377,10 @@ impl RPCProcessor {
             self.get_respond_to_sender(peer.clone())
                 .encode(&mut respond_to)?;
             let detail = question.reborrow().init_detail();
-            detail.init_info_q();
+            let mut iqb = detail.init_info_q();
+            let mut node_info_builder = iqb.reborrow().init_node_info();
+            let node_info = self.network_manager().generate_node_info();
+            encode_node_info(&node_info, &mut node_info_builder)?;
 
             info_q_msg.into_reader()
         };

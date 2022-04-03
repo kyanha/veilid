@@ -552,6 +552,7 @@ class VeilidConfigNetwork {
   int maxConnections;
   int connectionInitialTimeoutMs;
   int connectionInactivityTimeoutMs;
+  int clientWhitelistTimeoutMs;
   String nodeId;
   String nodeIdSecret;
   List<String> bootstrap;
@@ -571,6 +572,7 @@ class VeilidConfigNetwork {
     required this.maxConnections,
     required this.connectionInitialTimeoutMs,
     required this.connectionInactivityTimeoutMs,
+    required this.clientWhitelistTimeoutMs,
     required this.nodeId,
     required this.nodeIdSecret,
     required this.bootstrap,
@@ -592,6 +594,7 @@ class VeilidConfigNetwork {
       'max_connections': maxConnections,
       'connection_initial_timeout_ms': connectionInitialTimeoutMs,
       'connection_inactivity_timeout_ms': connectionInactivityTimeoutMs,
+      'client_whitelist_timeout_ms': clientWhitelistTimeoutMs,
       'node_id': nodeId,
       'node_id_secret': nodeIdSecret,
       'bootstrap': bootstrap,
@@ -614,6 +617,7 @@ class VeilidConfigNetwork {
         connectionInitialTimeoutMs = json['connection_initial_timeout_ms'],
         connectionInactivityTimeoutMs =
             json['connection_inactivity_timeout_ms'],
+        clientWhitelistTimeoutMs = json['client_whitelist_timeout_ms'],
         nodeId = json['node_id'],
         nodeIdSecret = json['node_id_secret'],
         bootstrap = json['bootstrap'],

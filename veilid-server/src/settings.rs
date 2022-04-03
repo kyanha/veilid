@@ -51,6 +51,7 @@ core:
         max_connections: 16
         connection_initial_timeout_ms: 2000
         connection_inactivity_timeout_ms: 60000
+        client_whitelist_timeout_ms: 300000
         node_id: ''
         node_id_secret: ''
         bootstrap: []
@@ -540,6 +541,7 @@ pub struct Network {
     pub max_connections: u32,
     pub connection_initial_timeout_ms: u32,
     pub connection_inactivity_timeout_ms: u32,
+    pub client_whitelist_timeout_ms: u32,
     pub node_id: veilid_core::DHTKey,
     pub node_id_secret: veilid_core::DHTKeySecret,
     pub bootstrap: Vec<ParsedNodeDialInfo>,
@@ -815,6 +817,9 @@ impl Settings {
                 "network.connection_inactivity_timeout_ms" => Ok(Box::new(
                     inner.core.network.connection_inactivity_timeout_ms,
                 )),
+                "network.client_whitelist_timeout_ms" => {
+                    Ok(Box::new(inner.core.network.client_whitelist_timeout_ms))
+                }
                 "network.node_id" => Ok(Box::new(inner.core.network.node_id)),
                 "network.node_id_secret" => Ok(Box::new(inner.core.network.node_id_secret)),
                 "network.bootstrap" => Ok(Box::new(
@@ -1168,6 +1173,7 @@ mod tests {
         assert_eq!(s.core.network.max_connections, 16);
         assert_eq!(s.core.network.connection_initial_timeout_ms, 2_000u32);
         assert_eq!(s.core.network.connection_inactivity_timeout_ms, 60_000u32);
+        assert_eq!(s.core.network.client_whitelist_timeout_ms, 300_000u32);
         assert_eq!(s.core.network.node_id, veilid_core::DHTKey::default());
         assert_eq!(
             s.core.network.node_id_secret,

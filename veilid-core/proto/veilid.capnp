@@ -163,23 +163,28 @@ struct ValueData {
 ##############################
 
 struct OperationInfoQ {
+    nodeInfo                @0  :NodeInfo;              # node info update about the infoq sender
+}
+
+
+enum NetworkClass {
+    server                  @0;                         # S = Device with public IP and no UDP firewall
+    mapped                  @1;                         # M = Device with portmap behind any NAT
+    fullConeNAT             @2;                         # F = Device without portmap behind full-cone NAT
+    addressRestrictedNAT    @3;                         # R1 = Device without portmap behind address-only restricted NAT
+    portRestrictedNAT       @4;                         # R2 = Device without portmap behind address-and-port restricted NAT
+    outboundOnly            @5;                         # O = Outbound only
+    webApp                  @6;                         # W = PWA in either normal or tor web browser
+    invalid                 @7;                         # X = Invalid
 }
 
 struct NodeInfo {
-    canRoute                @0  :Bool;  
+    networkClass            @0  :NetworkClass;
     willRoute               @1  :Bool;
-    
-    canTunnel               @2  :Bool;  
-    willTunnel              @3  :Bool;
-    
-    canSignalLease          @4  :Bool;
-    willSignalLease         @5  :Bool;
-    
-    canRelayLease           @6  :Bool;
-    willRelayLease          @7  :Bool;
-
-    canValidateDialInfo     @8  :Bool;
-    willValidateDialInfo    @9  :Bool;
+    willTunnel              @2  :Bool;
+    willSignal              @3  :Bool;
+    willRelay               @4  :Bool;
+    willValidateDialInfo    @5  :Bool;
 }
 
 struct SenderInfo {
@@ -368,8 +373,7 @@ struct Operation {
 
     respondTo :union {
         none                @1  :Void;                  # no response is desired
-        sender              @2  :DialInfo;              # (Optional) envelope sender node id to be used for reply
-                                                        # possibly through a relay if the request arrived that way
+        sender              @2  :DialInfo;              # (Optional) the 'best' envelope-sender dial info to be used for reply (others may exist via findNodeQ)
         privateRoute        @3  :PrivateRoute;          # embedded private route to be used for reply
     }                              
 
