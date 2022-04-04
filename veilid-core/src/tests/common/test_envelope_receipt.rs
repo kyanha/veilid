@@ -33,19 +33,31 @@ pub async fn test_envelope_round_trip() {
 
     // Deserialize from bytes
     let envelope2 =
-        Envelope::from_data(&enc_data).expect("failed to deserialize envelope from data");
+        Envelope::from_signed_data(&enc_data).expect("failed to deserialize envelope from data");
 
     let body2 = envelope2
         .decrypt_body(crypto.clone(), &enc_data, &recipient_secret)
         .expect("failed to decrypt envelope body");
 
-    envelope2
-        .decrypt_body(crypto.clone(), &enc_data, &sender_secret)
-        .expect_err("should have failed to decrypt using wrong secret");
-
     // Compare envelope and body
     assert_eq!(envelope, envelope2);
     assert_eq!(body.to_vec(), body2);
+
+    // Deserialize from modified bytes
+    let enc_data_len = enc_data.len();
+    let mut mod_enc_data = enc_data.clone();
+    mod_enc_data[enc_data_len - 1] ^= 0x80u8;
+    assert!(
+        Envelope::from_signed_data(&mod_enc_data).is_err(),
+        "should have failed to decode envelope with modified signature"
+    );
+    let mut mod_enc_data2 = enc_data.clone();
+    mod_enc_data2[enc_data_len - 65] ^= 0x80u8;
+    assert!(
+        Envelope::from_signed_data(&mod_enc_data2).is_err(),
+        "should have failed to decode envelope with modified data"
+    );
+
     api.shutdown().await;
 }
 

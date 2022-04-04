@@ -29,14 +29,13 @@ use core::convert::TryInto;
 //     sender_id: [u8; 32],         // 0x2A: Node ID of the message source, which is the Ed25519 public key of the sender (must be verified with find_node if this is a new node_id/address combination)
 //     recipient_id: [u8; 32],      // 0x4A: Node ID of the intended recipient, which is the Ed25519 public key of the recipient (must be the receiving node, or a relay lease holder)
 //                                  // 0x6A: message is appended (operations)
-//                                  //       encrypted by XChaCha20Poly1305(nonce,x25519(recipient_id, sender_secret_key))
-//                                  //       decryptable by XChaCha20Poly1305(nonce,x25519(sender_id, recipient_secret_key))
-//                                  //       entire header needs to be included in message digest, relays are not allowed to modify the envelope without invalidating the signature.
+//                                  // encrypted by XChaCha20Poly1305(nonce,x25519(recipient_id, sender_secret_key))
+//     signature: [u8; 64],         // 0x?? (end-0x40): Ed25519 signature of the entire envelope including header is appended to the packet
+//                                  // entire header needs to be included in message digest, relays are not allowed to modify the envelope without invalidating the signature.
 // }
 
 pub const MAX_ENVELOPE_SIZE: usize = 65507;
-pub const MIN_ENVELOPE_SIZE: usize = 106;
-pub const AEAD_ADDITIONAL_SIZE: usize = 16;
+pub const MIN_ENVELOPE_SIZE: usize = 0x6A + 0x40; // Header + Signature
 pub const ENVELOPE_MAGIC: &[u8; 4] = b"VLID";
 pub const MIN_VERSION: u8 = 0u8;
 pub const MAX_VERSION: u8 = 0u8;
@@ -77,7 +76,7 @@ impl Envelope {
         }
     }
 
-    pub fn from_data(data: &[u8]) -> Result<Envelope, ()> {
+    pub fn from_signed_data(data: &[u8]) -> Result<Envelope, ()> {
         // Ensure we are at least the length of the envelope
         if data.len() < MIN_ENVELOPE_SIZE {
             trace!("envelope too small: len={}", data.len());
@@ -155,6 +154,12 @@ impl Envelope {
             return Err(());
         }
 
+        // Get signature
+        let signature = DHTSignature::new(data[(data.len() - 64)..].try_into().map_err(drop)?);
+
+        // Validate signature
+        verify(&sender_id, &data[0..(data.len() - 64)], &signature).map_err(drop)?;
+
         // Return envelope
         Ok(Self {
             version,
@@ -176,13 +181,8 @@ impl Envelope {
         // Get DH secret
         let dh_secret = crypto.cached_dh(&self.sender_id, node_id_secret)?;
 
-        // Decrypt message and authenticate, including the envelope header as associated data to authenticate
-        let body = Crypto::decrypt(
-            &data[0x6A..],
-            &self.nonce,
-            &dh_secret,
-            Some(&data[0..MIN_ENVELOPE_SIZE]),
-        )?;
+        // Decrypt message without authentication
+        let body = Crypto::crypt_no_auth(&data[0x6A..data.len() - 64], &self.nonce, &dh_secret);
 
         Ok(body)
     }
@@ -203,7 +203,7 @@ impl Envelope {
         }
 
         // Ensure body isn't too long
-        let envelope_size: usize = body.len() + MIN_ENVELOPE_SIZE + AEAD_ADDITIONAL_SIZE;
+        let envelope_size: usize = body.len() + MIN_ENVELOPE_SIZE;
         if envelope_size > MAX_ENVELOPE_SIZE {
             return Err(());
         }
@@ -234,11 +234,23 @@ impl Envelope {
             .map_err(drop)?;
 
         // Encrypt and authenticate message
-        let encrypted_body =
-            Crypto::encrypt(body, &self.nonce, &dh_secret, Some(&data[0..0x6A])).map_err(drop)?;
+        let encrypted_body = Crypto::crypt_no_auth(body, &self.nonce, &dh_secret);
 
         // Write body
-        data[0x6A..].copy_from_slice(encrypted_body.as_slice());
+        if !encrypted_body.is_empty() {
+            data[0x6A..envelope_size - 64].copy_from_slice(encrypted_body.as_slice());
+        }
+
+        // Sign the envelope
+        let signature = sign(
+            &self.sender_id,
+            node_id_secret,
+            &data[0..(envelope_size - 64)],
+        )
+        .map_err(drop)?;
+
+        // Append the signature
+        data[(envelope_size - 64)..].copy_from_slice(&signature.bytes);
 
         Ok(data)
     }

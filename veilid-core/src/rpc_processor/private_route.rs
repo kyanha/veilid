@@ -93,7 +93,7 @@ impl RPCProcessor {
                         )
                         .map_err(map_error_internal!("dh failed"))?;
                     let enc_msg_data =
-                        Crypto::encrypt(blob_data.as_slice(), &nonce, &dh_secret, None)
+                        Crypto::encrypt_aead(blob_data.as_slice(), &nonce, &dh_secret, None)
                             .map_err(map_error_internal!("encryption failed"))?;
 
                     rhd_builder.set_blob(enc_msg_data.as_slice());
@@ -118,7 +118,7 @@ impl RPCProcessor {
                     &safety_route.secret_key,
                 )
                 .map_err(map_error_internal!("dh failed"))?;
-            let enc_msg_data = Crypto::encrypt(blob_data.as_slice(), &nonce, &dh_secret, None)
+            let enc_msg_data = Crypto::encrypt_aead(blob_data.as_slice(), &nonce, &dh_secret, None)
                 .map_err(map_error_internal!("encryption failed"))?;
 
             first_rhd_builder.set_blob(enc_msg_data.as_slice());
@@ -148,7 +148,7 @@ impl RPCProcessor {
             .crypto
             .cached_dh(&pr_pk, &sr.secret_key)
             .map_err(map_error_internal!("dh failed"))?;
-        let enc_msg_data = Crypto::encrypt(&message_data, &nonce, &dh_secret, None)
+        let enc_msg_data = Crypto::encrypt_aead(&message_data, &nonce, &dh_secret, None)
             .map_err(map_error_internal!("encryption failed"))?;
 
         // Prepare route operation

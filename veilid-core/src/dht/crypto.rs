@@ -2,6 +2,8 @@ use super::key::*;
 use crate::intf::*;
 use crate::xx::*;
 use crate::*;
+use chacha20::cipher::{NewCipher, StreamCipher};
+use chacha20::XChaCha20;
 use chacha20poly1305 as ch;
 use chacha20poly1305::aead::{AeadInPlace, NewAead};
 use core::convert::TryInto;
@@ -16,7 +18,7 @@ pub type SharedSecret = [u8; 32];
 pub type Nonce = [u8; 24];
 
 const DH_CACHE_SIZE: usize = 1024;
-pub const ENCRYPTION_OVERHEAD: usize = 16;
+pub const AEAD_OVERHEAD: usize = 16;
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Hash)]
 struct DHCacheKey {
@@ -222,7 +224,7 @@ impl Crypto {
         s
     }
 
-    pub fn decrypt_in_place(
+    pub fn decrypt_in_place_aead(
         body: &mut Vec<u8>,
         nonce: &Nonce,
         shared_secret: &SharedSecret,
@@ -236,20 +238,20 @@ impl Crypto {
             .map_err(logthru_crypto!())
     }
 
-    pub fn decrypt(
+    pub fn decrypt_aead(
         body: &[u8],
         nonce: &Nonce,
         shared_secret: &SharedSecret,
         associated_data: Option<&[u8]>,
     ) -> Result<Vec<u8>, String> {
         let mut out = body.to_vec();
-        Self::decrypt_in_place(&mut out, nonce, shared_secret, associated_data)
+        Self::decrypt_in_place_aead(&mut out, nonce, shared_secret, associated_data)
             .map_err(map_to_string)
             .map_err(logthru_crypto!())?;
         Ok(out)
     }
 
-    pub fn encrypt_in_place(
+    pub fn encrypt_in_place_aead(
         body: &mut Vec<u8>,
         nonce: &Nonce,
         shared_secret: &SharedSecret,
@@ -264,16 +266,27 @@ impl Crypto {
             .map_err(logthru_crypto!())
     }
 
-    pub fn encrypt(
+    pub fn encrypt_aead(
         body: &[u8],
         nonce: &Nonce,
         shared_secret: &SharedSecret,
         associated_data: Option<&[u8]>,
     ) -> Result<Vec<u8>, String> {
         let mut out = body.to_vec();
-        Self::encrypt_in_place(&mut out, nonce, shared_secret, associated_data)
+        Self::encrypt_in_place_aead(&mut out, nonce, shared_secret, associated_data)
             .map_err(map_to_string)
             .map_err(logthru_crypto!())?;
         Ok(out)
+    }
+
+    pub fn crypt_in_place_no_auth(body: &mut Vec<u8>, nonce: &Nonce, shared_secret: &SharedSecret) {
+        let mut cipher = XChaCha20::new(shared_secret.into(), nonce.into());
+        cipher.apply_keystream(body);
+    }
+
+    pub fn crypt_no_auth(body: &[u8], nonce: &Nonce, shared_secret: &SharedSecret) -> Vec<u8> {
+        let mut out = body.to_vec();
+        Self::crypt_in_place_no_auth(&mut out, nonce, shared_secret);
+        out
     }
 }

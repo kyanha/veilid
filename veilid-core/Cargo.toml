@@ -25,6 +25,7 @@ hex = "^0"
 generic-array = "^0"
 secrecy = "^0"
 chacha20poly1305 = "^0"
+chacha20 = "^0"
 hashlink = { path = "../external/hashlink", features = ["serde_impl"] }
 serde-big-array = "^0"
 futures-util = { version = "^0", default_features = false, features = ["alloc"] }
