@@ -95,7 +95,8 @@ send_wrapper = "^0"
 [target.'cfg(target_arch = "wasm32")'.dependencies.web-sys]
 version = "^0"
 features = [
-    # 'Document',
+    'Document',
+    'HtmlDocument',
     # 'Element',
     # 'HtmlElement',
     # 'Node',

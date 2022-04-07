@@ -236,14 +236,15 @@ pub enum NetworkClass {
     Server = 0,               // S = Device with public IP and no UDP firewall
     Mapped = 1,               // M = Device with portmap behind any NAT
     FullConeNAT = 2,          // F = Device without portmap behind full-cone NAT
-    AddressRestrictedNAT = 3, // R1 = Device without portmap behind address-only restricted NAT
-    PortRestrictedNAT = 4,    // R2 = Device without portmap behind address-and-port restricted NAT
+    AddressRestrictedNAT = 3, // A = Device without portmap behind address-only restricted NAT
+    PortRestrictedNAT = 4,    // P = Device without portmap behind address-and-port restricted NAT
     OutboundOnly = 5,         // O = Outbound only
     WebApp = 6,               // W = PWA
     Invalid = 7,              // I = Invalid network class, unreachable or can not send packets
 }
 
 impl NetworkClass {
+    // Can the node receive inbound requests without a relay?
     pub fn inbound_capable(&self) -> bool {
         matches!(
             self,
@@ -254,21 +255,52 @@ impl NetworkClass {
                 | Self::PortRestrictedNAT
         )
     }
+
+    // Should an outbound relay be kept available?
+    pub fn outbound_wants_relay(&self) -> bool {
+        matches!(self, Self::WebApp)
+    }
+
+    // Is a signal required to do an inbound hole-punch?
     pub fn inbound_requires_signal(&self) -> bool {
         matches!(self, Self::AddressRestrictedNAT | Self::PortRestrictedNAT)
     }
+
+    // Is some relay required either for signal or inbound relay or outbound relay?
+    pub fn needs_relay(&self) -> bool {
+        matches!(
+            self,
+            Self::AddressRestrictedNAT
+                | Self::PortRestrictedNAT
+                | Self::OutboundOnly
+                | Self::WebApp
+        )
+    }
+
+    // Must keepalive be used to preserve the public dialinfo in use?
+    // Keepalive can be to either a
     pub fn dialinfo_requires_keepalive(&self) -> bool {
         matches!(
             self,
-            Self::FullConeNAT | Self::AddressRestrictedNAT | Self::PortRestrictedNAT
+            Self::FullConeNAT
+                | Self::AddressRestrictedNAT
+                | Self::PortRestrictedNAT
+                | Self::OutboundOnly
+                | Self::WebApp
         )
     }
+
+    // Can this node assist with signalling? Yes but only if it doesn't require signalling, itself.
     pub fn can_signal(&self) -> bool {
         self.inbound_capable() && !self.inbound_requires_signal()
     }
-    pub fn can_relay(&self) -> bool {
+
+    // Can this node relay be an inbound relay?
+    pub fn can_inbound_relay(&self) -> bool {
         matches!(self, Self::Server | Self::Mapped | Self::FullConeNAT)
     }
+
+    // Is this node capable of validating dial info
     pub fn can_validate_dial_info(&self) -> bool {
         matches!(self, Self::Server | Self::Mapped | Self::FullConeNAT)
     }

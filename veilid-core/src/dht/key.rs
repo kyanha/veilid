@@ -444,3 +444,8 @@ pub fn distance(key1: &DHTKey, key2: &DHTKey) -> DHTKeyDistance {
 
     DHTKeyDistance::new(bytes)
 }
+
+#[allow(dead_code)]
+pub fn sort_closest_fn(key: DHTKey) -> impl FnMut(&DHTKey, &DHTKey) -> std::cmp::Ordering {
+    move |k1, k2| distance(k1, &key).cmp(&distance(k2, &key))
+}

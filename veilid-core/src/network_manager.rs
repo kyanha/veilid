@@ -10,6 +10,7 @@ use xx::*;
 
 ////////////////////////////////////////////////////////////////////////////////////////
 
+pub const RELAY_MANAGEMENT_INTERVAL_SECS: u32 = 1;
 pub const MAX_MESSAGE_SIZE: usize = MAX_ENVELOPE_SIZE;
 pub const IPADDR_TABLE_SIZE: usize = 1024;
 pub const IPADDR_MAX_INACTIVE_DURATION_US: u64 = 300_000_000u64; // 5 minutes
@@ -97,11 +98,13 @@ struct NetworkManagerInner {
     network_class: Option<NetworkClass>,
     stats: NetworkManagerStats,
     client_whitelist: LruCache<key::DHTKey, ClientWhitelistEntry>,
+    relay_node: Option<NodeRef>,
 }
 
 struct NetworkManagerUnlockedInner {
     // Background processes
     rolling_transfers_task: TickTask,
+    relay_management_task: TickTask,
 }
 
 #[derive(Clone)]
@@ -121,12 +124,14 @@ impl NetworkManager {
             network_class: None,
             stats: NetworkManagerStats::default(),
             client_whitelist: LruCache::new_unbounded(),
+            relay_node: None,
         }
     }
     fn new_unlocked_inner(_config: VeilidConfig) -> NetworkManagerUnlockedInner {
         //let c = config.get();
         NetworkManagerUnlockedInner {
             rolling_transfers_task: TickTask::new(ROLLING_TRANSFERS_INTERVAL_SECS),
+            relay_management_task: TickTask::new(RELAY_MANAGEMENT_INTERVAL_SECS),
         }
     }
 
@@ -145,6 +150,15 @@ impl NetworkManager {
                 .rolling_transfers_task
                 .set_routine(move |l, t| {
                     Box::pin(this2.clone().rolling_transfers_task_routine(l, t))
+                });
+        }
+        // Set relay management tick task
+        {
+            let this2 = this.clone();
+            this.unlocked_inner
+                .relay_management_task
+                .set_routine(move |l, t| {
+                    Box::pin(this2.clone().relay_management_task_routine(l, t))
                 });
         }
         this
@@ -190,6 +204,10 @@ impl NetworkManager {
             .unwrap()
             .connection_manager
             .clone()
+    }
+
+    pub fn relay_node(&self) -> Option<NodeRef> {
+        self.inner.lock().relay_node.clone()
     }
 
     pub async fn init(&self) -> Result<(), String> {
@@ -353,10 +371,10 @@ impl NetworkManager {
     pub fn generate_node_info(&self) -> NodeInfo {
         let network_class = self.get_network_class().unwrap_or(NetworkClass::Invalid);
 
-        let will_route = network_class.can_relay(); // xxx: eventually this may have more criteria added
-        let will_tunnel = network_class.can_relay(); // xxx: we may want to restrict by battery life and network bandwidth at some point
+        let will_route = network_class.can_inbound_relay(); // xxx: eventually this may have more criteria added
+        let will_tunnel = network_class.can_inbound_relay(); // xxx: we may want to restrict by battery life and network bandwidth at some point
         let will_signal = network_class.can_signal();
-        let will_relay = network_class.can_relay();
+        let will_relay = network_class.can_inbound_relay();
         let will_validate_dial_info = network_class.can_validate_dial_info();
 
         NodeInfo {
@@ -663,6 +681,56 @@ impl NetworkManager {
 
         // Inform caller that we dealt with the envelope locally
         Ok(true)
+    }
+
+    // Keep relays assigned and accessible
+    async fn relay_management_task_routine(self, last_ts: u64, cur_ts: u64) -> Result<(), String> {
+        log_net!("--- network manager relay_management task");
+
+        // Get our node's current network class and do the right thing
+        let network_class = self.get_network_class();
+
+        // Do we know our network class yet?
+        if let Some(network_class) = network_class {
+            let routing_table = self.routing_table();
+
+            // If we already have a relay, see if it is dead, or if we don't need it any more
+            {
+                let mut inner = self.inner.lock();
+                if let Some(relay_node) = inner.relay_node.clone() {
+                    let state = relay_node.operate(|e| e.state(cur_ts));
+                    if matches!(state, BucketEntryState::Dead) || !network_class.needs_relay() {
+                        // Relay node is dead or no longer needed
+                        inner.relay_node = None;
+                    }
+                }
+            }
+
+            // Do we need an outbound relay?
+            if network_class.outbound_wants_relay() {
+                // The outbound relay is the host of the PWA
+                if let Some(outbound_relay_peerinfo) = intf::get_outbound_relay_peer().await {
+                    let mut inner = self.inner.lock();
+
+                    // Register new outbound relay
+                    let nr = routing_table.register_node_with_dial_info(
+                        outbound_relay_peerinfo.node_id.key,
+                        &outbound_relay_peerinfo.dial_infos,
+                    )?;
+                    inner.relay_node = Some(nr);
+                }
+            } else if network_class.needs_relay() {
+                // Find a node in our routing table that is an acceptable inbound relay
+                if let Some(nr) = routing_table.find_inbound_relay(cur_ts) {
+                    let mut inner = self.inner.lock();
+                    inner.relay_node = Some(nr);
+                }
+            }
+        } else {
+            // If we don't know our network class, we do nothing here and wait until we do
+        }
+
+        Ok(())
     }
 
     // Compute transfer statistics for the low level network

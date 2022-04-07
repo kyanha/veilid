@@ -92,6 +92,10 @@ pub fn get_concurrency() -> u32 {
     num_cpus::get() as u32
 }
 
+pub async fn get_outbound_relay_peer() -> Option<crate::veilid_api::PeerInfo> {
+    panic!("Native Veilid should never require an outbound relay");
+}
+
 /*
 pub fn async_callback<F, OF, EF, T, E>(fut: F, ok_fn: OF, err_fn: EF)
 where

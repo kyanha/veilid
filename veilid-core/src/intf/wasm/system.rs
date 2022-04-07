@@ -164,3 +164,40 @@ where
 pub fn get_concurrency() -> u32 {
     1
 }
+
+pub async fn get_outbound_relay_peer() -> Option<crate::veilid_api::PeerInfo> {
+    // unimplemented!
+    None
+}
+
+// pub async fn get_pwa_web_server_config() -> {
+//     if utils::is_browser() {
+        
+//         let win = window().unwrap();
+//         let doc = win.document().unwrap();
+//         let html_document = document.dyn_into::<web_sys::HtmlDocument>().unwrap();
+//         let cookie = html_document.cookie().unwrap();
+        
+//         // let wait_millis = if millis > u32::MAX {
+//         //     i32::MAX
+//         // } else {
+//         //     millis as i32
+//         // };
+//         // let promise = Promise::new(&mut |yes, _| {
+//         //     let win = window().unwrap();
+//         //     win.set_timeout_with_callback_and_timeout_and_arguments_0(&yes, wait_millis)
+//         //         .unwrap();
+//         // });
+
+//         // JsFuture::from(promise).await.unwrap();
+//     } else if utils::is_nodejs() {
+//         // let promise = Promise::new(&mut |yes, _| {
+//         //     nodejs_global_set_timeout_with_callback_and_timeout_and_arguments_0(&yes, millis)
+//         //         .unwrap();
+//         // });
+
+//         // JsFuture::from(promise).await.unwrap();
+//     } else {
+//         panic!("WASM requires browser or nodejs environment");
+//     }   
+// }

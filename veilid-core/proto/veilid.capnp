@@ -171,11 +171,11 @@ enum NetworkClass {
     server                  @0;                         # S = Device with public IP and no UDP firewall
     mapped                  @1;                         # M = Device with portmap behind any NAT
     fullConeNAT             @2;                         # F = Device without portmap behind full-cone NAT
-    addressRestrictedNAT    @3;                         # R1 = Device without portmap behind address-only restricted NAT
-    portRestrictedNAT       @4;                         # R2 = Device without portmap behind address-and-port restricted NAT
+    addressRestrictedNAT    @3;                         # A = Device without portmap behind address-only restricted NAT
+    portRestrictedNAT       @4;                         # P = Device without portmap behind address-and-port restricted NAT
     outboundOnly            @5;                         # O = Outbound only
-    webApp                  @6;                         # W = PWA in either normal or tor web browser
-    invalid                 @7;                         # X = Invalid
+    webApp                  @6;                         # W = PWA
+    invalid                 @7;                         # I = Invalid
 }
 
 struct NodeInfo {

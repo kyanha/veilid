@@ -19,6 +19,11 @@ const RELIABLE_PING_INTERVAL_MULTIPLIER: f64 = 2.0;
 const UNRELIABLE_PING_SPAN_SECS: u32 = 60;
 const UNRELIABLE_PING_INTERVAL_SECS: u32 = 5;
 
+// Keepalive pings are done occasionally to ensure holepunched public dialinfo
+// remains valid, as well as to make sure we remain in any relay node's routing table
+const KEEPALIVE_PING_INTERVAL_SECS: u32 = 30;
+
+// Do not change order here, it will mess up other sorts
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum BucketEntryState {
     Dead,
@@ -58,6 +63,46 @@ impl BucketEntry {
                 node_info: None,
             },
         }
+    }
+
+    pub fn sort_fastest(e1: &Self, e2: &Self) -> std::cmp::Ordering {
+        // Lower latency to the front
+        if let Some(e1_latency) = &e1.peer_stats.latency {
+            if let Some(e2_latency) = &e2.peer_stats.latency {
+                e1_latency.average.cmp(&e2_latency.average)
+            } else {
+                std::cmp::Ordering::Less
+            }
+        } else if e2.peer_stats.latency.is_some() {
+            std::cmp::Ordering::Greater
+        } else {
+            std::cmp::Ordering::Equal
+        }
+    }
+
+    pub fn cmp_fastest_reliable(cur_ts: u64, e1: &Self, e2: &Self) -> std::cmp::Ordering {
+        // Reverse compare so most reliable is at front
+        let ret = e2.state(cur_ts).cmp(&e1.state(cur_ts));
+        if ret != std::cmp::Ordering::Equal {
+            return ret;
+        }
+
+        // Lower latency to the front
+        if let Some(e1_latency) = &e1.peer_stats.latency {
+            if let Some(e2_latency) = &e2.peer_stats.latency {
+                e1_latency.average.cmp(&e2_latency.average)
+            } else {
+                std::cmp::Ordering::Less
+            }
+        } else if e2.peer_stats.latency.is_some() {
+            std::cmp::Ordering::Greater
+        } else {
+            std::cmp::Ordering::Equal
+        }
+    }
+
+    pub fn sort_fastest_reliable_fn(cur_ts: u64) -> impl FnMut(&Self, &Self) -> std::cmp::Ordering {
+        move |e1, e2| Self::cmp_fastest_reliable(cur_ts, e1, e2)
     }
 
     pub fn update_dial_infos(&mut self, dial_infos: &[DialInfo]) {
@@ -185,15 +230,35 @@ impl BucketEntry {
         }
     }
 
-    // Check if this node needs a ping right now to validate it is still reachable
-    pub(super) fn needs_ping(&self, cur_ts: u64) -> bool {
-        // See which ping pattern we are to use
-        let mut state = self.state(cur_ts);
+    fn needs_constant_ping(&self, cur_ts: u64, interval: u64) -> bool {
+        match self.peer_stats.ping_stats.last_pinged {
+            None => true,
+            Some(last_pinged) => cur_ts.saturating_sub(last_pinged) >= (interval * 1000000u64),
+        }
+    }
 
-        // If the current dial info hasn't been recognized,
-        // then we gotta ping regardless so treat the node as unreliable, briefly
+    // Check if this node needs a ping right now to validate it is still reachable
+    pub(super) fn needs_ping(
+        &self,
+        routing_table: RoutingTable,
+        node_id: &DHTKey,
+        cur_ts: u64,
+    ) -> bool {
+        let netman = routing_table.network_manager();
+        let relay_node = netman.relay_node();
+
+        // See which ping pattern we are to use
+        let state = self.state(cur_ts);
+
+        // If the current dial info hasn't been recognized then we gotta ping regardless
         if !self.seen_our_dial_info && matches!(state, BucketEntryState::Reliable) {
-            state = BucketEntryState::Unreliable;
+            return self.needs_constant_ping(cur_ts, UNRELIABLE_PING_INTERVAL_SECS as u64);
+        }
+        // If this entry is our relay node, then we should ping it regularly
+        else if let Some(relay_node) = relay_node {
+            if relay_node.node_id() == *node_id {
+                return self.needs_constant_ping(cur_ts, KEEPALIVE_PING_INTERVAL_SECS as u64);
+            }
         }
 
         match state {
@@ -225,13 +290,7 @@ impl BucketEntry {
             }
             BucketEntryState::Unreliable => {
                 // If we are in an unreliable state, we need a ping every UNRELIABLE_PING_INTERVAL_SECS seconds
-                match self.peer_stats.ping_stats.last_pinged {
-                    None => true,
-                    Some(last_pinged) => {
-                        cur_ts.saturating_sub(last_pinged)
-                            >= (UNRELIABLE_PING_INTERVAL_SECS as u64 * 1000000u64)
-                    }
-                }
+                self.needs_constant_ping(cur_ts, UNRELIABLE_PING_INTERVAL_SECS as u64)
             }
             BucketEntryState::Dead => false,
         }

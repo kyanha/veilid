@@ -477,6 +477,38 @@ impl RoutingTable {
         f(entry)
     }
 
+    pub fn find_inbound_relay(&self, cur_ts: u64) -> Option<NodeRef> {
+        let mut inner = self.inner.lock();
+        let mut best_inbound_relay: Option<NodeRef> = None;
+
+        // Iterate all known nodes for candidates
+        for b in &mut inner.buckets {
+            for (k, entry) in b.entries_mut() {
+                // Ensure it's not dead
+                if !matches!(entry.state(cur_ts), BucketEntryState::Dead) {
+                    // Ensure we have a node info
+                    if let Some(node_info) = &entry.peer_stats().node_info {
+                        // Ensure network class can relay
+                        if node_info.network_class.can_inbound_relay() {
+                            if let Some(best_inbound_relay) = best_inbound_relay.as_mut() {
+                                if best_inbound_relay.operate(|best| {
+                                    BucketEntry::cmp_fastest_reliable(cur_ts, best, entry)
+                                }) == std::cmp::Ordering::Greater
+                                {
+                                    *best_inbound_relay = NodeRef::new(self.clone(), *k, entry);
+                                }
+                            } else {
+                                best_inbound_relay = Some(NodeRef::new(self.clone(), *k, entry));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        best_inbound_relay
+    }
+
     pub async fn find_self(&self, node_ref: NodeRef) -> Result<Vec<NodeRef>, String> {
         let node_id = self.node_id();
         let rpc_processor = self.rpc_processor();
@@ -635,7 +667,7 @@ impl RoutingTable {
         let mut inner = self.inner.lock();
         for b in &mut inner.buckets {
             for (k, entry) in b.entries_mut() {
-                if entry.needs_ping(cur_ts) {
+                if entry.needs_ping(self.clone(), k, cur_ts) {
                     let nr = NodeRef::new(self.clone(), *k, entry);
                     log_rtab!(
                         "    --- ping validating: {:?} ({})",
@@ -689,6 +721,8 @@ impl RoutingTable {
         }
         // Ping validate some nodes to groom the table
         self.unlocked_inner.ping_validator_task.tick().await?;
+
+        // Keepalive
 
         Ok(())
     }
