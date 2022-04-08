@@ -368,7 +368,7 @@ impl NetworkManager {
     }
 
     // Get our node's capabilities
-    pub fn generate_node_info(&self) -> NodeInfo {
+    pub fn generate_node_status(&self) -> NodeStatus {
         let network_class = self.get_network_class().unwrap_or(NetworkClass::Invalid);
 
         let will_route = network_class.can_inbound_relay(); // xxx: eventually this may have more criteria added
@@ -377,8 +377,7 @@ impl NetworkManager {
         let will_relay = network_class.can_inbound_relay();
         let will_validate_dial_info = network_class.can_validate_dial_info();
 
-        NodeInfo {
-            network_class,
+        NodeStatus {
             will_route,
             will_tunnel,
             will_signal,

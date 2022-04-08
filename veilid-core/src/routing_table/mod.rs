@@ -268,6 +268,7 @@ impl RoutingTable {
                 e.1.set_seen_our_dial_info(false);
             }
         }
+        //
 
         // Release any waiters
         let mut new_eventual = Eventual::new();
@@ -420,14 +421,14 @@ impl RoutingTable {
 
     // Shortcut function to add a node to our routing table if it doesn't exist
     // and add the dial info we have for it, since that's pretty common
-    pub fn register_node_with_dial_info(
+    pub fn register_node_with_node_info(
         &self,
         node_id: DHTKey,
-        dial_infos: &[DialInfo],
+        node_info: NodeInfo,
     ) -> Result<NodeRef, String> {
         let nr = self.create_node_ref(node_id)?;
         nr.operate(move |e| -> Result<(), String> {
-            e.update_dial_infos(dial_infos);
+            e.update_node_info(node_info);
             Ok(())
         })?;
 
@@ -447,21 +448,6 @@ impl RoutingTable {
             // set the most recent node address for connection finding and udp replies
             e.set_last_connection(descriptor, timestamp);
         });
-
-        Ok(nr)
-    }
-
-    // Add a node if it doesn't exist, or update a single dial info on an already registered node
-    pub fn update_node_with_single_dial_info(
-        &self,
-        node_id: DHTKey,
-        dial_info: &DialInfo,
-    ) -> Result<NodeRef, String> {
-        let nr = self.create_node_ref(node_id)?;
-        nr.operate(move |e| -> Result<(), String> {
-            e.update_single_dial_info(dial_info);
-            Ok(())
-        })?;
 
         Ok(nr)
     }
@@ -487,9 +473,9 @@ impl RoutingTable {
                 // Ensure it's not dead
                 if !matches!(entry.state(cur_ts), BucketEntryState::Dead) {
                     // Ensure we have a node info
-                    if let Some(node_info) = &entry.peer_stats().node_info {
-                        // Ensure network class can relay
-                        if node_info.network_class.can_inbound_relay() {
+                    if let Some(node_status) = &entry.peer_stats().status {
+                        // Ensure the node will relay
+                        if node_status.will_relay {
                             if let Some(best_inbound_relay) = best_inbound_relay.as_mut() {
                                 if best_inbound_relay.operate(|best| {
                                     BucketEntry::cmp_fastest_reliable(cur_ts, best, entry)
@@ -547,12 +533,12 @@ impl RoutingTable {
 
             // register the node if it's new
             let nr = self
-                .register_node_with_dial_info(p.node_id.key, &p.dial_infos)
+                .register_node_with_node_info(p.node_id.key, p.node_info.clone())
                 .map_err(map_to_string)
                 .map_err(logthru_rtab!(
                     "couldn't register node {} at {:?}",
                     p.node_id.key,
-                    &p.dial_infos
+                    &p.node_info
                 ))?;
             out.push(nr);
         }
@@ -617,10 +603,17 @@ impl RoutingTable {
         // Run all bootstrap operations concurrently
         let mut unord = FuturesUnordered::new();
         for (k, v) in bsmap {
-            let nr = self
-                .register_node_with_dial_info(k, &v)
-                .map_err(logthru_rtab!("Couldn't add bootstrap node: {}", k))?;
             log_rtab!("    bootstrapping {} with {:?}", k.encode(), &v);
+            let nr = self
+                .register_node_with_node_info(
+                    k,
+                    NodeInfo {
+                        network_class: NetworkClass::Server,
+                        dial_infos: v,
+                        relay_dial_infos: Default::default(),
+                    },
+                )
+                .map_err(logthru_rtab!("Couldn't add bootstrap node: {}", k))?;
             unord.push(self.reverse_find_node(nr, true));
         }
         while unord.next().await.is_some() {}

@@ -37,10 +37,10 @@ pub struct BucketEntry {
     min_max_version: Option<(u8, u8)>,
     seen_our_dial_info: bool,
     last_connection: Option<(ConnectionDescriptor, u64)>,
-    dial_infos: Vec<DialInfo>,
+    node_info: NodeInfo,
+    peer_stats: PeerStats,
     latency_stats_accounting: LatencyStatsAccounting,
     transfer_stats_accounting: TransferStatsAccounting,
-    peer_stats: PeerStats,
 }
 
 impl BucketEntry {
@@ -51,7 +51,7 @@ impl BucketEntry {
             min_max_version: None,
             seen_our_dial_info: false,
             last_connection: None,
-            dial_infos: Vec::new(),
+            node_info: NodeInfo::default(),
             latency_stats_accounting: LatencyStatsAccounting::new(),
             transfer_stats_accounting: TransferStatsAccounting::new(),
             peer_stats: PeerStats {
@@ -60,7 +60,7 @@ impl BucketEntry {
                 ping_stats: PingStats::default(),
                 latency: None,
                 transfer: TransferStatsDownUp::default(),
-                node_info: None,
+                status: None,
             },
         }
     }
@@ -105,50 +105,37 @@ impl BucketEntry {
         move |e1, e2| Self::cmp_fastest_reliable(cur_ts, e1, e2)
     }
 
-    pub fn update_dial_infos(&mut self, dial_infos: &[DialInfo]) {
-        self.dial_infos = dial_infos.to_vec();
-        self.dial_infos.sort();
+    pub fn update_node_info(&mut self, node_info: NodeInfo) {
+        self.node_info = node_info
     }
 
-    pub fn update_single_dial_info(&mut self, dial_info: &DialInfo) {
-        let dif = dial_info.make_filter(true);
-        self.dial_infos.retain(|di| !di.matches_filter(&dif));
-        self.dial_infos.push(dial_info.clone());
-        self.dial_infos.sort();
+    pub fn node_info(&self) -> &NodeInfo {
+        &self.node_info
     }
 
-    pub fn first_filtered_dial_info<F>(&self, filter: F) -> Option<DialInfo>
+    pub fn first_filtered_node_info<F>(&self, filter: F) -> Option<NodeInfo>
     where
         F: Fn(&DialInfo) -> bool,
     {
-        for di in &self.dial_infos {
-            if filter(di) {
-                return Some(di.clone());
-            }
+        let out = self.node_info.first_filtered(filter);
+        if out.dial_infos.is_empty() && out.relay_dial_infos.is_empty() {
+            None
+        } else {
+            Some(out)
         }
-        None
     }
-    pub fn all_filtered_dial_infos<F>(&self, filter: F) -> Vec<DialInfo>
+
+    pub fn all_filtered_node_info<F>(&self, filter: F) -> NodeInfo
     where
         F: Fn(&DialInfo) -> bool,
     {
-        let mut ret = Vec::new();
-        for di in &self.dial_infos {
-            if filter(di) {
-                ret.push(di.clone());
-            }
-        }
-        ret
-    }
-
-    pub fn dial_infos(&self) -> &[DialInfo] {
-        &self.dial_infos
+        self.node_info.all_filtered(filter)
     }
 
     pub fn get_peer_info(&self, key: DHTKey, scope: PeerScope) -> PeerInfo {
         PeerInfo {
             node_id: NodeId::new(key),
-            dial_infos: self.all_filtered_dial_infos(|di| di.matches_peer_scope(scope)),
+            node_info: self.all_filtered_node_info(|di| di.matches_peer_scope(scope)),
         }
     }
 
@@ -182,8 +169,8 @@ impl BucketEntry {
         &self.peer_stats
     }
 
-    pub fn update_node_info(&mut self, node_info: NodeInfo) {
-        self.peer_stats.node_info = Some(node_info);
+    pub fn update_node_status(&mut self, status: NodeStatus) {
+        self.peer_stats.status = Some(status);
     }
 
     pub fn set_seen_our_dial_info(&mut self, seen: bool) {
@@ -250,12 +237,8 @@ impl BucketEntry {
         // See which ping pattern we are to use
         let state = self.state(cur_ts);
 
-        // If the current dial info hasn't been recognized then we gotta ping regardless
-        if !self.seen_our_dial_info && matches!(state, BucketEntryState::Reliable) {
-            return self.needs_constant_ping(cur_ts, UNRELIABLE_PING_INTERVAL_SECS as u64);
-        }
-        // If this entry is our relay node, then we should ping it regularly
-        else if let Some(relay_node) = relay_node {
+        // If this entry is our relay node, then we should ping it regularly to keep our association alive
+        if let Some(relay_node) = relay_node {
             if relay_node.node_id() == *node_id {
                 return self.needs_constant_ping(cur_ts, KEEPALIVE_PING_INTERVAL_SECS as u64);
             }

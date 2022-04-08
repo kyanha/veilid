@@ -21,7 +21,7 @@ impl RoutingTable {
                         .1
                         .as_ref()
                         .unwrap()
-                        .first_filtered_dial_info(|di| di.matches_filter(&dial_info_filter1))
+                        .first_filtered_node_info(|di| di.matches_filter(&dial_info_filter1))
                         .is_some()
                 },
             )),
@@ -39,14 +39,21 @@ impl RoutingTable {
 
     pub fn get_own_peer_info(&self, scope: PeerScope) -> PeerInfo {
         let filter = DialInfoFilter::scoped(scope);
-
+        let netman = self.network_manager();
+        let relay_node = netman.relay_node();
         PeerInfo {
             node_id: NodeId::new(self.node_id()),
-            dial_infos: self
-                .all_filtered_dial_info_details(&filter)
-                .iter()
-                .map(|did| did.dial_info.clone())
-                .collect(),
+            node_info: NodeInfo {
+                network_class: netman.get_network_class().unwrap_or(NetworkClass::Invalid),
+                dial_infos: self
+                    .all_filtered_dial_info_details(&filter)
+                    .iter()
+                    .map(|did| did.dial_info.clone())
+                    .collect(),
+                relay_dial_infos: relay_node
+                    .map(|rn| rn.node_info().dial_infos)
+                    .unwrap_or_default(),
+            },
         }
     }
 

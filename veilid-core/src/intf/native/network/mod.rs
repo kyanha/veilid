@@ -404,9 +404,11 @@ impl Network {
         };
 
         // If that fails, try to make a connection or reach out to the peer via its dial info
-        let dial_info = node_ref
-            .best_dial_info()
+        let node_info = node_ref
+            .best_node_info()
             .ok_or_else(|| "couldn't send data, no dial info or peer address".to_owned())?;
+
+        xxx write logic to determine if a relay needs to be used first xxx
 
         self.send_data_to_dial_info(dial_info, data)
             .await

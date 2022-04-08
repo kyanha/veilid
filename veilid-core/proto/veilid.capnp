@@ -163,7 +163,7 @@ struct ValueData {
 ##############################
 
 struct OperationInfoQ {
-    nodeInfo                @0  :NodeInfo;              # node info update about the infoq sender
+    nodeStatus              @0  :NodeStatus;            # node status update about the infoq sender
 }
 
 
@@ -178,13 +178,18 @@ enum NetworkClass {
     invalid                 @7;                         # I = Invalid
 }
 
+struct NodeStatus {
+    willRoute               @0  :Bool;
+    willTunnel              @1  :Bool;
+    willSignal              @2  :Bool;
+    willRelay               @3  :Bool;
+    willValidateDialInfo    @4  :Bool;
+}
+
 struct NodeInfo {
-    networkClass            @0  :NetworkClass;
-    willRoute               @1  :Bool;
-    willTunnel              @2  :Bool;
-    willSignal              @3  :Bool;
-    willRelay               @4  :Bool;
-    willValidateDialInfo    @5  :Bool;
+    networkClass            @0  :NetworkClass;          # network class of this node
+    dialInfoList            @1  :List(DialInfo);        # dial info for this node
+    relayDialInfoList       @2  :List(DialInfo);        # relay dial info for this node
 }
 
 struct SenderInfo {
@@ -192,7 +197,7 @@ struct SenderInfo {
 }
 
 struct OperationInfoA {
-    nodeInfo                @0  :NodeInfo;              # returned node information
+    nodeStatus              @0  :NodeStatus;            # returned node status
     senderInfo              @1  :SenderInfo;            # info about InfoQ sender from the perspective of the replier
 }
 
@@ -210,11 +215,12 @@ struct OperationReturnReceipt {
 struct OperationFindNodeQ {    
     nodeId                  @0  :NodeID;                # node id to locate
     dialInfoList            @1  :List(DialInfo);        # dial info for the node asking the question
+    relayDialInfoList       @2  :List(DialInfo);        # relay dial info for the node asking the question
 }
 
 struct PeerInfo {
-    nodeId                  @0  :NodeID;                # node id or 'closer peer'
-    dialInfoList            @1  :List(DialInfo);        # dial info for 'closer peer'
+    nodeId                  @0  :NodeID;                # node id for 'closer peer'
+    nodeInfo                @1  :NodeInfo;              # node info for 'closer peer'
 }
 
 struct OperationFindNodeA {
@@ -373,7 +379,7 @@ struct Operation {
 
     respondTo :union {
         none                @1  :Void;                  # no response is desired
-        sender              @2  :DialInfo;              # (Optional) the 'best' envelope-sender dial info to be used for reply (others may exist via findNodeQ)
+        sender              @2  :NodeInfo;              # (Optional) some envelope-sender node info to be used for reply (others may exist via findNodeQ)
         privateRoute        @3  :PrivateRoute;          # embedded private route to be used for reply
     }                              
 

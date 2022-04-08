@@ -313,13 +313,62 @@ impl Default for NetworkClass {
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub struct NodeInfo {
-    pub network_class: NetworkClass,
+pub struct NodeStatus {
     pub will_route: bool,
     pub will_tunnel: bool,
     pub will_signal: bool,
     pub will_relay: bool,
     pub will_validate_dial_info: bool,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct NodeInfo {
+    pub network_class: NetworkClass,
+    pub dial_infos: Vec<DialInfo>,
+    pub relay_dial_infos: Vec<DialInfo>,
+}
+
+impl NodeInfo {
+    pub fn first_filtered<F>(&self, filter: F) -> NodeInfo
+    where
+        F: Fn(&DialInfo) -> bool,
+    {
+        let mut node_info = NodeInfo::default();
+        node_info.network_class = self.network_class;
+
+        for di in &self.dial_infos {
+            if filter(di) {
+                node_info.dial_infos.push(di.clone());
+                break;
+            }
+        }
+        for di in &self.relay_dial_infos {
+            if filter(di) {
+                node_info.relay_dial_infos.push(di.clone());
+                break;
+            }
+        }
+        node_info
+    }
+    pub fn all_filtered<F>(&self, filter: F) -> NodeInfo
+    where
+        F: Fn(&DialInfo) -> bool,
+    {
+        let mut node_info = NodeInfo::default();
+        node_info.network_class = self.network_class;
+
+        for di in &self.dial_infos {
+            if filter(di) {
+                node_info.dial_infos.push(di.clone());
+            }
+        }
+        for di in &self.relay_dial_infos {
+            if filter(di) {
+                node_info.relay_dial_infos.push(di.clone());
+            }
+        }
+        node_info
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Ord, Eq, Hash, Serialize, Deserialize)]
@@ -567,6 +616,13 @@ pub struct DialInfoWS {
 pub struct DialInfoWSS {
     pub socket_address: SocketAddress,
     pub request: String,
+}
+
+#[derive(Clone, Debug, PartialEq, PartialOrd, Ord, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind")]
+pub enum DialInfoClass {
+    Direct,
+    Relay,
 }
 
 #[derive(Clone, Debug, PartialEq, PartialOrd, Ord, Eq, Serialize, Deserialize)]
@@ -834,7 +890,7 @@ impl Default for PeerScope {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct PeerInfo {
     pub node_id: NodeId,
-    pub dial_infos: Vec<DialInfo>,
+    pub node_info: NodeInfo,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Eq, Ord, Hash, Serialize, Deserialize)]
@@ -989,7 +1045,7 @@ pub struct PeerStats {
     pub ping_stats: PingStats,  // information about pings
     pub latency: Option<LatencyStats>, // latencies for communications with the peer
     pub transfer: TransferStatsDownUp, // Stats for communications with the peer
-    pub node_info: Option<NodeInfo>, // Last known node info
+    pub status: Option<NodeStatus>, // Last known node status
 }
 
 cfg_if! {

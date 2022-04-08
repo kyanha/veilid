@@ -46,6 +46,14 @@ impl NodeRef {
         self.routing_table.operate_on_bucket_entry(self.node_id, f)
     }
 
+    pub fn node_info(&self) -> NodeInfo {
+        self.operate(|e| e.node_info().clone())
+    }
+
+    pub fn has_dial_info(&self) -> bool {
+        self.operate(|e| !e.node_info().dial_infos.is_empty())
+    }
+
     // Returns if this node has seen and acknowledged our node's dial info yet
     pub fn has_seen_our_dial_info(&self) -> bool {
         self.operate(|e| e.has_seen_our_dial_info())
@@ -54,12 +62,12 @@ impl NodeRef {
         self.operate(|e| e.set_seen_our_dial_info(true));
     }
 
-    // Returns the best dial info to attempt a connection to this node
-    pub fn best_dial_info(&self) -> Option<DialInfo> {
+    // Returns the best node info to attempt a connection to this node
+    pub fn best_node_info(&self) -> Option<NodeInfo> {
         let nm = self.routing_table.network_manager();
         let protocol_config = nm.get_protocol_config()?;
         self.operate(|e| {
-            e.first_filtered_dial_info(|di| {
+            e.first_filtered_node_info(|di| {
                 // Does it match the dial info filter
                 if !di.matches_filter(&self.dial_info_filter) {
                     return false;

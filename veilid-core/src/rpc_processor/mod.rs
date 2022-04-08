@@ -30,7 +30,7 @@ pub enum Destination {
 #[derive(Debug, Clone)]
 pub enum RespondTo {
     None,
-    Sender(Option<DialInfo>),
+    Sender(Option<NodeInfo>),
     PrivateRoute(PrivateRoute),
 }
 
@@ -43,9 +43,9 @@ impl RespondTo {
             Self::None => {
                 builder.set_none(());
             }
-            Self::Sender(Some(di)) => {
-                let mut di_builder = builder.reborrow().init_sender();
-                encode_dial_info(di, &mut di_builder)?;
+            Self::Sender(Some(ni)) => {
+                let mut ni_builder = builder.reborrow().init_sender();
+                encode_node_info(ni, &mut ni_builder)?;
             }
             Self::Sender(None) => {
                 builder.reborrow().init_sender();
@@ -220,7 +220,13 @@ impl RPCProcessor {
     fn filter_peer_scope(&self, peer_info: &PeerInfo) -> bool {
         // reject attempts to include non-public addresses in results
         if self.default_peer_scope == PeerScope::Global {
-            for di in &peer_info.dial_infos {
+            for di in &peer_info.node_info.dial_infos {
+                if !di.is_global() {
+                    // non-public address causes rejection
+                    return false;
+                }
+            }
+            for di in &peer_info.node_info.relay_dial_infos {
                 if !di.is_global() {
                     // non-public address causes rejection
                     return false;
@@ -273,7 +279,7 @@ impl RPCProcessor {
             if let Some(nr) = routing_table.lookup_node_ref(node_id) {
                 // ensure we have dial_info for the entry already,
                 // if not, we should do the find_node anyway
-                if !nr.operate(|e| e.dial_infos().is_empty()) {
+                if !nr.has_dial_info() {
                     return Ok(nr);
                 }
             }
