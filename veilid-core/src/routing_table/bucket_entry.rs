@@ -35,9 +35,10 @@ pub enum BucketEntryState {
 pub struct BucketEntry {
     pub(super) ref_count: u32,
     min_max_version: Option<(u8, u8)>,
-    seen_our_dial_info: bool,
+    seen_our_node_info: bool,
     last_connection: Option<(ConnectionDescriptor, u64)>,
     node_info: NodeInfo,
+    local_node_info: LocalNodeInfo,
     peer_stats: PeerStats,
     latency_stats_accounting: LatencyStatsAccounting,
     transfer_stats_accounting: TransferStatsAccounting,
@@ -49,9 +50,10 @@ impl BucketEntry {
         Self {
             ref_count: 0,
             min_max_version: None,
-            seen_our_dial_info: false,
+            seen_our_node_info: false,
             last_connection: None,
             node_info: NodeInfo::default(),
+            local_node_info: LocalNodeInfo::default(),
             latency_stats_accounting: LatencyStatsAccounting::new(),
             transfer_stats_accounting: TransferStatsAccounting::new(),
             peer_stats: PeerStats {
@@ -108,34 +110,20 @@ impl BucketEntry {
     pub fn update_node_info(&mut self, node_info: NodeInfo) {
         self.node_info = node_info
     }
+    pub fn update_local_node_info(&mut self, local_node_info: LocalNodeInfo) {
+        self.local_node_info = local_node_info
+    }
 
     pub fn node_info(&self) -> &NodeInfo {
         &self.node_info
     }
-
-    pub fn first_filtered_node_info<F>(&self, filter: F) -> Option<NodeInfo>
-    where
-        F: Fn(&DialInfo) -> bool,
-    {
-        let out = self.node_info.first_filtered(filter);
-        if out.dial_infos.is_empty() && out.relay_dial_infos.is_empty() {
-            None
-        } else {
-            Some(out)
-        }
+    pub fn local_node_info(&self) -> &LocalNodeInfo {
+        &self.local_node_info
     }
-
-    pub fn all_filtered_node_info<F>(&self, filter: F) -> NodeInfo
-    where
-        F: Fn(&DialInfo) -> bool,
-    {
-        self.node_info.all_filtered(filter)
-    }
-
-    pub fn get_peer_info(&self, key: DHTKey, scope: PeerScope) -> PeerInfo {
+    pub fn peer_info(&self, key: DHTKey) -> PeerInfo {
         PeerInfo {
             node_id: NodeId::new(key),
-            node_info: self.all_filtered_node_info(|di| di.matches_peer_scope(scope)),
+            node_info: self.node_info.clone(),
         }
     }
 
@@ -173,12 +161,12 @@ impl BucketEntry {
         self.peer_stats.status = Some(status);
     }
 
-    pub fn set_seen_our_dial_info(&mut self, seen: bool) {
-        self.seen_our_dial_info = seen;
+    pub fn set_seen_our_node_info(&mut self, seen: bool) {
+        self.seen_our_node_info = seen;
     }
 
-    pub fn has_seen_our_dial_info(&self) -> bool {
-        self.seen_our_dial_info
+    pub fn has_seen_our_node_info(&self) -> bool {
+        self.seen_our_node_info
     }
 
     ///// stats methods

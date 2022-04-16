@@ -15,7 +15,7 @@ cfg_if! {
     }
 }
 
-#[derive(Default, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct VeilidConfigHTTPS {
     pub enabled: bool,
     pub listen_address: String,
@@ -23,7 +23,7 @@ pub struct VeilidConfigHTTPS {
     pub url: Option<String>, // Fixed URL is not optional for TLS-based protocols and is dynamically validated
 }
 
-#[derive(Default, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct VeilidConfigHTTP {
     pub enabled: bool,
     pub listen_address: String,
@@ -31,13 +31,13 @@ pub struct VeilidConfigHTTP {
     pub url: Option<String>,
 }
 
-#[derive(Default, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct VeilidConfigApplication {
     pub https: VeilidConfigHTTPS,
     pub http: VeilidConfigHTTP,
 }
 
-#[derive(Default, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct VeilidConfigUDP {
     pub enabled: bool,
     pub socket_pool_size: u32,
@@ -45,7 +45,7 @@ pub struct VeilidConfigUDP {
     pub public_address: Option<String>,
 }
 
-#[derive(Default, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct VeilidConfigTCP {
     pub connect: bool,
     pub listen: bool,
@@ -54,7 +54,7 @@ pub struct VeilidConfigTCP {
     pub public_address: Option<String>,
 }
 
-#[derive(Default, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct VeilidConfigWS {
     pub connect: bool,
     pub listen: bool,
@@ -64,7 +64,7 @@ pub struct VeilidConfigWS {
     pub url: Option<String>,
 }
 
-#[derive(Default, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct VeilidConfigWSS {
     pub connect: bool,
     pub listen: bool,
@@ -74,7 +74,7 @@ pub struct VeilidConfigWSS {
     pub url: Option<String>, // Fixed URL is not optional for TLS-based protocols and is dynamically validated
 }
 
-#[derive(Default, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct VeilidConfigProtocol {
     pub udp: VeilidConfigUDP,
     pub tcp: VeilidConfigTCP,
@@ -82,14 +82,14 @@ pub struct VeilidConfigProtocol {
     pub wss: VeilidConfigWSS,
 }
 
-#[derive(Default, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct VeilidConfigTLS {
     pub certificate_path: String,
     pub private_key_path: String,
     pub connection_initial_timeout_ms: u32,
 }
 
-#[derive(Default, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct VeilidConfigDHT {
     pub resolve_node_timeout_ms: Option<u32>,
     pub resolve_node_count: u32,
@@ -107,7 +107,7 @@ pub struct VeilidConfigDHT {
     pub nearby_node_percentage: u32,
 }
 
-#[derive(Default, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct VeilidConfigRPC {
     pub concurrency: u32,
     pub queue_size: u32,
@@ -117,14 +117,14 @@ pub struct VeilidConfigRPC {
     pub max_route_hop_count: u8,
 }
 
-#[derive(Default, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct VeilidConfigLeases {
     pub max_server_signal_leases: u32,
     pub max_server_relay_leases: u32,
     pub max_client_signal_leases: u32,
     pub max_client_relay_leases: u32,
 }
-#[derive(Default, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct VeilidConfigRoutingTable {
     pub limit_over_attached: u32,
     pub limit_fully_attached: u32,
@@ -133,12 +133,14 @@ pub struct VeilidConfigRoutingTable {
     pub limit_attached_weak: u32,
 }
 
-#[derive(Default, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct VeilidConfigNetwork {
     pub max_connections: u32,
     pub connection_initial_timeout_ms: u32,
     pub connection_inactivity_timeout_ms: u32,
     pub client_whitelist_timeout_ms: u32,
+    pub reverse_connection_receipt_time_ms: u32,
+    pub hole_punch_receipt_time_ms: u32,
     pub node_id: key::DHTKey,
     pub node_id_secret: key::DHTKeySecret,
     pub bootstrap: Vec<String>,
@@ -155,19 +157,19 @@ pub struct VeilidConfigNetwork {
     pub leases: VeilidConfigLeases,
 }
 
-#[derive(Default, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct VeilidConfigTableStore {
     pub directory: String,
     pub delete: bool,
 }
 
-#[derive(Default, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct VeilidConfigBlockStore {
     pub directory: String,
     pub delete: bool,
 }
 
-#[derive(Default, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct VeilidConfigProtectedStore {
     pub allow_insecure_fallback: bool,
     pub always_use_insecure_storage: bool,
@@ -175,7 +177,7 @@ pub struct VeilidConfigProtectedStore {
     pub delete: bool,
 }
 
-#[derive(Default, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct VeilidConfigCapabilities {
     pub protocol_udp: bool,
     pub protocol_connect_tcp: bool,
@@ -214,7 +216,7 @@ impl Default for VeilidConfigLogLevel {
     }
 }
 
-#[derive(Default, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct VeilidConfigInner {
     pub program_name: String,
     pub namespace: String,

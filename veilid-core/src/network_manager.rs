@@ -17,32 +17,8 @@ pub const IPADDR_MAX_INACTIVE_DURATION_US: u64 = 300_000_000u64; // 5 minutes
 
 #[derive(Copy, Clone, Debug, Default)]
 pub struct ProtocolConfig {
-    pub udp_enabled: bool,
-    pub tcp_connect: bool,
-    pub tcp_listen: bool,
-    pub ws_connect: bool,
-    pub ws_listen: bool,
-    pub wss_connect: bool,
-    pub wss_listen: bool,
-}
-
-impl ProtocolConfig {
-    pub fn is_protocol_type_connect_enabled(&self, protocol_type: ProtocolType) -> bool {
-        match protocol_type {
-            ProtocolType::UDP => self.udp_enabled,
-            ProtocolType::TCP => self.tcp_connect,
-            ProtocolType::WS => self.ws_connect,
-            ProtocolType::WSS => self.wss_connect,
-        }
-    }
-    pub fn is_protocol_type_listen_enabled(&self, protocol_type: ProtocolType) -> bool {
-        match protocol_type {
-            ProtocolType::UDP => self.udp_enabled,
-            ProtocolType::TCP => self.tcp_listen,
-            ProtocolType::WS => self.ws_listen,
-            ProtocolType::WSS => self.wss_listen,
-        }
-    }
+    pub outbound: ProtocolSet,
+    pub inbound: ProtocolSet,
 }
 
 // Things we get when we start up and go away when we shut down
@@ -91,6 +67,15 @@ impl Default for NetworkManagerStats {
 struct ClientWhitelistEntry {
     last_seen: u64,
 }
+
+// Mechanism required to contact another node
+enum InboundMethod {
+    Direct,          // Contact the node directly
+    SignalReverse,   // Request via signal the node connect back directly
+    SignalHolePunch, // Request via signal the node negotiate a hole punch
+    Relay,           // Must use a third party relay to reach the node
+}
+
 // The mutable state of the network manager
 struct NetworkManagerInner {
     routing_table: Option<RoutingTable>,
@@ -476,12 +461,20 @@ impl NetworkManager {
     }
 
     // Called by the RPC handler when we want to issue an RPC request or response
+    // node_ref is the direct destination to which the envelope will be sent
+    // If 'node_id' is specified, it can be different than node_ref.node_id()
+    // which will cause the envelope to be relayed
     pub async fn send_envelope<B: AsRef<[u8]>>(
         &self,
         node_ref: NodeRef,
+        node_id: Option<DHTKey>,
         body: B,
     ) -> Result<(), String> {
-        log_net!("sending envelope to {:?}", node_ref);
+        if let Some(node_id) = node_id {
+            log_net!("sending envelope to {:?} via {:?}", node_id, node_ref);
+        } else {
+            log_net!("sending envelope to {:?}", node_ref);
+        }
         // Get node's min/max version and see if we can send to it
         // and if so, get the max version we can use
         let version = if let Some((node_min, node_max)) = node_ref.operate(|e| e.min_max_version())
@@ -503,11 +496,11 @@ impl NetworkManager {
 
         // Build the envelope to send
         let out = self
-            .build_envelope(node_ref.node_id(), version, body)
+            .build_envelope(node_id.unwrap_or_else(|| node_ref.node_id()), version, body)
             .map_err(logthru_rpc!(error))?;
 
-        // Send via relay if we have to
-        self.net().send_data(node_ref, out).await
+        // Send the envelope via whatever means necessary
+        self.send_data(node_ref, out).await
     }
 
     // Called by the RPC handler when we want to issue an direct receipt
@@ -531,6 +524,203 @@ impl NetworkManager {
                 .send_data_to_dial_info(dial_info, rcpt_data.as_ref().to_vec())
                 .await
         }
+    }
+
+    // Figure out how to reach a node
+    // Node info here must be the filtered kind, with only
+    fn get_inbound_method(&self, node_info: &NodeInfo) -> Result<InboundMethod, String> {
+        // Get our network class
+        let network_class = self.get_network_class().unwrap_or(NetworkClass::Invalid);
+
+        // If we don't have a network class yet (no public dial info or haven't finished detection)
+        // then we just need to try to send to the best direct dial info because we won't
+        // know how to use relays effectively yet
+        if matches!(network_class, NetworkClass::Invalid) {
+            return Ok(InboundMethod::Direct);
+        }
+
+        // Get the protocol of the best matching direct dial info
+        let protocol_type = node_info.dial_info_list.first().map(|d| d.protocol_type());
+
+        // Can the target node do inbound?
+        if node_info.network_class.inbound_capable() {
+            // Do we need to signal before going inbound?
+            if node_info.network_class.inbound_requires_signal() {
+                // Can we receive a direct reverse connection?
+                if network_class.inbound_capable() && !network_class.inbound_requires_signal() {
+                    Ok(InboundMethod::SignalReverse)
+                }
+                // Is this a hole-punch capable protocol?
+                else if protocol_type == Some(ProtocolType::UDP) {
+                    Ok(InboundMethod::SignalHolePunch)
+                }
+                // Otherwise we have to relay
+                else {
+                    Ok(InboundMethod::Relay)
+                }
+            }
+            // Can go direct
+            else {
+                Ok(InboundMethod::Direct)
+            }
+        // If the other node is not inbound capable at all, it requires a relay
+        } else {
+            Ok(InboundMethod::Relay)
+        }
+    }
+
+    // Send a reverse connection signal and wait for the return receipt over it
+    // Then send the data across the new connection
+    pub async fn do_reverse_connect(
+        &self,
+        best_node_info: &NodeInfo,
+        data: Vec<u8>,
+    ) -> Result<(), String> {
+        
+        // Get relay to signal from
+        let relay_nr = if let Some(rpi) = best_node_info.relay_peer_info {
+            // Get the noderef for this inbound relay
+            self.routing_table().register_node_with_node_info(rpi.node_id.key, rpi.node_info)?;
+        } else {
+            // If we don't have a relay dial info that matches our protocol configuration
+            // then we can't send to this node!
+            return Err("Can't send to this relay".to_owned())
+        }
+
+
+        // Get the receipt timeout
+        let receipt_time = ms_to_us(self.config.get().network.reverse_connection_receipt_time_ms);
+
+        // Build a return receipt for the signal
+        let (rcpt_data, eventual_value) = self
+            .generate_single_shot_receipt(receipt_time, [])
+            .map_err(map_error_string!())?;
+
+        // Issue the signal
+        let rpc = self.rpc_processor();
+        rpc.rpc_call_signal(dest, )
+
+        // Wait for the return receipt
+        match eventual_value.await {
+            ReceiptEvent::Returned => (),
+            ReceiptEvent::Expired => {
+                return Err("receipt was dropped before expiration".to_owned());
+            }
+            ReceiptEvent::Cancelled => {
+                return Err("receipt was dropped before expiration".to_owned());
+            }
+        };
+
+        // And now use the existing connection to send over
+        if let Some(descriptor) = node_ref.last_connection() {
+            match self
+                .net()
+                .send_data_to_existing_connection(descriptor, data)
+                .await
+                .map_err(logthru_net!())?
+            {
+                None => {
+                    return Ok(());
+                }
+                Some(d) => d,
+            }
+        }
+        Ok(())
+    }
+
+    // Send a hole punch signal and do a negotiating ping and wait for the return receipt
+    // Then send the data across the new connection
+    pub async fn do_hole_punch(&self, best_node_info: &NodeInfo, data: Vec<u8>) -> Result<(), String> {
+        if let Some(relay_dial_info) = node_info.relay_dial_info_list.first() {
+            self.net()
+                .do_hole_punch(relay_dial_info.clone(), data)
+                .await
+                .map_err(logthru_net!())
+        } else {
+            // If we don't have a relay dial info that matches our protocol configuration
+            // then we can't send to this node!
+            Err("Can't send to this node yet".to_owned())
+        }
+    }
+
+    // Send raw data to a node
+    // 
+    // We may not have dial info for a node, but have an existing connection for it
+    // because an inbound connection happened first, and no FindNodeQ has happened to that
+    // node yet to discover its dial info. The existing connection should be tried first
+    // in this case.
+    //
+    // Sending to a node requires determining a NetworkClass compatible mechanism
+    //
+    pub fn send_data(&self, node_ref: NodeRef, data: Vec<u8>) -> SystemPinBoxFuture<Result<(), String>> {
+        let this = self.clone();
+        Box::pin(async move {
+            // First try to send data to the last socket we've seen this peer on
+            let data = if let Some(descriptor) = node_ref.last_connection() {
+                match this
+                    .net()
+                    .send_data_to_existing_connection(descriptor, data)
+                    .await
+                    .map_err(logthru_net!())?
+                {
+                    None => {
+                        return Ok(());
+                    }
+                    Some(d) => d,
+                }
+            } else {
+                data
+            };
+
+            // If we don't have last_connection, try to reach out to the peer via its dial info
+            let best_node_info = match node_ref
+                .best_node_info() {
+                    Some(ni) => ni,
+                    None => {
+                        // If neither this node nor its relays would never ever be
+                        // reachable by any of our protocols
+                        // then we need to go through the outbound relay
+                        if let Some(relay_node) = this.relay_node() {
+                            // We have an outbound relay, lets use it
+                            return this.send_data(relay_node, data).await;
+                        }
+                        else {
+                            // We have no way to reach the node nor an outbound relay to use
+                            return Err("Can't reach this node".to_owned());
+                        }
+                    }
+                };
+
+            // If we aren't using an outbound relay to reach this node, what inbound method do we use?
+            match this.get_inbound_method(&best_node_info)? {
+                InboundMethod::Direct => {
+                    if let Some(dial_info) = best_node_info.dial_info_list.first() {
+                        this.net()
+                            .send_data_to_dial_info(dial_info.clone(), data)
+                            .await
+                            .map_err(logthru_net!())
+                    } else {
+                        // If we don't have a direct dial info that matches our protocol configuration
+                        // then we can't send to this node!
+                        Err("Can't send to this node yet".to_owned())
+                    }
+                }
+                InboundMethod::SignalReverse => this.do_reverse_connect(&best_node_info, data).await,
+                InboundMethod::SignalHolePunch => this.do_hole_punch(&best_node_info, data).await,
+                InboundMethod::Relay => {
+                    if let Some(rpi) = best_node_info.relay_peer_info {
+                        // Get the noderef for this inbound relay
+                        let inbound_relay_noderef = this.routing_table().register_node_with_node_info(rpi.node_id.key, rpi.node_info)?;
+                        // Send to the inbound relay
+                        this.send_data(inbound_relay_noderef, data).await
+                    } else {
+                        // If we don't have a relay dial info that matches our protocol configuration
+                        // then we can't send to this node!
+                        Err("Can't send to this relay".to_owned())
+                    }
+                }
+            }
+        })
     }
 
     // Called when a packet potentially containing an RPC envelope is received by a low-level
@@ -608,14 +798,7 @@ impl NetworkManager {
             // nodes are allowed to do this, for example PWA users
 
             let relay_nr = if self.check_client_whitelist(sender_id) {
-                // Cache the envelope information in the routing table
-                // let source_noderef = routing_table
-                //     .register_node_with_existing_connection(envelope.get_sender_id(), descriptor, ts)
-                //     .map_err(|e| format!("node id registration failed: {}", e))?;
-                // source_noderef.operate(|e| e.set_min_max_version(envelope.get_min_max_version()));
-
-                // If the sender is in the client whitelist, allow a full resolve_node,
-                // which effectively lets the client use our routing table
+                // Full relay allowed, do a full resolve_node
                 rpc.resolve_node(recipient_id).await.map_err(|e| {
                     format!(
                         "failed to resolve recipient node for relay, dropping outbound relayed packet...: {:?}",
@@ -630,27 +813,16 @@ impl NetworkManager {
                 // We should, because relays are chosen by nodes that have established connectivity and
                 // should be mutually in each others routing tables. The node needing the relay will be
                 // pinging this node regularly to keep itself in the routing table
-                if let Some(nr) = routing_table.lookup_node_ref(recipient_id) {
-                    // ensure we have dial_info for the entry already,
-                    if !nr.operate(|e| e.dial_infos().is_empty()) {
-                        nr
-                    } else {
-                        return Err(format!(
-                            "Inbound relay asked for recipient with no dial info: {}",
-                            recipient_id
-                        ));
-                    }
-                } else {
-                    return Err(format!(
+                routing_table.lookup_node_ref(recipient_id).ok_or_else(|| {
+                    format!(
                         "Inbound relay asked for recipient not in routing table: {}",
                         recipient_id
-                    ));
-                }
+                    )
+                })?
             };
 
-            // Re-send the packet to the leased node
-            self.net()
-                .send_data(relay_nr, data.to_vec())
+            // Relay the packet to the desired destination
+            self.send_data(relay_nr, data.to_vec())
                 .await
                 .map_err(|e| format!("failed to forward envelope: {}", e))?;
             // Inform caller that we dealt with the envelope, but did not process it locally
@@ -683,7 +855,7 @@ impl NetworkManager {
     }
 
     // Keep relays assigned and accessible
-    async fn relay_management_task_routine(self, last_ts: u64, cur_ts: u64) -> Result<(), String> {
+    async fn relay_management_task_routine(self, _last_ts: u64, cur_ts: u64) -> Result<(), String> {
         log_net!("--- network manager relay_management task");
 
         // Get our node's current network class and do the right thing
@@ -712,9 +884,9 @@ impl NetworkManager {
                     let mut inner = self.inner.lock();
 
                     // Register new outbound relay
-                    let nr = routing_table.register_node_with_dial_info(
+                    let nr = routing_table.register_node_with_node_info(
                         outbound_relay_peerinfo.node_id.key,
-                        &outbound_relay_peerinfo.dial_infos,
+                        outbound_relay_peerinfo.node_info,
                     )?;
                     inner.relay_node = Some(nr);
                 }

@@ -110,6 +110,9 @@ impl fmt::Display for VeilidAPIError {
 fn convert_rpc_error(x: RPCError) -> VeilidAPIError {
     match x {
         RPCError::Timeout => VeilidAPIError::Timeout,
+        RPCError::Unreachable(n) => VeilidAPIError::NodeNotFound {
+            node_id: NodeId::new(n),
+        },
         RPCError::Unimplemented(s) => VeilidAPIError::Unimplemented { message: s },
         RPCError::Internal(s) => VeilidAPIError::Internal { message: s },
         RPCError::Protocol(s) => VeilidAPIError::Internal { message: s },
@@ -324,50 +327,54 @@ pub struct NodeStatus {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct NodeInfo {
     pub network_class: NetworkClass,
-    pub dial_infos: Vec<DialInfo>,
-    pub relay_dial_infos: Vec<DialInfo>,
+    pub outbound_protocols: ProtocolSet,
+    pub dial_info_list: Vec<DialInfo>,
+    pub relay_peer_info: Option<Box<PeerInfo>>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct LocalNodeInfo {
+    pub outbound_protocols: ProtocolSet,
+    pub dial_info_list: Vec<DialInfo>,
 }
 
 impl NodeInfo {
-    pub fn first_filtered<F>(&self, filter: F) -> NodeInfo
+    pub fn first_filtered_dial_info<F>(&self, filter: F) -> Option<DialInfo>
     where
         F: Fn(&DialInfo) -> bool,
     {
-        let mut node_info = NodeInfo::default();
-        node_info.network_class = self.network_class;
-
-        for di in &self.dial_infos {
+        for di in &self.dial_info_list {
             if filter(di) {
-                node_info.dial_infos.push(di.clone());
-                break;
+                return Some(di.clone());
             }
         }
-        for di in &self.relay_dial_infos {
-            if filter(di) {
-                node_info.relay_dial_infos.push(di.clone());
-                break;
-            }
-        }
-        node_info
+        None
     }
-    pub fn all_filtered<F>(&self, filter: F) -> NodeInfo
+
+    pub fn all_filtered_dial_info<F>(&self, filter: F) -> Vec<DialInfo>
     where
         F: Fn(&DialInfo) -> bool,
     {
-        let mut node_info = NodeInfo::default();
-        node_info.network_class = self.network_class;
+        let mut dial_info_list = Vec::new();
 
-        for di in &self.dial_infos {
+        for di in &self.dial_info_list {
             if filter(di) {
-                node_info.dial_infos.push(di.clone());
+                dial_info_list.push(di.clone());
             }
         }
-        for di in &self.relay_dial_infos {
-            if filter(di) {
-                node_info.relay_dial_infos.push(di.clone());
-            }
-        }
-        node_info
+        dial_info_list
+    }
+
+    pub fn has_any_dial_info(&self) -> bool {
+        !self.dial_info_list.is_empty()
+            || !self
+                .relay_peer_info
+                .map(|rpi| rpi.node_info.has_direct_dial_info())
+                .unwrap_or_default()
+    }
+
+    pub fn has_direct_dial_info(&self) -> bool {
+        !self.dial_info_list.is_empty()
     }
 }
 
@@ -379,6 +386,28 @@ pub enum ProtocolType {
     TCP,
     WS,
     WSS,
+}
+
+#[derive(Copy, Clone, Debug, Default, Serialize, Deserialize)]
+pub struct ProtocolSet {
+    pub udp: bool,
+    pub tcp: bool,
+    pub ws: bool,
+    pub wss: bool,
+}
+
+impl ProtocolSet {
+    pub fn is_protocol_type_enabled(&self, protocol_type: ProtocolType) -> bool {
+        match protocol_type {
+            ProtocolType::UDP => self.udp,
+            ProtocolType::TCP => self.tcp,
+            ProtocolType::WS => self.ws,
+            ProtocolType::WSS => self.wss,
+        }
+    }
+    pub fn filter_dial_info(&self, di: &DialInfo) -> bool {
+        self.is_protocol_type_enabled(di.protocol_type())
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Ord, Eq, Hash, Serialize, Deserialize)]
@@ -1057,7 +1086,25 @@ cfg_if! {
             Arc<dyn Fn(ValueKey, Vec<u8>) -> SystemPinBoxFuture<()> + Send + Sync + 'static>;
     }
 }
+/////////////////////////////////////////////////////////////////////////////////////////////////////
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum SignalInfo {
+    HolePunch {
+        // UDP Hole Punch Request
+        receipt: Vec<u8>,    // Receipt to be returned after the hole punch
+        node_info: NodeInfo, // Sender's node info
+    },
+    ReverseConnect {
+        // Reverse Connection Request
+        receipt: Vec<u8>,    // Receipt to be returned by the reverse connection
+        node_info: NodeInfo, // Sender's node info
+    },
+    // XXX: WebRTC
+    // XXX: App-level signalling
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////
 #[derive(Clone, Debug, PartialOrd, PartialEq, Eq, Ord, Serialize, Deserialize)]
 pub enum TunnelMode {
     Raw,
@@ -1135,14 +1182,6 @@ impl SafetyRouteSpec {
 pub struct RoutingContextOptions {
     pub safety_route_spec: Option<SafetyRouteSpec>,
     pub private_route_spec: Option<PrivateRouteSpec>,
-}
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////
-
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub struct SearchDHTAnswer {
-    pub node_id: NodeId,
-    pub dial_info: Vec<DialInfo>,
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1397,7 +1436,7 @@ impl VeilidAPI {
             .map_err(map_rpc_error!())
     }
 
-    pub async fn search_dht(&self, node_id: NodeId) -> Result<SearchDHTAnswer, VeilidAPIError> {
+    pub async fn search_dht(&self, node_id: NodeId) -> Result<PeerInfo, VeilidAPIError> {
         let rpc_processor = self.rpc_processor()?;
         let config = self.config()?;
         let (count, fanout, timeout) = {
@@ -1414,18 +1453,12 @@ impl VeilidAPI {
             .await
             .map_err(map_rpc_error!())?;
 
-        let answer = node_ref.operate(|e| SearchDHTAnswer {
-            node_id: NodeId::new(node_ref.node_id()),
-            dial_info: e.dial_infos().to_vec(),
-        });
+        let answer = node_ref.peer_info();
 
         Ok(answer)
     }
 
-    pub async fn search_dht_multi(
-        &self,
-        node_id: NodeId,
-    ) -> Result<Vec<SearchDHTAnswer>, VeilidAPIError> {
+    pub async fn search_dht_multi(&self, node_id: NodeId) -> Result<Vec<PeerInfo>, VeilidAPIError> {
         let rpc_processor = self.rpc_processor()?;
         let config = self.config()?;
         let (count, fanout, timeout) = {
@@ -1442,14 +1475,7 @@ impl VeilidAPI {
             .await
             .map_err(map_rpc_error!())?;
 
-        let mut answer = Vec::<SearchDHTAnswer>::new();
-        for nr in node_refs {
-            let a = nr.operate(|e| SearchDHTAnswer {
-                node_id: NodeId::new(nr.node_id()),
-                dial_info: e.dial_infos().to_vec(),
-            });
-            answer.push(a);
-        }
+        let answer = node_refs.iter().map(|x| x.peer_info()).collect();
 
         Ok(answer)
     }

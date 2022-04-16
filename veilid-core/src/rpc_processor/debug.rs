@@ -4,10 +4,12 @@ use super::*;
 pub enum RPCError {
     Timeout,
     InvalidFormat,
+    Unreachable(DHTKey),
     Unimplemented(String),
     Protocol(String),
     Internal(String),
 }
+
 pub fn rpc_error_internal<T: AsRef<str>>(x: T) -> RPCError {
     error!("RPCError Internal: {}", x.as_ref());
     RPCError::Internal(x.as_ref().to_owned())
@@ -34,6 +36,7 @@ impl fmt::Display for RPCError {
         match self {
             RPCError::Timeout => write!(f, "[RPCError: Timeout]"),
             RPCError::InvalidFormat => write!(f, "[RPCError: InvalidFormat]"),
+            RPCError::Unreachable(k) => write!(f, "[RPCError: Unreachable({})]", k),
             RPCError::Unimplemented(s) => write!(f, "[RPCError: Unimplemented({})]", s),
             RPCError::Protocol(s) => write!(f, "[RPCError: Protocol({})]", s),
             RPCError::Internal(s) => write!(f, "[RPCError: Internal({})]", s),
@@ -202,37 +205,55 @@ impl RPCProcessor {
                     }
                 };
 
-                let dil_reader = match fnqr.reborrow().get_dial_info_list() {
-                    Ok(dilr) => dilr,
+                let sni_reader = match fnqr.reborrow().get_sender_node_info() {
+                    Ok(snir) => snir,
                     Err(e) => {
-                        return format!("(invalid dial info list: {})", e);
+                        return format!("(invalid sender node info: {})", e);
                     }
                 };
-                let mut dial_infos =
-                    Vec::<DialInfo>::with_capacity(match dil_reader.len().try_into() {
-                        Ok(v) => v,
-                        Err(e) => {
-                            return format!("(too many dial infos: {})", e);
-                        }
-                    });
-                for di in dil_reader.iter() {
-                    dial_infos.push(match decode_dial_info(&di) {
-                        Ok(v) => v,
-                        Err(e) => {
-                            return format!("(unable to decode dial info: {})", e);
-                        }
-                    });
-                }
+                let sender_node_info = match decode_node_info(&sni_reader, true) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        return format!("(unable to decode node info: {})", e);
+                    }
+                };
 
                 let node_id = decode_public_key(&nidr);
                 format!(
-                    "FindNodeQ: node_id={} dial_infos={:?}",
+                    "FindNodeQ: node_id={} sender_node_info={:#?}",
                     node_id.encode(),
-                    dial_infos
+                    sender_node_info
                 )
             }
-            veilid_capnp::operation::detail::FindNodeA(_) => {
-                format!("FindNodeA")
+            veilid_capnp::operation::detail::FindNodeA(d) => {
+                let fnar = match d {
+                    Ok(fnar) => fnar,
+                    Err(e) => {
+                        return format!("(invalid detail: {})", e);
+                    }
+                };
+
+                let p_reader = match fnar.reborrow().get_peers() {
+                    Ok(pr) => pr,
+                    Err(e) => {
+                        return format!("(invalid sender node info: {})", e);
+                    }
+                };
+                let mut peers = Vec::<PeerInfo>::with_capacity(match p_reader.len().try_into() {
+                    Ok(v) => v,
+                    Err(e) => return format!("invalid peer count: {}", e),
+                });
+                for p in p_reader.iter() {
+                    let peer_info = match decode_peer_info(&p, true) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            return format!("(unable to decode peer info: {})", e);
+                        }
+                    };
+                    peers.push(peer_info);
+                }
+
+                format!("FindNodeA: peers={:#?}", peers)
             }
             veilid_capnp::operation::detail::Route(_) => {
                 format!("Route")
@@ -270,11 +291,8 @@ impl RPCProcessor {
             veilid_capnp::operation::detail::FindBlockA(_) => {
                 format!("FindBlockA")
             }
-            veilid_capnp::operation::detail::SignalQ(_) => {
-                format!("SignalQ")
-            }
-            veilid_capnp::operation::detail::SignalA(_) => {
-                format!("SignalA")
+            veilid_capnp::operation::detail::Signal(_) => {
+                format!("Signal")
             }
             veilid_capnp::operation::detail::ReturnReceipt(_) => {
                 format!("ReturnReceipt")

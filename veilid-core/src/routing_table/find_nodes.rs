@@ -12,7 +12,6 @@ impl RoutingTable {
     // Returns noderefs are are scoped to that address type only
     pub fn find_fast_nodes_filtered(&self, dial_info_filter: &DialInfoFilter) -> Vec<NodeRef> {
         let dial_info_filter1 = dial_info_filter.clone();
-        let dial_info_filter2 = dial_info_filter.clone();
         self.find_fastest_nodes(
             // filter
             Some(Box::new(
@@ -21,50 +20,53 @@ impl RoutingTable {
                         .1
                         .as_ref()
                         .unwrap()
-                        .first_filtered_node_info(|di| di.matches_filter(&dial_info_filter1))
+                        .node_info()
+                        .first_filtered_dial_info(|di| di.matches_filter(&dial_info_filter1))
                         .is_some()
                 },
             )),
             // transform
-            |e| {
-                NodeRef::new_filtered(
-                    self.clone(),
-                    *e.0,
-                    e.1.as_mut().unwrap(),
-                    dial_info_filter2.clone(),
-                )
-            },
+            |e| NodeRef::new(self.clone(), *e.0, e.1.as_mut().unwrap()),
         )
     }
 
-    pub fn get_own_peer_info(&self, scope: PeerScope) -> PeerInfo {
-        let filter = DialInfoFilter::scoped(scope);
+    pub fn get_own_peer_info(&self) -> PeerInfo {
         let netman = self.network_manager();
+        let enable_local_peer_scope = netman.config().get().network.enable_local_peer_scope;
         let relay_node = netman.relay_node();
         PeerInfo {
             node_id: NodeId::new(self.node_id()),
             node_info: NodeInfo {
                 network_class: netman.get_network_class().unwrap_or(NetworkClass::Invalid),
-                dial_infos: self
-                    .all_filtered_dial_info_details(&filter)
-                    .iter()
-                    .map(|did| did.dial_info.clone())
-                    .collect(),
-                relay_dial_infos: relay_node
-                    .map(|rn| rn.node_info().dial_infos)
-                    .unwrap_or_default(),
+                outbound_protocols: netman.get_protocol_config().unwrap_or_default().outbound,
+                dial_info_list: if !enable_local_peer_scope {
+                    self.public_dial_info_details()
+                        .iter()
+                        .map(|did| did.dial_info.clone())
+                        .collect()
+                } else {
+                    self.public_dial_info_details()
+                        .iter()
+                        .map(|did| did.dial_info.clone())
+                        .chain(
+                            self.interface_dial_info_details()
+                                .iter()
+                                .map(|did| did.dial_info.clone()),
+                        )
+                        .collect()
+                },
+                relay_peer_info: relay_node.map(|rn| Box::new(rn.peer_info())),
             },
         }
     }
 
     pub fn transform_to_peer_info(
         kv: &mut (&DHTKey, Option<&mut BucketEntry>),
-        scope: PeerScope,
         own_peer_info: &PeerInfo,
     ) -> PeerInfo {
         match &kv.1 {
             None => own_peer_info.clone(),
-            Some(entry) => entry.get_peer_info(*kv.0, scope),
+            Some(entry) => entry.peer_info(*kv.0),
         }
     }
 

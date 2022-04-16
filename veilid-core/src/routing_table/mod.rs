@@ -48,7 +48,8 @@ struct RoutingTableInner {
     node_id: DHTKey,
     node_id_secret: DHTKeySecret,
     buckets: Vec<Bucket>,
-    dial_info_details: Vec<DialInfoDetail>,
+    public_dial_info_details: Vec<DialInfoDetail>,
+    interface_dial_info_details: Vec<DialInfoDetail>,
     bucket_entry_count: usize,
 
     // Waiters
@@ -89,7 +90,8 @@ impl RoutingTable {
             node_id: DHTKey::default(),
             node_id_secret: DHTKeySecret::default(),
             buckets: Vec::new(),
-            dial_info_details: Vec::new(),
+            public_dial_info_details: Vec::new(),
+            interface_dial_info_details: Vec::new(),
             bucket_entry_count: 0,
             eventual_changed_dial_info: Eventual::new(),
             self_latency_stats_accounting: LatencyStatsAccounting::new(),
@@ -163,40 +165,42 @@ impl RoutingTable {
         self.inner.lock().node_id_secret
     }
 
-    pub fn has_local_dial_info(&self) -> bool {
-        self.first_filtered_dial_info_detail(&DialInfoFilter::local())
-            .is_some()
+    pub fn has_interface_dial_info(&self) -> bool {
+        !self.inner.lock().interface_dial_info_details.is_empty()
     }
 
-    pub fn has_global_dial_info(&self) -> bool {
-        self.first_filtered_dial_info_detail(&DialInfoFilter::global())
-            .is_some()
+    pub fn has_public_dial_info(&self) -> bool {
+        !self.inner.lock().public_dial_info_details.is_empty()
     }
 
-    pub fn global_dial_info_details(&self) -> Vec<DialInfoDetail> {
-        self.all_filtered_dial_info_details(&DialInfoFilter::global())
+    pub fn public_dial_info_details(&self) -> Vec<DialInfoDetail> {
+        self.inner.lock().public_dial_info_details.clone()
     }
 
-    pub fn local_dial_info_details(&self) -> Vec<DialInfoDetail> {
-        self.all_filtered_dial_info_details(&DialInfoFilter::local())
+    pub fn interface_dial_info_details(&self) -> Vec<DialInfoDetail> {
+        self.inner.lock().interface_dial_info_details.clone()
     }
 
-    pub fn first_filtered_dial_info_detail(
+    pub fn first_public_filtered_dial_info_detail(
         &self,
         filter: &DialInfoFilter,
     ) -> Option<DialInfoDetail> {
         let inner = self.inner.lock();
-        for did in &inner.dial_info_details {
+        for did in &inner.public_dial_info_details {
             if did.matches_filter(filter) {
                 return Some(did.clone());
             }
         }
         None
     }
-    pub fn all_filtered_dial_info_details(&self, filter: &DialInfoFilter) -> Vec<DialInfoDetail> {
+
+    pub fn all_public_filtered_dial_info_details(
+        &self,
+        filter: &DialInfoFilter,
+    ) -> Vec<DialInfoDetail> {
         let inner = self.inner.lock();
         let mut ret = Vec::new();
-        for did in &inner.dial_info_details {
+        for did in &inner.public_dial_info_details {
             if did.matches_filter(filter) {
                 ret.push(did.clone());
             }
@@ -204,16 +208,48 @@ impl RoutingTable {
         ret
     }
 
-    pub fn register_dial_info(
+    pub fn first_interface_filtered_dial_info_detail(
+        &self,
+        filter: &DialInfoFilter,
+    ) -> Option<DialInfoDetail> {
+        let inner = self.inner.lock();
+        for did in &inner.interface_dial_info_details {
+            if did.matches_filter(filter) {
+                return Some(did.clone());
+            }
+        }
+        None
+    }
+
+    pub fn all_interface_filtered_dial_info_details(
+        &self,
+        filter: &DialInfoFilter,
+    ) -> Vec<DialInfoDetail> {
+        let inner = self.inner.lock();
+        let mut ret = Vec::new();
+        for did in &inner.interface_dial_info_details {
+            if did.matches_filter(filter) {
+                ret.push(did.clone());
+            }
+        }
+        ret
+    }
+
+    pub fn register_public_dial_info(
         &self,
         dial_info: DialInfo,
         origin: DialInfoOrigin,
         network_class: Option<NetworkClass>,
     ) {
         let timestamp = get_timestamp();
+        let enable_local_peer_scope = {
+            let c = self.network_manager().config().get();
+            c.network.enable_local_peer_scope
+        };
+
         let mut inner = self.inner.lock();
 
-        inner.dial_info_details.push(DialInfoDetail {
+        inner.public_dial_info_details.push(DialInfoDetail {
             dial_info: dial_info.clone(),
             origin,
             network_class,
@@ -222,18 +258,11 @@ impl RoutingTable {
 
         // Re-sort dial info to endure preference ordering
         inner
-            .dial_info_details
+            .public_dial_info_details
             .sort_by(|a, b| a.dial_info.cmp(&b.dial_info));
 
         info!(
-            "{}Dial Info: {}",
-            if dial_info.is_local() {
-                "Local "
-            } else if dial_info.is_global() {
-                "Global "
-            } else {
-                "Other "
-            },
+            "Public Dial Info: {}",
             NodeDialInfo {
                 node_id: NodeId::new(inner.node_id),
                 dial_info
@@ -246,9 +275,44 @@ impl RoutingTable {
         Self::trigger_changed_dial_info(&mut *inner);
     }
 
+    pub fn register_interface_dial_info(&self, dial_info: DialInfo, origin: DialInfoOrigin) {
+        let timestamp = get_timestamp();
+        let enable_local_peer_scope = {
+            let c = self.network_manager().config().get();
+            c.network.enable_local_peer_scope
+        };
+
+        let mut inner = self.inner.lock();
+
+        inner.interface_dial_info_details.push(DialInfoDetail {
+            dial_info: dial_info.clone(),
+            origin,
+            network_class: None,
+            timestamp,
+        });
+
+        // Re-sort dial info to endure preference ordering
+        inner
+            .interface_dial_info_details
+            .sort_by(|a, b| a.dial_info.cmp(&b.dial_info));
+
+        info!(
+            "Interface Dial Info: {}",
+            NodeDialInfo {
+                node_id: NodeId::new(inner.node_id),
+                dial_info
+            }
+            .to_string(),
+        );
+        debug!("    Origin: {:?}", origin);
+
+        Self::trigger_changed_dial_info(&mut *inner);
+    }
+
     pub fn clear_dial_info_details(&self) {
         let mut inner = self.inner.lock();
-        inner.dial_info_details.clear();
+        inner.public_dial_info_details.clear();
+        inner.interface_dial_info_details.clear();
         Self::trigger_changed_dial_info(&mut *inner);
     }
 
@@ -262,10 +326,10 @@ impl RoutingTable {
     }
 
     fn trigger_changed_dial_info(inner: &mut RoutingTableInner) {
-        // Clear 'seen dial info' bits on routing table entries so we know to ping them
+        // Clear 'seen node info' bits on routing table entries so we know to ping them
         for b in &mut inner.buckets {
             for e in b.entries_mut() {
-                e.1.set_seen_our_dial_info(false);
+                e.1.set_seen_our_node_info(false);
             }
         }
         //
@@ -608,9 +672,10 @@ impl RoutingTable {
                 .register_node_with_node_info(
                     k,
                     NodeInfo {
-                        network_class: NetworkClass::Server,
-                        dial_infos: v,
-                        relay_dial_infos: Default::default(),
+                        network_class: NetworkClass::Server, // Bootstraps are always full servers
+                        outbound_protocols: ProtocolSet::default(), // Bootstraps do not participate in relaying and will not make outbound requests
+                        dial_info_list: v, // Dial info is as specified in the bootstrap list
+                        relay_peer_info: None, // Bootstraps never require a relay themselves
                     },
                 )
                 .map_err(logthru_rtab!("Couldn't add bootstrap node: {}", k))?;

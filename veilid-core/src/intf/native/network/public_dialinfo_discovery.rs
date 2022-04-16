@@ -60,9 +60,15 @@ impl Network {
             .with_protocol_type(protocol_type)
             .with_address_type(address_type);
         routing_table
-            .all_filtered_dial_info_details(&filter)
+            .interface_dial_info_details()
             .iter()
-            .map(|did| did.dial_info.socket_address())
+            .filter_map(|did| {
+                if did.dial_info.matches_filter(&filter) {
+                    Some(did.dial_info.socket_address())
+                } else {
+                    None
+                }
+            })
             .collect()
     }
 
@@ -130,7 +136,7 @@ impl Network {
                     .await
                 {
                     // Add public dial info with Server network class
-                    routing_table.register_dial_info(
+                    routing_table.register_public_dial_info(
                         external1_dial_info,
                         DialInfoOrigin::Discovered,
                         Some(NetworkClass::Server),
@@ -151,7 +157,7 @@ impl Network {
                 {
                     // Got a port mapping, let's use it
                     let external_mapped_dial_info = DialInfo::udp(external_mapped);
-                    routing_table.register_dial_info(
+                    routing_table.register_public_dial_info(
                         external_mapped_dial_info,
                         DialInfoOrigin::Mapped,
                         Some(NetworkClass::Mapped),
@@ -174,7 +180,7 @@ impl Network {
                     {
                         // Yes, another machine can use the dial info directly, so Full Cone
                         // Add public dial info with full cone NAT network class
-                        routing_table.register_dial_info(
+                        routing_table.register_public_dial_info(
                             external1_dial_info,
                             DialInfoOrigin::Discovered,
                             Some(NetworkClass::FullConeNAT),
@@ -224,14 +230,14 @@ impl Network {
                                     .await
                                 {
                                     // Got a reply from a non-default port, which means we're only address restricted
-                                    routing_table.register_dial_info(
+                                    routing_table.register_public_dial_info(
                                         external1_dial_info,
                                         DialInfoOrigin::Discovered,
                                         Some(NetworkClass::AddressRestrictedNAT),
                                     );
                                 } else {
                                     // Didn't get a reply from a non-default port, which means we are also port restricted
-                                    routing_table.register_dial_info(
+                                    routing_table.register_public_dial_info(
                                         external1_dial_info,
                                         DialInfoOrigin::Discovered,
                                         Some(NetworkClass::PortRestrictedNAT),
@@ -254,6 +260,13 @@ impl Network {
 
     pub async fn update_tcpv4_dialinfo_task_routine(self, _l: u64, _t: u64) -> Result<(), String> {
         log_net!("looking for tcpv4 public dial info");
+        // xxx
+        //Err("unimplemented".to_owned())
+        Ok(())
+    }
+
+    pub async fn update_wsv4_dialinfo_task_routine(self, _l: u64, _t: u64) -> Result<(), String> {
+        log_net!("looking for wsv4 public dial info");
         // xxx
         //Err("unimplemented".to_owned())
         Ok(())

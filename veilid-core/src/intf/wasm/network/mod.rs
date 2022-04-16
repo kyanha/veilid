@@ -75,7 +75,7 @@ impl Network {
         res
     }
 
-    async fn send_data_to_existing_connection(
+    pub async fn send_data_to_existing_connection(
         &self,
         descriptor: ConnectionDescriptor,
         data: Vec<u8>,
@@ -135,31 +135,6 @@ impl Network {
                 .stats_packet_sent(dial_info.to_ip_addr(), data_len as u64);
         }
         res
-    }
-
-    pub async fn send_data(&self, node_ref: NodeRef, data: Vec<u8>) -> Result<(), String> {
-        // First try to send data to the last socket we've seen this peer on
-        let data = if let Some(descriptor) = node_ref.last_connection() {
-            match self
-                .clone()
-                .send_data_to_existing_connection(descriptor, data)
-                .await?
-            {
-                None => {
-                    return Ok(());
-                }
-                Some(d) => d,
-            }
-        } else {
-            data
-        };
-
-        // If that fails, try to make a connection or reach out to the peer via its dial info
-        let dial_info = node_ref
-            .best_dial_info()
-            .ok_or_else(|| "couldn't send data, no dial info or peer address".to_owned())?;
-
-        self.send_data_to_dial_info(dial_info, data).await
     }
 
     /////////////////////////////////////////////////////////////////

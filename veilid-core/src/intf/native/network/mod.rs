@@ -66,6 +66,7 @@ struct NetworkUnlockedInner {
     // Background processes
     update_udpv4_dialinfo_task: TickTask,
     update_tcpv4_dialinfo_task: TickTask,
+    update_wsv4_dialinfo_task: TickTask,
 }
 
 #[derive(Clone)]
@@ -107,6 +108,7 @@ impl Network {
         NetworkUnlockedInner {
             update_udpv4_dialinfo_task: TickTask::new(1),
             update_tcpv4_dialinfo_task: TickTask::new(1),
+            update_wsv4_dialinfo_task: TickTask::new(1),
         }
     }
 
@@ -133,6 +135,15 @@ impl Network {
                 .update_tcpv4_dialinfo_task
                 .set_routine(move |l, t| {
                     Box::pin(this2.clone().update_tcpv4_dialinfo_task_routine(l, t))
+                });
+        }
+        // Set ws dialinfo tick task
+        {
+            let this2 = this.clone();
+            this.unlocked_inner
+                .update_wsv4_dialinfo_task
+                .set_routine(move |l, t| {
+                    Box::pin(this2.clone().update_wsv4_dialinfo_task_routine(l, t))
                 });
         }
 
@@ -289,7 +300,7 @@ impl Network {
         res
     }
 
-    async fn send_data_to_existing_connection(
+    pub async fn send_data_to_existing_connection(
         &self,
         descriptor: ConnectionDescriptor,
         data: Vec<u8>,
@@ -380,41 +391,6 @@ impl Network {
         res
     }
 
-    // Send data to node
-    // We may not have dial info for a node, but have an existing connection for it
-    // because an inbound connection happened first, and no FindNodeQ has happened to that
-    // node yet to discover its dial info. The existing connection should be tried first
-    // in this case.
-    pub async fn send_data(&self, node_ref: NodeRef, data: Vec<u8>) -> Result<(), String> {
-        // First try to send data to the last socket we've seen this peer on
-        let data = if let Some(descriptor) = node_ref.last_connection() {
-            match self
-                .clone()
-                .send_data_to_existing_connection(descriptor, data)
-                .await
-                .map_err(logthru_net!())?
-            {
-                None => {
-                    return Ok(());
-                }
-                Some(d) => d,
-            }
-        } else {
-            data
-        };
-
-        // If that fails, try to make a connection or reach out to the peer via its dial info
-        let node_info = node_ref
-            .best_node_info()
-            .ok_or_else(|| "couldn't send data, no dial info or peer address".to_owned())?;
-
-        xxx write logic to determine if a relay needs to be used first xxx
-
-        self.send_data_to_dial_info(dial_info, data)
-            .await
-            .map_err(logthru_net!())
-    }
-
     /////////////////////////////////////////////////////////////////
 
     pub fn get_protocol_config(&self) -> Option<ProtocolConfig> {
@@ -433,28 +409,33 @@ impl Network {
         let protocol_config = {
             let c = self.config.get();
             ProtocolConfig {
-                udp_enabled: c.network.protocol.udp.enabled && c.capabilities.protocol_udp,
-                tcp_connect: c.network.protocol.tcp.connect && c.capabilities.protocol_connect_tcp,
-                tcp_listen: c.network.protocol.tcp.listen && c.capabilities.protocol_accept_tcp,
-                ws_connect: c.network.protocol.ws.connect && c.capabilities.protocol_connect_ws,
-                ws_listen: c.network.protocol.ws.listen && c.capabilities.protocol_accept_ws,
-                wss_connect: c.network.protocol.wss.connect && c.capabilities.protocol_connect_wss,
-                wss_listen: c.network.protocol.wss.listen && c.capabilities.protocol_accept_wss,
+                inbound: ProtocolSet {
+                    udp: c.network.protocol.udp.enabled && c.capabilities.protocol_udp,
+                    tcp: c.network.protocol.tcp.listen && c.capabilities.protocol_accept_tcp,
+                    ws: c.network.protocol.ws.listen && c.capabilities.protocol_accept_ws,
+                    wss: c.network.protocol.wss.listen && c.capabilities.protocol_accept_wss,
+                },
+                outbound: ProtocolSet {
+                    udp: c.network.protocol.udp.enabled && c.capabilities.protocol_udp,
+                    tcp: c.network.protocol.tcp.connect && c.capabilities.protocol_connect_tcp,
+                    ws: c.network.protocol.ws.connect && c.capabilities.protocol_connect_ws,
+                    wss: c.network.protocol.wss.connect && c.capabilities.protocol_connect_wss,
+                },
             }
         };
         self.inner.lock().protocol_config = Some(protocol_config);
 
         // start listeners
-        if protocol_config.udp_enabled {
+        if protocol_config.inbound.udp {
             self.start_udp_listeners().await?;
         }
-        if protocol_config.ws_listen {
+        if protocol_config.inbound.ws {
             self.start_ws_listeners().await?;
         }
-        if protocol_config.wss_listen {
+        if protocol_config.inbound.wss {
             self.start_wss_listeners().await?;
         }
-        if protocol_config.tcp_listen {
+        if protocol_config.inbound.tcp {
             self.start_tcp_listeners().await?;
         }
 
@@ -503,7 +484,7 @@ impl Network {
 
         // Go through our global dialinfo and see what our best network class is
         let mut network_class = NetworkClass::Invalid;
-        for did in inner.routing_table.global_dial_info_details() {
+        for did in inner.routing_table.public_dial_info_details() {
             if let Some(nc) = did.network_class {
                 if nc < network_class {
                     network_class = nc;
@@ -521,6 +502,7 @@ impl Network {
             protocol_config,
             udp_static_public_dialinfo,
             tcp_static_public_dialinfo,
+            ws_static_public_dialinfo,
             network_class,
         ) = {
             let inner = self.inner.lock();
@@ -529,6 +511,7 @@ impl Network {
                 inner.protocol_config.unwrap_or_default(),
                 inner.udp_static_public_dialinfo,
                 inner.tcp_static_public_dialinfo,
+                inner.ws_static_public_dialinfo,
                 inner.network_class.unwrap_or(NetworkClass::Invalid),
             )
         };
@@ -538,15 +521,15 @@ impl Network {
         // If we can have public dialinfo, or we haven't figured out our network class yet,
         // and we're active for UDP, we should attempt to get our public dialinfo sorted out
         // and assess our network class if we haven't already
-        if protocol_config.udp_enabled
+        if protocol_config.inbound.udp
             && !udp_static_public_dialinfo
             && (network_class.inbound_capable() || network_class == NetworkClass::Invalid)
         {
-            let filter = DialInfoFilter::global()
+            let filter = DialInfoFilter::all()
                 .with_protocol_type(ProtocolType::UDP)
                 .with_address_type(AddressType::IPV4);
             let need_udpv4_dialinfo = routing_table
-                .first_filtered_dial_info_detail(&filter)
+                .first_public_filtered_dial_info_detail(&filter)
                 .is_none();
             if need_udpv4_dialinfo {
                 // If we have no public UDPv4 dialinfo, then we need to run a NAT check
@@ -559,15 +542,15 @@ impl Network {
         }
 
         // Same but for TCPv4
-        if protocol_config.tcp_listen
+        if protocol_config.inbound.tcp
             && !tcp_static_public_dialinfo
             && (network_class.inbound_capable() || network_class == NetworkClass::Invalid)
         {
-            let filter = DialInfoFilter::global()
+            let filter = DialInfoFilter::all()
                 .with_protocol_type(ProtocolType::TCP)
                 .with_address_type(AddressType::IPV4);
             let need_tcpv4_dialinfo = routing_table
-                .first_filtered_dial_info_detail(&filter)
+                .first_public_filtered_dial_info_detail(&filter)
                 .is_none();
             if need_tcpv4_dialinfo {
                 // If we have no public TCPv4 dialinfo, then we need to run a NAT check
@@ -576,6 +559,24 @@ impl Network {
                     .update_tcpv4_dialinfo_task
                     .tick()
                     .await?;
+            }
+        }
+
+        // Same but for WSv4
+        if protocol_config.inbound.ws
+            && !ws_static_public_dialinfo
+            && (network_class.inbound_capable() || network_class == NetworkClass::Invalid)
+        {
+            let filter = DialInfoFilter::all()
+                .with_protocol_type(ProtocolType::WS)
+                .with_address_type(AddressType::IPV4);
+            let need_wsv4_dialinfo = routing_table
+                .first_public_filtered_dial_info_detail(&filter)
+                .is_none();
+            if need_wsv4_dialinfo {
+                // If we have no public TCPv4 dialinfo, then we need to run a NAT check
+                // ensure the singlefuture is running for this
+                self.unlocked_inner.update_wsv4_dialinfo_task.tick().await?;
             }
         }
 

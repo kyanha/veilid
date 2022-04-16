@@ -227,7 +227,7 @@ impl Network {
 
         for ip_addr in ip_addrs {
             let addr = SocketAddr::new(ip_addr, port);
-            let ldi_addrs = Self::translate_unspecified_address(&*(self.inner.lock()), &addr);
+            let idi_addrs = Self::translate_unspecified_address(&*(self.inner.lock()), &addr);
 
             // see if we've already bound to this already
             // if not, spawn a listener
@@ -262,9 +262,9 @@ impl Network {
                     ));
             }
 
-            // Return local dial infos we listen on
-            for ldi_addr in ldi_addrs {
-                out.push(SocketAddress::from_socket_addr(ldi_addr));
+            // Return interface dial infos we listen on
+            for idi_addr in idi_addrs {
+                out.push(SocketAddress::from_socket_addr(idi_addr));
             }
         }
 

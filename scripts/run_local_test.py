@@ -50,16 +50,16 @@ def tee(prefix, infile, *files):
     return t
 
 
-def read_until_local_dial_info(proc, proto):
+def read_until_interface_dial_info(proc, proto):
 
-    local_dial_info_str = b"Local Dial Info: "
+    interface_dial_info_str = b"Interface Dial Info: "
     for ln in iter(proc.stdout.readline, ""):
         sys.stdout.buffer.write(ln)
         sys.stdout.flush()
 
-        idx = ln.find(local_dial_info_str)
+        idx = ln.find(interface_dial_info_str)
         if idx != -1:
-            idx += len(local_dial_info_str)
+            idx += len(interface_dial_info_str)
             di = ln[idx:]
             if b"@"+bytes(proto)+b"|" in di:
                 return di.decode("utf-8").strip()
@@ -130,7 +130,7 @@ def main():
         main_args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     print(">>> MAIN NODE PID={}".format(main_proc.pid))
 
-    main_di = read_until_local_dial_info(
+    main_di = read_until_interface_dial_info(
         main_proc, bytes(args.protocol, 'utf-8'))
 
     print(">>> MAIN DIAL INFO={}".format(main_di))

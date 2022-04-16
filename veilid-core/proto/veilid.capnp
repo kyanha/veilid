@@ -107,6 +107,19 @@ struct NodeDialInfo {
     dialInfo                @1  :DialInfo;              # how to get to the node
 }
 
+# Signals
+##############################
+
+struct SignalInfoHolePunch {
+    receipt                 @0  :Data;                  # receipt to return with hole punch
+    nodeInfo                @1  :NodeInfo;              # node info of the signal sender for hole punch attempt
+}
+
+struct SignalInfoReverseConnect {
+    receipt                 @0  :Data;                  # receipt to return with reverse connect
+    nodeInfo                @1  :NodeInfo;              # node info of the signal sender for reverse connect attempt
+}
+
 # Private Routes
 ##############################
 
@@ -186,10 +199,18 @@ struct NodeStatus {
     willValidateDialInfo    @4  :Bool;
 }
 
+struct ProtocolSet {
+    udp                     @0  :Bool;
+    tcp                     @1  :Bool;
+    ws                      @2  :Bool;
+    wss                     @3  :Bool;
+}
+
 struct NodeInfo {
     networkClass            @0  :NetworkClass;          # network class of this node
-    dialInfoList            @1  :List(DialInfo);        # dial info for this node
-    relayDialInfoList       @2  :List(DialInfo);        # relay dial info for this node
+    outboundProtocols       @1  :ProtocolSet;             # protocols that can go outbound
+    dialInfoList            @2  :List(DialInfo);        # inbound dial info for this node
+    relayPeerInfo           @3  :PeerInfo;              # (optional) relay peer info for this node
 }
 
 struct SenderInfo {
@@ -214,8 +235,7 @@ struct OperationReturnReceipt {
 
 struct OperationFindNodeQ {    
     nodeId                  @0  :NodeID;                # node id to locate
-    dialInfoList            @1  :List(DialInfo);        # dial info for the node asking the question
-    relayDialInfoList       @2  :List(DialInfo);        # relay dial info for the node asking the question
+    senderNodeInfo          @1  :NodeInfo;              # dial info for the node asking the question
 }
 
 struct PeerInfo {
@@ -297,12 +317,11 @@ struct OperationFindBlockA {
     peers                   @2  :List(PeerInfo);        # returned 'closer peer' information 
 }
 
-struct OperationSignalQ {
-    data                    @0  :Data;                  # the signalling system request
-}
-
-struct OperationSignalA {
-    data                    @0  :Data;                  # the signalling system response
+struct OperationSignal {
+    union {
+        holePunch           @0  :SignalInfoHolePunch;
+        reverseConnect      @1  :SignalInfoReverseConnect;
+    }
 }
 
 enum TunnelEndpointMode {
@@ -318,9 +337,8 @@ enum TunnelError {
 }
 
 struct TunnelEndpoint {
-    nodeId                  @0  :NodeID;                # node id
-    dialInfoList            @1  :List(DialInfo);        # how to reach the node
-    mode                    @2  :TunnelEndpointMode;    # what kind of endpoint this is
+    mode                    @0  :TunnelEndpointMode;    # what kind of endpoint this is
+    peerInfo                @1  :PeerInfo;                # node id and dialinfo
 }
 
 struct FullTunnel {
@@ -406,17 +424,15 @@ struct Operation {
         findBlockQ          @19 :OperationFindBlockQ;
         findBlockA          @20 :OperationFindBlockA; 
     
-        signalQ             @21 :OperationSignalQ;
-        signalA             @22 :OperationSignalA;
-        
-        returnReceipt       @23 :OperationReturnReceipt;
+        signal              @21 :OperationSignal;
+        returnReceipt       @22 :OperationReturnReceipt;
         
         # Tunnel operations
-        startTunnelQ        @24 :OperationStartTunnelQ;
-        startTunnelA        @25 :OperationStartTunnelA;
-        completeTunnelQ     @26 :OperationCompleteTunnelQ;
-        completeTunnelA     @27 :OperationCompleteTunnelA;
-        cancelTunnelQ       @28 :OperationCancelTunnelQ; 
-        cancelTunnelA       @29 :OperationCancelTunnelA;
+        startTunnelQ        @23 :OperationStartTunnelQ;
+        startTunnelA        @24 :OperationStartTunnelA;
+        completeTunnelQ     @25 :OperationCompleteTunnelQ;
+        completeTunnelA     @26 :OperationCompleteTunnelA;
+        cancelTunnelQ       @27 :OperationCancelTunnelQ; 
+        cancelTunnelA       @28 :OperationCancelTunnelA;
     }
 }

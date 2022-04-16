@@ -173,13 +173,13 @@ impl Network {
                 .inbound_udp_protocol_handlers
                 .contains_key(&addr)
             {
-                let ldi_addrs = Self::translate_unspecified_address(&*self.inner.lock(), &addr);
+                let idi_addrs = Self::translate_unspecified_address(&*self.inner.lock(), &addr);
 
                 self.clone().create_udp_inbound_socket(addr).await?;
 
-                // Return local dial infos we listen on
-                for ldi_addr in ldi_addrs {
-                    out.push(DialInfo::udp_from_socketaddr(ldi_addr));
+                // Return interface dial infos we listen on
+                for idi_addr in idi_addrs {
+                    out.push(DialInfo::udp_from_socketaddr(idi_addr));
                 }
             }
         }

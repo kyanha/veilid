@@ -287,22 +287,23 @@ impl Network {
             "UDP: starting listeners on port {} at {:?}",
             udp_port, ip_addrs
         );
-        let dial_infos = self.create_udp_inbound_sockets(ip_addrs, udp_port).await?;
+        let dial_info_list = self.create_udp_inbound_sockets(ip_addrs, udp_port).await?;
         let mut static_public = false;
-        for di in &dial_infos {
-            // Register local dial info only here if we specify a public address
+        for di in &dial_info_list {
+            // If the local interface address is global,
+            // register global dial info if no public address is specified
             if public_address.is_none() && di.is_global() {
-                // Register global dial info if no public address is specified
-                routing_table.register_dial_info(
+                routing_table.register_public_dial_info(
                     di.clone(),
                     DialInfoOrigin::Static,
                     Some(NetworkClass::Server),
                 );
+
                 static_public = true;
-            } else if di.is_local() {
-                // Register local dial info
-                routing_table.register_dial_info(di.clone(), DialInfoOrigin::Static, None);
             }
+
+            // Register interface dial info as well since the address is on the local interface
+            routing_table.register_interface_dial_info(di.clone(), DialInfoOrigin::Static);
         }
 
         // Add static public dialinfo if it's configured
@@ -315,7 +316,7 @@ impl Network {
 
             // Add all resolved addresses as public dialinfo
             for pdi_addr in &mut public_sockaddrs {
-                routing_table.register_dial_info(
+                routing_table.register_public_dial_info(
                     DialInfo::udp_from_socketaddr(pdi_addr),
                     DialInfoOrigin::Static,
                     Some(NetworkClass::Server),
@@ -375,22 +376,21 @@ impl Network {
                 let di = DialInfo::try_ws(socket_address, global_url)
                     .map_err(map_to_string)
                     .map_err(logthru_net!(error))?;
-                routing_table.register_dial_info(
+                routing_table.register_public_dial_info(
                     di,
                     DialInfoOrigin::Static,
                     Some(NetworkClass::Server),
                 );
                 static_public = true;
-            } else if socket_address.address().is_local() {
-                // Build local dial info request url
-                let local_url = format!("ws://{}/{}", socket_address, path);
-
-                // Create local dial info
-                let di = DialInfo::try_ws(socket_address, local_url)
-                    .map_err(map_to_string)
-                    .map_err(logthru_net!(error))?;
-                routing_table.register_dial_info(di, DialInfoOrigin::Static, None);
             }
+            // Build interface dial info request url
+            let interface_url = format!("ws://{}/{}", socket_address, path);
+
+            // Create interface dial info
+            let di = DialInfo::try_ws(socket_address, interface_url)
+                .map_err(map_to_string)
+                .map_err(logthru_net!(error))?;
+            routing_table.register_interface_dial_info(di, DialInfoOrigin::Static);
         }
 
         // Add static public dialinfo if it's configured
@@ -410,7 +410,7 @@ impl Network {
                 .map_err(logthru_net!(error))?;
 
             for gsa in global_socket_addrs {
-                routing_table.register_dial_info(
+                routing_table.register_public_dial_info(
                     DialInfo::try_ws(SocketAddress::from_socket_addr(gsa), url.clone())
                         .map_err(map_to_string)
                         .map_err(logthru_net!(error))?,
@@ -460,7 +460,7 @@ impl Network {
             .await?;
         trace!("WSS: listener started");
 
-        // NOTE: No local dial info for WSS, as there is no way to connect to a local dialinfo via TLS
+        // NOTE: No interface dial info for WSS, as there is no way to connect to a local dialinfo via TLS
         // If the hostname is specified, it is the public dialinfo via the URL. If no hostname
         // is specified, then TLS won't validate, so no local dialinfo is possible.
         // This is not the case with unencrypted websockets, which can be specified solely by an IP address
@@ -483,7 +483,7 @@ impl Network {
                 .map_err(logthru_net!(error))?;
 
             for gsa in global_socket_addrs {
-                routing_table.register_dial_info(
+                routing_table.register_public_dial_info(
                     DialInfo::try_wss(SocketAddress::from_socket_addr(gsa), url.clone())
                         .map_err(map_to_string)
                         .map_err(logthru_net!(error))?,
@@ -537,19 +537,17 @@ impl Network {
         for socket_address in socket_addresses {
             let di = DialInfo::tcp(socket_address);
 
-            // Register local dial info only here if we specify a public address
+            // Register global dial info if no public address is specified
             if public_address.is_none() && di.is_global() {
-                // Register global dial info if no public address is specified
-                routing_table.register_dial_info(
+                routing_table.register_public_dial_info(
                     di.clone(),
                     DialInfoOrigin::Static,
                     Some(NetworkClass::Server),
                 );
                 static_public = true;
-            } else if di.is_local() {
-                // Register local dial info
-                routing_table.register_dial_info(di.clone(), DialInfoOrigin::Static, None);
             }
+            // Register interface dial info
+            routing_table.register_interface_dial_info(di.clone(), DialInfoOrigin::Static);
         }
 
         // Add static public dialinfo if it's configured
@@ -562,7 +560,7 @@ impl Network {
 
             // Add all resolved addresses as public dialinfo
             for pdi_addr in &mut public_sockaddrs {
-                routing_table.register_dial_info(
+                routing_table.register_public_dial_info(
                     DialInfo::tcp_from_socketaddr(pdi_addr),
                     DialInfoOrigin::Static,
                     None,
