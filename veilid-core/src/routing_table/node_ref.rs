@@ -2,6 +2,10 @@ use super::*;
 use crate::dht::*;
 use alloc::fmt;
 
+// Connectionless protocols like UDP are dependent on a NAT translation timeout
+// We should ping them with some frequency and 30 seconds is typical timeout
+const CONNECTIONLESS_TIMEOUT_SECS: u32 = 29;
+
 pub struct NodeRef {
     routing_table: RoutingTable,
     node_id: DHTKey,
@@ -42,9 +46,35 @@ impl NodeRef {
     pub fn set_seen_our_node_info(&self) {
         self.operate(|e| e.set_seen_our_node_info(true));
     }
-    pub fn last_connection(&self) -> Option<ConnectionDescriptor> {
-        self.operate(|e| e.last_connection())
+    pub async fn last_connection(&self) -> Option<ConnectionDescriptor> {
+        // Get the last connection and the last time we saw anything with this connection
+        let (last_connection, last_seen) = self.operate(|e| {
+            if let Some((last_connection, connection_ts)) = e.last_connection() {
+                if let Some(last_seen) = e.peer_stats().last_seen {
+                    Some((last_connection, u64::max(last_seen, connection_ts)))
+                } else {
+                    Some((last_connection, connection_ts))
+                }
+            } else {
+                None
+            }
+        })?;
+        // Should we check the connection table?
+        if last_connection.protocol_type().is_connection_oriented() {
+            // Look the connection up in the connection manager and see if it's still there
+            let connection_manager = self.routing_table.network_manager().connection_manager();
+            connection_manager.get_connection(last_connection).await?;
+        } else {
+            // If this is not connection oriented, then we check our last seen time
+            // to see if this mapping has expired (beyond our timeout)
+            let cur_ts = intf::get_timestamp();
+            if (last_seen + (CONNECTIONLESS_TIMEOUT_SECS as u64 * 1_000_000u64)) < cur_ts {
+                return None;
+            }
+        }
+        Some(last_connection)
     }
+
     pub fn has_any_dial_info(&self) -> bool {
         self.operate(|e| e.node_info().has_any_dial_info() || e.local_node_info().has_dial_info())
     }

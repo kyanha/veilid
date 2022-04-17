@@ -432,7 +432,7 @@ impl NetworkManager {
     }
 
     // Process a received out-of-band receipt
-    pub async fn process_out_of_band_receipt<R: AsRef<[u8]>>(
+    pub async fn handle_out_of_band_receipt<R: AsRef<[u8]>>(
         &self,
         receipt_data: R,
         descriptor: ConnectionDescriptor,
@@ -455,7 +455,7 @@ impl NetworkManager {
     }
 
     // Process a received in-band receipt
-    pub async fn process_in_band_receipt<R: AsRef<[u8]>>(
+    pub async fn handle_in_band_receipt<R: AsRef<[u8]>>(
         &self,
         receipt_data: R,
         inbound_nr: NodeRef,
@@ -466,6 +466,57 @@ impl NetworkManager {
             .map_err(|_| "failed to parse signed receipt".to_owned())?;
 
         receipt_manager.handle_receipt(inbound_nr, receipt).await
+    }
+
+    // Process a received signal
+    pub async fn handle_signal(&self, signal_info: SignalInfo) -> Result<(), String> {
+        match signal_info {
+            SignalInfo::ReverseConnect { receipt, peer_info } => {
+                let routing_table = self.routing_table();
+                let rpc = self.rpc_processor();
+
+                // Add the peer info to our routing table
+                let peer_nr = routing_table
+                    .register_node_with_node_info(peer_info.node_id.key, peer_info.node_info)?;
+
+                // Make a reverse connection to the peer and send the receipt to it
+                rpc.rpc_call_return_receipt(Destination::Direct(peer_nr), None, receipt)
+                    .await
+                    .map_err(map_to_string)?;
+            }
+            SignalInfo::HolePunch { receipt, peer_info } => {
+                let routing_table = self.routing_table();
+
+                // Add the peer info to our routing table
+                let peer_nr = routing_table
+                    .register_node_with_node_info(peer_info.node_id.key, peer_info.node_info)?;
+
+                // Get the udp direct dialinfo for the hole punch
+                let hole_punch_dial_info = if let Some(hpdi) = peer_nr
+                    .node_info()
+                    .first_filtered_dial_info(|di| matches!(di.protocol_type(), ProtocolType::UDP))
+                {
+                    hpdi
+                } else {
+                    return Err("No hole punch capable dialinfo found for node".to_owned());
+                };
+
+                // Do our half of the hole punch by sending an empty packet
+                // Both sides will do this and then the receipt will get sent over the punched hole
+                self.net()
+                    .send_data_to_dial_info(hole_punch_dial_info.clone(), Vec::new())
+                    .await?;
+
+                // XXX: do we need a delay here? or another hole punch packet?
+
+                // Return the receipt over the direct channel since we want to use exactly the same dial info
+                self.send_direct_receipt(hole_punch_dial_info, receipt, false)
+                    .await
+                    .map_err(map_to_string)?;
+            }
+        }
+
+        Ok(())
     }
 
     // Builds an envelope for sending over the network
@@ -703,7 +754,7 @@ impl NetworkManager {
         }
 
         // And now use the existing connection to send over
-        if let Some(descriptor) = inbound_nr.last_connection() {
+        if let Some(descriptor) = inbound_nr.last_connection().await {
             match self
                 .net()
                 .send_data_to_existing_connection(descriptor, data)
@@ -787,7 +838,7 @@ impl NetworkManager {
         }
 
         // And now use the existing connection to send over
-        if let Some(descriptor) = inbound_nr.last_connection() {
+        if let Some(descriptor) = inbound_nr.last_connection().await {
             match self
                 .net()
                 .send_data_to_existing_connection(descriptor, data)
@@ -819,7 +870,7 @@ impl NetworkManager {
         let this = self.clone();
         Box::pin(async move {
             // First try to send data to the last socket we've seen this peer on
-            let data = if let Some(descriptor) = node_ref.last_connection() {
+            let data = if let Some(descriptor) = node_ref.last_connection().await {
                 match this
                     .net()
                     .send_data_to_existing_connection(descriptor, data)
@@ -874,7 +925,7 @@ impl NetworkManager {
 
         // Is this an out-of-band receipt instead of an envelope?
         if data[0..4] == *RECEIPT_MAGIC {
-            self.process_out_of_band_receipt(data, descriptor).await?;
+            self.handle_out_of_band_receipt(data, descriptor).await?;
             return Ok(true);
         }
 

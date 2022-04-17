@@ -791,16 +791,18 @@ impl RPCProcessor {
 
     //////////////////////////////////////////////////////////////////////
 
-    fn generate_sender_info(&self, rpcreader: &RPCMessageReader) -> SenderInfo {
-        let socket_address = rpcreader
-            .header
-            .peer_noderef
-            .operate(|entry| entry.last_connection().map(|c| c.remote.socket_address));
+    async fn generate_sender_info(&self, peer_noderef: NodeRef) -> SenderInfo {
+        let socket_address = peer_noderef
+            .last_connection()
+            .await
+            .map(|c| c.remote.socket_address);
         SenderInfo { socket_address }
     }
 
     async fn process_info_q(&self, rpcreader: RPCMessageReader) -> Result<(), RPCError> {
-        //
+        let peer_noderef = rpcreader.header.peer_noderef.clone();
+        let sender_info = self.generate_sender_info(peer_noderef).await;
+
         let reply_msg = {
             let operation = rpcreader
                 .reader
@@ -849,7 +851,6 @@ impl RPCProcessor {
             encode_node_status(&node_status, &mut nsb)?;
 
             // Add sender info
-            let sender_info = self.generate_sender_info(&rpcreader);
             let mut sib = info_a.reborrow().init_sender_info();
             encode_sender_info(&sender_info, &mut sib)?;
 
@@ -1078,8 +1079,35 @@ impl RPCProcessor {
         Err(rpc_error_unimplemented("process_find_block_q"))
     }
 
-    async fn process_signal(&self, _rpcreader: RPCMessageReader) -> Result<(), RPCError> {
-        Err(rpc_error_unimplemented("process_signal"))
+    async fn process_signal(&self, rpcreader: RPCMessageReader) -> Result<(), RPCError> {
+        let signal_info = {
+            let operation = rpcreader
+                .reader
+                .get_root::<veilid_capnp::operation::Reader>()
+                .map_err(map_error_capnp_error!())
+                .map_err(logthru_rpc!())?;
+
+            // This should never want an answer
+            if self.wants_answer(&operation)? {
+                return Err(RPCError::InvalidFormat);
+            }
+
+            // get signal reader
+            let sig_reader = match operation.get_detail().which() {
+                Ok(veilid_capnp::operation::detail::Which::Signal(Ok(x))) => x,
+                _ => panic!("invalid operation type in process_signal"),
+            };
+
+            // Get signal info
+            decode_signal_info(&sig_reader)?
+        };
+
+        // Handle it
+        let network_manager = self.network_manager();
+        network_manager
+            .handle_signal(signal_info)
+            .await
+            .map_err(map_error_string!())
     }
 
     async fn process_return_receipt(&self, rpcreader: RPCMessageReader) -> Result<(), RPCError> {
@@ -1112,7 +1140,7 @@ impl RPCProcessor {
         // Handle it
         let network_manager = self.network_manager();
         network_manager
-            .process_in_band_receipt(rcpt_data, rpcreader.header.peer_noderef)
+            .handle_in_band_receipt(rcpt_data, rpcreader.header.peer_noderef)
             .await
             .map_err(map_error_string!())
     }
@@ -1608,6 +1636,42 @@ impl RPCProcessor {
 
         // Send the signal request
         self.request(dest, sig_msg, safety_route).await?;
+
+        Ok(())
+    }
+
+    // Sends a unidirectional in-band return receipt
+    // Can be sent via all methods including relays and routes
+    pub async fn rpc_call_return_receipt<B: AsRef<[u8]>>(
+        &self,
+        dest: Destination,
+        safety_route: Option<&SafetyRouteSpec>,
+        rcpt_data: B,
+    ) -> Result<(), RPCError> {
+        // Validate receipt before we send it, otherwise this may be arbitrary data!
+        let _ = Receipt::from_signed_data(rcpt_data.as_ref())
+            .map_err(|_| "failed to validate direct receipt".to_owned())
+            .map_err(map_error_string!())?;
+
+        let rr_msg = {
+            let mut rr_msg = ::capnp::message::Builder::new_default();
+            let mut question = rr_msg.init_root::<veilid_capnp::operation::Builder>();
+            question.set_op_id(self.get_next_op_id());
+            let mut respond_to = question.reborrow().init_respond_to();
+            respond_to.set_none(());
+            let detail = question.reborrow().init_detail();
+            let rr_builder = detail.init_return_receipt();
+
+            let r_builder = rr_builder.init_receipt(rcpt_data.as_ref().len().try_into().map_err(
+                map_error_protocol!("invalid receipt length in return receipt"),
+            )?);
+            r_builder.copy_from_slice(rcpt_data.as_ref());
+
+            rr_msg.into_reader()
+        };
+
+        // Send the return receipt request
+        self.request(dest, rr_msg, safety_route).await?;
 
         Ok(())
     }

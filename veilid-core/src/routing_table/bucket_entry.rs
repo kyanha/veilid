@@ -21,7 +21,7 @@ const UNRELIABLE_PING_INTERVAL_SECS: u32 = 5;
 
 // Keepalive pings are done occasionally to ensure holepunched public dialinfo
 // remains valid, as well as to make sure we remain in any relay node's routing table
-const KEEPALIVE_PING_INTERVAL_SECS: u32 = 30;
+const KEEPALIVE_PING_INTERVAL_SECS: u32 = 20;
 
 // Do not change order here, it will mess up other sorts
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -131,8 +131,8 @@ impl BucketEntry {
         self.last_connection = Some((last_connection, timestamp));
     }
 
-    pub fn last_connection(&self) -> Option<ConnectionDescriptor> {
-        self.last_connection.as_ref().map(|x| x.0)
+    pub fn last_connection(&self) -> Option<(ConnectionDescriptor, u64)> {
+        self.last_connection
     }
 
     pub fn set_min_max_version(&mut self, min_max_version: (u8, u8)) {

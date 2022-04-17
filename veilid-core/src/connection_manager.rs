@@ -82,6 +82,7 @@ impl ConnectionManager {
     }
 
     // Returns a network connection if one already is established
+
     pub async fn get_connection(
         &self,
         descriptor: ConnectionDescriptor,

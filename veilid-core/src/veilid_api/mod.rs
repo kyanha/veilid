@@ -421,6 +421,15 @@ pub enum ProtocolType {
     WSS,
 }
 
+impl ProtocolType {
+    pub fn is_connection_oriented(&self) -> bool {
+        matches!(
+            self,
+            ProtocolType::TCP | ProtocolType::WS | ProtocolType::WSS
+        )
+    }
+}
+
 #[derive(Copy, Clone, Debug, Default, Serialize, Deserialize)]
 pub struct ProtocolSet {
     pub udp: bool,
