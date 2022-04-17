@@ -23,10 +23,9 @@ type OperationId = u64;
 
 #[derive(Debug, Clone)]
 pub enum Destination {
-    Direct(NodeRef),            // Can only be sent directly
-    Normal(NodeRef),            // Can be sent via relays as well as directly
-    Relay(NodeRef, DHTKey),     // Can only be sent via a relay
-    PrivateRoute(PrivateRoute), // Must be encapsulated in a private route
+    Direct(NodeRef),            // Send to node
+    Relay(NodeRef, DHTKey),     // Send to node for relay purposes
+    PrivateRoute(PrivateRoute), // Send to private route
 }
 
 #[derive(Debug, Clone)]
@@ -215,20 +214,23 @@ impl RPCProcessor {
     }
 
     fn filter_peer_scope(&self, peer_info: &PeerInfo) -> bool {
+        // if local peer scope is enabled, then don't reject any peer info
+        if self.enable_local_peer_scope {
+            return true;
+        }
+
         // reject attempts to include non-public addresses in results
-        if self.default_peer_scope == PeerScope::Global {
-            for di in &peer_info.node_info.dial_info_list {
+        for di in &peer_info.node_info.dial_info_list {
+            if !di.is_global() {
+                // non-public address causes rejection
+                return false;
+            }
+        }
+        if let Some(rpi) = &peer_info.node_info.relay_peer_info {
+            for di in &rpi.node_info.dial_info_list {
                 if !di.is_global() {
                     // non-public address causes rejection
                     return false;
-                }
-            }
-            if let Some(rpi) = peer_info.node_info.relay_peer_info {
-                for di in &rpi.node_info.dial_info_list {
-                    if !di.is_global() {
-                        // non-public address causes rejection
-                        return false;
-                    }
                 }
             }
         }
@@ -278,7 +280,7 @@ impl RPCProcessor {
             if let Some(nr) = routing_table.lookup_node_ref(node_id) {
                 // ensure we have some dial info for the entry already,
                 // if not, we should do the find_node anyway
-                if !nr.has_any_dial_info() {
+                if nr.has_any_dial_info() {
                     return Ok(nr);
                 }
             }
@@ -434,13 +436,13 @@ impl RPCProcessor {
 
             // To where are we sending the request
             match &dest {
-                Destination::Direct(node_ref) | Destination::Normal(node_ref) => {
+                Destination::Direct(node_ref) | Destination::Relay(node_ref, _) => {
                     // Send to a node without a private route
                     // --------------------------------------
 
-                    // Get the actual destination node id, accounting for outbound relaying
-                    let (node_ref, node_id) = if matches!(dest, Destination::Normal(_)) {
-                        self.get_direct_destination(node_ref.clone())?
+                    // Get the actual destination node id accounting for relays
+                    let (node_ref, node_id) = if let Destination::Relay(_, dht_key) = dest {
+                        (node_ref.clone(), dht_key)
                     } else {
                         let node_id = node_ref.node_id();
                         (node_ref.clone(), node_id)
@@ -487,7 +489,7 @@ impl RPCProcessor {
                     let mut pr_msg_builder = ::capnp::message::Builder::new_default();
                     let mut pr_builder =
                         pr_msg_builder.init_root::<veilid_capnp::private_route::Builder>();
-                    encode_private_route(&private_route, &mut pr_builder)?;
+                    encode_private_route(private_route, &mut pr_builder)?;
                     let pr_reader = pr_builder.into_reader();
 
                     // Reply with 'route' operation
@@ -899,7 +901,7 @@ impl RPCProcessor {
         if redirect {
             let routing_table = self.routing_table();
             let filter = dial_info.make_filter(true);
-            let peers = routing_table.find_fast_nodes_filtered(&filter);
+            let peers = routing_table.find_fast_public_nodes_filtered(&filter);
             if peers.is_empty() {
                 return Err(rpc_error_internal(format!(
                     "no peers matching filter '{:?}'",
@@ -1110,7 +1112,7 @@ impl RPCProcessor {
         // Handle it
         let network_manager = self.network_manager();
         network_manager
-            .process_receipt(rcpt_data)
+            .process_in_band_receipt(rcpt_data, rpcreader.header.peer_noderef)
             .await
             .map_err(map_error_string!())
     }
@@ -1497,7 +1499,7 @@ impl RPCProcessor {
 
         // Wait for receipt
         match eventual_value.await {
-            ReceiptEvent::Returned => Ok(true),
+            ReceiptEvent::Returned(_) => Ok(true),
             ReceiptEvent::Expired => Ok(false),
             ReceiptEvent::Cancelled => {
                 Err(rpc_error_internal("receipt was dropped before expiration"))
@@ -1588,12 +1590,9 @@ impl RPCProcessor {
     pub async fn rpc_call_signal(
         &self,
         dest: Destination,
-        relay_dial_info: DialInfo,
         safety_route: Option<&SafetyRouteSpec>,
         signal_info: SignalInfo,
     ) -> Result<(), RPCError> {
-        let network_manager = self.network_manager();
-        //
         let sig_msg = {
             let mut sig_msg = ::capnp::message::Builder::new_default();
             let mut question = sig_msg.init_root::<veilid_capnp::operation::Builder>();

@@ -6,8 +6,8 @@ pub fn encode_signal_info(
     builder: &mut veilid_capnp::operation_signal::Builder,
 ) -> Result<(), RPCError> {
     match signal_info {
-        SignalInfo::HolePunch { receipt, node_info } => {
-            let mut hp_builder = builder.init_hole_punch();
+        SignalInfo::HolePunch { receipt, peer_info } => {
+            let mut hp_builder = builder.reborrow().init_hole_punch();
             let rcpt_builder =
                 hp_builder
                     .reborrow()
@@ -15,11 +15,11 @@ pub fn encode_signal_info(
                         "invalid receipt length in hole punch signal info"
                     ))?);
             rcpt_builder.copy_from_slice(receipt.as_slice());
-            let mut ni_builder = hp_builder.init_node_info();
-            encode_node_info(&node_info, &mut ni_builder)?;
+            let mut pi_builder = hp_builder.init_peer_info();
+            encode_peer_info(peer_info, &mut pi_builder)?;
         }
-        SignalInfo::ReverseConnect { receipt, node_info } => {
-            let mut hp_builder = builder.init_reverse_connect();
+        SignalInfo::ReverseConnect { receipt, peer_info } => {
+            let mut hp_builder = builder.reborrow().init_reverse_connect();
             let rcpt_builder =
                 hp_builder
                     .reborrow()
@@ -27,8 +27,8 @@ pub fn encode_signal_info(
                         "invalid receipt length in reverse connect signal info"
                     ))?);
             rcpt_builder.copy_from_slice(receipt.as_slice());
-            let mut ni_builder = hp_builder.init_node_info();
-            encode_node_info(&node_info, &mut ni_builder)?;
+            let mut pi_builder = hp_builder.init_peer_info();
+            encode_peer_info(peer_info, &mut pi_builder)?;
         }
     }
 
@@ -55,12 +55,12 @@ pub fn decode_signal_info(
                         "invalid receipt in hole punch signal info"
                     ))?
                     .to_vec();
-                let ni_reader = r.get_node_info().map_err(map_error_protocol!(
-                    "invalid node info in hole punch signal info"
+                let pi_reader = r.get_peer_info().map_err(map_error_protocol!(
+                    "invalid peer info in hole punch signal info"
                 ))?;
-                let node_info = decode_node_info(&ni_reader, true)?;
+                let peer_info = decode_peer_info(&pi_reader, true)?;
 
-                SignalInfo::HolePunch { receipt, node_info }
+                SignalInfo::HolePunch { receipt, peer_info }
             }
             veilid_capnp::operation_signal::ReverseConnect(r) => {
                 // Extract reverse connect reader
@@ -74,12 +74,12 @@ pub fn decode_signal_info(
                         "invalid receipt in reverse connect signal info"
                     ))?
                     .to_vec();
-                let ni_reader = r.get_node_info().map_err(map_error_protocol!(
-                    "invalid node info in reverse connect signal info"
+                let pi_reader = r.get_peer_info().map_err(map_error_protocol!(
+                    "invalid peer info in reverse connect signal info"
                 ))?;
-                let node_info = decode_node_info(&ni_reader, true)?;
+                let peer_info = decode_peer_info(&pi_reader, true)?;
 
-                SignalInfo::ReverseConnect { receipt, node_info }
+                SignalInfo::ReverseConnect { receipt, peer_info }
             }
         },
     )

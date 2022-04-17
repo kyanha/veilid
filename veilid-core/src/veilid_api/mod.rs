@@ -332,12 +332,6 @@ pub struct NodeInfo {
     pub relay_peer_info: Option<Box<PeerInfo>>,
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub struct LocalNodeInfo {
-    pub outbound_protocols: ProtocolSet,
-    pub dial_info_list: Vec<DialInfo>,
-}
-
 impl NodeInfo {
     pub fn first_filtered_dial_info<F>(&self, filter: F) -> Option<DialInfo>
     where
@@ -369,11 +363,50 @@ impl NodeInfo {
         !self.dial_info_list.is_empty()
             || !self
                 .relay_peer_info
+                .as_ref()
                 .map(|rpi| rpi.node_info.has_direct_dial_info())
                 .unwrap_or_default()
     }
 
     pub fn has_direct_dial_info(&self) -> bool {
+        !self.dial_info_list.is_empty()
+    }
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct LocalNodeInfo {
+    pub outbound_protocols: ProtocolSet,
+    pub dial_info_list: Vec<DialInfo>,
+}
+
+impl LocalNodeInfo {
+    pub fn first_filtered_dial_info<F>(&self, filter: F) -> Option<DialInfo>
+    where
+        F: Fn(&DialInfo) -> bool,
+    {
+        for di in &self.dial_info_list {
+            if filter(di) {
+                return Some(di.clone());
+            }
+        }
+        None
+    }
+
+    pub fn all_filtered_dial_info<F>(&self, filter: F) -> Vec<DialInfo>
+    where
+        F: Fn(&DialInfo) -> bool,
+    {
+        let mut dial_info_list = Vec::new();
+
+        for di in &self.dial_info_list {
+            if filter(di) {
+                dial_info_list.push(di.clone());
+            }
+        }
+        dial_info_list
+    }
+
+    pub fn has_dial_info(&self) -> bool {
         !self.dial_info_list.is_empty()
     }
 }
@@ -397,7 +430,7 @@ pub struct ProtocolSet {
 }
 
 impl ProtocolSet {
-    pub fn is_protocol_type_enabled(&self, protocol_type: ProtocolType) -> bool {
+    pub fn contains(&self, protocol_type: ProtocolType) -> bool {
         match protocol_type {
             ProtocolType::UDP => self.udp,
             ProtocolType::TCP => self.tcp,
@@ -406,7 +439,7 @@ impl ProtocolSet {
         }
     }
     pub fn filter_dial_info(&self, di: &DialInfo) -> bool {
-        self.is_protocol_type_enabled(di.protocol_type())
+        self.contains(di.protocol_type())
     }
 }
 
@@ -1093,12 +1126,12 @@ pub enum SignalInfo {
     HolePunch {
         // UDP Hole Punch Request
         receipt: Vec<u8>,    // Receipt to be returned after the hole punch
-        node_info: NodeInfo, // Sender's node info
+        peer_info: PeerInfo, // Sender's peer info
     },
     ReverseConnect {
         // Reverse Connection Request
         receipt: Vec<u8>,    // Receipt to be returned by the reverse connection
-        node_info: NodeInfo, // Sender's node info
+        peer_info: PeerInfo, // Sender's peer info
     },
     // XXX: WebRTC
     // XXX: App-level signalling

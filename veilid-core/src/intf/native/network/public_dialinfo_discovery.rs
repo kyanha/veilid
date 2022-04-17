@@ -30,7 +30,7 @@ impl Network {
         let filter = DialInfoFilter::global()
             .with_protocol_type(protocol_type)
             .with_address_type(address_type);
-        let peers = routing_table.find_fast_nodes_filtered(&filter);
+        let peers = routing_table.find_fast_public_nodes_filtered(&filter);
         if peers.is_empty() {
             log_net!("no peers of type '{:?}'", filter);
             return None;

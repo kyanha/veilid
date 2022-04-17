@@ -10,16 +10,24 @@ pub type FilterType = Box<dyn Fn(&(&DHTKey, Option<&mut BucketEntry>)) -> bool>;
 impl RoutingTable {
     // Retrieve the fastest nodes in the routing table with a particular kind of protocol and address type
     // Returns noderefs are are scoped to that address type only
-    pub fn find_fast_nodes_filtered(&self, dial_info_filter: &DialInfoFilter) -> Vec<NodeRef> {
+    pub fn find_fast_public_nodes_filtered(
+        &self,
+        dial_info_filter: &DialInfoFilter,
+    ) -> Vec<NodeRef> {
         let dial_info_filter1 = dial_info_filter.clone();
         self.find_fastest_nodes(
             // filter
             Some(Box::new(
                 move |params: &(&DHTKey, Option<&mut BucketEntry>)| {
-                    params
-                        .1
-                        .as_ref()
-                        .unwrap()
+                    let entry = params.1.as_ref().unwrap();
+
+                    // skip nodes on our local network here
+                    if entry.local_node_info().has_dial_info() {
+                        return false;
+                    }
+
+                    // does it have matching public dial info?
+                    entry
                         .node_info()
                         .first_filtered_dial_info(|di| di.matches_filter(&dial_info_filter1))
                         .is_some()
@@ -30,6 +38,7 @@ impl RoutingTable {
         )
     }
 
+    // Get our own node's peer info (public node info) so we can share it with other nodes
     pub fn get_own_peer_info(&self) -> PeerInfo {
         let netman = self.network_manager();
         let enable_local_peer_scope = netman.config().get().network.enable_local_peer_scope;

@@ -112,12 +112,12 @@ struct NodeDialInfo {
 
 struct SignalInfoHolePunch {
     receipt                 @0  :Data;                  # receipt to return with hole punch
-    nodeInfo                @1  :NodeInfo;              # node info of the signal sender for hole punch attempt
+    peerInfo                @1  :PeerInfo;              # peer info of the signal sender for hole punch attempt
 }
 
 struct SignalInfoReverseConnect {
     receipt                 @0  :Data;                  # receipt to return with reverse connect
-    nodeInfo                @1  :NodeInfo;              # node info of the signal sender for reverse connect attempt
+    peerInfo                @1  :PeerInfo;              # peer info of the signal sender for reverse connect attempt
 }
 
 # Private Routes

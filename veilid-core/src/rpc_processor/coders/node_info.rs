@@ -23,9 +23,9 @@ pub fn encode_node_info(
         encode_dial_info(&node_info.dial_info_list[idx], &mut di_builder)?;
     }
 
-    if let Some(rpi) = node_info.relay_peer_info {
+    if let Some(rpi) = &node_info.relay_peer_info {
         let mut rpi_builder = builder.reborrow().init_relay_peer_info();
-        encode_peer_info(&rpi, &mut rpi_builder)?;
+        encode_peer_info(rpi, &mut rpi_builder)?;
     }
 
     Ok(())
@@ -46,7 +46,7 @@ pub fn decode_node_info(
         &reader
             .reborrow()
             .get_outbound_protocols()
-            .map_err(map_error_capnp_notinschema!())?,
+            .map_err(map_error_capnp_error!())?,
     )?;
 
     let dil_reader = reader
@@ -69,7 +69,7 @@ pub fn decode_node_info(
                 &reader
                     .reborrow()
                     .get_relay_peer_info()
-                    .map_err(map_error_capnp_notinschema!())?,
+                    .map_err(map_error_capnp_error!())?,
                 false,
             )?))
         } else {

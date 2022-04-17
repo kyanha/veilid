@@ -45,6 +45,9 @@ impl NodeRef {
     pub fn last_connection(&self) -> Option<ConnectionDescriptor> {
         self.operate(|e| e.last_connection())
     }
+    pub fn has_any_dial_info(&self) -> bool {
+        self.operate(|e| e.node_info().has_any_dial_info() || e.local_node_info().has_dial_info())
+    }
 }
 
 impl Clone for NodeRef {
@@ -58,6 +61,14 @@ impl Clone for NodeRef {
         }
     }
 }
+
+impl PartialEq for NodeRef {
+    fn eq(&self, other: &Self) -> bool {
+        self.node_id == other.node_id
+    }
+}
+
+impl Eq for NodeRef {}
 
 impl fmt::Debug for NodeRef {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

@@ -3,11 +3,12 @@ use core::fmt;
 use dht::receipt::*;
 use futures_util::stream::{FuturesUnordered, StreamExt};
 use network_manager::*;
+use routing_table::*;
 use xx::*;
 
-#[derive(Clone, Debug, Copy, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ReceiptEvent {
-    Returned,
+    Returned(NodeRef),
     Expired,
     Cancelled,
 }
@@ -380,7 +381,7 @@ impl ReceiptManager {
         Ok(())
     }
 
-    pub async fn handle_receipt(&self, receipt: Receipt) -> Result<(), String> {
+    pub async fn handle_receipt(&self, node_ref: NodeRef, receipt: Receipt) -> Result<(), String> {
         // Increment return count
         let callback_future = {
             // Look up the receipt record from the nonce
@@ -394,7 +395,8 @@ impl ReceiptManager {
             // Generate the callback future
             let mut record_mut = record.lock();
             record_mut.returns_so_far += 1;
-            let callback_future = Self::perform_callback(ReceiptEvent::Returned, &mut record_mut);
+            let callback_future =
+                Self::perform_callback(ReceiptEvent::Returned(node_ref), &mut record_mut);
 
             // Remove the record if we're done
             if record_mut.returns_so_far == record_mut.expected_returns {

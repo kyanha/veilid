@@ -243,9 +243,19 @@ impl RoutingTable {
     ) {
         let timestamp = get_timestamp();
         let enable_local_peer_scope = {
-            let c = self.network_manager().config().get();
+            let config = self.network_manager().config();
+            let c = config.get();
             c.network.enable_local_peer_scope
         };
+
+        if !enable_local_peer_scope && dial_info.is_local() {
+            error!("shouldn't be registering local addresses as public");
+            return;
+        }
+        if !dial_info.is_valid() {
+            error!("shouldn't be registering invalid addresses");
+            return;
+        }
 
         let mut inner = self.inner.lock();
 
@@ -276,12 +286,12 @@ impl RoutingTable {
     }
 
     pub fn register_interface_dial_info(&self, dial_info: DialInfo, origin: DialInfoOrigin) {
-        let timestamp = get_timestamp();
-        let enable_local_peer_scope = {
-            let c = self.network_manager().config().get();
-            c.network.enable_local_peer_scope
-        };
+        if !dial_info.is_valid() {
+            error!("shouldn't be registering invalid interface addresses");
+            return;
+        }
 
+        let timestamp = get_timestamp();
         let mut inner = self.inner.lock();
 
         inner.interface_dial_info_details.push(DialInfoDetail {
