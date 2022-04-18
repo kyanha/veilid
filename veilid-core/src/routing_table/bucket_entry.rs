@@ -59,7 +59,7 @@ impl BucketEntry {
             peer_stats: PeerStats {
                 time_added: now,
                 last_seen: None,
-                ping_stats: PingStats::default(),
+                rpc_stats: RPCStats::default(),
                 latency: None,
                 transfer: TransferStatsDownUp::default(),
                 status: None,
@@ -187,7 +187,7 @@ impl BucketEntry {
     ///// state machine handling
     pub(super) fn check_reliable(&self, cur_ts: u64) -> bool {
         // if we have had consecutive ping replies for longer that UNRELIABLE_PING_SPAN_SECS
-        match self.peer_stats.ping_stats.first_consecutive_pong_time {
+        match self.peer_stats.rpc_stats.first_consecutive_answer_time {
             None => false,
             Some(ts) => {
                 cur_ts.saturating_sub(ts) >= (UNRELIABLE_PING_SPAN_SECS as u64 * 1000000u64)
@@ -206,9 +206,9 @@ impl BucketEntry {
     }
 
     fn needs_constant_ping(&self, cur_ts: u64, interval: u64) -> bool {
-        match self.peer_stats.ping_stats.last_pinged {
+        match self.peer_stats.last_seen {
             None => true,
-            Some(last_pinged) => cur_ts.saturating_sub(last_pinged) >= (interval * 1000000u64),
+            Some(last_seen) => cur_ts.saturating_sub(last_seen) >= (interval * 1000000u64),
         }
     }
 
@@ -235,25 +235,25 @@ impl BucketEntry {
         match state {
             BucketEntryState::Reliable => {
                 // If we are in a reliable state, we need a ping on an exponential scale
-                match self.peer_stats.ping_stats.last_pinged {
+                match self.peer_stats.last_seen {
                     None => true,
-                    Some(last_pinged) => {
-                        let first_consecutive_pong_time = self
+                    Some(last_seen) => {
+                        let first_consecutive_answer_time = self
                             .peer_stats
-                            .ping_stats
-                            .first_consecutive_pong_time
+                            .rpc_stats
+                            .first_consecutive_answer_time
                             .unwrap();
-                        let start_of_reliable_time = first_consecutive_pong_time
+                        let start_of_reliable_time = first_consecutive_answer_time
                             + ((UNRELIABLE_PING_SPAN_SECS - UNRELIABLE_PING_INTERVAL_SECS) as u64
-                                * 1000000u64);
+                                * 1_000_000u64);
                         let reliable_cur = cur_ts.saturating_sub(start_of_reliable_time);
-                        let reliable_last = last_pinged.saturating_sub(start_of_reliable_time);
+                        let reliable_last = last_seen.saturating_sub(start_of_reliable_time);
 
                         retry_falloff_log(
                             reliable_last,
                             reliable_cur,
-                            RELIABLE_PING_INTERVAL_START_SECS as u64 * 1000000u64,
-                            RELIABLE_PING_INTERVAL_MAX_SECS as u64 * 1000000u64,
+                            RELIABLE_PING_INTERVAL_START_SECS as u64 * 1_000_000u64,
+                            RELIABLE_PING_INTERVAL_MAX_SECS as u64 * 1_000_000u64,
                             RELIABLE_PING_INTERVAL_MULTIPLIER,
                         )
                     }
@@ -269,26 +269,18 @@ impl BucketEntry {
 
     pub(super) fn touch_last_seen(&mut self, ts: u64) {
         // If we've heard from the node at all, we can always restart our lost ping count
-        self.peer_stats.ping_stats.recent_lost_pings = 0;
+        self.peer_stats.rpc_stats.recent_lost_answers = 0;
         // Mark the node as seen
         self.peer_stats.last_seen = Some(ts);
     }
 
     pub(super) fn state_debug_info(&self, cur_ts: u64) -> String {
-        let last_pinged = if let Some(last_pinged) = self.peer_stats.ping_stats.last_pinged {
-            format!(
-                "{}s ago",
-                timestamp_to_secs(cur_ts.saturating_sub(last_pinged))
-            )
-        } else {
-            "never".to_owned()
-        };
-        let first_consecutive_pong_time = if let Some(first_consecutive_pong_time) =
-            self.peer_stats.ping_stats.first_consecutive_pong_time
+        let first_consecutive_answer_time = if let Some(first_consecutive_answer_time) =
+            self.peer_stats.rpc_stats.first_consecutive_answer_time
         {
             format!(
                 "{}s ago",
-                timestamp_to_secs(cur_ts.saturating_sub(first_consecutive_pong_time))
+                timestamp_to_secs(cur_ts.saturating_sub(first_consecutive_answer_time))
             )
         } else {
             "never".to_owned()
@@ -303,10 +295,9 @@ impl BucketEntry {
         };
 
         format!(
-            "state: {:?}, first_consecutive_pong_time: {}, last_pinged: {}, last_seen: {}",
+            "state: {:?}, first_consecutive_answer_time: {},  last_seen: {}",
             self.state(cur_ts),
-            first_consecutive_pong_time,
-            last_pinged,
+            first_consecutive_answer_time,
             last_seen
         )
     }
@@ -314,69 +305,43 @@ impl BucketEntry {
     ////////////////////////////////////////////////////////////////
     /// Called when rpc processor things happen
 
-    pub(super) fn ping_sent(&mut self, ts: u64, bytes: u64) {
-        self.peer_stats.ping_stats.total_sent += 1;
+    pub(super) fn question_sent(&mut self, ts: u64, bytes: u64, expects_answer: bool) {
         self.transfer_stats_accounting.add_up(bytes);
-        self.peer_stats.ping_stats.in_flight += 1;
-        self.peer_stats.ping_stats.last_pinged = Some(ts);
-        // if we haven't heard from this node yet and it's our first attempt at contacting it
-        // then we set the last_seen time
-        if self.peer_stats.last_seen.is_none() {
-            self.peer_stats.last_seen = Some(ts);
+        self.peer_stats.rpc_stats.messages_sent += 1;
+        if expects_answer {
+            self.peer_stats.rpc_stats.questions_in_flight += 1;
         }
-    }
-    pub(super) fn ping_rcvd(&mut self, ts: u64, bytes: u64) {
-        self.transfer_stats_accounting.add_down(bytes);
-        self.touch_last_seen(ts);
-    }
-    pub(super) fn pong_sent(&mut self, _ts: u64, bytes: u64) {
-        self.transfer_stats_accounting.add_up(bytes);
-    }
-    pub(super) fn pong_rcvd(&mut self, send_ts: u64, recv_ts: u64, bytes: u64) {
-        self.transfer_stats_accounting.add_down(bytes);
-        self.peer_stats.ping_stats.in_flight -= 1;
-        self.peer_stats.ping_stats.total_returned += 1;
-        self.peer_stats.ping_stats.consecutive_pongs += 1;
-        if self
-            .peer_stats
-            .ping_stats
-            .first_consecutive_pong_time
-            .is_none()
-        {
-            self.peer_stats.ping_stats.first_consecutive_pong_time = Some(recv_ts);
-        }
-        self.record_latency(recv_ts - send_ts);
-        self.touch_last_seen(recv_ts);
-    }
-    pub(super) fn ping_lost(&mut self, _ts: u64) {
-        self.peer_stats.ping_stats.in_flight -= 1;
-        self.peer_stats.ping_stats.recent_lost_pings += 1;
-        self.peer_stats.ping_stats.consecutive_pongs = 0;
-        self.peer_stats.ping_stats.first_consecutive_pong_time = None;
-    }
-    pub(super) fn question_sent(&mut self, ts: u64, bytes: u64) {
-        self.transfer_stats_accounting.add_up(bytes);
-        // if we haven't heard from this node yet and it's our first attempt at contacting it
-        // then we set the last_seen time
         if self.peer_stats.last_seen.is_none() {
             self.peer_stats.last_seen = Some(ts);
         }
     }
     pub(super) fn question_rcvd(&mut self, ts: u64, bytes: u64) {
         self.transfer_stats_accounting.add_down(bytes);
+        self.peer_stats.rpc_stats.messages_rcvd += 1;
         self.touch_last_seen(ts);
     }
     pub(super) fn answer_sent(&mut self, _ts: u64, bytes: u64) {
         self.transfer_stats_accounting.add_up(bytes);
+        self.peer_stats.rpc_stats.messages_sent += 1;
     }
     pub(super) fn answer_rcvd(&mut self, send_ts: u64, recv_ts: u64, bytes: u64) {
         self.transfer_stats_accounting.add_down(bytes);
+        self.peer_stats.rpc_stats.messages_rcvd += 1;
+        self.peer_stats.rpc_stats.questions_in_flight -= 1;
+        if self
+            .peer_stats
+            .rpc_stats
+            .first_consecutive_answer_time
+            .is_none()
+        {
+            self.peer_stats.rpc_stats.first_consecutive_answer_time = Some(recv_ts);
+        }
         self.record_latency(recv_ts - send_ts);
         self.touch_last_seen(recv_ts);
     }
     pub(super) fn question_lost(&mut self, _ts: u64) {
-        self.peer_stats.ping_stats.consecutive_pongs = 0;
-        self.peer_stats.ping_stats.first_consecutive_pong_time = None;
+        self.peer_stats.rpc_stats.first_consecutive_answer_time = None;
+        self.peer_stats.rpc_stats.questions_in_flight -= 1;
     }
 }
 

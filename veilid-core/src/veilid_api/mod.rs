@@ -1099,21 +1099,20 @@ pub struct TransferStatsDownUp {
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub struct PingStats {
-    pub in_flight: u32,         // number of pings issued that have yet to be answered
-    pub total_sent: u32,        // number of pings that have been sent in the total_time range
-    pub total_returned: u32, // number of pings that have been returned by the node in the total_time range
-    pub consecutive_pongs: u32, // number of pongs that have been received and returned consecutively without a lost ping
-    pub last_pinged: Option<u64>, // when the peer was last pinged
-    pub first_consecutive_pong_time: Option<u64>, // the timestamp of the first pong in a series of consecutive pongs
-    pub recent_lost_pings: u32, // number of pings that have been lost since we lost reliability
+pub struct RPCStats {
+    pub messages_sent: u32, // number of rpcs that have been sent in the total_time range
+    pub messages_rcvd: u32, // number of rpcs that have been received in the total_time range
+    pub questions_in_flight: u32, // number of questions issued that have yet to be answered
+    //pub last_question: Option<u64>, // when the peer was last questioned and we want an answer
+    pub first_consecutive_answer_time: Option<u64>, // the timestamp of the first answer in a series of consecutive questions
+    pub recent_lost_answers: u32, // number of answers that have been lost since we lost reliability
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct PeerStats {
     pub time_added: u64,               // when the peer was added to the routing table
     pub last_seen: Option<u64>, // when the peer was last seen for any reason, including when we first attempted to reach out to it
-    pub ping_stats: PingStats,  // information about pings
+    pub rpc_stats: RPCStats,    // information about RPCs
     pub latency: Option<LatencyStats>, // latencies for communications with the peer
     pub transfer: TransferStatsDownUp, // Stats for communications with the peer
     pub status: Option<NodeStatus>, // Last known node status

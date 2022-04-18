@@ -797,59 +797,19 @@ impl RoutingTable {
 
     //////////////////////////////////////////////////////////////////////
     // Stats Accounting
-
-    pub fn stats_ping_sent(&self, node_ref: NodeRef, ts: u64, bytes: u64) {
+    pub fn stats_question_sent(
+        &self,
+        node_ref: NodeRef,
+        ts: u64,
+        bytes: u64,
+        expects_answer: bool,
+    ) {
         self.inner
             .lock()
             .self_transfer_stats_accounting
             .add_up(bytes);
         node_ref.operate(|e| {
-            e.ping_sent(ts, bytes);
-        })
-    }
-    pub fn stats_ping_rcvd(&self, node_ref: NodeRef, ts: u64, bytes: u64) {
-        self.inner
-            .lock()
-            .self_transfer_stats_accounting
-            .add_down(bytes);
-        node_ref.operate(|e| {
-            e.ping_rcvd(ts, bytes);
-        })
-    }
-    pub fn stats_pong_sent(&self, node_ref: NodeRef, ts: u64, bytes: u64) {
-        self.inner
-            .lock()
-            .self_transfer_stats_accounting
-            .add_up(bytes);
-        node_ref.operate(|e| {
-            e.pong_sent(ts, bytes);
-        })
-    }
-    pub fn stats_pong_rcvd(&self, node_ref: NodeRef, send_ts: u64, recv_ts: u64, bytes: u64) {
-        self.inner
-            .lock()
-            .self_transfer_stats_accounting
-            .add_down(bytes);
-        self.inner
-            .lock()
-            .self_latency_stats_accounting
-            .record_latency(recv_ts - send_ts);
-        node_ref.operate(|e| {
-            e.pong_rcvd(send_ts, recv_ts, bytes);
-        })
-    }
-    pub fn stats_ping_lost(&self, node_ref: NodeRef, ts: u64) {
-        node_ref.operate(|e| {
-            e.ping_lost(ts);
-        })
-    }
-    pub fn stats_question_sent(&self, node_ref: NodeRef, ts: u64, bytes: u64) {
-        self.inner
-            .lock()
-            .self_transfer_stats_accounting
-            .add_up(bytes);
-        node_ref.operate(|e| {
-            e.question_sent(ts, bytes);
+            e.question_sent(ts, bytes, expects_answer);
         })
     }
     pub fn stats_question_rcvd(&self, node_ref: NodeRef, ts: u64, bytes: u64) {

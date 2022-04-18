@@ -124,7 +124,6 @@ struct WaitableReply {
     timeout: u64,
     node_ref: NodeRef,
     send_ts: u64,
-    is_ping: bool,
 }
 
 /////////////////////////////////////////////////////////////////////
@@ -367,15 +366,9 @@ impl RPCProcessor {
         match &out {
             Err(_) => {
                 self.cancel_op_id_waiter(waitable_reply.op_id);
-                if waitable_reply.is_ping {
-                    self.routing_table()
-                        .stats_ping_lost(waitable_reply.node_ref.clone(), waitable_reply.send_ts);
-                } else {
-                    self.routing_table().stats_question_lost(
-                        waitable_reply.node_ref.clone(),
-                        waitable_reply.send_ts,
-                    );
-                }
+
+                self.routing_table()
+                    .stats_question_lost(waitable_reply.node_ref.clone(), waitable_reply.send_ts);
             }
             Ok((rpcreader, _)) => {
                 // Note that we definitely received this node info since we got a reply
@@ -383,21 +376,12 @@ impl RPCProcessor {
 
                 // Reply received
                 let recv_ts = get_timestamp();
-                if waitable_reply.is_ping {
-                    self.routing_table().stats_pong_rcvd(
-                        waitable_reply.node_ref,
-                        waitable_reply.send_ts,
-                        recv_ts,
-                        rpcreader.header.body_len,
-                    )
-                } else {
-                    self.routing_table().stats_answer_rcvd(
-                        waitable_reply.node_ref,
-                        waitable_reply.send_ts,
-                        recv_ts,
-                        rpcreader.header.body_len,
-                    )
-                }
+                self.routing_table().stats_answer_rcvd(
+                    waitable_reply.node_ref,
+                    waitable_reply.send_ts,
+                    recv_ts,
+                    rpcreader.header.body_len,
+                )
             }
         };
 
@@ -416,16 +400,15 @@ impl RPCProcessor {
     ) -> Result<Option<WaitableReply>, RPCError> {
         log_rpc!(self.get_rpc_request_debug_info(&dest, &message, &safety_route_spec));
 
-        let (op_id, wants_answer, is_ping) = {
+        let (op_id, wants_answer) = {
             let operation = message
                 .get_root::<veilid_capnp::operation::Reader>()
                 .map_err(map_error_internal!("invalid operation"))
                 .map_err(logthru_rpc!(error))?;
             let op_id = operation.get_op_id();
             let wants_answer = self.wants_answer(&operation).map_err(logthru_rpc!())?;
-            let is_ping = operation.get_detail().has_info_q();
 
-            (op_id, wants_answer, is_ping)
+            (op_id, wants_answer)
         };
 
         let out_node_id;
@@ -572,13 +555,8 @@ impl RPCProcessor {
 
         // Successfully sent
         let send_ts = get_timestamp();
-        if is_ping {
-            self.routing_table()
-                .stats_ping_sent(node_ref.clone(), send_ts, bytes);
-        } else {
-            self.routing_table()
-                .stats_question_sent(node_ref.clone(), send_ts, bytes);
-        }
+        self.routing_table()
+            .stats_question_sent(node_ref.clone(), send_ts, bytes, wants_answer);
 
         // Pass back waitable reply completion
         match eventual {
@@ -592,7 +570,6 @@ impl RPCProcessor {
                 timeout,
                 node_ref,
                 send_ts,
-                is_ping,
             })),
         }
     }
@@ -610,12 +587,6 @@ impl RPCProcessor {
         //
         let out_node_id;
         let mut out_noderef: Option<NodeRef> = None;
-        let is_pong = {
-            let operation = reply_msg
-                .get_root::<veilid_capnp::operation::Reader>()
-                .map_err(map_error_internal!("invalid operation"))?;
-            operation.get_detail().has_info_a()
-        };
 
         let out = {
             let out;
@@ -753,13 +724,8 @@ impl RPCProcessor {
         // Reply successfully sent
         let send_ts = get_timestamp();
 
-        if is_pong {
-            self.routing_table()
-                .stats_pong_sent(node_ref, send_ts, bytes);
-        } else {
-            self.routing_table()
-                .stats_answer_sent(node_ref, send_ts, bytes);
-        }
+        self.routing_table()
+            .stats_answer_sent(node_ref, send_ts, bytes);
 
         Ok(())
     }
@@ -1237,19 +1203,11 @@ impl RPCProcessor {
                     };
 
                 if let Some(sender_nr) = opt_sender_nr.clone() {
-                    if which == 0u32 {
-                        self.routing_table().stats_ping_rcvd(
-                            sender_nr,
-                            msg.header.timestamp,
-                            msg.header.body_len,
-                        );
-                    } else {
-                        self.routing_table().stats_question_rcvd(
-                            sender_nr,
-                            msg.header.timestamp,
-                            msg.header.body_len,
-                        );
-                    }
+                    self.routing_table().stats_question_rcvd(
+                        sender_nr,
+                        msg.header.timestamp,
+                        msg.header.body_len,
+                    );
                 }
             };
 
