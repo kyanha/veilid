@@ -9,14 +9,21 @@ const CONNECTIONLESS_TIMEOUT_SECS: u32 = 29;
 pub struct NodeRef {
     routing_table: RoutingTable,
     node_id: DHTKey,
+    filter: Option<DialInfoFilter>,
 }
 
 impl NodeRef {
-    pub fn new(routing_table: RoutingTable, key: DHTKey, entry: &mut BucketEntry) -> Self {
+    pub fn new(
+        routing_table: RoutingTable,
+        key: DHTKey,
+        entry: &mut BucketEntry,
+        filter: Option<DialInfoFilter>,
+    ) -> Self {
         entry.ref_count += 1;
         Self {
             routing_table,
             node_id: key,
+            filter,
         }
     }
 
@@ -34,18 +41,79 @@ impl NodeRef {
     pub fn peer_info(&self) -> PeerInfo {
         self.operate(|e| e.peer_info(self.node_id()))
     }
-    pub fn node_info(&self) -> NodeInfo {
-        self.operate(|e| e.node_info().clone())
-    }
-    pub fn local_node_info(&self) -> LocalNodeInfo {
-        self.operate(|e| e.local_node_info().clone())
-    }
     pub fn has_seen_our_node_info(&self) -> bool {
         self.operate(|e| e.has_seen_our_node_info())
     }
     pub fn set_seen_our_node_info(&self) {
         self.operate(|e| e.set_seen_our_node_info(true));
     }
+
+    pub fn first_filtered_dial_info(&self) -> Option<DialInfo> {
+        self.operate(|e| {
+            if matches!(
+                self.filter.map(|f| f.peer_scope).unwrap_or(PeerScope::All),
+                PeerScope::All | PeerScope::Global
+            ) {
+                e.node_info().first_filtered_dial_info(|di| {
+                    if let Some(filter) = self.filter {
+                        di.matches_filter(&filter)
+                    } else {
+                        true
+                    }
+                })
+            } else {
+                None
+            }
+            .or_else(|| {
+                if matches!(
+                    self.filter.map(|f| f.peer_scope).unwrap_or(PeerScope::All),
+                    PeerScope::All | PeerScope::Local
+                ) {
+                    e.local_node_info().first_filtered_dial_info(|di| {
+                        if let Some(filter) = self.filter {
+                            di.matches_filter(&filter)
+                        } else {
+                            true
+                        }
+                    })
+                } else {
+                    None
+                }
+            })
+        })
+    }
+
+    pub fn all_filtered_dial_info<F>(&self) -> Vec<DialInfo> {
+        let mut out = Vec::new();
+        self.operate(|e| {
+            if matches!(
+                self.filter.map(|f| f.peer_scope).unwrap_or(PeerScope::All),
+                PeerScope::All | PeerScope::Global
+            ) {
+                out.append(&mut e.node_info().all_filtered_dial_info(|di| {
+                    if let Some(filter) = self.filter {
+                        di.matches_filter(&filter)
+                    } else {
+                        true
+                    }
+                }))
+            }
+            if matches!(
+                self.filter.map(|f| f.peer_scope).unwrap_or(PeerScope::All),
+                PeerScope::All | PeerScope::Local
+            ) {
+                out.append(&mut e.local_node_info().all_filtered_dial_info(|di| {
+                    if let Some(filter) = self.filter {
+                        di.matches_filter(&filter)
+                    } else {
+                        true
+                    }
+                }))
+            }
+        });
+        out
+    }
+
     pub async fn last_connection(&self) -> Option<ConnectionDescriptor> {
         // Get the last connection and the last time we saw anything with this connection
         let (last_connection, last_seen) = self.operate(|e| {
@@ -88,6 +156,7 @@ impl Clone for NodeRef {
         Self {
             routing_table: self.routing_table.clone(),
             node_id: self.node_id,
+            filter: self.filter.clone(),
         }
     }
 }

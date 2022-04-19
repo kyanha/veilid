@@ -38,7 +38,7 @@ impl Bucket {
 
         // Get a node ref to return
         let entry_ref = self.entries.get_mut(&node_id).unwrap();
-        NodeRef::new(self.routing_table.clone(), node_id, entry_ref)
+        NodeRef::new(self.routing_table.clone(), node_id, entry_ref, None)
     }
 
     pub(super) fn remove_entry(&mut self, node_id: &DHTKey) {

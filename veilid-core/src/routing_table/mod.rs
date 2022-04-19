@@ -490,7 +490,7 @@ impl RoutingTable {
         let bucket = &mut inner.buckets[idx];
         bucket
             .entry_mut(&node_id)
-            .map(|e| NodeRef::new(self.clone(), node_id, e))
+            .map(|e| NodeRef::new(self.clone(), node_id, e, None))
     }
 
     // Shortcut function to add a node to our routing table if it doesn't exist
@@ -546,19 +546,24 @@ impl RoutingTable {
             for (k, entry) in b.entries_mut() {
                 // Ensure it's not dead
                 if !matches!(entry.state(cur_ts), BucketEntryState::Dead) {
-                    // Ensure we have a node info
-                    if let Some(node_status) = &entry.peer_stats().status {
-                        // Ensure the node will relay
-                        if node_status.will_relay {
-                            if let Some(best_inbound_relay) = best_inbound_relay.as_mut() {
-                                if best_inbound_relay.operate(|best| {
-                                    BucketEntry::cmp_fastest_reliable(cur_ts, best, entry)
-                                }) == std::cmp::Ordering::Greater
-                                {
-                                    *best_inbound_relay = NodeRef::new(self.clone(), *k, entry);
+                    // Ensure this node is not on our local network
+                    if !entry.local_node_info().has_dial_info() {
+                        // Ensure we have the node's status
+                        if let Some(node_status) = &entry.peer_stats().status {
+                            // Ensure the node will relay
+                            if node_status.will_relay {
+                                if let Some(best_inbound_relay) = best_inbound_relay.as_mut() {
+                                    if best_inbound_relay.operate(|best| {
+                                        BucketEntry::cmp_fastest_reliable(cur_ts, best, entry)
+                                    }) == std::cmp::Ordering::Greater
+                                    {
+                                        *best_inbound_relay =
+                                            NodeRef::new(self.clone(), *k, entry, None);
+                                    }
+                                } else {
+                                    best_inbound_relay =
+                                        Some(NodeRef::new(self.clone(), *k, entry, None));
                                 }
-                            } else {
-                                best_inbound_relay = Some(NodeRef::new(self.clone(), *k, entry));
                             }
                         }
                     }
@@ -709,7 +714,7 @@ impl RoutingTable {
             let mut noderefs = Vec::<NodeRef>::with_capacity(inner.bucket_entry_count);
             for b in &mut inner.buckets {
                 for (k, entry) in b.entries_mut() {
-                    noderefs.push(NodeRef::new(self.clone(), *k, entry))
+                    noderefs.push(NodeRef::new(self.clone(), *k, entry, None))
                 }
             }
             noderefs
@@ -736,7 +741,7 @@ impl RoutingTable {
         for b in &mut inner.buckets {
             for (k, entry) in b.entries_mut() {
                 if entry.needs_ping(self.clone(), k, cur_ts) {
-                    let nr = NodeRef::new(self.clone(), *k, entry);
+                    let nr = NodeRef::new(self.clone(), *k, entry, None);
                     log_rtab!(
                         "    --- ping validating: {:?} ({})",
                         nr,

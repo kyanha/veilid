@@ -64,9 +64,7 @@ struct NetworkInner {
 
 struct NetworkUnlockedInner {
     // Background processes
-    update_udpv4_dialinfo_task: TickTask,
-    update_tcpv4_dialinfo_task: TickTask,
-    update_wsv4_dialinfo_task: TickTask,
+    update_public_dialinfo_task: TickTask,
 }
 
 #[derive(Clone)]
@@ -106,9 +104,7 @@ impl Network {
 
     fn new_unlocked_inner() -> NetworkUnlockedInner {
         NetworkUnlockedInner {
-            update_udpv4_dialinfo_task: TickTask::new(1),
-            update_tcpv4_dialinfo_task: TickTask::new(1),
-            update_wsv4_dialinfo_task: TickTask::new(1),
+            update_public_dialinfo_task: TickTask::new(1),
         }
     }
 
@@ -119,31 +115,13 @@ impl Network {
             unlocked_inner: Arc::new(Self::new_unlocked_inner()),
         };
 
-        // Set udp dialinfo tick task
+        // Set public dialinfo tick task
         {
             let this2 = this.clone();
             this.unlocked_inner
-                .update_udpv4_dialinfo_task
+                .update_public_dialinfo_task
                 .set_routine(move |l, t| {
-                    Box::pin(this2.clone().update_udpv4_dialinfo_task_routine(l, t))
-                });
-        }
-        // Set tcp dialinfo tick task
-        {
-            let this2 = this.clone();
-            this.unlocked_inner
-                .update_tcpv4_dialinfo_task
-                .set_routine(move |l, t| {
-                    Box::pin(this2.clone().update_tcpv4_dialinfo_task_routine(l, t))
-                });
-        }
-        // Set ws dialinfo tick task
-        {
-            let this2 = this.clone();
-            this.unlocked_inner
-                .update_wsv4_dialinfo_task
-                .set_routine(move |l, t| {
-                    Box::pin(this2.clone().update_wsv4_dialinfo_task_routine(l, t))
+                    Box::pin(this2.clone().update_public_dialinfo_task_routine(l, t))
                 });
         }
 
@@ -521,24 +499,22 @@ impl Network {
         // If we can have public dialinfo, or we haven't figured out our network class yet,
         // and we're active for UDP, we should attempt to get our public dialinfo sorted out
         // and assess our network class if we haven't already
-        if protocol_config.inbound.udp
-            && !udp_static_public_dialinfo
-            && (network_class.inbound_capable() || network_class == NetworkClass::Invalid)
+        if (network_class.inbound_capable() || network_class == NetworkClass::Invalid)
+            && 
         {
-            let filter = DialInfoFilter::all()
-                .with_protocol_type(ProtocolType::UDP)
+            let filter = DialInfoFilter::global()
+                .with_protocol_type(ProtocolType::TCP)
                 .with_address_type(AddressType::IPV4);
-            let need_udpv4_dialinfo = routing_table
+            let need_tcpv4_dialinfo = routing_table
                 .first_public_filtered_dial_info_detail(&filter)
                 .is_none();
-            if need_udpv4_dialinfo {
-                // If we have no public UDPv4 dialinfo, then we need to run a NAT check
-                // ensure the singlefuture is running for this
-                self.unlocked_inner
-                    .update_udpv4_dialinfo_task
-                    .tick()
-                    .await?;
+            if need_tcpv4_dialinfo {
             }
+
+            self.unlocked_inner
+                .update_public_dialinfo_task
+                .tick()
+                .await?;
         }
 
         // Same but for TCPv4

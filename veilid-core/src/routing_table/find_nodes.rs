@@ -34,7 +34,14 @@ impl RoutingTable {
                 },
             )),
             // transform
-            |e| NodeRef::new(self.clone(), *e.0, e.1.as_mut().unwrap()),
+            |e| {
+                NodeRef::new(
+                    self.clone(),
+                    *e.0,
+                    e.1.as_mut().unwrap(),
+                    Some(dial_info_filter.clone()),
+                )
+            },
         )
     }
 
