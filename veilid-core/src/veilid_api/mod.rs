@@ -23,6 +23,7 @@ pub use rpc_processor::InfoAnswer;
 
 use core::fmt;
 use core_context::{api_shutdown, VeilidCoreContext};
+use enumset::*;
 use rpc_processor::{RPCError, RPCProcessor};
 use serde::*;
 use xx::*;
@@ -375,7 +376,6 @@ impl NodeInfo {
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct LocalNodeInfo {
-    pub outbound_protocols: ProtocolSet,
     pub dial_info_list: Vec<DialInfo>,
 }
 
@@ -411,7 +411,7 @@ impl LocalNodeInfo {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Ord, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, PartialOrd, Ord, Hash, Serialize, Deserialize, EnumSetType)]
 // The derived ordering here is the order of preference, lower is preferred for connections
 // Must match DialInfo order
 pub enum ProtocolType {
@@ -430,27 +430,7 @@ impl ProtocolType {
     }
 }
 
-#[derive(Copy, Clone, Debug, Default, Serialize, Deserialize)]
-pub struct ProtocolSet {
-    pub udp: bool,
-    pub tcp: bool,
-    pub ws: bool,
-    pub wss: bool,
-}
-
-impl ProtocolSet {
-    pub fn contains(&self, protocol_type: ProtocolType) -> bool {
-        match protocol_type {
-            ProtocolType::UDP => self.udp,
-            ProtocolType::TCP => self.tcp,
-            ProtocolType::WS => self.ws,
-            ProtocolType::WSS => self.wss,
-        }
-    }
-    pub fn filter_dial_info(&self, di: &DialInfo) -> bool {
-        self.contains(di.protocol_type())
-    }
-}
+pub type ProtocolSet = EnumSet<ProtocolType>;
 
 #[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Ord, Eq, Hash, Serialize, Deserialize)]
 pub enum AddressType {
@@ -598,54 +578,59 @@ impl FromStr for SocketAddress {
 
 //////////////////////////////////////////////////////////////////
 
-#[derive(Clone, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct DialInfoFilter {
     pub peer_scope: PeerScope,
-    pub protocol_type: Option<ProtocolType>,
+    pub protocol_set: ProtocolSet,
     pub address_type: Option<AddressType>,
+}
+
+impl Default for DialInfoFilter {
+    fn default() -> Self {
+        Self {
+            peer_scope: PeerScope::All,
+            protocol_set: ProtocolSet::all(),
+            address_type: None,
+        }
+    }
 }
 
 impl DialInfoFilter {
     pub fn all() -> Self {
         Self {
             peer_scope: PeerScope::All,
-            protocol_type: None,
+            protocol_set: ProtocolSet::all(),
             address_type: None,
         }
     }
     pub fn global() -> Self {
         Self {
             peer_scope: PeerScope::Global,
-            protocol_type: None,
+            protocol_set: ProtocolSet::all(),
             address_type: None,
         }
     }
     pub fn local() -> Self {
         Self {
             peer_scope: PeerScope::Local,
-            protocol_type: None,
+            protocol_set: ProtocolSet::all(),
             address_type: None,
         }
     }
     pub fn scoped(peer_scope: PeerScope) -> Self {
         Self {
             peer_scope,
-            protocol_type: None,
+            protocol_set: ProtocolSet::all(),
             address_type: None,
         }
     }
     pub fn with_protocol_type(mut self, protocol_type: ProtocolType) -> Self {
-        self.protocol_type = Some(protocol_type);
+        self.protocol_set = ProtocolSet::only(protocol_type);
         self
     }
     pub fn with_address_type(mut self, address_type: AddressType) -> Self {
         self.address_type = Some(address_type);
         self
-    }
-    pub fn is_empty(&self) -> bool {
-        self.peer_scope == PeerScope::All
-            && self.protocol_type.is_none()
-            && self.address_type.is_none()
     }
 }
 
@@ -653,8 +638,8 @@ impl fmt::Debug for DialInfoFilter {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         let mut out = String::new();
         out += &format!("{:?}", self.peer_scope);
-        if let Some(pt) = self.protocol_type {
-            out += &format!("+{:?}", pt);
+        if self.protocol_set != ProtocolSet::all() {
+            out += &format!("+{:?}", self.protocol_set);
         }
         if let Some(at) = self.address_type {
             out += &format!("+{:?}", at);
@@ -919,7 +904,7 @@ impl DialInfo {
             } else {
                 PeerScope::All
             },
-            protocol_type: Some(self.protocol_type()),
+            protocol_set: ProtocolSet::only(self.protocol_type()),
             address_type: Some(self.address_type()),
         }
     }
@@ -930,10 +915,8 @@ impl MatchesDialInfoFilter for DialInfo {
         if !self.matches_peer_scope(filter.peer_scope) {
             return false;
         }
-        if let Some(pt) = filter.protocol_type {
-            if self.protocol_type() != pt {
-                return false;
-            }
+        if !filter.protocol_set.contains(self.protocol_type()) {
+            return false;
         }
         if let Some(at) = filter.address_type {
             if self.address_type() != at {
@@ -1026,10 +1009,8 @@ impl MatchesDialInfoFilter for ConnectionDescriptor {
         if !self.matches_peer_scope(filter.peer_scope) {
             return false;
         }
-        if let Some(pt) = filter.protocol_type {
-            if self.protocol_type() != pt {
-                return false;
-            }
+        if filter.protocol_set.contains(self.protocol_type()) {
+            return false;
         }
         if let Some(at) = filter.address_type {
             if self.address_type() != at {

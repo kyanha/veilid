@@ -31,6 +31,30 @@ impl NodeRef {
         self.node_id
     }
 
+    pub fn filter_ref(&self) -> Option<&DialInfoFilter> {
+        self.filter.as_ref()
+    }
+
+    pub fn take_filter(&mut self) -> Option<DialInfoFilter> {
+        self.filter.take()
+    }
+
+    pub fn set_filter(&mut self, filter: Option<DialInfoFilter>) {
+        self.filter = filter
+    }
+
+    // Returns true if some protocols can still pass the filter and false if no protocols remain
+    pub fn filter_protocols(&mut self, protocol_set: ProtocolSet) -> bool {
+        if protocol_set != ProtocolSet::all() {
+            let mut dif = self.filter.unwrap_or_default();
+            dif.protocol_set &= protocol_set;
+            self.filter = Some(dif);
+        }
+        self.filter
+            .map(|f| !f.protocol_set.is_empty())
+            .unwrap_or(true)
+    }
+
     pub fn operate<T, F>(&self, f: F) -> T
     where
         F: FnOnce(&mut BucketEntry) -> T,
@@ -48,13 +72,31 @@ impl NodeRef {
         self.operate(|e| e.set_seen_our_node_info(true));
     }
 
+    pub fn network_class(&self) -> NetworkClass {
+        self.operate(|e| e.node_info().network_class)
+    }
+    pub fn outbound_protocols(&self) -> ProtocolSet {
+        self.operate(|e| e.node_info().outbound_protocols)
+    }
+    pub fn relay(&self) -> Option<NodeRef> {
+        let target_rpi = self.operate(|e| e.node_info().relay_peer_info)?;
+
+        self.routing_table
+            .register_node_with_node_info(target_rpi.node_id.key, target_rpi.node_info)
+            .map_err(logthru_rtab!(error))
+            .ok()
+            .map(|nr| {
+                nr.set_filter(self.filter_ref().cloned());
+                nr
+            })
+    }
     pub fn first_filtered_dial_info(&self) -> Option<DialInfo> {
         self.operate(|e| {
             if matches!(
                 self.filter.map(|f| f.peer_scope).unwrap_or(PeerScope::All),
-                PeerScope::All | PeerScope::Global
+                PeerScope::All | PeerScope::Local
             ) {
-                e.node_info().first_filtered_dial_info(|di| {
+                e.local_node_info().first_filtered_dial_info(|di| {
                     if let Some(filter) = self.filter {
                         di.matches_filter(&filter)
                     } else {
@@ -67,9 +109,9 @@ impl NodeRef {
             .or_else(|| {
                 if matches!(
                     self.filter.map(|f| f.peer_scope).unwrap_or(PeerScope::All),
-                    PeerScope::All | PeerScope::Local
+                    PeerScope::All | PeerScope::Global
                 ) {
-                    e.local_node_info().first_filtered_dial_info(|di| {
+                    e.node_info().first_filtered_dial_info(|di| {
                         if let Some(filter) = self.filter {
                             di.matches_filter(&filter)
                         } else {

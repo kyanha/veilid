@@ -70,12 +70,18 @@ struct ClientWhitelistEntry {
 
 // Mechanism required to contact another node
 enum ContactMethod {
-    Unreachable,              // Node is not reachable by any means
-    Direct(DialInfo),         // Contact the node directly
-    SignalReverse(NodeRef),   // Request via signal the node connect back directly
-    SignalHolePunch(NodeRef), // Request via signal the node negotiate a hole punch
-    InboundRelay(NodeRef),    // Must use an inbound relay to reach the node
-    OutboundRelay(NodeRef),   // Must use outbound relay to reach the node
+    Unreachable,                       // Node is not reachable by any means
+    Direct(DialInfo),                  // Contact the node directly
+    SignalReverse(NodeRef, NodeRef),   // Request via signal the node connect back directly
+    SignalHolePunch(NodeRef, NodeRef), // Request via signal the node negotiate a hole punch
+    InboundRelay(NodeRef),             // Must use an inbound relay to reach the node
+    OutboundRelay(NodeRef),            // Must use outbound relay to reach the node
+}
+
+#[derive(Copy, Clone, Debug)]
+pub enum SendDataKind {
+    Direct,
+    Indirect,
 }
 
 // The mutable state of the network manager
@@ -488,18 +494,14 @@ impl NetworkManager {
                 let routing_table = self.routing_table();
 
                 // Add the peer info to our routing table
-                let peer_nr = routing_table
+                let mut peer_nr = routing_table
                     .register_node_with_node_info(peer_info.node_id.key, peer_info.node_info)?;
 
                 // Get the udp direct dialinfo for the hole punch
-                let hole_punch_dial_info = if let Some(hpdi) = peer_nr
-                    .node_info()
-                    .first_filtered_dial_info(|di| matches!(di.protocol_type(), ProtocolType::UDP))
-                {
-                    hpdi
-                } else {
-                    return Err("No hole punch capable dialinfo found for node".to_owned());
-                };
+                peer_nr.filter_protocols(ProtocolSet::only(ProtocolType::UDP));
+                let hole_punch_dial_info = peer_nr
+                    .first_filtered_dial_info()
+                    .ok_or_else(|| "No hole punch capable dialinfo found for node".to_owned())?;
 
                 // Do our half of the hole punch by sending an empty packet
                 // Both sides will do this and then the receipt will get sent over the punched hole
@@ -609,60 +611,65 @@ impl NetworkManager {
     }
 
     // Figure out how to reach a node
-    fn get_contact_method(&self, node_ref: &NodeRef) -> Result<ContactMethod, String> {
+    fn get_contact_method(&self, node_ref: NodeRef) -> Result<ContactMethod, String> {
         // Get our network class and protocol config
         let our_network_class = self.get_network_class().unwrap_or(NetworkClass::Invalid);
         let our_protocol_config = self.get_protocol_config().unwrap();
 
-        // See if this is a local node reachable directly
-        let local_node_info = node_ref.local_node_info();
-        if let Some(local_direct_dial_info) = local_node_info
-            .first_filtered_dial_info(|di| our_protocol_config.outbound.filter_dial_info(di))
-        {
-            return Ok(ContactMethod::Direct(local_direct_dial_info));
+        // Scope noderef down to protocols we can do outbound
+        if !node_ref.filter_protocols(our_protocol_config.outbound) {
+            return Ok(ContactMethod::Unreachable);
         }
 
         // Get the best matching direct dial info if we have it
-        let target_node_info = node_ref.node_info();
-        let opt_direct_dial_info = target_node_info
-            .first_filtered_dial_info(|di| our_protocol_config.outbound.filter_dial_info(di));
+        let opt_direct_dial_info = node_ref.first_filtered_dial_info();
+
+        // See if this is a local node reachable directly
+        if let Some(direct_dial_info) = opt_direct_dial_info {
+            if direct_dial_info.is_local() {
+                return Ok(ContactMethod::Direct(direct_dial_info));
+            }
+        }
 
         // Can the target node do inbound?
-        if target_node_info.network_class.inbound_capable() {
+        let target_network_class = node_ref.network_class();
+        if target_network_class.inbound_capable() {
             // Do we need to signal before going inbound?
-            if target_node_info.network_class.inbound_requires_signal() {
+            if target_network_class.inbound_requires_signal() {
                 // Get the target's inbound relay, it must have one or it is not reachable
-                if let Some(target_rpi) = target_node_info.relay_peer_info {
+                if let Some(inbound_relay_nr) = node_ref.relay() {
                     // Can we reach the inbound relay?
-                    if target_rpi
-                        .node_info
-                        .first_filtered_dial_info(|di| {
-                            our_protocol_config.outbound.filter_dial_info(di)
-                        })
-                        .is_some()
-                    {
-                        let target_inbound_relay_nr =
-                            self.routing_table().register_node_with_node_info(
-                                target_rpi.node_id.key,
-                                target_rpi.node_info,
-                            )?;
-
+                    if inbound_relay_nr.first_filtered_dial_info().is_some() {
                         // Can we receive anything inbound ever?
                         if our_network_class.inbound_capable() {
                             // Can we receive a direct reverse connection?
                             if !our_network_class.inbound_requires_signal() {
-                                return Ok(ContactMethod::SignalReverse(target_inbound_relay_nr));
+                                return Ok(ContactMethod::SignalReverse(
+                                    inbound_relay_nr,
+                                    node_ref,
+                                ));
                             }
                             // Can we hole-punch?
-                            else if our_protocol_config.inbound.udp
-                                && target_node_info.outbound_protocols.udp
+                            else if our_protocol_config.inbound.contains(ProtocolType::UDP)
+                                && node_ref.outbound_protocols().contains(ProtocolType::UDP)
                             {
-                                return Ok(ContactMethod::SignalHolePunch(target_inbound_relay_nr));
+                                let udp_inbound_relay_nr = inbound_relay_nr.clone();
+                                let udp_target_nr = node_ref.clone();
+                                let can_reach_inbound_relay = udp_inbound_relay_nr
+                                    .filter_protocols(ProtocolSet::only(ProtocolType::UDP));
+                                let can_reach_target = udp_target_nr
+                                    .filter_protocols(ProtocolSet::only(ProtocolType::UDP));
+                                if can_reach_inbound_relay && can_reach_target {
+                                    return Ok(ContactMethod::SignalHolePunch(
+                                        udp_inbound_relay_nr,
+                                        udp_target_nr,
+                                    ));
+                                }
                             }
                             // Otherwise we have to inbound relay
                         }
 
-                        return Ok(ContactMethod::InboundRelay(target_inbound_relay_nr));
+                        return Ok(ContactMethod::InboundRelay(inbound_relay_nr));
                     }
                 }
             }
@@ -675,20 +682,9 @@ impl NetworkManager {
             }
         } else {
             // If the other node is not inbound capable at all, it is using a full relay
-            if let Some(target_rpi) = target_node_info.relay_peer_info {
+            if let Some(target_inbound_relay_nr) = node_ref.relay() {
                 // Can we reach the full relay?
-                if target_rpi
-                    .node_info
-                    .first_filtered_dial_info(|di| {
-                        our_protocol_config.outbound.filter_dial_info(di)
-                    })
-                    .is_some()
-                {
-                    let target_inbound_relay_nr =
-                        self.routing_table().register_node_with_node_info(
-                            target_rpi.node_id.key,
-                            target_rpi.node_info,
-                        )?;
+                if target_inbound_relay_nr.first_filtered_dial_info().is_some() {
                     return Ok(ContactMethod::InboundRelay(target_inbound_relay_nr));
                 }
             }
@@ -777,6 +773,16 @@ impl NetworkManager {
         target_nr: NodeRef,
         data: Vec<u8>,
     ) -> Result<(), String> {
+        // Ensure we are filtered down to UDP (the only hole punch protocol supported today)
+        assert!(relay_nr
+            .filter_ref()
+            .map(|dif| dif.protocol_set == ProtocolSet::only(ProtocolType::UDP))
+            .unwrap_or_default());
+        assert!(target_nr
+            .filter_ref()
+            .map(|dif| dif.protocol_set == ProtocolSet::only(ProtocolType::UDP))
+            .unwrap_or_default());
+
         // Build a return receipt for the signal
         let receipt_timeout =
             ms_to_us(self.config.get().network.reverse_connection_receipt_time_ms);
@@ -788,14 +794,9 @@ impl NetworkManager {
         let peer_info = self.routing_table().get_own_peer_info();
 
         // Get the udp direct dialinfo for the hole punch
-        let hole_punch_dial_info = if let Some(hpdi) = target_nr
-            .node_info()
-            .first_filtered_dial_info(|di| matches!(di.protocol_type(), ProtocolType::UDP))
-        {
-            hpdi
-        } else {
-            return Err("No hole punch capable dialinfo found for node".to_owned());
-        };
+        let hole_punch_dial_info = target_nr
+            .first_filtered_dial_info()
+            .ok_or_else(|| "No hole punch capable dialinfo found for node".to_owned())?;
 
         // Do our half of the hole punch by sending an empty packet
         // Both sides will do this and then the receipt will get sent over the punched hole
@@ -887,18 +888,19 @@ impl NetworkManager {
             };
 
             // If we don't have last_connection, try to reach out to the peer via its dial info
-            match this.get_contact_method(&node_ref).map_err(logthru_net!())? {
+            match this.get_contact_method(node_ref).map_err(logthru_net!())? {
                 ContactMethod::OutboundRelay(relay_nr) | ContactMethod::InboundRelay(relay_nr) => {
                     this.send_data(relay_nr, data).await
                 }
                 ContactMethod::Direct(dial_info) => {
                     this.net().send_data_to_dial_info(dial_info, data).await
                 }
-                ContactMethod::SignalReverse(relay_nr) => {
-                    this.do_reverse_connect(relay_nr, node_ref, data).await
+                ContactMethod::SignalReverse(relay_nr, target_node_ref) => {
+                    this.do_reverse_connect(relay_nr, target_node_ref, data)
+                        .await
                 }
-                ContactMethod::SignalHolePunch(relay_nr) => {
-                    this.do_hole_punch(relay_nr, node_ref, data).await
+                ContactMethod::SignalHolePunch(relay_nr, target_node_ref) => {
+                    this.do_hole_punch(relay_nr, target_node_ref, data).await
                 }
                 ContactMethod::Unreachable => Err("Can't send to this relay".to_owned()),
             }
