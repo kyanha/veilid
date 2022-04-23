@@ -29,11 +29,21 @@ pub enum DialInfoOrigin {
     Mapped,
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Ord, Eq)]
+pub enum RoutingDomain {
+    PublicInternet,
+    LocalNetwork,
+}
+
+#[derive(Debug, Default)]
+pub struct RoutingDomainDetail {
+    dial_info_details: Vec<DialInfoDetail>,
+}
+
 #[derive(Debug, Clone, PartialEq, PartialOrd, Ord, Eq)]
 pub struct DialInfoDetail {
     pub dial_info: DialInfo,
     pub origin: DialInfoOrigin,
-    pub network_class: Option<NetworkClass>,
     pub timestamp: u64,
 }
 
@@ -48,12 +58,9 @@ struct RoutingTableInner {
     node_id: DHTKey,
     node_id_secret: DHTKeySecret,
     buckets: Vec<Bucket>,
-    public_dial_info_details: Vec<DialInfoDetail>,
-    interface_dial_info_details: Vec<DialInfoDetail>,
+    public_internet_routing_domain: RoutingDomainDetail,
+    local_network_routing_domain: RoutingDomainDetail,
     bucket_entry_count: usize,
-
-    // Waiters
-    eventual_changed_dial_info: Eventual,
 
     // Transfer stats for this node
     self_latency_stats_accounting: LatencyStatsAccounting,
@@ -90,10 +97,9 @@ impl RoutingTable {
             node_id: DHTKey::default(),
             node_id_secret: DHTKeySecret::default(),
             buckets: Vec::new(),
-            public_dial_info_details: Vec::new(),
-            interface_dial_info_details: Vec::new(),
+            public_internet_routing_domain: RoutingDomainDetail::default(),
+            local_network_routing_domain: RoutingDomainDetail::default(),
             bucket_entry_count: 0,
-            eventual_changed_dial_info: Eventual::new(),
             self_latency_stats_accounting: LatencyStatsAccounting::new(),
             self_transfer_stats_accounting: TransferStatsAccounting::new(),
             self_transfer_stats: TransferStatsDownUp::default(),
@@ -165,81 +171,78 @@ impl RoutingTable {
         self.inner.lock().node_id_secret
     }
 
-    pub fn has_interface_dial_info(&self) -> bool {
-        !self.inner.lock().interface_dial_info_details.is_empty()
+    fn with_routing_domain<F, R>(inner: &RoutingTableInner, domain: RoutingDomain, f: F) -> R
+    where
+        F: FnOnce(&RoutingDomainDetail) -> R,
+    {
+        match domain {
+            RoutingDomain::PublicInternet => f(&inner.public_internet_routing_domain),
+            RoutingDomain::LocalNetwork => f(&inner.local_network_routing_domain),
+        }
     }
 
-    pub fn has_public_dial_info(&self) -> bool {
-        !self.inner.lock().public_dial_info_details.is_empty()
+    fn with_routing_domain_mut<F, R>(
+        inner: &mut RoutingTableInner,
+        domain: RoutingDomain,
+        f: F,
+    ) -> R
+    where
+        F: FnOnce(&mut RoutingDomainDetail) -> R,
+    {
+        match domain {
+            RoutingDomain::PublicInternet => f(&mut inner.public_internet_routing_domain),
+            RoutingDomain::LocalNetwork => f(&mut inner.local_network_routing_domain),
+        }
     }
 
-    pub fn public_dial_info_details(&self) -> Vec<DialInfoDetail> {
-        self.inner.lock().public_dial_info_details.clone()
+    pub fn has_dial_info(&self, domain: RoutingDomain) -> bool {
+        let inner = self.inner.lock();
+        Self::with_routing_domain(&*inner, domain, |rd| !rd.dial_info_details.is_empty())
     }
 
-    pub fn interface_dial_info_details(&self) -> Vec<DialInfoDetail> {
-        self.inner.lock().interface_dial_info_details.clone()
+    pub fn dial_info_details(&self, domain: RoutingDomain) -> Vec<DialInfoDetail> {
+        let inner = self.inner.lock();
+        Self::with_routing_domain(&*inner, domain, |rd| rd.dial_info_details.clone())
     }
 
-    pub fn first_public_filtered_dial_info_detail(
+    pub fn first_filtered_dial_info_detail(
         &self,
+        domain: RoutingDomain,
         filter: &DialInfoFilter,
     ) -> Option<DialInfoDetail> {
         let inner = self.inner.lock();
-        for did in &inner.public_dial_info_details {
-            if did.matches_filter(filter) {
-                return Some(did.clone());
+        Self::with_routing_domain(&*inner, domain, |rd| {
+            for did in rd.dial_info_details {
+                if did.matches_filter(filter) {
+                    return Some(did.clone());
+                }
             }
-        }
-        None
+            None
+        })
     }
 
-    pub fn all_public_filtered_dial_info_details(
+    pub fn all_filtered_dial_info_details(
         &self,
+        domain: RoutingDomain,
         filter: &DialInfoFilter,
     ) -> Vec<DialInfoDetail> {
         let inner = self.inner.lock();
-        let mut ret = Vec::new();
-        for did in &inner.public_dial_info_details {
-            if did.matches_filter(filter) {
-                ret.push(did.clone());
+        Self::with_routing_domain(&*inner, domain, |rd| {
+            let mut ret = Vec::new();
+            for did in rd.dial_info_details {
+                if did.matches_filter(filter) {
+                    ret.push(did.clone());
+                }
             }
-        }
-        ret
+            ret
+        })
     }
 
-    pub fn first_interface_filtered_dial_info_detail(
+    pub fn register_dial_info(
         &self,
-        filter: &DialInfoFilter,
-    ) -> Option<DialInfoDetail> {
-        let inner = self.inner.lock();
-        for did in &inner.interface_dial_info_details {
-            if did.matches_filter(filter) {
-                return Some(did.clone());
-            }
-        }
-        None
-    }
-
-    pub fn all_interface_filtered_dial_info_details(
-        &self,
-        filter: &DialInfoFilter,
-    ) -> Vec<DialInfoDetail> {
-        let inner = self.inner.lock();
-        let mut ret = Vec::new();
-        for did in &inner.interface_dial_info_details {
-            if did.matches_filter(filter) {
-                ret.push(did.clone());
-            }
-        }
-        ret
-    }
-
-    pub fn register_public_dial_info(
-        &self,
+        domain: RoutingDomain,
         dial_info: DialInfo,
         origin: DialInfoOrigin,
-        network_class: Option<NetworkClass>,
     ) {
         let timestamp = get_timestamp();
         let enable_local_peer_scope = {
@@ -248,7 +251,10 @@ impl RoutingTable {
             c.network.enable_local_peer_scope
         };
 
-        if !enable_local_peer_scope && dial_info.is_local() {
+        if !enable_local_peer_scope
+            && matches!(domain, RoutingDomain::PublicInternet)
+            && dial_info.is_local()
+        {
             error!("shouldn't be registering local addresses as public");
             return;
         }
@@ -258,21 +264,21 @@ impl RoutingTable {
         }
 
         let mut inner = self.inner.lock();
-
-        inner.public_dial_info_details.push(DialInfoDetail {
-            dial_info: dial_info.clone(),
-            origin,
-            network_class,
-            timestamp,
+        Self::with_routing_domain_mut(&mut *inner, domain, |rd| {
+            rd.dial_info_details.push(DialInfoDetail {
+                dial_info: dial_info.clone(),
+                origin,
+                timestamp,
+            });
         });
 
-        // Re-sort dial info to endure preference ordering
-        inner
-            .public_dial_info_details
-            .sort_by(|a, b| a.dial_info.cmp(&b.dial_info));
-
+        let domain_str = match domain {
+            RoutingDomain::PublicInternet => "Public",
+            RoutingDomain::LocalNetwork => "Local",
+        };
         info!(
-            "Public Dial Info: {}",
+            "{} Dial Info: {}",
+            domain_str,
             NodeDialInfo {
                 node_id: NodeId::new(inner.node_id),
                 dial_info
@@ -280,74 +286,13 @@ impl RoutingTable {
             .to_string(),
         );
         debug!("    Origin: {:?}", origin);
-        debug!("    Network Class: {:?}", network_class);
-
-        Self::trigger_changed_dial_info(&mut *inner);
     }
 
-    pub fn register_interface_dial_info(&self, dial_info: DialInfo, origin: DialInfoOrigin) {
-        if !dial_info.is_valid() {
-            error!("shouldn't be registering invalid interface addresses");
-            return;
-        }
-
-        let timestamp = get_timestamp();
+    pub fn clear_dial_info_details(&self, domain: RoutingDomain) {
         let mut inner = self.inner.lock();
-
-        inner.interface_dial_info_details.push(DialInfoDetail {
-            dial_info: dial_info.clone(),
-            origin,
-            network_class: None,
-            timestamp,
-        });
-
-        // Re-sort dial info to endure preference ordering
-        inner
-            .interface_dial_info_details
-            .sort_by(|a, b| a.dial_info.cmp(&b.dial_info));
-
-        info!(
-            "Interface Dial Info: {}",
-            NodeDialInfo {
-                node_id: NodeId::new(inner.node_id),
-                dial_info
-            }
-            .to_string(),
-        );
-        debug!("    Origin: {:?}", origin);
-
-        Self::trigger_changed_dial_info(&mut *inner);
-    }
-
-    pub fn clear_dial_info_details(&self) {
-        let mut inner = self.inner.lock();
-        inner.public_dial_info_details.clear();
-        inner.interface_dial_info_details.clear();
-        Self::trigger_changed_dial_info(&mut *inner);
-    }
-
-    pub async fn wait_changed_dial_info(&self) {
-        let inst = self
-            .inner
-            .lock()
-            .eventual_changed_dial_info
-            .instance_empty();
-        inst.await;
-    }
-
-    fn trigger_changed_dial_info(inner: &mut RoutingTableInner) {
-        // Clear 'seen node info' bits on routing table entries so we know to ping them
-        for b in &mut inner.buckets {
-            for e in b.entries_mut() {
-                e.1.set_seen_our_node_info(false);
-            }
-        }
-        //
-
-        // Release any waiters
-        let mut new_eventual = Eventual::new();
-        core::mem::swap(&mut inner.eventual_changed_dial_info, &mut new_eventual);
-        spawn(new_eventual.resolve()).detach();
+        Self::with_routing_domain_mut(&mut *inner, domain, |rd| {
+            rd.dial_info_details.clear();
+        })
     }
 
     fn bucket_depth(index: usize) -> usize {
@@ -688,7 +633,7 @@ impl RoutingTable {
                     k,
                     NodeInfo {
                         network_class: NetworkClass::Server, // Bootstraps are always full servers
-                        outbound_protocols: ProtocolSet::default(), // Bootstraps do not participate in relaying and will not make outbound requests
+                        outbound_protocols: ProtocolSet::empty(), // Bootstraps do not participate in relaying and will not make outbound requests
                         dial_info_list: v, // Dial info is as specified in the bootstrap list
                         relay_peer_info: None, // Bootstraps never require a relay themselves
                     },

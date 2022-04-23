@@ -60,7 +60,7 @@ impl Network {
             .with_protocol_type(protocol_type)
             .with_address_type(address_type);
         routing_table
-            .interface_dial_info_details()
+            .dial_info_details(RoutingDomain::LocalNetwork)
             .iter()
             .filter_map(|did| {
                 if did.dial_info.matches_filter(&filter) {
@@ -100,7 +100,7 @@ impl Network {
         None
     }
 
-    pub async fn update_udpv4_dialinfo_task_routine(self, _l: u64, _t: u64) -> Result<(), String> {
+    pub async fn update_udpv4_dialinfo(&self) -> Result<(), String> {
         log_net!("looking for udpv4 public dial info");
         let routing_table = self.routing_table();
 
@@ -258,17 +258,42 @@ impl Network {
         Ok(())
     }
 
-    pub async fn update_tcpv4_dialinfo_task_routine(self, _l: u64, _t: u64) -> Result<(), String> {
+    pub async fn update_tcpv4_dialinfo(&self) -> Result<(), String> {
         log_net!("looking for tcpv4 public dial info");
         // xxx
         //Err("unimplemented".to_owned())
         Ok(())
     }
 
-    pub async fn update_wsv4_dialinfo_task_routine(self, _l: u64, _t: u64) -> Result<(), String> {
+    pub async fn update_wsv4_dialinfo(&self) -> Result<(), String> {
         log_net!("looking for wsv4 public dial info");
         // xxx
         //Err("unimplemented".to_owned())
+        Ok(())
+    }
+
+    pub async fn update_network_class_task_routine(self, _l: u64, _t: u64) -> Result<(), String> {
+        log_net!("updating network class");
+
+        let protocol_config = self
+            .inner
+            .lock()
+            .protocol_config
+            .clone()
+            .unwrap_or_default();
+
+        if protocol_config.inbound.contains(ProtocolType::UDP) {
+            self.update_udpv4_dialinfo().await?;
+        }
+
+        if protocol_config.inbound.contains(ProtocolType::TCP) {
+            self.update_tcpv4_dialinfo().await?;
+        }
+
+        if protocol_config.inbound.contains(ProtocolType::WS) {
+            self.update_wsv4_dialinfo().await?;
+        }
+
         Ok(())
     }
 }

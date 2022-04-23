@@ -14,6 +14,7 @@ pub const RELAY_MANAGEMENT_INTERVAL_SECS: u32 = 1;
 pub const MAX_MESSAGE_SIZE: usize = MAX_ENVELOPE_SIZE;
 pub const IPADDR_TABLE_SIZE: usize = 1024;
 pub const IPADDR_MAX_INACTIVE_DURATION_US: u64 = 300_000_000u64; // 5 minutes
+pub const GLOBAL_ADDRESS_CHANGE_DETECTION_COUNT: usize = 3;
 
 #[derive(Copy, Clone, Debug, Default)]
 pub struct ProtocolConfig {
@@ -80,18 +81,19 @@ enum ContactMethod {
 
 #[derive(Copy, Clone, Debug)]
 pub enum SendDataKind {
-    Direct,
-    Indirect,
+    LocalDirect,
+    GlobalDirect,
+    GlobalIndirect,
 }
 
 // The mutable state of the network manager
 struct NetworkManagerInner {
     routing_table: Option<RoutingTable>,
     components: Option<NetworkComponents>,
-    network_class: Option<NetworkClass>,
     stats: NetworkManagerStats,
     client_whitelist: LruCache<key::DHTKey, ClientWhitelistEntry>,
     relay_node: Option<NodeRef>,
+    global_address_check_cache: LruCache<key::DHTKey, SocketAddress>,
 }
 
 struct NetworkManagerUnlockedInner {
@@ -114,10 +116,10 @@ impl NetworkManager {
         NetworkManagerInner {
             routing_table: None,
             components: None,
-            network_class: None,
             stats: NetworkManagerStats::default(),
             client_whitelist: LruCache::new_unbounded(),
             relay_node: None,
+            global_address_check_cache: LruCache::new(8),
         }
     }
     fn new_unlocked_inner(_config: VeilidConfig) -> NetworkManagerUnlockedInner {
@@ -272,7 +274,6 @@ impl NetworkManager {
         // reset the state
         let mut inner = self.inner.lock();
         inner.components = None;
-        inner.network_class = None;
 
         trace!("NetworkManager::shutdown end");
     }
@@ -551,11 +552,18 @@ impl NetworkManager {
     pub async fn send_envelope<B: AsRef<[u8]>>(
         &self,
         node_ref: NodeRef,
-        node_id: Option<DHTKey>,
+        envelope_node_id: Option<DHTKey>,
         body: B,
-    ) -> Result<(), String> {
-        if let Some(node_id) = node_id {
-            log_net!("sending envelope to {:?} via {:?}", node_id, node_ref);
+    ) -> Result<SendDataKind, String> {
+        let via_node_id = node_ref.node_id();
+        let envelope_node_id = envelope_node_id.unwrap_or(via_node_id);
+
+        if envelope_node_id != via_node_id {
+            log_net!(
+                "sending envelope to {:?} via {:?}",
+                envelope_node_id,
+                node_ref
+            );
         } else {
             log_net!("sending envelope to {:?}", node_ref);
         }
@@ -567,9 +575,7 @@ impl NetworkManager {
             if node_min > MAX_VERSION || node_max < MIN_VERSION {
                 return Err(format!(
                     "can't talk to this node {} because version is unsupported: ({},{})",
-                    node_ref.node_id(),
-                    node_min,
-                    node_max
+                    via_node_id, node_min, node_max
                 ))
                 .map_err(logthru_rpc!(warn));
             }
@@ -580,11 +586,17 @@ impl NetworkManager {
 
         // Build the envelope to send
         let out = self
-            .build_envelope(node_id.unwrap_or_else(|| node_ref.node_id()), version, body)
+            .build_envelope(envelope_node_id, version, body)
             .map_err(logthru_rpc!(error))?;
 
         // Send the envelope via whatever means necessary
-        self.send_data(node_ref, out).await
+        let send_data_kind = self.send_data(node_ref.clone(), out).await?;
+
+        // If we asked to relay from the start, then this is always indirect
+        if envelope_node_id != via_node_id {
+            return Ok(SendDataKind::GlobalIndirect);
+        }
+        return Ok(send_data_kind);
     }
 
     // Called by the RPC handler when we want to issue an direct receipt
@@ -867,7 +879,7 @@ impl NetworkManager {
         &self,
         node_ref: NodeRef,
         data: Vec<u8>,
-    ) -> SystemPinBoxFuture<Result<(), String>> {
+    ) -> SystemPinBoxFuture<Result<SendDataKind, String>> {
         let this = self.clone();
         Box::pin(async move {
             // First try to send data to the last socket we've seen this peer on
@@ -879,7 +891,11 @@ impl NetworkManager {
                     .map_err(logthru_net!())?
                 {
                     None => {
-                        return Ok(());
+                        return Ok(if descriptor.matches_peer_scope(PeerScope::Local) {
+                            SendDataKind::LocalDirect
+                        } else {
+                            SendDataKind::GlobalDirect
+                        });
                     }
                     Some(d) => d,
                 }
@@ -890,19 +906,30 @@ impl NetworkManager {
             // If we don't have last_connection, try to reach out to the peer via its dial info
             match this.get_contact_method(node_ref).map_err(logthru_net!())? {
                 ContactMethod::OutboundRelay(relay_nr) | ContactMethod::InboundRelay(relay_nr) => {
-                    this.send_data(relay_nr, data).await
-                }
-                ContactMethod::Direct(dial_info) => {
-                    this.net().send_data_to_dial_info(dial_info, data).await
-                }
-                ContactMethod::SignalReverse(relay_nr, target_node_ref) => {
-                    this.do_reverse_connect(relay_nr, target_node_ref, data)
+                    this.send_data(relay_nr, data)
                         .await
+                        .map(|_| SendDataKind::GlobalIndirect)
                 }
-                ContactMethod::SignalHolePunch(relay_nr, target_node_ref) => {
-                    this.do_hole_punch(relay_nr, target_node_ref, data).await
-                }
-                ContactMethod::Unreachable => Err("Can't send to this relay".to_owned()),
+                ContactMethod::Direct(dial_info) => this
+                    .net()
+                    .send_data_to_dial_info(dial_info, data)
+                    .await
+                    .map(|_| {
+                        if dial_info.is_local() {
+                            SendDataKind::LocalDirect
+                        } else {
+                            SendDataKind::GlobalDirect
+                        }
+                    }),
+                ContactMethod::SignalReverse(relay_nr, target_node_ref) => this
+                    .do_reverse_connect(relay_nr, target_node_ref, data)
+                    .await
+                    .map(|_| SendDataKind::GlobalDirect),
+                ContactMethod::SignalHolePunch(relay_nr, target_node_ref) => this
+                    .do_hole_punch(relay_nr, target_node_ref, data)
+                    .await
+                    .map(|_| SendDataKind::GlobalDirect),
+                ContactMethod::Unreachable => Err("Can't send to this node".to_owned()),
             }
             .map_err(logthru_net!())
         })
@@ -1155,5 +1182,50 @@ impl NetworkManager {
             .or_insert(PerAddressStats::default())
             .transfer_stats_accounting
             .add_down(bytes);
+    }
+
+    // Determine if a local IP address has changed
+    // this means we should restart the low level network and and recreate all of our dial info
+    // Wait until we have received confirmation from N different peers
+    pub async fn report_local_socket_address(
+        &self,
+        _socket_address: SocketAddress,
+        _reporting_peer: NodeRef,
+    ) {
+        // XXX: Nothing here yet.
+    }
+
+    // Determine if a global IP address has changed
+    // this means we should recreate our public dial info if it is not static and rediscover it
+    // Wait until we have received confirmation from N different peers
+    pub async fn report_global_socket_address(
+        &self,
+        socket_address: SocketAddress,
+        reporting_peer: NodeRef,
+    ) {
+        let mut inner = self.inner.lock();
+        inner
+            .global_address_check_cache
+            .insert(reporting_peer.node_id(), socket_address);
+
+        let network_class = inner
+            .components
+            .unwrap()
+            .net
+            .get_network_class()
+            .unwrap_or(NetworkClass::Invalid);
+
+        if network_class.inbound_capable() {
+            // If we are inbound capable, but start to see inconsistent socket addresses from multiple reporting peers
+            // then we zap the network class and re-detect it
+
+            // If we are inbound capable but start to see consistently different socket addresses from multiple reporting peers
+            // then we zap the network class and global dial info and re-detect it
+        } else {
+            // If we are currently outbound only, we don't have any public dial info
+            // but if we are starting to see consistent socket address from multiple reporting peers
+            // then we may be become inbound capable, so zap the network class so we can re-detect it and any public dial info
+            inner.components.unwrap().net.reset_network_class();
+        }
     }
 }

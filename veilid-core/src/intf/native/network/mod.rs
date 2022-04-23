@@ -1,7 +1,7 @@
+mod network_class_discovery;
 mod network_tcp;
 mod network_udp;
 mod protocol;
-mod public_dialinfo_discovery;
 mod start_protocols;
 
 use crate::connection_manager::*;
@@ -41,9 +41,7 @@ struct NetworkInner {
     network_started: bool,
     network_needs_restart: bool,
     protocol_config: Option<ProtocolConfig>,
-    udp_static_public_dialinfo: bool,
-    tcp_static_public_dialinfo: bool,
-    ws_static_public_dialinfo: bool,
+    static_public_dialinfo: ProtocolSet,
     network_class: Option<NetworkClass>,
     join_handles: Vec<JoinHandle<()>>,
     udp_port: u16,
@@ -64,7 +62,7 @@ struct NetworkInner {
 
 struct NetworkUnlockedInner {
     // Background processes
-    update_public_dialinfo_task: TickTask,
+    update_network_class_task: TickTask,
 }
 
 #[derive(Clone)]
@@ -82,9 +80,7 @@ impl Network {
             network_started: false,
             network_needs_restart: false,
             protocol_config: None,
-            udp_static_public_dialinfo: false,
-            tcp_static_public_dialinfo: false,
-            ws_static_public_dialinfo: false,
+            static_public_dialinfo: ProtocolSet::empty(),
             network_class: None,
             join_handles: Vec::new(),
             udp_port: 0u16,
@@ -104,7 +100,7 @@ impl Network {
 
     fn new_unlocked_inner() -> NetworkUnlockedInner {
         NetworkUnlockedInner {
-            update_public_dialinfo_task: TickTask::new(1),
+            update_network_class_task: TickTask::new(1),
         }
     }
 
@@ -115,13 +111,13 @@ impl Network {
             unlocked_inner: Arc::new(Self::new_unlocked_inner()),
         };
 
-        // Set public dialinfo tick task
+        // Set update network class tick task
         {
             let this2 = this.clone();
             this.unlocked_inner
-                .update_public_dialinfo_task
+                .update_network_class_task
                 .set_routine(move |l, t| {
-                    Box::pin(this2.clone().update_public_dialinfo_task_routine(l, t))
+                    Box::pin(this2.clone().update_network_class_task_routine(l, t))
                 });
         }
 
@@ -237,6 +233,26 @@ impl Network {
             AddressType::IPV4 => SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), local_port),
             AddressType::IPV6 => SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), local_port),
         }
+    }
+
+    pub fn with_interface_addresses<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(&[IpAddr]) -> R,
+    {
+        let inner = self.inner.lock();
+        inner.interfaces.with_best_addresses(f)
+    }
+
+    // See if our interface addresses have changed, if so we need to punt the network
+    // and redo all our addresses. This is overkill, but anything more accurate
+    // would require inspection of routing tables that we dont want to bother with
+    pub async fn check_interface_addresses(&self) -> Result<bool, String> {
+        let mut inner = self.inner.lock();
+        if !inner.interfaces.refresh().await? {
+            return Ok(false);
+        }
+        inner.network_needs_restart = true;
+        Ok(true)
     }
 
     ////////////////////////////////////////////////////////////
@@ -386,34 +402,50 @@ impl Network {
         // get protocol config
         let protocol_config = {
             let c = self.config.get();
-            ProtocolConfig {
-                inbound: ProtocolSet {
-                    udp: c.network.protocol.udp.enabled && c.capabilities.protocol_udp,
-                    tcp: c.network.protocol.tcp.listen && c.capabilities.protocol_accept_tcp,
-                    ws: c.network.protocol.ws.listen && c.capabilities.protocol_accept_ws,
-                    wss: c.network.protocol.wss.listen && c.capabilities.protocol_accept_wss,
-                },
-                outbound: ProtocolSet {
-                    udp: c.network.protocol.udp.enabled && c.capabilities.protocol_udp,
-                    tcp: c.network.protocol.tcp.connect && c.capabilities.protocol_connect_tcp,
-                    ws: c.network.protocol.ws.connect && c.capabilities.protocol_connect_ws,
-                    wss: c.network.protocol.wss.connect && c.capabilities.protocol_connect_wss,
-                },
+            let mut inbound = ProtocolSet::new();
+
+            if c.network.protocol.udp.enabled && c.capabilities.protocol_udp {
+                inbound.insert(ProtocolType::UDP);
             }
+            if c.network.protocol.tcp.listen && c.capabilities.protocol_accept_tcp {
+                inbound.insert(ProtocolType::TCP);
+            }
+            if c.network.protocol.ws.listen && c.capabilities.protocol_accept_ws {
+                inbound.insert(ProtocolType::WS);
+            }
+            if c.network.protocol.wss.listen && c.capabilities.protocol_accept_wss {
+                inbound.insert(ProtocolType::WSS);
+            }
+
+            let mut outbound = ProtocolSet::new();
+            if c.network.protocol.udp.enabled && c.capabilities.protocol_udp {
+                outbound.insert(ProtocolType::UDP);
+            }
+            if c.network.protocol.tcp.connect && c.capabilities.protocol_connect_tcp {
+                outbound.insert(ProtocolType::TCP);
+            }
+            if c.network.protocol.ws.connect && c.capabilities.protocol_connect_ws {
+                outbound.insert(ProtocolType::WS);
+            }
+            if c.network.protocol.wss.connect && c.capabilities.protocol_connect_wss {
+                outbound.insert(ProtocolType::WSS);
+            }
+
+            ProtocolConfig { inbound, outbound }
         };
         self.inner.lock().protocol_config = Some(protocol_config);
 
         // start listeners
-        if protocol_config.inbound.udp {
+        if protocol_config.inbound.contains(ProtocolType::UDP) {
             self.start_udp_listeners().await?;
         }
-        if protocol_config.inbound.ws {
+        if protocol_config.inbound.contains(ProtocolType::WS) {
             self.start_ws_listeners().await?;
         }
-        if protocol_config.inbound.wss {
+        if protocol_config.inbound.contains(ProtocolType::WSS) {
             self.start_wss_listeners().await?;
         }
-        if protocol_config.inbound.tcp {
+        if protocol_config.inbound.contains(ProtocolType::TCP) {
             self.start_tcp_listeners().await?;
         }
 
@@ -431,17 +463,21 @@ impl Network {
         self.inner.lock().network_needs_restart
     }
 
+    pub fn restart_network(&self) {
+        self.inner.lock().network_needs_restart = true;
+    }
+
     pub async fn shutdown(&self) {
         info!("stopping network");
 
         let network_manager = self.network_manager();
         let routing_table = self.routing_table();
 
-        // Reset state
-
         // Drop all dial info
-        routing_table.clear_dial_info_details();
+        routing_table.clear_dial_info_details(RoutingDomain::PublicInternet);
+        routing_table.clear_dial_info_details(RoutingDomain::LocalNetwork);
 
+        // Reset state including network class
         // Cancels all async background tasks by dropping join handles
         *self.inner.lock() = Self::new_inner(network_manager);
 
@@ -451,109 +487,22 @@ impl Network {
     //////////////////////////////////////////
     pub fn get_network_class(&self) -> Option<NetworkClass> {
         let inner = self.inner.lock();
-        if !inner.network_started {
-            return None;
-        }
+        return inner.network_class;
+    }
 
-        // If we've fixed the network class, return it rather than calculating it
-        if inner.network_class.is_some() {
-            return inner.network_class;
-        }
-
-        // Go through our global dialinfo and see what our best network class is
-        let mut network_class = NetworkClass::Invalid;
-        for did in inner.routing_table.public_dial_info_details() {
-            if let Some(nc) = did.network_class {
-                if nc < network_class {
-                    network_class = nc;
-                }
-            }
-        }
-        Some(network_class)
+    pub fn reset_network_class(&self) {
+        let inner = self.inner.lock();
+        inner.network_class = None;
     }
 
     //////////////////////////////////////////
 
     pub async fn tick(&self) -> Result<(), String> {
-        let (
-            routing_table,
-            protocol_config,
-            udp_static_public_dialinfo,
-            tcp_static_public_dialinfo,
-            ws_static_public_dialinfo,
-            network_class,
-        ) = {
-            let inner = self.inner.lock();
-            (
-                inner.routing_table.clone(),
-                inner.protocol_config.unwrap_or_default(),
-                inner.udp_static_public_dialinfo,
-                inner.tcp_static_public_dialinfo,
-                inner.ws_static_public_dialinfo,
-                inner.network_class.unwrap_or(NetworkClass::Invalid),
-            )
-        };
+        let network_class = self.get_network_class().unwrap_or(NetworkClass::Invalid);
 
-        // See if we have any UDPv4 public dialinfo, and if we should have it
-        // If we have statically configured public dialinfo, don't bother with this
-        // If we can have public dialinfo, or we haven't figured out our network class yet,
-        // and we're active for UDP, we should attempt to get our public dialinfo sorted out
-        // and assess our network class if we haven't already
-        if (network_class.inbound_capable() || network_class == NetworkClass::Invalid)
-            && 
-        {
-            let filter = DialInfoFilter::global()
-                .with_protocol_type(ProtocolType::TCP)
-                .with_address_type(AddressType::IPV4);
-            let need_tcpv4_dialinfo = routing_table
-                .first_public_filtered_dial_info_detail(&filter)
-                .is_none();
-            if need_tcpv4_dialinfo {
-            }
-
-            self.unlocked_inner
-                .update_public_dialinfo_task
-                .tick()
-                .await?;
-        }
-
-        // Same but for TCPv4
-        if protocol_config.inbound.tcp
-            && !tcp_static_public_dialinfo
-            && (network_class.inbound_capable() || network_class == NetworkClass::Invalid)
-        {
-            let filter = DialInfoFilter::all()
-                .with_protocol_type(ProtocolType::TCP)
-                .with_address_type(AddressType::IPV4);
-            let need_tcpv4_dialinfo = routing_table
-                .first_public_filtered_dial_info_detail(&filter)
-                .is_none();
-            if need_tcpv4_dialinfo {
-                // If we have no public TCPv4 dialinfo, then we need to run a NAT check
-                // ensure the singlefuture is running for this
-                self.unlocked_inner
-                    .update_tcpv4_dialinfo_task
-                    .tick()
-                    .await?;
-            }
-        }
-
-        // Same but for WSv4
-        if protocol_config.inbound.ws
-            && !ws_static_public_dialinfo
-            && (network_class.inbound_capable() || network_class == NetworkClass::Invalid)
-        {
-            let filter = DialInfoFilter::all()
-                .with_protocol_type(ProtocolType::WS)
-                .with_address_type(AddressType::IPV4);
-            let need_wsv4_dialinfo = routing_table
-                .first_public_filtered_dial_info_detail(&filter)
-                .is_none();
-            if need_wsv4_dialinfo {
-                // If we have no public TCPv4 dialinfo, then we need to run a NAT check
-                // ensure the singlefuture is running for this
-                self.unlocked_inner.update_wsv4_dialinfo_task.tick().await?;
-            }
+        // If we need to figure out our network class, tick the task for it
+        if network_class == NetworkClass::Invalid {
+            self.unlocked_inner.update_network_class_task.tick().await?;
         }
 
         Ok(())

@@ -162,6 +162,10 @@ impl Network {
         self.inner.lock().network_needs_restart
     }
 
+    pub fn restart_network(&self) {
+        self.inner.lock().network_needs_restart = true;
+    }
+
     pub async fn shutdown(&self) {
         trace!("stopping network");
 
@@ -178,6 +182,18 @@ impl Network {
         trace!("network stopped");
     }
 
+    pub fn with_interface_addresses<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(&[IpAddr]) -> R,
+    {
+        f(&[])
+    }
+
+    pub async fn check_interface_addresses(&self) -> Result<bool, String> {
+        Ok(false)
+    }
+    
+        
     //////////////////////////////////////////
     pub fn get_network_class(&self) -> Option<NetworkClass> {
         // xxx eventually detect tor browser?

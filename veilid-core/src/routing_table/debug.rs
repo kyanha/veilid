@@ -23,15 +23,15 @@ impl RoutingTable {
         out
     }
     pub fn debug_info_dialinfo(&self) -> String {
-        let ldis = self.interface_dial_info_details();
-        let gdis = self.public_dial_info_details();
+        let ldis = self.dial_info_details(RoutingDomain::LocalNetwork);
+        let gdis = self.dial_info_details(RoutingDomain::PublicInternet);
         let mut out = String::new();
 
-        out += "Interface Dial Info Details:\n";
+        out += "Local Network Dial Info Details:\n";
         for (n, ldi) in ldis.iter().enumerate() {
             out += &format!("  {:>2}: {:?}\n", n, ldi);
         }
-        out += "Public Dial Info Details:\n";
+        out += "Public Internet Dial Info Details:\n";
         for (n, gdi) in gdis.iter().enumerate() {
             out += &format!("  {:>2}: {:?}\n", n, gdi);
         }

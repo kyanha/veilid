@@ -55,22 +55,11 @@ impl RoutingTable {
             node_info: NodeInfo {
                 network_class: netman.get_network_class().unwrap_or(NetworkClass::Invalid),
                 outbound_protocols: netman.get_protocol_config().unwrap_or_default().outbound,
-                dial_info_list: if !enable_local_peer_scope {
-                    self.public_dial_info_details()
-                        .iter()
-                        .map(|did| did.dial_info.clone())
-                        .collect()
-                } else {
-                    self.public_dial_info_details()
-                        .iter()
-                        .map(|did| did.dial_info.clone())
-                        .chain(
-                            self.interface_dial_info_details()
-                                .iter()
-                                .map(|did| did.dial_info.clone()),
-                        )
-                        .collect()
-                },
+                dial_info_list: self
+                    .dial_info_details(RoutingDomain::PublicInternet)
+                    .iter()
+                    .map(|did| did.dial_info.clone())
+                    .collect(),
                 relay_peer_info: relay_node.map(|rn| Box::new(rn.peer_info())),
             },
         }

@@ -295,6 +295,7 @@ impl NetworkInterface {
 pub struct NetworkInterfaces {
     valid: bool,
     interfaces: BTreeMap<String, NetworkInterface>,
+    interface_address_cache: Vec<IpAddr>,
 }
 
 impl fmt::Debug for NetworkInterfaces {
@@ -317,6 +318,7 @@ impl NetworkInterfaces {
         Self {
             valid: false,
             interfaces: BTreeMap::new(),
+            interface_address_cache: Vec::new(),
         }
     }
     pub fn is_valid(&self) -> bool {
@@ -324,6 +326,7 @@ impl NetworkInterfaces {
     }
     pub fn clear(&mut self) {
         self.interfaces.clear();
+        self.interface_address_cache.clear();
         self.valid = false;
     }
     // returns Ok(false) if refresh had no changes, Ok(true) if changes were present
@@ -341,6 +344,8 @@ impl NetworkInterfaces {
         let changed = last_interfaces != self.interfaces;
         if changed {
             trace!("NetworkInterfaces refreshed: {:#?}?", self);
+
+            self.cache_best_addresses();
         }
         Ok(changed)
     }
@@ -351,7 +356,7 @@ impl NetworkInterfaces {
         self.interfaces.iter()
     }
 
-    pub fn best_addresses(&self) -> Vec<IpAddr> {
+    fn cache_best_addresses(&mut self) {
         // Reduce interfaces to their best routable ip addresses
         let mut intf_addrs = Vec::new();
         for intf in self.interfaces.values() {
@@ -370,6 +375,17 @@ impl NetworkInterfaces {
         intf_addrs.sort();
 
         // Now export just the addresses
-        intf_addrs.iter().map(|x| x.if_addr().ip()).collect()
+        self.interface_address_cache = intf_addrs.iter().map(|x| x.if_addr().ip()).collect()
+    }
+
+    pub fn best_addresses(&self) -> Vec<IpAddr> {
+        self.interface_address_cache.clone()
+    }
+
+    pub fn with_best_addresses<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(&[IpAddr]) -> R,
+    {
+        f(&self.interface_address_cache)
     }
 }

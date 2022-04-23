@@ -124,6 +124,7 @@ struct WaitableReply {
     timeout: u64,
     node_ref: NodeRef,
     send_ts: u64,
+    send_data_kind: SendDataKind,
 }
 
 /////////////////////////////////////////////////////////////////////
@@ -389,9 +390,6 @@ impl RPCProcessor {
     }
 
     // Issue a request over the network, possibly using an anonymized route
-    // If the request doesn't want a reply, returns immediately
-    // If the request wants a reply then it waits for one asynchronously
-    // If it doesn't receive a response in a sufficient time, then it returns a timeout error
     async fn request<T: capnp::message::ReaderSegments>(
         &self,
         dest: Destination,
@@ -411,11 +409,13 @@ impl RPCProcessor {
             (op_id, wants_answer)
         };
 
-        let out_node_id;
-        let mut out_noderef: Option<NodeRef> = None;
-        let hopcount: usize;
+        let out_node_id; // Envelope Node Id
+        let mut out_noderef: Option<NodeRef> = None; // Node to send envelope to
+        let hopcount: usize; // Total safety + private route hop count
+
+        // Create envelope data
         let out = {
-            let out;
+            let out; // Envelope data
 
             // To where are we sending the request
             match &dest {
@@ -539,19 +539,22 @@ impl RPCProcessor {
 
         // send question
         let bytes = out.len() as u64;
-        if let Err(e) = self
+        let send_data_kind = match self
             .network_manager()
             .send_envelope(node_ref.clone(), Some(out_node_id), out)
             .await
             .map_err(logthru_rpc!(error))
             .map_err(RPCError::Internal)
         {
-            // Make sure to clean up op id waiter in case of error
-            if eventual.is_some() {
-                self.cancel_op_id_waiter(op_id);
+            Ok(v) => v,
+            Err(e) => {
+                // Make sure to clean up op id waiter in case of error
+                if eventual.is_some() {
+                    self.cancel_op_id_waiter(op_id);
+                }
+                return Err(e);
             }
-            return Err(e);
-        }
+        };
 
         // Successfully sent
         let send_ts = get_timestamp();
@@ -570,12 +573,13 @@ impl RPCProcessor {
                 timeout,
                 node_ref,
                 send_ts,
+                send_data_kind,
             })),
         }
     }
 
     // Issue a reply over the network, possibly using an anonymized route
-    // If the request doesn't want a reply, this routine does nothing
+    // The request must want a response, or this routine fails
     async fn reply<T: capnp::message::ReaderSegments>(
         &self,
         request_rpcreader: RPCMessageReader,
@@ -1379,6 +1383,9 @@ impl RPCProcessor {
             .await?
             .unwrap();
 
+        // Note what kind of ping this was and to what peer scope
+        let send_data_kind = waitable_reply.send_data_kind;
+
         // Wait for reply
         let (rpcreader, latency) = self.wait_for_reply(waitable_reply).await?;
 
@@ -1422,6 +1429,26 @@ impl RPCProcessor {
         peer.operate(|e| {
             e.update_node_status(node_status.clone());
         });
+
+        // Report sender_info IP addresses to network manager
+
+        if let Some(socket_address) = sender_info.socket_address {
+            match send_data_kind {
+                SendDataKind::LocalDirect => {
+                    self.network_manager()
+                        .report_local_socket_address(socket_address, peer)
+                        .await;
+                }
+                SendDataKind::GlobalDirect => {
+                    self.network_manager()
+                        .report_global_socket_address(socket_address, peer)
+                        .await;
+                }
+                SendDataKind::GlobalIndirect => {
+                    // Do nothing in this case, as the socket address returned here would be for any node other than ours
+                }
+            }
+        }
 
         // Return the answer for anyone who may care
         let out = InfoAnswer {
