@@ -161,15 +161,19 @@
     <h3 id="user-privacy">User Privacy</h3>
 
     <p>
-      In order to ensure that users can participate in Veilid with some amount of privacy, we need to address the fact that being connected to Veilid entails communicating with other peers, and therefore sharing IP addresses.
+      In order to ensure that users can participate in Veilid with some amount of privacy, we need to address the fact that being connected to Veilid entails communicating with other peers, and therefore sharing IP addresses. A user's peer will therefore be frequently issuing RPCs in a way that directly associates the user's identifying information with their peer's ID. Veilid provides privacy by allowing the use of an RPC relay mechanism that uses cryptography to similar to onion routing in order to hide the path that a message takes between its actual originating peer and its actual destination peer, by hopping between additional relay peers.
     </p>
 
     <p>
-      The approach that Veilid takes to privacy is two sided: privacy of the sender of a message, and privacy of the receiver of a message. Either or both sides can want privacy or opt out of privacy. To achieve sender privacy, we use something called a Safety Route: a sequence of any number of peers, chosen by the sender, who will relay messages. The sequence of addresses is put into a nesting doll of encryption, so that each hop can see the previous and next hops, while no hop can see the whole route. This is similar to a Tor route, except only the addresses are hidden from view. Additionally, the route can be chosen at random for each message being sent.
+      The specific approach that Veilid takes to privacy is two sided: privacy of the sender of a message, and privacy of the receiver of a message. Either or both sides can want privacy or opt out of privacy. To achieve sender privacy, Veilid use something called a Safety Route: a sequence of any number of peers, chosen by the sender, who will relay messages. The sequence of addresses is put into a nesting doll of encryption, so that each hop can see the previous and next hops, while no hop can see the whole route. This is similar to a Tor route, except only the addresses are encrypted for each hop. The route can be chosen at random for each message being sent.
     </p>
 
     <p>
       Receiver privacy is similar, in that we have a nesting doll of encrypted peer addresses, except because it's for incoming messages, the various addresses have to be shared ahead of time. We call such things Private Routes, and they are published to the key-value store as part of a user's public data. For full privacy on both ends, a Private Route will be used as the final destination of a Safety Route, and the total route is the composition of the two, so that neither the sender nor receiver knows the IP address of the other.
+    </p>
+
+    <p>
+      Each peer in the hop, including the initial peer, sends a <code>route</code> RPC to the next peer in the hop, with the remainder of the full route (safety + private), forwarding the data along. The final peer decrypts the remainder of the route, which is now empty, and then can inspect the relayed RPC to act on it. The RPC itself doesn't need to be encrypted, but it's good practice to encrypt it for the final receiving peer so that the intermediate peers can't de-anonymize the sending user from traffic analysis.
     </p>
 
     <p>
@@ -209,7 +213,7 @@
     </p>
 
     <p>
-      When a user wishes to store data under their key, they send a <code>set_value</code> RPC to the peer's whose IDs are closest by the XOR metric to their own user ID. The value provided to the RPC is a signed value, so that the network can ensure only the designated user is storing data at their key. Those peers may return other peer IDs, and so on, similar to how the block store handles <code>supply_block</code> calls. Eventually, some peers will store the data. The user's peer should periodically refresh the stored data, to ensure that it persists. It's also good practice for the user's own peer to cache the data, so that client programs can use the user's own peer as a canonical source of the most-up-to-date value.
+      When a user wishes to store data under their key, they send a <code>set_value</code> RPC to the peer's whose IDs are closest by the XOR metric to their own user ID. The value provided to the RPC is a signed value, so that the network can ensure only the designated user is storing data at their key. The peers that receive the RPC may return other peer IDs closer to the key, and so on, similar to how the block store handles <code>supply_block</code> calls. Eventually, some peers will store the data. The user's own peer should periodically refresh the stored data, to ensure that it persists. It's also good practice for the user's own peer to cache the data, so that client programs can use the user's own peer as a canonical source of the most-up-to-date value, but doing so would require a route to be published that lets other peers send the user's own peer messages. A private route suffices for this.
     </p>
 
     <p>
@@ -222,6 +226,10 @@
 
     <p>
       The specific content of the user's keys is determined partially by the protocol and partially by the client software. Early versions of the protocol use a DHT schema version that defines a fairly simple social network oriented schema. Later versions will enable a more generic schema so that client plugins can store and display richer information.
+    </p>
+
+    <p>
+      The stateful nature of the key-value store means that values will change over time, and actions may need to be taken in response to those changes. A polling mechanism could be used to periodically check for new values, but this will lead to lots of unnecessary traffic in the network, so to avoid this, Veilid allows peers to send <code>watch_value</code> RPCs, with a DHT key (with subkeys) as its argument. The receiver would then store a record that the sender of the RPC wants to be alerted when the receiver gets subsequent <code>set_value</code> calls, at which time the receiver sends the sending peer a <code>value_changed</code> RPC to push the new value. As with other RPC calls, <code>watch_value</code> needs to be periodically re-sent to refresh the subscription to the value. Additionally, also as with other calls, <code>watch_value</code> may not succeed on the receiver, which instead might return other peers closer to the value, or might return other peers that have successfully subscribed to the value and thus might act as a source for it.
     </p>
 
     <p>
