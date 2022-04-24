@@ -161,11 +161,11 @@
     <h3 id="user-privacy">User Privacy</h3>
 
     <p>
-      In order to ensure that users can participate in Veilid with some amount of privacy, we need to address the fact that being connected to Veilid entails communicating with other peers, and therefore sharing IP addresses. A user's peer will therefore be frequently issuing RPCs in a way that directly associates the user's identifying information with their peer's ID. Veilid provides privacy by allowing the use of an RPC relay mechanism that uses cryptography to similar to onion routing in order to hide the path that a message takes between its actual originating peer and its actual destination peer, by hopping between additional relay peers.
+      In order to ensure that users can participate in Veilid with some amount of privacy, we need to address the fact that being connected to Veilid entails communicating with other peers, and therefore sharing IP addresses. A user's peer will therefore be frequently issuing RPCs in a way that directly associates the user's identifying information with their peer's ID. Veilid provides privacy by allowing the use of an RPC forwarding mechanism that uses cryptography to similar to onion routing in order to hide the path that a message takes between its actual originating peer and its actual destination peer, by hopping between additional intermediate peers.
     </p>
 
     <p>
-      The specific approach that Veilid takes to privacy is two sided: privacy of the sender of a message, and privacy of the receiver of a message. Either or both sides can want privacy or opt out of privacy. To achieve sender privacy, Veilid use something called a Safety Route: a sequence of any number of peers, chosen by the sender, who will relay messages. The sequence of addresses is put into a nesting doll of encryption, so that each hop can see the previous and next hops, while no hop can see the whole route. This is similar to a Tor route, except only the addresses are encrypted for each hop. The route can be chosen at random for each message being sent.
+      The specific approach that Veilid takes to privacy is two sided: privacy of the sender of a message, and privacy of the receiver of a message. Either or both sides can want privacy or opt out of privacy. To achieve sender privacy, Veilid use something called a Safety Route: a sequence of any number of peers, chosen by the sender, who will forward messages. The sequence of addresses is put into a nesting doll of encryption, so that each hop can see the previous and next hops, while no hop can see the whole route. This is similar to a Tor route, except only the addresses are encrypted for each hop. The route can be chosen at random for each message being sent.
     </p>
 
     <p>
@@ -173,14 +173,14 @@
     </p>
 
     <p>
-      Each peer in the hop, including the initial peer, sends a <code>route</code> RPC to the next peer in the hop, with the remainder of the full route (safety + private), forwarding the data along. The final peer decrypts the remainder of the route, which is now empty, and then can inspect the relayed RPC to act on it. The RPC itself doesn't need to be encrypted, but it's good practice to encrypt it for the final receiving peer so that the intermediate peers can't de-anonymize the sending user from traffic analysis.
+      Each peer in the hop, including the initial peer, sends a <code>route</code> RPC to the next peer in the hop, with the remainder of the full route (safety + private), forwarding the data along. The final peer decrypts the remainder of the route, which is now empty, and then can inspect the forwarded RPC to act on it. The RPC itself doesn't need to be encrypted, but it's good practice to encrypt it for the final receiving peer so that the intermediate peers can't de-anonymize the sending user from traffic analysis.
     </p>
 
     <p>
       Note that the routes are <em>user</em> oriented. They should be understood as a way to talk to a particular <em>user's</em> peer, wherever that may be. Each peer of course has to know about the actual IP addresses of the peers, otherwise it couldn't communicate, but safety and private routes make it hard to associate the <em>user's</em> identity with their <em>peer's</em> identity. You know that the user is somewhere on the network, but you don't know which IP address is their's, even if you do in fact have their peer's dial info stored in the routing table.
     </p>
 
-    <h3>Block Store</h3>
+    <h3>Block Store Revisited</h3>
 
     <p>
       As mentioned in the Bird's Eye View, the block store is intended to store content-addressed blocks of data. Like many other peer-to-peer systems for storing data, Veilid uses a distributed hash table as the core of the block store. The block store DHT has as keys BLAKE3 hashes of block content. For each key the DHT associates a list of peer IDs for peers that have declared to the network that they can supply the block.
@@ -206,7 +206,7 @@
       The mechanism of having blocks that refer to other blocks also enables IPFS-style DAGs of hierarchical data as one mode of use of the block store, allowing entire directory structures to be stored, not just files. However, as with sub-file blocks, this is not a built-in part of Veilid but rather a mode of use, and how they're downloaded and presented to the user is up to the client program.
     </p>
 
-    <h3>Key-Value Store</h3>
+    <h3>Key-Value Store Revisited</h3>
 
     <p>
       The key-value store is a DHT similar to the block store. However, rather than using content hashes as keys, the KV store uses user IDs as keys (note: <em>not</em> peer IDs). At a given key, the KV store has a hierarchical key-value map that associates in-principle arbitrary strings with values, which themselves can be numbers, strings, datetimes, or other key-value maps. The specific value stored in at a user's ID is versioned, so that particular schemas of subkeys and values can be defined and handled appropriately by different versions of clients.
@@ -236,7 +236,7 @@
       TODO How to avoid replay updates?? maybe via a sequence number in the signed patch?
     </p>
 
-    <h2>Appendix 1: Dial Info</h2>
+    <h2>Appendix 1: Dial Info and Signaling</h2>
 
     <h2>Appendix 2: RPC Listing</h2
 
