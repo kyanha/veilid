@@ -168,3 +168,20 @@ pub fn listen_address_to_socket_addrs(listen_address: &str) -> Result<Vec<Socket
         }
     })
 }
+
+pub trait Dedup<T: PartialEq + Clone> {
+    fn remove_duplicates(&mut self);
+}
+
+impl<T: PartialEq + Clone> Dedup<T> for Vec<T> {
+    fn remove_duplicates(&mut self) {
+        let mut already_seen = Vec::new();
+        self.retain(|item| match already_seen.contains(item) {
+            true => false,
+            _ => {
+                already_seen.push(item.clone());
+                true
+            }
+        })
+    }
+}

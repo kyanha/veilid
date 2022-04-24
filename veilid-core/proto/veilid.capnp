@@ -179,16 +179,24 @@ struct OperationInfoQ {
     nodeStatus              @0  :NodeStatus;            # node status update about the infoq sender
 }
 
-
 enum NetworkClass {
-    server                  @0;                         # S = Device with public IP and no UDP firewall
-    mapped                  @1;                         # M = Device with portmap behind any NAT
-    fullConeNAT             @2;                         # F = Device without portmap behind full-cone NAT
-    addressRestrictedNAT    @3;                         # A = Device without portmap behind address-only restricted NAT
-    portRestrictedNAT       @4;                         # P = Device without portmap behind address-and-port restricted NAT
-    outboundOnly            @5;                         # O = Outbound only
-    webApp                  @6;                         # W = PWA
-    invalid                 @7;                         # I = Invalid
+    inboundCapable          @0;                         # I = Inbound capable without relay, may require signal
+    outboundOnly            @1;                         # O = Outbound only, inbound relay required except with reverse connect signal
+    webApp                  @2;                         # W = PWA, outbound relay is required in most cases
+}
+
+enum DialInfoClass {
+    direct                  @0;                         # D = Directly reachable with public IP and no firewall, with statically configured port
+    mapped                  @1;                         # M = Directly reachable with via portmap behind any NAT or firewalled with dynamically negotiated port
+    fullConeNAT             @2;                         # F = Directly reachable device without portmap behind full-cone NAT
+    blocked                 @3;                         # B = Inbound blocked at firewall but may hole punch with public address
+    addressRestrictedNAT    @4;                         # A = Device without portmap behind address-only restricted NAT
+    portRestrictedNAT       @5;                         # P = Device without portmap behind address-and-port restricted NAT
+}
+
+struct DialInfoDetail {
+    dialInfo                @0;  :DialInfo;
+    class                   @1;  :DialInfoClass;
 }
 
 struct NodeStatus {
@@ -208,8 +216,8 @@ struct ProtocolSet {
 
 struct NodeInfo {
     networkClass            @0  :NetworkClass;          # network class of this node
-    outboundProtocols       @1  :ProtocolSet;             # protocols that can go outbound
-    dialInfoList            @2  :List(DialInfo);        # inbound dial info for this node
+    outboundProtocols       @1  :ProtocolSet;           # protocols that can go outbound
+    dialInfoDetailList      @2  :List(DialInfoDetail);  # inbound dial info details for this node
     relayPeerInfo           @3  :PeerInfo;              # (optional) relay peer info for this node
 }
 

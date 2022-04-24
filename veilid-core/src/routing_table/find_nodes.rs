@@ -29,7 +29,9 @@ impl RoutingTable {
                     // does it have matching public dial info?
                     entry
                         .node_info()
-                        .first_filtered_dial_info(|di| di.matches_filter(&dial_info_filter1))
+                        .first_filtered_dial_info_detail(|did| {
+                            did.matches_filter(&dial_info_filter1)
+                        })
                         .is_some()
                 },
             )),
@@ -55,11 +57,7 @@ impl RoutingTable {
             node_info: NodeInfo {
                 network_class: netman.get_network_class().unwrap_or(NetworkClass::Invalid),
                 outbound_protocols: netman.get_protocol_config().unwrap_or_default().outbound,
-                dial_info_list: self
-                    .dial_info_details(RoutingDomain::PublicInternet)
-                    .iter()
-                    .map(|did| did.dial_info.clone())
-                    .collect(),
+                dial_info_detail_list: self.dial_info_details(RoutingDomain::PublicInternet),
                 relay_peer_info: relay_node.map(|rn| Box::new(rn.peer_info())),
             },
         }

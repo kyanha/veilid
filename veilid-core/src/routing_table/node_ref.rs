@@ -90,30 +90,42 @@ impl NodeRef {
                 nr
             })
     }
-    pub fn first_filtered_dial_info(&self) -> Option<DialInfo> {
+    pub fn first_filtered_dial_info_detail(
+        &self,
+        routing_domain: Option<RoutingDomain>,
+    ) -> Option<DialInfoDetail> {
         self.operate(|e| {
-            if matches!(
-                self.filter.map(|f| f.peer_scope).unwrap_or(PeerScope::All),
-                PeerScope::All | PeerScope::Local
-            ) {
-                e.local_node_info().first_filtered_dial_info(|di| {
-                    if let Some(filter) = self.filter {
-                        di.matches_filter(&filter)
-                    } else {
-                        true
-                    }
-                })
+            if (routing_domain == None || routing_domain == Some(RoutingDomain::LocalNetwork))
+                && matches!(
+                    self.filter.map(|f| f.peer_scope).unwrap_or(PeerScope::All),
+                    PeerScope::All | PeerScope::Local
+                )
+            {
+                e.local_node_info()
+                    .first_filtered_dial_info(|di| {
+                        if let Some(filter) = self.filter {
+                            di.matches_filter(&filter)
+                        } else {
+                            true
+                        }
+                    })
+                    .map(|di| DialInfoDetail {
+                        class: DialInfoClass::Direct,
+                        dial_info: di,
+                    })
             } else {
                 None
             }
             .or_else(|| {
-                if matches!(
-                    self.filter.map(|f| f.peer_scope).unwrap_or(PeerScope::All),
-                    PeerScope::All | PeerScope::Global
-                ) {
-                    e.node_info().first_filtered_dial_info(|di| {
+                if (routing_domain == None || routing_domain == Some(RoutingDomain::PublicInternet))
+                    && matches!(
+                        self.filter.map(|f| f.peer_scope).unwrap_or(PeerScope::All),
+                        PeerScope::All | PeerScope::Global
+                    )
+                {
+                    e.node_info().first_filtered_dial_info_detail(|did| {
                         if let Some(filter) = self.filter {
-                            di.matches_filter(&filter)
+                            did.matches_filter(&filter)
                         } else {
                             true
                         }
@@ -125,34 +137,47 @@ impl NodeRef {
         })
     }
 
-    pub fn all_filtered_dial_info<F>(&self) -> Vec<DialInfo> {
+    pub fn all_filtered_dial_info_details<F>(
+        &self,
+        routing_domain: Option<RoutingDomain>,
+    ) -> Vec<DialInfoDetail> {
         let mut out = Vec::new();
         self.operate(|e| {
-            if matches!(
-                self.filter.map(|f| f.peer_scope).unwrap_or(PeerScope::All),
-                PeerScope::All | PeerScope::Global
-            ) {
-                out.append(&mut e.node_info().all_filtered_dial_info(|di| {
+            if (routing_domain == None || routing_domain == Some(RoutingDomain::LocalNetwork))
+                && matches!(
+                    self.filter.map(|f| f.peer_scope).unwrap_or(PeerScope::All),
+                    PeerScope::All | PeerScope::Local
+                )
+            {
+                for di in e.local_node_info().all_filtered_dial_info(|di| {
                     if let Some(filter) = self.filter {
                         di.matches_filter(&filter)
                     } else {
                         true
                     }
-                }))
+                }) {
+                    out.push(DialInfoDetail {
+                        class: DialInfoClass::Direct,
+                        dial_info: di,
+                    });
+                }
             }
-            if matches!(
-                self.filter.map(|f| f.peer_scope).unwrap_or(PeerScope::All),
-                PeerScope::All | PeerScope::Local
-            ) {
-                out.append(&mut e.local_node_info().all_filtered_dial_info(|di| {
+            if (routing_domain == None || routing_domain == Some(RoutingDomain::PublicInternet))
+                && matches!(
+                    self.filter.map(|f| f.peer_scope).unwrap_or(PeerScope::All),
+                    PeerScope::All | PeerScope::Global
+                )
+            {
+                out.append(&mut e.node_info().all_filtered_dial_info_details(|did| {
                     if let Some(filter) = self.filter {
-                        di.matches_filter(&filter)
+                        did.matches_filter(&filter)
                     } else {
                         true
                     }
                 }))
             }
         });
+        out.remove_duplicates();
         out
     }
 

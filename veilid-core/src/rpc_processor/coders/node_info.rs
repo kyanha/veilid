@@ -10,17 +10,19 @@ pub fn encode_node_info(
     let mut ps_builder = builder.reborrow().init_outbound_protocols();
     encode_protocol_set(&node_info.outbound_protocols, &mut ps_builder)?;
 
-    let mut dil_builder = builder.reborrow().init_dial_info_list(
+    let mut didl_builder = builder.reborrow().init_dial_info_detail_list(
         node_info
-            .dial_info_list
+            .dial_info_detail_list
             .len()
             .try_into()
-            .map_err(map_error_protocol!("too many dial infos in node info"))?,
+            .map_err(map_error_protocol!(
+                "too many dial info details in node info"
+            ))?,
     );
 
-    for idx in 0..node_info.dial_info_list.len() {
-        let mut di_builder = dil_builder.reborrow().get(idx as u32);
-        encode_dial_info(&node_info.dial_info_list[idx], &mut di_builder)?;
+    for idx in 0..node_info.dial_info_detail_list.len() {
+        let mut did_builder = didl_builder.reborrow().get(idx as u32);
+        encode_dial_info_detail(&node_info.dial_info_detail_list[idx], &mut did_builder)?;
     }
 
     if let Some(rpi) = &node_info.relay_peer_info {
@@ -49,18 +51,18 @@ pub fn decode_node_info(
             .map_err(map_error_capnp_error!())?,
     )?;
 
-    let dil_reader = reader
+    let didl_reader = reader
         .reborrow()
-        .get_dial_info_list()
+        .get_dial_info_detail_list()
         .map_err(map_error_capnp_error!())?;
-    let mut dial_info_list = Vec::<DialInfo>::with_capacity(
-        dil_reader
+    let mut dial_info_detail_list = Vec::<DialInfo>::with_capacity(
+        didl_reader
             .len()
             .try_into()
-            .map_err(map_error_protocol!("too many dial infos"))?,
+            .map_err(map_error_protocol!("too many dial info details"))?,
     );
     for di in dil_reader.iter() {
-        dial_info_list.push(decode_dial_info(&di)?)
+        dial_info_detail_list.push(decode_dial_info_detail(&di)?)
     }
 
     let relay_peer_info = if allow_relay_peer_info {
@@ -82,7 +84,7 @@ pub fn decode_node_info(
     Ok(NodeInfo {
         network_class,
         outbound_protocols,
-        dial_info_list,
+        dial_info_detail_list,
         relay_peer_info,
     })
 }

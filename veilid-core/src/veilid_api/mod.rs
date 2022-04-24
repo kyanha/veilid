@@ -236,83 +236,68 @@ pub struct SenderInfo {
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
-pub enum NetworkClass {
-    Server = 0,               // S = Device with public IP and no UDP firewall
-    Mapped = 1,               // M = Device with portmap behind any NAT
-    FullConeNAT = 2,          // F = Device without portmap behind full-cone NAT
-    AddressRestrictedNAT = 3, // A = Device without portmap behind address-only restricted NAT
-    PortRestrictedNAT = 4,    // P = Device without portmap behind address-and-port restricted NAT
-    OutboundOnly = 5,         // O = Outbound only
-    WebApp = 6,               // W = PWA
-    Invalid = 7,              // I = Invalid network class, unreachable or can not send packets
+pub enum DialInfoClass {
+    Direct = 0, // D = Directly reachable with public IP and no firewall, with statically configured port
+    Mapped = 1, // M = Directly reachable with via portmap behind any NAT or firewalled with dynamically negotiated port
+    FullConeNAT = 2, // F = Directly reachable device without portmap behind full-cone NAT
+    Blocked = 3, // B = Inbound blocked at firewall but may hole punch with public address
+    AddressRestrictedNAT = 4, // A = Device without portmap behind address-only restricted NAT
+    PortRestrictedNAT = 5, // P = Device without portmap behind address-and-port restricted NAT
 }
 
-impl NetworkClass {
-    // Can the node receive inbound requests without a relay?
-    pub fn inbound_capable(&self) -> bool {
-        matches!(
-            self,
-            Self::Server
-                | Self::Mapped
-                | Self::FullConeNAT
-                | Self::AddressRestrictedNAT
-                | Self::PortRestrictedNAT
-        )
-    }
-
-    // Should an outbound relay be kept available?
-    pub fn outbound_wants_relay(&self) -> bool {
-        matches!(self, Self::WebApp)
-    }
-
+impl DialInfoClass {
     // Is a signal required to do an inbound hole-punch?
-    pub fn inbound_requires_signal(&self) -> bool {
-        matches!(self, Self::AddressRestrictedNAT | Self::PortRestrictedNAT)
-    }
-
-    // Is some relay required either for signal or inbound relay or outbound relay?
-    pub fn needs_relay(&self) -> bool {
+    pub fn requires_signal(&self) -> bool {
         matches!(
             self,
-            Self::AddressRestrictedNAT
-                | Self::PortRestrictedNAT
-                | Self::OutboundOnly
-                | Self::WebApp
+            Self::Blocked | Self::AddressRestrictedNAT | Self::PortRestrictedNAT
         )
     }
 
-    // Must keepalive be used to preserve the public dialinfo in use?
-    // Keepalive can be to either a
-    pub fn dialinfo_requires_keepalive(&self) -> bool {
+    // Does a relay node need to be allocated for this dial info?
+    // For full cone NAT, the relay itself may not be used but the keepalive sent to it
+    // is required to keep the NAT mapping valid in the router state table
+    pub fn requires_relay(&self) -> bool {
         matches!(
             self,
             Self::FullConeNAT
+                | Self::Blocked
                 | Self::AddressRestrictedNAT
                 | Self::PortRestrictedNAT
-                | Self::OutboundOnly
-                | Self::WebApp
         )
     }
+}
 
-    // Can this node assist with signalling? Yes but only if it doesn't require signalling, itself.
-    pub fn can_signal(&self) -> bool {
-        self.inbound_capable() && !self.inbound_requires_signal()
-    }
+#[derive(Debug, Clone, PartialEq, PartialOrd, Ord, Eq, Serialize, Deserialize)]
+pub struct DialInfoDetail {
+    pub dial_info: DialInfo,
+    pub class: DialInfoClass,
+}
 
-    // Can this node relay be an inbound relay?
-    pub fn can_inbound_relay(&self) -> bool {
-        matches!(self, Self::Server | Self::Mapped | Self::FullConeNAT)
+impl MatchesDialInfoFilter for DialInfoDetail {
+    fn matches_filter(&self, filter: &DialInfoFilter) -> bool {
+        self.dial_info.matches_filter(filter)
     }
+}
 
-    // Is this node capable of validating dial info
-    pub fn can_validate_dial_info(&self) -> bool {
-        matches!(self, Self::Server | Self::Mapped | Self::FullConeNAT)
-    }
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
+pub enum NetworkClass {
+    InboundCapable = 0, // I = Inbound capable without relay, may require signal
+    OutboundOnly = 1, // O = Outbound only, inbound relay required except with reverse connect signal
+    WebApp = 2,       // W = PWA, outbound relay is required in most cases
+    Invalid = 3,      // X = Invalid network class, we don't know how to reach this node
 }
 
 impl Default for NetworkClass {
     fn default() -> Self {
         Self::Invalid
+    }
+}
+
+impl NetworkClass {
+    // Should an outbound relay be kept available?
+    pub fn outbound_wants_relay(&self) -> bool {
+        matches!(self, Self::WebApp)
     }
 }
 
@@ -329,39 +314,39 @@ pub struct NodeStatus {
 pub struct NodeInfo {
     pub network_class: NetworkClass,
     pub outbound_protocols: ProtocolSet,
-    pub dial_info_list: Vec<DialInfo>,
+    pub dial_info_detail_list: Vec<DialInfoDetail>,
     pub relay_peer_info: Option<Box<PeerInfo>>,
 }
 
 impl NodeInfo {
-    pub fn first_filtered_dial_info<F>(&self, filter: F) -> Option<DialInfo>
+    pub fn first_filtered_dial_info_detail<F>(&self, filter: F) -> Option<DialInfoDetail>
     where
-        F: Fn(&DialInfo) -> bool,
+        F: Fn(&DialInfoDetail) -> bool,
     {
-        for di in &self.dial_info_list {
-            if filter(di) {
-                return Some(di.clone());
+        for did in &self.dial_info_detail_list {
+            if filter(&did) {
+                return Some(did.clone());
             }
         }
         None
     }
 
-    pub fn all_filtered_dial_info<F>(&self, filter: F) -> Vec<DialInfo>
+    pub fn all_filtered_dial_info_details<F>(&self, filter: F) -> Vec<DialInfoDetail>
     where
-        F: Fn(&DialInfo) -> bool,
+        F: Fn(&DialInfoDetail) -> bool,
     {
-        let mut dial_info_list = Vec::new();
+        let mut dial_info_detail_list = Vec::new();
 
-        for di in &self.dial_info_list {
-            if filter(di) {
-                dial_info_list.push(di.clone());
+        for did in &self.dial_info_detail_list {
+            if filter(&did) {
+                dial_info_detail_list.push(did.clone());
             }
         }
-        dial_info_list
+        dial_info_detail_list
     }
 
     pub fn has_any_dial_info(&self) -> bool {
-        !self.dial_info_list.is_empty()
+        !self.dial_info_detail_list.is_empty()
             || !self
                 .relay_peer_info
                 .as_ref()
@@ -370,7 +355,55 @@ impl NodeInfo {
     }
 
     pub fn has_direct_dial_info(&self) -> bool {
-        !self.dial_info_list.is_empty()
+        !self.dial_info_detail_list.is_empty()
+    }
+
+    // Is some relay required either for signal or inbound relay or outbound relay?
+    pub fn requires_relay(&self) -> bool {
+        match self.network_class {
+            NetworkClass::InboundCapable => {
+                for did in &self.dial_info_detail_list {
+                    if did.class.requires_relay() {
+                        return true;
+                    }
+                }
+            }
+            NetworkClass::OutboundOnly => {
+                return true;
+            }
+            NetworkClass::WebApp => {
+                return true;
+            }
+            NetworkClass::Invalid => {}
+        }
+        false
+    }
+
+    // Can this node assist with signalling? Yes but only if it doesn't require signalling, itself.
+    pub fn can_signal(&self) -> bool {
+        // Must be inbound capable
+        if !matches!(self.network_class, NetworkClass::InboundCapable) {
+            return false;
+        }
+        // Do any of our dial info require signalling? if so, we can't offer signalling
+        for did in &self.dial_info_detail_list {
+            if did.class.requires_signal() {
+                return false;
+            }
+        }
+        true
+    }
+
+    // Can this node relay be an inbound relay?
+    pub fn can_inbound_relay(&self) -> bool {
+        // For now this is the same
+        self.can_signal()
+    }
+
+    // Is this node capable of validating dial info
+    pub fn can_validate_dial_info(&self) -> bool {
+        // For now this is the same
+        self.can_signal()
     }
 }
 
@@ -672,13 +705,6 @@ pub struct DialInfoWS {
 pub struct DialInfoWSS {
     pub socket_address: SocketAddress,
     pub request: String,
-}
-
-#[derive(Clone, Debug, PartialEq, PartialOrd, Ord, Eq, Serialize, Deserialize)]
-#[serde(tag = "kind")]
-pub enum DialInfoClass {
-    Direct,
-    Relay,
 }
 
 #[derive(Clone, Debug, PartialEq, PartialOrd, Ord, Eq, Serialize, Deserialize)]

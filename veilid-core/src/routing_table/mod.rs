@@ -23,13 +23,6 @@ pub use stats_accounting::*;
 //////////////////////////////////////////////////////////////////////////
 
 #[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Ord, Eq)]
-pub enum DialInfoOrigin {
-    Static,
-    Discovered,
-    Mapped,
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Ord, Eq)]
 pub enum RoutingDomain {
     PublicInternet,
     LocalNetwork,
@@ -38,19 +31,6 @@ pub enum RoutingDomain {
 #[derive(Debug, Default)]
 pub struct RoutingDomainDetail {
     dial_info_details: Vec<DialInfoDetail>,
-}
-
-#[derive(Debug, Clone, PartialEq, PartialOrd, Ord, Eq)]
-pub struct DialInfoDetail {
-    pub dial_info: DialInfo,
-    pub origin: DialInfoOrigin,
-    pub timestamp: u64,
-}
-
-impl MatchesDialInfoFilter for DialInfoDetail {
-    fn matches_filter(&self, filter: &DialInfoFilter) -> bool {
-        self.dial_info.matches_filter(filter)
-    }
 }
 
 struct RoutingTableInner {
@@ -223,28 +203,40 @@ impl RoutingTable {
 
     pub fn all_filtered_dial_info_details(
         &self,
-        domain: RoutingDomain,
+        domain: Option<RoutingDomain>,
         filter: &DialInfoFilter,
     ) -> Vec<DialInfoDetail> {
         let inner = self.inner.lock();
-        Self::with_routing_domain(&*inner, domain, |rd| {
-            let mut ret = Vec::new();
-            for did in rd.dial_info_details {
-                if did.matches_filter(filter) {
-                    ret.push(did.clone());
+        let mut ret = Vec::new();
+
+        if domain == None || domain == Some(RoutingDomain::Local) {
+            Self::with_routing_domain(&*inner, RoutingDomain::Local, |rd| {
+                for did in rd.dial_info_details {
+                    if did.matches_filter(filter) {
+                        ret.push(did.clone());
+                    }
                 }
-            }
-            ret
-        })
+            });
+        }
+        if domain == None || domain == Some(RoutingDomain::PublicInternet) {
+            Self::with_routing_domain(&*inner, RoutingDomain::PublicInternet, |rd| {
+                for did in rd.dial_info_details {
+                    if did.matches_filter(filter) {
+                        ret.push(did.clone());
+                    }
+                }
+            });
+        }
+        ret.remove_duplicates();
+        ret
     }
 
     pub fn register_dial_info(
         &self,
         domain: RoutingDomain,
         dial_info: DialInfo,
-        origin: DialInfoOrigin,
+        class: DialInfoClass,
     ) {
-        let timestamp = get_timestamp();
         let enable_local_peer_scope = {
             let config = self.network_manager().config();
             let c = config.get();
@@ -267,8 +259,7 @@ impl RoutingTable {
         Self::with_routing_domain_mut(&mut *inner, domain, |rd| {
             rd.dial_info_details.push(DialInfoDetail {
                 dial_info: dial_info.clone(),
-                origin,
-                timestamp,
+                class,
             });
         });
 
@@ -285,7 +276,7 @@ impl RoutingTable {
             }
             .to_string(),
         );
-        debug!("    Origin: {:?}", origin);
+        debug!("    Class: {:?}", class);
     }
 
     pub fn clear_dial_info_details(&self, domain: RoutingDomain) {
@@ -611,7 +602,7 @@ impl RoutingTable {
         log_rtab!("--- bootstrap_task");
 
         // Map all bootstrap entries to a single key with multiple dialinfo
-        let mut bsmap: BTreeMap<DHTKey, Vec<DialInfo>> = BTreeMap::new();
+        let mut bsmap: BTreeMap<DHTKey, Vec<DialInfoDetail>> = BTreeMap::new();
         for b in bootstrap {
             let ndis = NodeDialInfo::from_str(b.as_str())
                 .map_err(map_to_string)
@@ -620,7 +611,10 @@ impl RoutingTable {
             bsmap
                 .entry(node_id)
                 .or_insert_with(Vec::new)
-                .push(ndis.dial_info);
+                .push(DialInfoDetail {
+                    dial_info: ndis.dial_info,
+                    class: DialInfoClass::Direct,
+                });
         }
         log_rtab!("    bootstrap list: {:?}", bsmap);
 
@@ -634,8 +628,8 @@ impl RoutingTable {
                     NodeInfo {
                         network_class: NetworkClass::Server, // Bootstraps are always full servers
                         outbound_protocols: ProtocolSet::empty(), // Bootstraps do not participate in relaying and will not make outbound requests
-                        dial_info_list: v, // Dial info is as specified in the bootstrap list
-                        relay_peer_info: None, // Bootstraps never require a relay themselves
+                        dial_info_detail_list: v, // Dial info is as specified in the bootstrap list
+                        relay_peer_info: None,    // Bootstraps never require a relay themselves
                     },
                 )
                 .map_err(logthru_rtab!("Couldn't add bootstrap node: {}", k))?;

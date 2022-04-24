@@ -1349,12 +1349,16 @@ impl RPCProcessor {
     }
 
     // Gets a 'RespondTo::Sender' that contains either our dial info,
-    // or None if the peer has seen our dial info before
-    pub fn get_respond_to_sender(&self, peer: NodeRef) -> RespondTo {
-        if peer.has_seen_our_node_info() {
+    // or None if the peer has seen our dial info before or our node info is not yet valid
+    // because of an unknown network class
+    pub fn make_respond_to_sender(&self, peer: NodeRef) -> RespondTo {
+        let our_node_info = self.routing_table().get_own_peer_info().node_info;
+        if peer.has_seen_our_node_info()
+            || matches!(our_node_info.network_class, NetworkClass::Invalid)
+        {
             RespondTo::Sender(None)
         } else {
-            RespondTo::Sender(Some(self.routing_table().get_own_peer_info().node_info))
+            RespondTo::Sender(Some(our_node_info))
         }
     }
 
@@ -1366,7 +1370,7 @@ impl RPCProcessor {
             let mut question = info_q_msg.init_root::<veilid_capnp::operation::Builder>();
             question.set_op_id(self.get_next_op_id());
             let mut respond_to = question.reborrow().init_respond_to();
-            self.get_respond_to_sender(peer.clone())
+            self.make_respond_to_sender(peer.clone())
                 .encode(&mut respond_to)?;
             let detail = question.reborrow().init_detail();
             let mut iqb = detail.init_info_q();
