@@ -599,7 +599,7 @@ impl NetworkManager {
         if envelope_node_id != via_node_id {
             return Ok(SendDataKind::GlobalIndirect);
         }
-        return Ok(send_data_kind);
+        Ok(send_data_kind)
     }
 
     // Called by the RPC handler when we want to issue an direct receipt
@@ -626,7 +626,7 @@ impl NetworkManager {
     }
 
     // Figure out how to reach a node
-    fn get_contact_method(&self, target_node_ref: NodeRef) -> Result<ContactMethod, String> {
+    fn get_contact_method(&self, mut target_node_ref: NodeRef) -> Result<ContactMethod, String> {
         let routing_table = self.routing_table();
 
         // Get our network class and protocol config
@@ -639,105 +639,94 @@ impl NetworkManager {
         }
 
         // Get the best matching local direct dial info if we have it
-        let opt_local_did =
+        let opt_target_local_did =
             target_node_ref.first_filtered_dial_info_detail(Some(RoutingDomain::LocalNetwork));
-        if let Some(local_did) = opt_local_did {
-            return Ok(ContactMethod::Direct(local_did.dial_info));
+        if let Some(target_local_did) = opt_target_local_did {
+            return Ok(ContactMethod::Direct(target_local_did.dial_info));
         }
 
         // Get the best match internet dial info if we have it
-        let opt_public_did =
+        let opt_target_public_did =
             target_node_ref.first_filtered_dial_info_detail(Some(RoutingDomain::PublicInternet));
-
-        // Can the target node do inbound?
-        let target_network_class = target_node_ref.network_class();
-        //if matches!(target_network_class, NetworkClass::InboundCapable) {
-        if let Some(public_did) = opt_public_did {
+        if let Some(target_public_did) = opt_target_public_did {
             // Do we need to signal before going inbound?
-            if public_did.class.requires_signal() {
-                // Get the target's inbound relay, it must have one or it is not reachable
-                if let Some(inbound_relay_nr) = target_node_ref.relay() {
-                    // Can we reach the inbound relay?
-                    if inbound_relay_nr
-                        .first_filtered_dial_info_detail(Some(RoutingDomain::PublicInternet))
-                        .is_some()
-                    {
-                        // Can we receive anything inbound ever?
-                        if matches!(our_network_class, NetworkClass::InboundCapable) {
-                            // Get the best match dial info for an reverse inbound connection
-                            let reverse_dif = DialInfoFilter::global()
-                                .with_protocol_set(target_node_ref.outbound_protocols());
-                            if let Some(reverse_did) = routing_table
-                                .first_filtered_dial_info_detail(
-                                    RoutingDomain::PublicInternet,
-                                    &reverse_dif,
-                                )
-                            {
-                                // Can we receive a direct reverse connection?
-                                if !reverse_did.class.requires_signal() {
-                                    return Ok(ContactMethod::SignalReverse(
-                                        inbound_relay_nr,
-                                        target_node_ref,
-                                    ));
-                                }
-                            }
-
-                            // Does we and the target have outbound protocols to hole-punch?
-                            if our_protocol_config.outbound.contains(ProtocolType::UDP)
-                                && target_node_ref
-                                    .outbound_protocols()
-                                    .contains(ProtocolType::UDP)
-                            {
-                                // Do the target and self nodes have a direct udp dialinfo
-                                let udp_dif =
-                                    DialInfoFilter::global().with_protocol_type(ProtocolType::UDP);
-                                let udp_target_nr = target_node_ref.clone();
-                                udp_target_nr
-                                    .filter_protocols(ProtocolSet::only(ProtocolType::UDP));
-                                let target_has_udp_dialinfo = target_node_ref
-                                    .first_filtered_dial_info_detail(Some(
-                                        RoutingDomain::PublicInternet,
-                                    ))
-                                    .is_some();
-                                let self_has_udp_dialinfo = routing_table
-                                    .first_filtered_dial_info_detail(
-                                        RoutingDomain::PublicInternet,
-                                        &udp_dif,
-                                    )
-                                    .is_some();
-                                if target_has_udp_dialinfo && self_has_udp_dialinfo {
-                                    return Ok(ContactMethod::SignalHolePunch(
-                                        inbound_relay_nr,
-                                        udp_target_nr,
-                                    ));
-                                }
-                            }
-                            // Otherwise we have to inbound relay
-                        }
-
-                        return Ok(ContactMethod::InboundRelay(inbound_relay_nr));
-                    }
-                }
+            if !target_public_did.class.requires_signal() {
+                // Go direct without signaling
+                return Ok(ContactMethod::Direct(target_public_did.dial_info));
             }
-            // Go direct without signaling
-            else {
-                // If we have direct dial info we can use, do it
-                if let Some(did) = opt_public_did {
-                    return Ok(ContactMethod::Direct(did.dial_info));
-                }
-            }
-        } else {
-            // If the other node is not inbound capable at all, it is using a full relay
-            if let Some(target_inbound_relay_nr) = target_node_ref.relay() {
-                // Can we reach the full relay?
-                if target_inbound_relay_nr
+
+            // Get the target's inbound relay, it must have one or it is not reachable
+            if let Some(inbound_relay_nr) = target_node_ref.relay() {
+                // Can we reach the inbound relay?
+                if inbound_relay_nr
                     .first_filtered_dial_info_detail(Some(RoutingDomain::PublicInternet))
                     .is_some()
                 {
-                    return Ok(ContactMethod::InboundRelay(target_inbound_relay_nr));
+                    // Can we receive anything inbound ever?
+                    if matches!(our_network_class, NetworkClass::InboundCapable) {
+                        // Get the best match dial info for an reverse inbound connection
+                        let reverse_dif = DialInfoFilter::global()
+                            .with_protocol_set(target_node_ref.outbound_protocols());
+                        if let Some(reverse_did) = routing_table.first_filtered_dial_info_detail(
+                            Some(RoutingDomain::PublicInternet),
+                            &reverse_dif,
+                        ) {
+                            // Can we receive a direct reverse connection?
+                            if !reverse_did.class.requires_signal() {
+                                return Ok(ContactMethod::SignalReverse(
+                                    inbound_relay_nr,
+                                    target_node_ref,
+                                ));
+                            }
+                        }
+
+                        // Does we and the target have outbound protocols to hole-punch?
+                        if our_protocol_config.outbound.contains(ProtocolType::UDP)
+                            && target_node_ref
+                                .outbound_protocols()
+                                .contains(ProtocolType::UDP)
+                        {
+                            // Do the target and self nodes have a direct udp dialinfo
+                            let udp_dif =
+                                DialInfoFilter::global().with_protocol_type(ProtocolType::UDP);
+                            let mut udp_target_nr = target_node_ref.clone();
+                            udp_target_nr.filter_protocols(ProtocolSet::only(ProtocolType::UDP));
+                            let target_has_udp_dialinfo = target_node_ref
+                                .first_filtered_dial_info_detail(Some(
+                                    RoutingDomain::PublicInternet,
+                                ))
+                                .is_some();
+                            let self_has_udp_dialinfo = routing_table
+                                .first_filtered_dial_info_detail(
+                                    Some(RoutingDomain::PublicInternet),
+                                    &udp_dif,
+                                )
+                                .is_some();
+                            if target_has_udp_dialinfo && self_has_udp_dialinfo {
+                                return Ok(ContactMethod::SignalHolePunch(
+                                    inbound_relay_nr,
+                                    udp_target_nr,
+                                ));
+                            }
+                        }
+                        // Otherwise we have to inbound relay
+                    }
+
+                    return Ok(ContactMethod::InboundRelay(inbound_relay_nr));
                 }
             }
         }
+        // If the other node is not inbound capable at all, it is using a full relay
+        else if let Some(target_inbound_relay_nr) = target_node_ref.relay() {
+            // Can we reach the full relay?
+            if target_inbound_relay_nr
+                .first_filtered_dial_info_detail(Some(RoutingDomain::PublicInternet))
+                .is_some()
+            {
+                return Ok(ContactMethod::InboundRelay(target_inbound_relay_nr));
+            }
+        }
+
         // If we can't reach the node by other means, try our outbound relay if we have one
         if let Some(relay_node) = self.relay_node() {
             return Ok(ContactMethod::OutboundRelay(relay_node));
@@ -868,23 +857,17 @@ impl NetworkManager {
         let inbound_nr = match eventual_value.await {
             ReceiptEvent::Returned(inbound_nr) => inbound_nr,
             ReceiptEvent::Expired => {
-                return Err(format!(
-                    "reverse connect receipt expired from {:?}",
-                    target_nr
-                ));
+                return Err(format!("hole punch receipt expired from {:?}", target_nr));
             }
             ReceiptEvent::Cancelled => {
-                return Err(format!(
-                    "reverse connect receipt cancelled from {:?}",
-                    target_nr
-                ));
+                return Err(format!("hole punch receipt cancelled from {:?}", target_nr));
             }
         };
 
         // We expect the inbound noderef to be the same as the target noderef
         // if they aren't the same, we should error on this and figure out what then hell is up
         if target_nr != inbound_nr {
-            error!("unexpected noderef mismatch on reverse connect");
+            error!("unexpected noderef mismatch on hole punch");
         }
 
         // And now use the existing connection to send over
@@ -896,10 +879,10 @@ impl NetworkManager {
                 .map_err(logthru_net!())?
             {
                 None => Ok(()),
-                Some(_) => Err("unable to send over reverse connection".to_owned()),
+                Some(_) => Err("unable to send over hole punch".to_owned()),
             }
         } else {
-            Err("no reverse connection available".to_owned())
+            Err("no hole punch available".to_owned())
         }
     }
 
@@ -947,17 +930,17 @@ impl NetworkManager {
                         .await
                         .map(|_| SendDataKind::GlobalIndirect)
                 }
-                ContactMethod::Direct(dial_info) => this
-                    .net()
-                    .send_data_to_dial_info(dial_info, data)
-                    .await
-                    .map(|_| {
-                        if dial_info.is_local() {
-                            SendDataKind::LocalDirect
-                        } else {
-                            SendDataKind::GlobalDirect
-                        }
-                    }),
+                ContactMethod::Direct(dial_info) => {
+                    let send_data_kind = if dial_info.is_local() {
+                        SendDataKind::LocalDirect
+                    } else {
+                        SendDataKind::GlobalDirect
+                    };
+                    this.net()
+                        .send_data_to_dial_info(dial_info, data)
+                        .await
+                        .map(|_| send_data_kind)
+                }
                 ContactMethod::SignalReverse(relay_nr, target_node_ref) => this
                     .do_reverse_connect(relay_nr, target_node_ref, data)
                     .await

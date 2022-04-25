@@ -326,7 +326,7 @@ impl NodeInfo {
         F: Fn(&DialInfoDetail) -> bool,
     {
         for did in &self.dial_info_detail_list {
-            if filter(&did) {
+            if filter(did) {
                 return Some(did.clone());
             }
         }
@@ -340,7 +340,7 @@ impl NodeInfo {
         let mut dial_info_detail_list = Vec::new();
 
         for did in &self.dial_info_detail_list {
-            if filter(&did) {
+            if filter(did) {
                 dial_info_detail_list.push(did.clone());
             }
         }
@@ -446,6 +446,7 @@ impl LocalNodeInfo {
     }
 }
 
+#[allow(clippy::derive_hash_xor_eq)]
 #[derive(Debug, PartialOrd, Ord, Hash, Serialize, Deserialize, EnumSetType)]
 // Keep member order appropriate for sorting < preference
 // Must match DialInfo order

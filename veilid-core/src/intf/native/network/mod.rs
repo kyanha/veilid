@@ -487,11 +487,11 @@ impl Network {
     //////////////////////////////////////////
     pub fn get_network_class(&self) -> Option<NetworkClass> {
         let inner = self.inner.lock();
-        return inner.network_class;
+        inner.network_class
     }
 
     pub fn reset_network_class(&self) {
-        let inner = self.inner.lock();
+        let mut inner = self.inner.lock();
         inner.network_class = None;
     }
 

@@ -331,17 +331,16 @@ impl Network {
                     DialInfoClass::Direct,
                 );
 
-                // See if this public address is also a local interface address
-                if !local_dial_info_list.contains(&pdi)
-                    && self.with_interface_addresses(|ip_addrs| {
-                        for ip_addr in ip_addrs {
-                            if pdi_addr.ip() == *ip_addr {
-                                return true;
-                            }
+                // See if this public address is also a local interface address we haven't registered yet
+                let is_interface_address = self.with_interface_addresses(|ip_addrs| {
+                    for ip_addr in ip_addrs {
+                        if pdi_addr.ip() == *ip_addr {
+                            return true;
                         }
-                        false
-                    })
-                {
+                    }
+                    false
+                });
+                if !local_dial_info_list.contains(&pdi) && is_interface_address {
                     routing_table.register_dial_info(
                         RoutingDomain::LocalNetwork,
                         DialInfo::udp_from_socketaddr(pdi_addr),
@@ -432,16 +431,15 @@ impl Network {
                 static_public = true;
 
                 // See if this public address is also a local interface address
-                if !registered_addresses.contains(&gsa.ip())
-                    && self.with_interface_addresses(|ip_addrs| {
-                        for ip_addr in ip_addrs {
-                            if gsa.ip() == *ip_addr {
-                                return true;
-                            }
+                let is_interface_address = self.with_interface_addresses(|ip_addrs| {
+                    for ip_addr in ip_addrs {
+                        if gsa.ip() == *ip_addr {
+                            return true;
                         }
-                        false
-                    })
-                {
+                    }
+                    false
+                });
+                if !registered_addresses.contains(&gsa.ip()) && is_interface_address {
                     routing_table.register_dial_info(
                         RoutingDomain::LocalNetwork,
                         pdi,
@@ -496,12 +494,11 @@ impl Network {
         trace!("starting wss listeners");
 
         let routing_table = self.routing_table();
-        let (listen_address, url, enable_local_peer_scope) = {
+        let (listen_address, url) = {
             let c = self.config.get();
             (
                 c.network.protocol.wss.listen_address.clone(),
                 c.network.protocol.wss.url.clone(),
-                c.network.enable_local_peer_scope,
             )
         };
 
@@ -566,16 +563,15 @@ impl Network {
                 static_public = true;
 
                 // See if this public address is also a local interface address
-                if !registered_addresses.contains(&gsa.ip())
-                    && self.with_interface_addresses(|ip_addrs| {
-                        for ip_addr in ip_addrs {
-                            if gsa.ip() == *ip_addr {
-                                return true;
-                            }
+                let is_interface_address = self.with_interface_addresses(|ip_addrs| {
+                    for ip_addr in ip_addrs {
+                        if gsa.ip() == *ip_addr {
+                            return true;
                         }
-                        false
-                    })
-                {
+                    }
+                    false
+                });
+                if !registered_addresses.contains(&gsa.ip()) && is_interface_address {
                     routing_table.register_dial_info(
                         RoutingDomain::LocalNetwork,
                         pdi,
@@ -683,22 +679,21 @@ impl Network {
                 static_public = true;
 
                 // See if this public address is also a local interface address
-                if self.with_interface_addresses(|ip_addrs| {
+                let is_interface_address = self.with_interface_addresses(|ip_addrs| {
                     for ip_addr in ip_addrs {
                         if pdi_addr.ip() == *ip_addr {
                             return true;
                         }
                     }
                     false
-                }) {
+                });
+                if is_interface_address {
                     routing_table.register_dial_info(
                         RoutingDomain::LocalNetwork,
                         pdi,
                         DialInfoClass::Direct,
                     );
                 }
-
-                static_public = true;
             }
         }
 

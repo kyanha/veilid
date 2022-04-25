@@ -50,7 +50,6 @@ impl RoutingTable {
     // Get our own node's peer info (public node info) so we can share it with other nodes
     pub fn get_own_peer_info(&self) -> PeerInfo {
         let netman = self.network_manager();
-        let enable_local_peer_scope = netman.config().get().network.enable_local_peer_scope;
         let relay_node = netman.relay_node();
         PeerInfo {
             node_id: NodeId::new(self.node_id()),

@@ -1378,49 +1378,52 @@ impl RPCProcessor {
         // Wait for reply
         let (rpcreader, latency) = self.wait_for_reply(waitable_reply).await?;
 
-        let response_operation = rpcreader
-            .reader
-            .get_root::<veilid_capnp::operation::Reader>()
-            .map_err(map_error_capnp_error!())
-            .map_err(logthru_rpc!())?;
-        let info_a = match response_operation
-            .get_detail()
-            .which()
-            .map_err(map_error_capnp_notinschema!())
-            .map_err(logthru_rpc!())?
-        {
-            veilid_capnp::operation::detail::InfoA(a) => {
-                a.map_err(map_error_internal!("Invalid InfoA"))?
+        let (sender_info, node_status) = {
+            let response_operation = rpcreader
+                .reader
+                .get_root::<veilid_capnp::operation::Reader>()
+                .map_err(map_error_capnp_error!())
+                .map_err(logthru_rpc!())?;
+            let info_a = match response_operation
+                .get_detail()
+                .which()
+                .map_err(map_error_capnp_notinschema!())
+                .map_err(logthru_rpc!())?
+            {
+                veilid_capnp::operation::detail::InfoA(a) => {
+                    a.map_err(map_error_internal!("Invalid InfoA"))?
+                }
+                _ => return Err(rpc_error_internal("Incorrect RPC answer for question")),
+            };
+
+            // Decode node info
+            if !info_a.has_node_status() {
+                return Err(rpc_error_internal("Missing node status"));
             }
-            _ => return Err(rpc_error_internal("Incorrect RPC answer for question")),
+            let nsr = info_a
+                .get_node_status()
+                .map_err(map_error_internal!("Broken node status"))?;
+            let node_status = decode_node_status(&nsr)?;
+
+            // Decode sender info
+            let sender_info = if info_a.has_sender_info() {
+                let sir = info_a
+                    .get_sender_info()
+                    .map_err(map_error_internal!("Broken sender info"))?;
+                decode_sender_info(&sir)?
+            } else {
+                SenderInfo::default()
+            };
+
+            // Update latest node status in routing table
+            peer.operate(|e| {
+                e.update_node_status(node_status.clone());
+            });
+
+            (sender_info, node_status)
         };
-
-        // Decode node info
-        if !info_a.has_node_status() {
-            return Err(rpc_error_internal("Missing node status"));
-        }
-        let nsr = info_a
-            .get_node_status()
-            .map_err(map_error_internal!("Broken node status"))?;
-        let node_status = decode_node_status(&nsr)?;
-
-        // Decode sender info
-        let sender_info = if info_a.has_sender_info() {
-            let sir = info_a
-                .get_sender_info()
-                .map_err(map_error_internal!("Broken sender info"))?;
-            decode_sender_info(&sir)?
-        } else {
-            SenderInfo::default()
-        };
-
-        // Update latest node status in routing table
-        peer.operate(|e| {
-            e.update_node_status(node_status.clone());
-        });
 
         // Report sender_info IP addresses to network manager
-
         if let Some(socket_address) = sender_info.socket_address {
             match send_data_kind {
                 SendDataKind::LocalDirect => {

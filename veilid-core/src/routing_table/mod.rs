@@ -187,17 +187,36 @@ impl RoutingTable {
 
     pub fn first_filtered_dial_info_detail(
         &self,
-        domain: RoutingDomain,
+        domain: Option<RoutingDomain>,
         filter: &DialInfoFilter,
     ) -> Option<DialInfoDetail> {
         let inner = self.inner.lock();
-        Self::with_routing_domain(&*inner, domain, |rd| {
-            for did in rd.dial_info_details {
-                if did.matches_filter(filter) {
-                    return Some(did.clone());
+        // Prefer local network first if it isn't filtered out
+        if domain == None || domain == Some(RoutingDomain::LocalNetwork) {
+            Self::with_routing_domain(&*inner, RoutingDomain::LocalNetwork, |rd| {
+                for did in &rd.dial_info_details {
+                    if did.matches_filter(filter) {
+                        return Some(did.clone());
+                    }
                 }
-            }
+                None
+            })
+        } else {
             None
+        }
+        .or_else(|| {
+            if domain == None || domain == Some(RoutingDomain::PublicInternet) {
+                Self::with_routing_domain(&*inner, RoutingDomain::PublicInternet, |rd| {
+                    for did in &rd.dial_info_details {
+                        if did.matches_filter(filter) {
+                            return Some(did.clone());
+                        }
+                    }
+                    None
+                })
+            } else {
+                None
+            }
         })
     }
 
@@ -211,7 +230,7 @@ impl RoutingTable {
 
         if domain == None || domain == Some(RoutingDomain::LocalNetwork) {
             Self::with_routing_domain(&*inner, RoutingDomain::LocalNetwork, |rd| {
-                for did in rd.dial_info_details {
+                for did in &rd.dial_info_details {
                     if did.matches_filter(filter) {
                         ret.push(did.clone());
                     }
@@ -220,7 +239,7 @@ impl RoutingTable {
         }
         if domain == None || domain == Some(RoutingDomain::PublicInternet) {
             Self::with_routing_domain(&*inner, RoutingDomain::PublicInternet, |rd| {
-                for did in rd.dial_info_details {
+                for did in &rd.dial_info_details {
                     if did.matches_filter(filter) {
                         ret.push(did.clone());
                     }
