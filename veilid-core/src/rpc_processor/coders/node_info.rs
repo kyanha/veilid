@@ -55,14 +55,14 @@ pub fn decode_node_info(
         .reborrow()
         .get_dial_info_detail_list()
         .map_err(map_error_capnp_error!())?;
-    let mut dial_info_detail_list = Vec::<DialInfo>::with_capacity(
+    let mut dial_info_detail_list = Vec::<DialInfoDetail>::with_capacity(
         didl_reader
             .len()
             .try_into()
             .map_err(map_error_protocol!("too many dial info details"))?,
     );
-    for di in dil_reader.iter() {
-        dial_info_detail_list.push(decode_dial_info_detail(&di)?)
+    for did in didl_reader.iter() {
+        dial_info_detail_list.push(decode_dial_info_detail(&did)?)
     }
 
     let relay_peer_info = if allow_relay_peer_info {

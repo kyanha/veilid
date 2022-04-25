@@ -299,7 +299,7 @@ impl Network {
                 routing_table.register_dial_info(
                     RoutingDomain::PublicInternet,
                     di.clone(),
-                    DialInfoOrigin::Static,
+                    DialInfoClass::Direct,
                 );
                 static_public = true;
             }
@@ -308,7 +308,7 @@ impl Network {
             routing_table.register_dial_info(
                 RoutingDomain::LocalNetwork,
                 di.clone(),
-                DialInfoOrigin::Static,
+                DialInfoClass::Direct,
             );
         }
 
@@ -328,7 +328,7 @@ impl Network {
                 routing_table.register_dial_info(
                     RoutingDomain::PublicInternet,
                     pdi.clone(),
-                    DialInfoOrigin::Static,
+                    DialInfoClass::Direct,
                 );
 
                 // See if this public address is also a local interface address
@@ -345,7 +345,7 @@ impl Network {
                     routing_table.register_dial_info(
                         RoutingDomain::LocalNetwork,
                         DialInfo::udp_from_socketaddr(pdi_addr),
-                        DialInfoOrigin::Static,
+                        DialInfoClass::Direct,
                     );
                 }
 
@@ -427,7 +427,7 @@ impl Network {
                 routing_table.register_dial_info(
                     RoutingDomain::PublicInternet,
                     pdi.clone(),
-                    DialInfoOrigin::Static,
+                    DialInfoClass::Direct,
                 );
                 static_public = true;
 
@@ -445,7 +445,7 @@ impl Network {
                     routing_table.register_dial_info(
                         RoutingDomain::LocalNetwork,
                         pdi,
-                        DialInfoOrigin::Static,
+                        DialInfoClass::Direct,
                     );
                 }
 
@@ -469,7 +469,7 @@ impl Network {
                 routing_table.register_dial_info(
                     RoutingDomain::PublicInternet,
                     local_di.clone(),
-                    DialInfoOrigin::Static,
+                    DialInfoClass::Direct,
                 );
                 static_public = true;
             }
@@ -478,7 +478,7 @@ impl Network {
             routing_table.register_dial_info(
                 RoutingDomain::LocalNetwork,
                 local_di,
-                DialInfoOrigin::Static,
+                DialInfoClass::Direct,
             );
         }
 
@@ -561,7 +561,7 @@ impl Network {
                 routing_table.register_dial_info(
                     RoutingDomain::PublicInternet,
                     pdi.clone(),
-                    DialInfoOrigin::Static,
+                    DialInfoClass::Direct,
                 );
                 static_public = true;
 
@@ -579,7 +579,7 @@ impl Network {
                     routing_table.register_dial_info(
                         RoutingDomain::LocalNetwork,
                         pdi,
-                        DialInfoOrigin::Static,
+                        DialInfoClass::Direct,
                     );
                 }
 
@@ -646,7 +646,7 @@ impl Network {
                 routing_table.register_dial_info(
                     RoutingDomain::PublicInternet,
                     di.clone(),
-                    DialInfoOrigin::Static,
+                    DialInfoClass::Direct,
                 );
                 static_public = true;
             }
@@ -654,7 +654,7 @@ impl Network {
             routing_table.register_dial_info(
                 RoutingDomain::LocalNetwork,
                 di.clone(),
-                DialInfoOrigin::Static,
+                DialInfoClass::Direct,
             );
             registered_addresses.insert(socket_address.to_ip_addr());
         }
@@ -678,7 +678,7 @@ impl Network {
                 routing_table.register_dial_info(
                     RoutingDomain::PublicInternet,
                     pdi.clone(),
-                    DialInfoOrigin::Static,
+                    DialInfoClass::Direct,
                 );
                 static_public = true;
 
@@ -694,7 +694,7 @@ impl Network {
                     routing_table.register_dial_info(
                         RoutingDomain::LocalNetwork,
                         pdi,
-                        DialInfoOrigin::Static,
+                        DialInfoClass::Direct,
                     );
                 }
 

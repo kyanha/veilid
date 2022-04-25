@@ -195,8 +195,8 @@ enum DialInfoClass {
 }
 
 struct DialInfoDetail {
-    dialInfo                @0;  :DialInfo;
-    class                   @1;  :DialInfoClass;
+    dialInfo                @0  :DialInfo;
+    class                   @1  :DialInfoClass;
 }
 
 struct NodeStatus {
@@ -243,7 +243,6 @@ struct OperationReturnReceipt {
 
 struct OperationFindNodeQ {    
     nodeId                  @0  :NodeID;                # node id to locate
-    senderNodeInfo          @1  :NodeInfo;              # dial info for the node asking the question
 }
 
 struct PeerInfo {

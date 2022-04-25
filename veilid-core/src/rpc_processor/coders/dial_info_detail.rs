@@ -6,7 +6,7 @@ pub fn encode_dial_info_detail(
     builder: &mut veilid_capnp::dial_info_detail::Builder,
 ) -> Result<(), RPCError> {
     let mut di_builder = builder.reborrow().init_dial_info();
-    encode_dial_info(&node_info.dial_info, &mut di_builder)?;
+    encode_dial_info(&dial_info_detail.dial_info, &mut di_builder)?;
 
     builder.set_class(encode_dial_info_class(dial_info_detail.class));
     Ok(())
@@ -22,7 +22,7 @@ pub fn decode_dial_info_detail(
             .map_err(map_error_capnp_error!())?,
     )?;
 
-    let dial_info_class = decode_dial_info_class(
+    let class = decode_dial_info_class(
         reader
             .reborrow()
             .get_class()

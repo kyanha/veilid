@@ -204,26 +204,8 @@ impl RPCProcessor {
                         return format!("(invalid node id: {})", e);
                     }
                 };
-
-                let sni_reader = match fnqr.reborrow().get_sender_node_info() {
-                    Ok(snir) => snir,
-                    Err(e) => {
-                        return format!("(invalid sender node info: {})", e);
-                    }
-                };
-                let sender_node_info = match decode_node_info(&sni_reader, true) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        return format!("(unable to decode node info: {})", e);
-                    }
-                };
-
                 let node_id = decode_public_key(&nidr);
-                format!(
-                    "FindNodeQ: node_id={} sender_node_info={:#?}",
-                    node_id.encode(),
-                    sender_node_info
-                )
+                format!("FindNodeQ: node_id={}", node_id.encode(),)
             }
             veilid_capnp::operation::detail::FindNodeA(d) => {
                 let fnar = match d {
@@ -236,7 +218,7 @@ impl RPCProcessor {
                 let p_reader = match fnar.reborrow().get_peers() {
                     Ok(pr) => pr,
                     Err(e) => {
-                        return format!("(invalid sender node info: {})", e);
+                        return format!("(invalid peers: {})", e);
                     }
                 };
                 let mut peers = Vec::<PeerInfo>::with_capacity(match p_reader.len().try_into() {

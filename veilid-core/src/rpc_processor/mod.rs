@@ -213,22 +213,22 @@ impl RPCProcessor {
         get_random_u64()
     }
 
-    fn filter_peer_scope(&self, peer_info: &PeerInfo) -> bool {
+    fn filter_peer_scope(&self, node_info: &NodeInfo) -> bool {
         // if local peer scope is enabled, then don't reject any peer info
         if self.enable_local_peer_scope {
             return true;
         }
 
         // reject attempts to include non-public addresses in results
-        for di in &peer_info.node_info.dial_info_list {
-            if !di.is_global() {
+        for did in &node_info.dial_info_detail_list {
+            if !did.dial_info.is_global() {
                 // non-public address causes rejection
                 return false;
             }
         }
-        if let Some(rpi) = &peer_info.node_info.relay_peer_info {
-            for di in &rpi.node_info.dial_info_list {
-                if !di.is_global() {
+        if let Some(rpi) = &node_info.relay_peer_info {
+            for did in &rpi.node_info.dial_info_detail_list {
+                if !did.dial_info.is_global() {
                     // non-public address causes rejection
                     return false;
                 }
@@ -964,26 +964,8 @@ impl RPCProcessor {
                     .map_err(logthru_rpc!())?,
             );
 
-            // get the sender NodeInfo of the requesting node
-            let sni_reader = fnq_reader
-                .reborrow()
-                .get_sender_node_info()
-                .map_err(map_error_capnp_error!())?;
-            let peer_info = PeerInfo {
-                node_id: NodeId::new(rpcreader.header.envelope.get_sender_id()),
-                node_info: decode_node_info(&sni_reader, true)?,
-            };
-
-            // filter out attempts to pass non-public addresses in for peers
-            if !self.filter_peer_scope(&peer_info) {
-                return Err(RPCError::InvalidFormat);
-            }
-
             // add node information for the requesting node to our routing table
             let routing_table = self.routing_table();
-            let _requesting_node_ref = routing_table
-                .register_node_with_node_info(peer_info.node_id.key, peer_info.node_info)
-                .map_err(map_error_string!())?;
 
             // find N nodes closest to the target node in our routing table
             let own_peer_info = routing_table.get_own_peer_info();
@@ -1192,6 +1174,9 @@ impl RPCProcessor {
                 opt_sender_nr =
                     if let Some(sender_ni) = self.get_respond_to_sender_node_info(&operation)? {
                         // Sender NodeInfo was specified, update our routing table with it
+                        if !self.filter_peer_scope(&sender_ni) {
+                            return Err(RPCError::InvalidFormat);
+                        }
                         let nr = self
                             .routing_table()
                             .register_node_with_node_info(
@@ -1544,11 +1529,6 @@ impl RPCProcessor {
             let mut node_id_builder = fnq.reborrow().init_node_id();
             encode_public_key(&key, &mut node_id_builder)?;
 
-            let own_peer_info = self.routing_table().get_own_peer_info();
-
-            let mut ni_builder = fnq.reborrow().init_sender_node_info();
-            encode_node_info(&own_peer_info.node_info, &mut ni_builder)?;
-
             find_node_q_msg.into_reader()
         };
 
@@ -1590,7 +1570,7 @@ impl RPCProcessor {
         for p in peers_reader.iter() {
             let peer_info = decode_peer_info(&p, true)?;
 
-            if !self.filter_peer_scope(&peer_info) {
+            if !self.filter_peer_scope(&peer_info.node_info) {
                 return Err(RPCError::InvalidFormat);
             }
 

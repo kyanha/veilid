@@ -209,8 +209,8 @@ impl RoutingTable {
         let inner = self.inner.lock();
         let mut ret = Vec::new();
 
-        if domain == None || domain == Some(RoutingDomain::Local) {
-            Self::with_routing_domain(&*inner, RoutingDomain::Local, |rd| {
+        if domain == None || domain == Some(RoutingDomain::LocalNetwork) {
+            Self::with_routing_domain(&*inner, RoutingDomain::LocalNetwork, |rd| {
                 for did in rd.dial_info_details {
                     if did.matches_filter(filter) {
                         ret.push(did.clone());
@@ -261,6 +261,7 @@ impl RoutingTable {
                 dial_info: dial_info.clone(),
                 class,
             });
+            rd.dial_info_details.sort();
         });
 
         let domain_str = match domain {
@@ -520,7 +521,7 @@ impl RoutingTable {
                 Destination::Direct(node_ref.clone()),
                 node_id,
                 None,
-                rpc_processor.get_respond_to_sender(node_ref.clone()),
+                rpc_processor.make_respond_to_sender(node_ref.clone()),
             )
             .await
             .map_err(map_to_string)
@@ -613,7 +614,7 @@ impl RoutingTable {
                 .or_insert_with(Vec::new)
                 .push(DialInfoDetail {
                     dial_info: ndis.dial_info,
-                    class: DialInfoClass::Direct,
+                    class: DialInfoClass::Direct, // Bootstraps are always directly reachable
                 });
         }
         log_rtab!("    bootstrap list: {:?}", bsmap);
@@ -626,7 +627,7 @@ impl RoutingTable {
                 .register_node_with_node_info(
                     k,
                     NodeInfo {
-                        network_class: NetworkClass::Server, // Bootstraps are always full servers
+                        network_class: NetworkClass::InboundCapable, // Bootstraps are always inbound capable
                         outbound_protocols: ProtocolSet::empty(), // Bootstraps do not participate in relaying and will not make outbound requests
                         dial_info_detail_list: v, // Dial info is as specified in the bootstrap list
                         relay_peer_info: None,    // Bootstraps never require a relay themselves

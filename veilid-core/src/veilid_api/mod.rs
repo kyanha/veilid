@@ -235,6 +235,7 @@ pub struct SenderInfo {
     pub socket_address: Option<SocketAddress>,
 }
 
+// Keep member order appropriate for sorting < preference
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
 pub enum DialInfoClass {
     Direct = 0, // D = Directly reachable with public IP and no firewall, with statically configured port
@@ -268,10 +269,11 @@ impl DialInfoClass {
     }
 }
 
+// Keep member order appropriate for sorting < preference
 #[derive(Debug, Clone, PartialEq, PartialOrd, Ord, Eq, Serialize, Deserialize)]
 pub struct DialInfoDetail {
-    pub dial_info: DialInfo,
     pub class: DialInfoClass,
+    pub dial_info: DialInfo,
 }
 
 impl MatchesDialInfoFilter for DialInfoDetail {
@@ -445,7 +447,7 @@ impl LocalNodeInfo {
 }
 
 #[derive(Debug, PartialOrd, Ord, Hash, Serialize, Deserialize, EnumSetType)]
-// The derived ordering here is the order of preference, lower is preferred for connections
+// Keep member order appropriate for sorting < preference
 // Must match DialInfo order
 pub enum ProtocolType {
     UDP,
@@ -661,6 +663,10 @@ impl DialInfoFilter {
         self.protocol_set = ProtocolSet::only(protocol_type);
         self
     }
+    pub fn with_protocol_set(mut self, protocol_set: ProtocolSet) -> Self {
+        self.protocol_set = protocol_set;
+        self
+    }
     pub fn with_address_type(mut self, address_type: AddressType) -> Self {
         self.address_type = Some(address_type);
         self
@@ -709,7 +715,7 @@ pub struct DialInfoWSS {
 
 #[derive(Clone, Debug, PartialEq, PartialOrd, Ord, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind")]
-// The derived ordering here is the order of preference, lower is preferred for connections
+// Keep member order appropriate for sorting < preference
 // Must match ProtocolType order
 pub enum DialInfo {
     UDP(DialInfoUDP),
