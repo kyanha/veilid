@@ -7,7 +7,7 @@
 //   URLs must convert to UTF8
 //   Only IP address and DNS hostname host fields are supported
 
-use super::IpAddr;
+use super::{IpAddr, Ipv4Addr, Ipv6Addr};
 use alloc::borrow::ToOwned;
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -41,22 +41,6 @@ fn must_encode_path(c: u8) -> bool {
             c,
             b'%' | b'/' | b':' | b'@' | b'&' | b'=' | b'+' | b'$' | b','
         ))
-}
-
-fn is_valid_host<H: AsRef<str>>(host: H) -> bool {
-    if host.as_ref().is_empty() {
-        return false;
-    }
-    if IpAddr::from_str(host.as_ref()).is_err() {
-        for ch in host.as_ref().chars() {
-            if !matches!(ch,
-                'A'..='Z' | 'a'..='z' | '0'..='9' | '-' | '.' )
-            {
-                return false;
-            }
-        }
-    }
-    true
 }
 
 fn is_valid_scheme<H: AsRef<str>>(host: H) -> bool {
@@ -222,35 +206,93 @@ impl fmt::Display for SplitUrlPath {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum SplitUrlHost {
+    Hostname(String),
+    IpAddr(IpAddr),
+}
+
+impl SplitUrlHost {
+    pub fn new<S: AsRef<str>>(s: S) -> Result<Self, String> {
+        Self::from_str(s.as_ref())
+    }
+}
+
+impl FromStr for SplitUrlHost {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.is_empty() {
+            return Err("Host is empty".to_owned());
+        }
+        if let Ok(v4) = Ipv4Addr::from_str(s) {
+            return Ok(SplitUrlHost::IpAddr(IpAddr::V4(v4)));
+        }
+        if &s[0..1] == "[" && &s[s.len() - 1..] == "]" {
+            if let Ok(v6) = Ipv6Addr::from_str(&s[1..s.len() - 1]) {
+                return Ok(SplitUrlHost::IpAddr(IpAddr::V6(v6)));
+            }
+            return Err("Invalid ipv6 address".to_owned());
+        }
+        for ch in s.chars() {
+            if !matches!(ch,
+                'A'..='Z' | 'a'..='z' | '0'..='9' | '-' | '.' )
+            {
+                return Err("Invalid hostname".to_owned());
+            }
+        }
+        Ok(SplitUrlHost::Hostname(s.to_owned()))
+    }
+}
+impl fmt::Display for SplitUrlHost {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Hostname(h) => {
+                write!(f, "{}", h)
+            }
+            Self::IpAddr(IpAddr::V4(v4)) => {
+                write!(f, "{}", v4)
+            }
+            Self::IpAddr(IpAddr::V6(v6)) => {
+                write!(f, "[{}]", v6)
+            }
+        }
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////////
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct SplitUrl {
     pub scheme: String,
     pub userinfo: Option<String>,
-    pub host: String,
+    pub host: SplitUrlHost,
     pub port: Option<u16>,
     pub path: Option<SplitUrlPath>,
 }
 
 impl SplitUrl {
-    pub fn new<S, H>(
+    pub fn new<S>(
         scheme: S,
         userinfo: Option<String>,
-        host: H,
+        host: SplitUrlHost,
         port: Option<u16>,
         path: Option<SplitUrlPath>,
     ) -> Self
     where
         S: AsRef<str>,
-        H: AsRef<str>,
     {
         Self {
             scheme: scheme.as_ref().to_owned(),
             userinfo,
-            host: host.as_ref().to_owned(),
+            host,
             port,
             path,
         }
+    }
+
+    pub fn host_port(&self, default_port: u16) -> String {
+        format!("{}:{}", self.host, self.port.unwrap_or(default_port))
     }
 }
 
@@ -270,9 +312,7 @@ impl FromStr for SplitUrl {
                 }
             };
             if let Some((host, rest)) = rest.rsplit_once(':') {
-                if !is_valid_host(host) {
-                    return Err("Invalid host specified".to_owned());
-                }
+                let host = SplitUrlHost::from_str(host)?;
                 if let Some((portstr, path)) = rest.split_once('/') {
                     let port = convert_port(portstr)?;
                     let path = SplitUrlPath::from_str(path)?;
@@ -288,16 +328,12 @@ impl FromStr for SplitUrl {
                     Ok(SplitUrl::new(scheme, userinfo, host, Some(port), None))
                 }
             } else if let Some((host, path)) = rest.split_once('/') {
-                if !is_valid_host(host) {
-                    return Err("Invalid host specified".to_owned());
-                }
+                let host = SplitUrlHost::from_str(host)?;
                 let path = SplitUrlPath::from_str(path)?;
                 Ok(SplitUrl::new(scheme, userinfo, host, None, Some(path)))
             } else {
-                if !is_valid_host(rest) {
-                    return Err("Invalid host specified".to_owned());
-                }
-                Ok(SplitUrl::new(scheme, userinfo, rest, None, None))
+                let host = SplitUrlHost::from_str(rest)?;
+                Ok(SplitUrl::new(scheme, userinfo, host, None, None))
             }
         } else {
             Err("No scheme specified".to_owned())
@@ -316,7 +352,7 @@ impl fmt::Display for SplitUrl {
                     format!("{}@{}", userinfo, self.host)
                 }
             } else {
-                self.host.clone()
+                self.host.to_string()
             }
         };
         if let Some(path) = &self.path {

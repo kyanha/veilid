@@ -513,14 +513,18 @@ impl Address {
     }
     pub fn is_global(&self) -> bool {
         match self {
-            Address::IPV4(v4) => ipv4addr_is_global(v4),
-            Address::IPV6(v6) => ipv6addr_is_global(v6),
+            Address::IPV4(v4) => ipv4addr_is_global(v4) && !ipv4addr_is_multicast(v4),
+            Address::IPV6(v6) => ipv6addr_is_unicast_global(v6),
         }
     }
     pub fn is_local(&self) -> bool {
         match self {
-            Address::IPV4(v4) => ipv4addr_is_private(v4),
-            Address::IPV6(v6) => ipv6addr_is_unicast_site_local(v6),
+            Address::IPV4(v4) => ipv4addr_is_private(v4) || ipv4addr_is_link_local(v4),
+            Address::IPV6(v6) => {
+                ipv6addr_is_unicast_site_local(v6)
+                    || ipv6addr_is_unicast_link_local(v6)
+                    || ipv6addr_is_unique_local(v6)
+            }
         }
     }
     pub fn to_ip_addr(&self) -> IpAddr {
@@ -827,7 +831,7 @@ impl DialInfo {
                 url
             ));
         }
-        if Address::from_str(&split_url.host).is_ok() {
+        if !matches!(split_url.host, SplitUrlHost::Hostname(_)) {
             return Err(parse_error!(
                 "WSS url can not use address format, only hostname format",
                 url

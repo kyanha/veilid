@@ -207,7 +207,7 @@ impl DiscoveryContext {
         true
     }
 
-    pub async fn protocol_process_no_nat(&self) {
+    pub async fn protocol_process_no_nat(&self) -> Result<(), String> {
         let (node_b, external1_dial_info) = {
             let inner = self.inner.lock();
             (
@@ -226,7 +226,7 @@ impl DiscoveryContext {
                 RoutingDomain::PublicInternet,
                 external1_dial_info,
                 DialInfoClass::Direct,
-            );
+            )?;
         }
         // Attempt a UDP port mapping via all available and enabled mechanisms
         else if let Some(external_mapped_dial_info) = self.try_port_mapping().await {
@@ -235,19 +235,20 @@ impl DiscoveryContext {
                 RoutingDomain::PublicInternet,
                 external_mapped_dial_info,
                 DialInfoClass::Mapped,
-            );
+            )?;
         } else {
             // Add public dial info with Blocked dialinfo class
             self.routing_table.register_dial_info(
                 RoutingDomain::PublicInternet,
                 external1_dial_info,
                 DialInfoClass::Blocked,
-            );
+            )?;
         }
         self.upgrade_network_class(NetworkClass::InboundCapable);
+        Ok(())
     }
 
-    pub async fn protocol_process_nat(&self) -> bool {
+    pub async fn protocol_process_nat(&self) -> Result<bool, String> {
         let (node_b, external1_dial_info, external1, protocol_type, address_type) = {
             let inner = self.inner.lock();
             (
@@ -266,11 +267,11 @@ impl DiscoveryContext {
                 RoutingDomain::PublicInternet,
                 external_mapped_dial_info,
                 DialInfoClass::Mapped,
-            );
+            )?;
             self.upgrade_network_class(NetworkClass::InboundCapable);
 
             // No more retries
-            return true;
+            return Ok(true);
         }
 
         // Port mapping was not possible, let's see what kind of NAT we have
@@ -286,10 +287,10 @@ impl DiscoveryContext {
                 RoutingDomain::PublicInternet,
                 external1_dial_info,
                 DialInfoClass::FullConeNAT,
-            );
+            )?;
             self.upgrade_network_class(NetworkClass::InboundCapable);
 
-            return true;
+            return Ok(true);
         }
 
         // No, we are restricted, determine what kind of restriction
@@ -301,7 +302,7 @@ impl DiscoveryContext {
         {
             None => {
                 // If we can't get an external address, allow retry
-                return false;
+                return Ok(false);
             }
             Some(v) => v,
         };
@@ -312,7 +313,7 @@ impl DiscoveryContext {
             self.upgrade_network_class(NetworkClass::OutboundOnly);
 
             // No more retries
-            return true;
+            return Ok(true);
         }
 
         // If we're going to end up as a restricted NAT of some sort
@@ -329,19 +330,19 @@ impl DiscoveryContext {
                 RoutingDomain::PublicInternet,
                 external1_dial_info,
                 DialInfoClass::AddressRestrictedNAT,
-            );
+            )?;
         } else {
             // Didn't get a reply from a non-default port, which means we are also port restricted
             self.routing_table.register_dial_info(
                 RoutingDomain::PublicInternet,
                 external1_dial_info,
                 DialInfoClass::PortRestrictedNAT,
-            );
+            )?;
         }
         self.upgrade_network_class(NetworkClass::InboundCapable);
 
         // Allow another retry because sometimes trying again will get us Full Cone NAT instead
-        false
+        Ok(false)
     }
 }
 
@@ -379,7 +380,7 @@ impl Network {
                 };
                 if res {
                     // No NAT
-                    context.protocol_process_no_nat().await;
+                    context.protocol_process_no_nat().await?;
 
                     // No more retries
                     break;
@@ -387,7 +388,7 @@ impl Network {
             }
 
             // There is -some NAT-
-            if context.protocol_process_nat().await {
+            if context.protocol_process_nat().await? {
                 // We either got dial info or a network class without one
                 break;
             }
@@ -435,7 +436,7 @@ impl Network {
         }
 
         // No NAT
-        context.protocol_process_no_nat().await;
+        context.protocol_process_no_nat().await?;
 
         Ok(())
     }

@@ -300,7 +300,7 @@ impl Network {
                     RoutingDomain::PublicInternet,
                     di.clone(),
                     DialInfoClass::Direct,
-                );
+                )?;
                 static_public = true;
             }
 
@@ -309,7 +309,7 @@ impl Network {
                 RoutingDomain::LocalNetwork,
                 di.clone(),
                 DialInfoClass::Direct,
-            );
+            )?;
         }
 
         // Add static public dialinfo if it's configured
@@ -329,7 +329,7 @@ impl Network {
                     RoutingDomain::PublicInternet,
                     pdi.clone(),
                     DialInfoClass::Direct,
-                );
+                )?;
 
                 // See if this public address is also a local interface address we haven't registered yet
                 let is_interface_address = self.with_interface_addresses(|ip_addrs| {
@@ -345,7 +345,7 @@ impl Network {
                         RoutingDomain::LocalNetwork,
                         DialInfo::udp_from_socketaddr(pdi_addr),
                         DialInfoClass::Direct,
-                    );
+                    )?;
                 }
 
                 static_public = true;
@@ -412,7 +412,7 @@ impl Network {
 
             // Resolve static public hostnames
             let global_socket_addrs = split_url
-                .host
+                .host_port(80)
                 .to_socket_addrs()
                 .await
                 .map_err(map_to_string)
@@ -427,7 +427,7 @@ impl Network {
                     RoutingDomain::PublicInternet,
                     pdi.clone(),
                     DialInfoClass::Direct,
-                );
+                )?;
                 static_public = true;
 
                 // See if this public address is also a local interface address
@@ -444,7 +444,7 @@ impl Network {
                         RoutingDomain::LocalNetwork,
                         pdi,
                         DialInfoClass::Direct,
-                    );
+                    )?;
                 }
 
                 registered_addresses.insert(gsa.ip());
@@ -468,7 +468,7 @@ impl Network {
                     RoutingDomain::PublicInternet,
                     local_di.clone(),
                     DialInfoClass::Direct,
-                );
+                )?;
                 static_public = true;
             }
 
@@ -477,7 +477,7 @@ impl Network {
                 RoutingDomain::LocalNetwork,
                 local_di,
                 DialInfoClass::Direct,
-            );
+            )?;
         }
 
         if static_public {
@@ -544,7 +544,7 @@ impl Network {
 
             // Resolve static public hostnames
             let global_socket_addrs = split_url
-                .host
+                .host_port(443)
                 .to_socket_addrs()
                 .await
                 .map_err(map_to_string)
@@ -559,7 +559,7 @@ impl Network {
                     RoutingDomain::PublicInternet,
                     pdi.clone(),
                     DialInfoClass::Direct,
-                );
+                )?;
                 static_public = true;
 
                 // See if this public address is also a local interface address
@@ -576,7 +576,7 @@ impl Network {
                         RoutingDomain::LocalNetwork,
                         pdi,
                         DialInfoClass::Direct,
-                    );
+                    )?;
                 }
 
                 registered_addresses.insert(gsa.ip());
@@ -643,7 +643,7 @@ impl Network {
                     RoutingDomain::PublicInternet,
                     di.clone(),
                     DialInfoClass::Direct,
-                );
+                )?;
                 static_public = true;
             }
             // Register interface dial info
@@ -651,7 +651,7 @@ impl Network {
                 RoutingDomain::LocalNetwork,
                 di.clone(),
                 DialInfoClass::Direct,
-            );
+            )?;
             registered_addresses.insert(socket_address.to_ip_addr());
         }
 
@@ -675,7 +675,7 @@ impl Network {
                     RoutingDomain::PublicInternet,
                     pdi.clone(),
                     DialInfoClass::Direct,
-                );
+                )?;
                 static_public = true;
 
                 // See if this public address is also a local interface address
@@ -692,7 +692,7 @@ impl Network {
                         RoutingDomain::LocalNetwork,
                         pdi,
                         DialInfoClass::Direct,
-                    );
+                    )?;
                 }
             }
         }

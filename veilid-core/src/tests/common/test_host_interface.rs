@@ -362,25 +362,42 @@ macro_rules! assert_split_url_parse {
     };
 }
 
+fn host<S: AsRef<str>>(s: S) -> SplitUrlHost {
+    SplitUrlHost::Hostname(s.as_ref().to_owned())
+}
+
+fn ip<S: AsRef<str>>(s: S) -> SplitUrlHost {
+    SplitUrlHost::IpAddr(IpAddr::from_str(s.as_ref()).unwrap())
+}
+
 pub async fn test_split_url() {
     info!("testing split_url");
 
-    assert_split_url!("http://foo", "http", "foo");
-    assert_split_url!("http://foo:1234", "http", "foo", Some(1234));
-    assert_split_url!("http://foo:1234/", "http", "foo", Some(1234), "");
+    assert_split_url!("http://foo", "http", host("foo"));
+    assert_split_url!("http://foo:1234", "http", host("foo"), Some(1234));
+    assert_split_url!("http://foo:1234/", "http", host("foo"), Some(1234), "");
     assert_split_url!(
         "http://foo:1234/asdf/qwer",
         "http",
-        "foo",
+        host("foo"),
         Some(1234),
         "asdf/qwer"
     );
-    assert_split_url!("http://foo/", "http", "foo", None, "");
-    assert_split_url!("http://foo/asdf/qwer", "http", "foo", None, "asdf/qwer");
+    assert_split_url!("http://foo/", "http", host("foo"), None, "");
+    assert_split_url!("http://11.2.3.144/", "http", ip("11.2.3.144"), None, "");
+    assert_split_url!("http://[1111::2222]/", "http", ip("1111::2222"), None, "");
+
+    assert_split_url!(
+        "http://foo/asdf/qwer",
+        "http",
+        host("foo"),
+        None,
+        "asdf/qwer"
+    );
     assert_split_url!(
         "http://foo/asdf/qwer#3",
         "http",
-        "foo",
+        host("foo"),
         None,
         "asdf/qwer",
         Some("3"),
@@ -389,7 +406,7 @@ pub async fn test_split_url() {
     assert_split_url!(
         "http://foo/asdf/qwer?xxx",
         "http",
-        "foo",
+        host("foo"),
         None,
         "asdf/qwer",
         Option::<String>::None,
@@ -398,7 +415,7 @@ pub async fn test_split_url() {
     assert_split_url!(
         "http://foo/asdf/qwer#yyy?xxx",
         "http",
-        "foo",
+        host("foo"),
         None,
         "asdf/qwer",
         Some("yyy"),
@@ -423,6 +440,9 @@ pub async fn test_split_url() {
     assert_split_url_parse!("sch://foo:bar@baz.com:1234/fnord/");
     assert_split_url_parse!("sch://foo:bar@baz.com:1234//");
     assert_split_url_parse!("sch://foo:bar@baz.com:1234");
+    assert_split_url_parse!("sch://foo:bar@[1111::2222]:1234");
+    assert_split_url_parse!("sch://foo:bar@[::]:1234");
+    assert_split_url_parse!("sch://foo:bar@1.2.3.4:1234");
     assert_split_url_parse!("sch://@baz.com:1234");
     assert_split_url_parse!("sch://baz.com/asdf/asdf");
     assert_split_url_parse!("sch://baz.com/");

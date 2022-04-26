@@ -255,7 +255,13 @@ impl RoutingTable {
         domain: RoutingDomain,
         dial_info: DialInfo,
         class: DialInfoClass,
-    ) {
+    ) -> Result<(), String> {
+        trace!(
+            "registering dial_info with:\n  domain: {:?}\n  dial_info: {:?}\n  class: {:?}",
+            domain,
+            dial_info,
+            class
+        );
         let enable_local_peer_scope = {
             let config = self.network_manager().config();
             let c = config.get();
@@ -266,12 +272,15 @@ impl RoutingTable {
             && matches!(domain, RoutingDomain::PublicInternet)
             && dial_info.is_local()
         {
-            error!("shouldn't be registering local addresses as public");
-            return;
+            return Err("shouldn't be registering local addresses as public".to_owned())
+                .map_err(logthru_rtab!(error));
         }
         if !dial_info.is_valid() {
-            error!("shouldn't be registering invalid addresses");
-            return;
+            return Err(format!(
+                "shouldn't be registering invalid addresses: {:?}",
+                dial_info
+            ))
+            .map_err(logthru_rtab!(error));
         }
 
         let mut inner = self.inner.lock();
@@ -297,9 +306,12 @@ impl RoutingTable {
             .to_string(),
         );
         debug!("    Class: {:?}", class);
+        Ok(())
     }
 
     pub fn clear_dial_info_details(&self, domain: RoutingDomain) {
+        trace!("clearing dial info domain: {:?}", domain);
+
         let mut inner = self.inner.lock();
         Self::with_routing_domain_mut(&mut *inner, domain, |rd| {
             rd.dial_info_details.clear();

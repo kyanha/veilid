@@ -237,7 +237,7 @@ impl WebsocketProtocolHandler {
         if tls {
             let connector = TlsConnector::default();
             let tls_stream = connector
-                .connect(domain, tcp_stream)
+                .connect(domain.to_string(), tcp_stream)
                 .await
                 .map_err(map_to_string)
                 .map_err(logthru_net!(error))?;

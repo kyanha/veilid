@@ -1,23 +1,12 @@
+// LogThru
+// Pass errors through and log them simultaneously via map_err()
+// Also contains common log facilities (net, rpc, rtab, pstore, crypto, etc )
+
 pub use alloc::string::{String, ToString};
 
 pub fn map_to_string<X: ToString>(arg: X) -> String {
     arg.to_string()
 }
-
-/*
-trait LogThru<T, E> {
-    fn log_thru<F, O: FnOnce(E) -> F>(self, op: O) -> Result<T, F>;
-}
-
-impl<T, E> LogThru<T, E> for Result<T, E> {
-    fn log_thru<F, O: FnOnce(E) -> F>(self, op: O) -> Result<T, F> {
-        match self {
-            Ok(t) => Ok(t),
-            Err(e) => Err(op(e)),
-        }
-    }
-}
-*/
 
 #[macro_export]
 macro_rules! fn_string {
@@ -107,6 +96,62 @@ macro_rules! log_rtab {
     )};
     ($fmt:literal, $($arg:expr),+) => {
         trace!(target:"rtab", $fmt, $($arg),+);
+    }
+}
+
+#[macro_export]
+macro_rules! log_pstore {
+    (error $text:expr) => { error!(
+        target: "pstore",
+        "{}",
+        $text,
+    )};
+    (error $fmt:literal, $($arg:expr),+) => {
+        error!(target:"pstore", $fmt, $($arg),+);
+    };
+    (warn $text:expr) => { warn!(
+        target: "pstore",
+        "{}",
+        $text,
+    )};
+    (warn $fmt:literal, $($arg:expr),+) => {
+        warn!(target:"pstore", $fmt, $($arg),+);
+    };
+    ($text:expr) => {trace!(
+        target: "pstore",
+        "{}",
+        $text,
+    )};
+    ($fmt:literal, $($arg:expr),+) => {
+        trace!(target:"pstore", $fmt, $($arg),+);
+    }
+}
+
+#[macro_export]
+macro_rules! log_crypto {
+    (error $text:expr) => { error!(
+        target: "crypto",
+        "{}",
+        $text,
+    )};
+    (error $fmt:literal, $($arg:expr),+) => {
+        error!(target:"crypto", $fmt, $($arg),+);
+    };
+    (warn $text:expr) => { warn!(
+        target: "crypto",
+        "{}",
+        $text,
+    )};
+    (warn $fmt:literal, $($arg:expr),+) => {
+        warn!(target:"crypto", $fmt, $($arg),+);
+    };
+    ($text:expr) => {trace!(
+        target: "crypto",
+        "{}",
+        $text,
+    )};
+    ($fmt:literal, $($arg:expr),+) => {
+        trace!(target:"crypto", $fmt, $($arg),+);
     }
 }
 
