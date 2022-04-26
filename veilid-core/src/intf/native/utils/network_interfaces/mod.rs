@@ -343,9 +343,9 @@ impl NetworkInterfaces {
 
         let changed = last_interfaces != self.interfaces;
         if changed {
-            trace!("NetworkInterfaces refreshed: {:#?}?", self);
-
             self.cache_best_addresses();
+
+            trace!("NetworkInterfaces refreshed: {:#?}?", self);
         }
         Ok(changed)
     }
