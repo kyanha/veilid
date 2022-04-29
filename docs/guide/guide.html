@@ -41,15 +41,23 @@
           <li>
             <a class="subsection-name" href="#peer-and-user-identity">Peer and User Identity</a>
           </li>
-          <li>
-            <a class="subsection-name" href="#peer-privacy">Peer Privacy</a>
-          </li>
         </ul>
       </li>
       <li>
         <a class="section-name" href="#on-the-ground">On The Ground</a>
         <ul class="subsection-toc">
-          <li>Section 2a</li>
+          <li>
+            <a class="subsection-name" href="#peer-network-revisited">Peer Network, Revisted</a>
+          </li>
+          <li>
+            <a class="subsection-name" href="#user-privacy">User Privacy</a>
+          </li>
+          <li>
+            <a class="subsection-name" href="#block-store-revisited">Block Store, Revisited</a>
+          </li>
+          <li>
+            <a class="subsection-name" href="#key-value-store-revisited">Key-Value Store, Revisited</a>
+          </li>
         </ul>
       </li>
     </ul>
@@ -144,7 +152,7 @@
       The bird's eye view of things makes it possible to hold it all in mind at once, but leaves out lots of information about implementation choice. It's now time to come down to earth and get our hands dirty. In principl, this should be enough information to implement a system very much like Veilid, with the exception perhaps of the specific details of the APIs and data formats. This section won't have code, it's not documentation of the codebase, but rather is intended to form the meat of a whitepaper.
     </p>
 
-    <h3>Peer Network, Revisited</h3>
+    <h3 id="peer-network-revisited">Peer Network, Revisited</h3>
 
     <p>
       First, let's look at the peer network, since it's structure forms the basis for the remainder of the data storage approach. Veilid's peer network is similar to other peer-to-peer systems in that it's overlaid on top of other protocols. Veilid tries to be somewhat protocol-agnostic, however, and currently is designed to use TCP, UDP, WebSockets, and WebRTC, as well as various methods of traversing NATs so that Veilid peers can be smartphones, personal computers on hostile ISPs, etc. To facilitate this, peers are identified not by some network identity like an IP address, but instead by peer-chosen cryptographic key-pairs. Each peer also advertises a variety of options for how to communicate with it, called dial info, and when one peer wants to talk to another, it gets the dial info for that peer from the network and then uses it to communicate.
@@ -180,7 +188,7 @@
       Note that the routes are <em>user</em> oriented. They should be understood as a way to talk to a particular <em>user's</em> peer, wherever that may be. Each peer of course has to know about the actual IP addresses of the peers, otherwise it couldn't communicate, but safety and private routes make it hard to associate the <em>user's</em> identity with their <em>peer's</em> identity. You know that the user is somewhere on the network, but you don't know which IP address is their's, even if you do in fact have their peer's dial info stored in the routing table.
     </p>
 
-    <h3>Block Store Revisited</h3>
+    <h3 id="block-store-revisited">Block Store Revisited</h3>
 
     <p>
       As mentioned in the Bird's Eye View, the block store is intended to store content-addressed blocks of data. Like many other peer-to-peer systems for storing data, Veilid uses a distributed hash table as the core of the block store. The block store DHT has as keys BLAKE3 hashes of block content. For each key the DHT associates a list of peer IDs for peers that have declared to the network that they can supply the block.
@@ -206,7 +214,7 @@
       The mechanism of having blocks that refer to other blocks also enables IPFS-style DAGs of hierarchical data as one mode of use of the block store, allowing entire directory structures to be stored, not just files. However, as with sub-file blocks, this is not a built-in part of Veilid but rather a mode of use, and how they're downloaded and presented to the user is up to the client program.
     </p>
 
-    <h3>Key-Value Store Revisited</h3>
+    <h3 id="key-value-store-revisited">Key-Value Store, Revisited</h3>
 
     <p>
       The key-value store is a DHT similar to the block store. However, rather than using content hashes as keys, the KV store uses user IDs as keys (note: <em>not</em> peer IDs). At a given key, the KV store has a hierarchical key-value map that associates in-principle arbitrary strings with values, which themselves can be numbers, strings, datetimes, or other key-value maps. The specific value stored in at a user's ID is versioned, so that particular schemas of subkeys and values can be defined and handled appropriately by different versions of clients.
