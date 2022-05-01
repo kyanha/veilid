@@ -386,6 +386,13 @@ pub async fn test_split_url() {
     assert_split_url!("http://foo/", "http", host("foo"), None, "");
     assert_split_url!("http://11.2.3.144/", "http", ip("11.2.3.144"), None, "");
     assert_split_url!("http://[1111::2222]/", "http", ip("1111::2222"), None, "");
+    assert_split_url!(
+        "http://[1111::2222]:123/",
+        "http",
+        ip("1111::2222"),
+        Some(123),
+        ""
+    );
 
     assert_split_url!(
         "http://foo/asdf/qwer",
@@ -433,6 +440,8 @@ pub async fn test_split_url() {
     assert_err!(SplitUrl::from_str("a:///qwer:"));
     assert_err!(SplitUrl::from_str("a:///qwer://"));
     assert_err!(SplitUrl::from_str("a://qwer://"));
+    assert_err!(SplitUrl::from_str("a://[1111::2222]:/"));
+    assert_err!(SplitUrl::from_str("a://[1111::2222]:"));
 
     assert_split_url_parse!("sch://foo:bar@baz.com:1234/fnord#qux?zuz");
     assert_split_url_parse!("sch://foo:bar@baz.com:1234/fnord#qux");

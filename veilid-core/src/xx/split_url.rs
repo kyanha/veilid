@@ -296,6 +296,20 @@ impl SplitUrl {
     }
 }
 
+fn split_host_with_port(s: &str) -> Option<(&str, &str)> {
+    // special case for ipv6 colons
+    if s.len() > 2 && s[0..1] == *"[" {
+        if let Some(end) = s.find(']') {
+            if end < (s.len() - 2) && s[end + 1..end + 2] == *":" {
+                return Some((&s[0..end + 1], &s[end + 2..]));
+            }
+        }
+        None
+    } else {
+        s.split_once(':')
+    }
+}
+
 impl FromStr for SplitUrl {
     type Err = String;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -311,7 +325,7 @@ impl FromStr for SplitUrl {
                     None
                 }
             };
-            if let Some((host, rest)) = rest.rsplit_once(':') {
+            if let Some((host, rest)) = split_host_with_port(rest) {
                 let host = SplitUrlHost::from_str(host)?;
                 if let Some((portstr, path)) = rest.split_once('/') {
                     let port = convert_port(portstr)?;

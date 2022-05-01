@@ -52,7 +52,7 @@ def tee(prefix, infile, *files):
 
 def read_until_interface_dial_info(proc, proto):
 
-    interface_dial_info_str = b"Interface Dial Info: "
+    interface_dial_info_str = b"Local Dial Info: "
     for ln in iter(proc.stdout.readline, ""):
         sys.stdout.buffer.write(ln)
         sys.stdout.flush()

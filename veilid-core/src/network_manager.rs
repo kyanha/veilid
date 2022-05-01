@@ -1257,7 +1257,8 @@ impl NetworkManager {
                 let inner = self.inner.lock();
                 let mut inconsistencies = 0;
                 let mut changed = false;
-                for (p, a) in &inner.public_address_check_cache {
+                // Iteration goes from most recent to least recent node/address pair
+                for (_, a) in &inner.public_address_check_cache {
                     if !current_addresses.contains(a) {
                         inconsistencies += 1;
                         if inconsistencies >= GLOBAL_ADDRESS_CHANGE_DETECTION_COUNT {
@@ -1276,7 +1277,8 @@ impl NetworkManager {
                 let mut consistencies = 0;
                 let mut consistent = false;
                 let mut current_address = Option::<SocketAddress>::None;
-                for (p, a) in &inner.public_address_check_cache {
+                // Iteration goes from most recent to least recent node/address pair
+                for (_, a) in &inner.public_address_check_cache {
                     if let Some(current_address) = current_address {
                         if current_address == *a {
                             consistencies += 1;
