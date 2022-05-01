@@ -707,11 +707,15 @@ impl RoutingTable {
     // to determine their reliability
     async fn ping_validator_task_routine(self, _last_ts: u64, cur_ts: u64) -> Result<(), String> {
         log_rtab!("--- ping_validator task");
+
         let rpc = self.rpc_processor();
+        let netman = self.network_manager();
+        let relay_node_id = netman.relay_node().map(|nr| nr.node_id());
+
         let mut inner = self.inner.lock();
         for b in &mut inner.buckets {
             for (k, entry) in b.entries_mut() {
-                if entry.needs_ping(self.clone(), k, cur_ts) {
+                if entry.needs_ping(k, cur_ts, relay_node_id) {
                     let nr = NodeRef::new(self.clone(), *k, entry, None);
                     log_rtab!(
                         "    --- ping validating: {:?} ({})",

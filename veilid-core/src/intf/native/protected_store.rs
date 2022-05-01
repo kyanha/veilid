@@ -62,9 +62,14 @@ impl ProtectedStore {
             {
                 let insecure_fallback_directory =
                     Path::new(&c.protected_store.insecure_fallback_directory);
-                let insecure_keyring_file = insecure_fallback_directory
-                    .to_owned()
-                    .join("insecure_keyring");
+                let insecure_keyring_file = insecure_fallback_directory.to_owned().join(format!(
+                    "insecure_keyring{}",
+                    if c.namespace.is_empty() {
+                        "".to_owned()
+                    } else {
+                        format!("_{}", c.namespace)
+                    }
+                ));
                 inner.keyring_manager = Some(
                     KeyringManager::new_insecure(&c.program_name, &insecure_keyring_file)
                         .map_err(map_to_string)

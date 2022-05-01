@@ -215,19 +215,16 @@ impl BucketEntry {
     // Check if this node needs a ping right now to validate it is still reachable
     pub(super) fn needs_ping(
         &self,
-        routing_table: RoutingTable,
         node_id: &DHTKey,
         cur_ts: u64,
+        relay_node_id: Option<DHTKey>,
     ) -> bool {
-        let netman = routing_table.network_manager();
-        let relay_node = netman.relay_node();
-
         // See which ping pattern we are to use
         let state = self.state(cur_ts);
 
         // If this entry is our relay node, then we should ping it regularly to keep our association alive
-        if let Some(relay_node) = relay_node {
-            if relay_node.node_id() == *node_id {
+        if let Some(relay_node_id) = relay_node_id {
+            if relay_node_id == *node_id {
                 return self.needs_constant_ping(cur_ts, KEEPALIVE_PING_INTERVAL_SECS as u64);
             }
         }
