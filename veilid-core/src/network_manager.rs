@@ -732,6 +732,11 @@ impl NetworkManager {
             return Ok(ContactMethod::OutboundRelay(relay_node));
         }
         // Otherwise, we can't reach this node
+        debug!(
+            "unable to reach node {:?}: {}",
+            target_node_ref,
+            target_node_ref.operate(|e| format!("{:#?}", e))
+        );
         Ok(ContactMethod::Unreachable)
     }
 

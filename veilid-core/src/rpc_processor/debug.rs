@@ -125,6 +125,21 @@ impl RPCProcessor {
         let respond_to_str = match respond_to {
             veilid_capnp::operation::respond_to::None(_) => "(None)".to_owned(),
             veilid_capnp::operation::respond_to::Sender(_) => "Sender".to_owned(),
+            veilid_capnp::operation::respond_to::SenderWithInfo(ni) => {
+                let ni_reader = match ni {
+                    Ok(nir) => nir,
+                    Err(e) => {
+                        return e.to_string();
+                    }
+                };
+                let node_info = match decode_node_info(&ni_reader, true) {
+                    Ok(ni) => ni,
+                    Err(e) => {
+                        return e.to_string();
+                    }
+                };
+                format!("Sender({:?})", node_info)
+            }
             veilid_capnp::operation::respond_to::PrivateRoute(pr) => {
                 let pr_reader = match pr {
                     Ok(prr) => prr,

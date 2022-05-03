@@ -404,42 +404,43 @@ struct Operation {
 
     respondTo :union {
         none                @1  :Void;                  # no response is desired
-        sender              @2  :NodeInfo;              # (Optional) some envelope-sender node info to be used for reply (others may exist via findNodeQ)
-        privateRoute        @3  :PrivateRoute;          # embedded private route to be used for reply
+        sender              @2  :Void;                  # sender without node info
+        senderWithInfo      @3  :NodeInfo;              # some envelope-sender node info to be used for reply
+        privateRoute        @4  :PrivateRoute;          # embedded private route to be used for reply
     }                              
 
     detail :union {
         # Direct operations
-        infoQ               @4  :OperationInfoQ;
-        infoA               @5  :OperationInfoA;
-        validateDialInfo    @6  :OperationValidateDialInfo;
-        findNodeQ           @7  :OperationFindNodeQ;
-        findNodeA           @8  :OperationFindNodeA;
-        route               @9  :OperationRoute;
+        infoQ               @5  :OperationInfoQ;
+        infoA               @6  :OperationInfoA;
+        validateDialInfo    @7  :OperationValidateDialInfo;
+        findNodeQ           @8  :OperationFindNodeQ;
+        findNodeA           @9  :OperationFindNodeA;
+        route               @10  :OperationRoute;
         
         # Routable operations
-        getValueQ           @10 :OperationGetValueQ;
-        getValueA           @11 :OperationGetValueA;
-        setValueQ           @12 :OperationSetValueQ;
-        setValueA           @13 :OperationSetValueA;
-        watchValueQ         @14 :OperationWatchValueQ;
-        watchValueA         @15 :OperationWatchValueA;
-        valueChanged        @16 :OperationValueChanged;
+        getValueQ           @11 :OperationGetValueQ;
+        getValueA           @12 :OperationGetValueA;
+        setValueQ           @13 :OperationSetValueQ;
+        setValueA           @14 :OperationSetValueA;
+        watchValueQ         @15 :OperationWatchValueQ;
+        watchValueA         @16 :OperationWatchValueA;
+        valueChanged        @17 :OperationValueChanged;
         
-        supplyBlockQ        @17 :OperationSupplyBlockQ;
-        supplyBlockA        @18 :OperationSupplyBlockA; 
-        findBlockQ          @19 :OperationFindBlockQ;
-        findBlockA          @20 :OperationFindBlockA; 
+        supplyBlockQ        @18 :OperationSupplyBlockQ;
+        supplyBlockA        @19 :OperationSupplyBlockA; 
+        findBlockQ          @20 :OperationFindBlockQ;
+        findBlockA          @21 :OperationFindBlockA; 
     
-        signal              @21 :OperationSignal;
-        returnReceipt       @22 :OperationReturnReceipt;
+        signal              @22 :OperationSignal;
+        returnReceipt       @23 :OperationReturnReceipt;
         
         # Tunnel operations
-        startTunnelQ        @23 :OperationStartTunnelQ;
-        startTunnelA        @24 :OperationStartTunnelA;
-        completeTunnelQ     @25 :OperationCompleteTunnelQ;
-        completeTunnelA     @26 :OperationCompleteTunnelA;
-        cancelTunnelQ       @27 :OperationCancelTunnelQ; 
-        cancelTunnelA       @28 :OperationCancelTunnelA;
+        startTunnelQ        @24 :OperationStartTunnelQ;
+        startTunnelA        @25 :OperationStartTunnelA;
+        completeTunnelQ     @26 :OperationCompleteTunnelQ;
+        completeTunnelA     @27 :OperationCompleteTunnelA;
+        cancelTunnelQ       @28 :OperationCancelTunnelQ; 
+        cancelTunnelA       @29 :OperationCancelTunnelA;
     }
 }

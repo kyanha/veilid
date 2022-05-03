@@ -416,29 +416,41 @@ impl RoutingTable {
         }
     }
 
-    pub fn create_node_ref(&self, node_id: DHTKey) -> Result<NodeRef, String> {
+    // Create a node reference, possibly creating a bucket entry
+    // the 'update_func' closure is called on the node, and, if created,
+    // in a locked fashion as to ensure the bucket entry state is always valid
+    pub fn create_node_ref<F>(&self, node_id: DHTKey, update_func: F) -> Result<NodeRef, String>
+    where
+        F: FnOnce(&mut BucketEntry),
+    {
         // Ensure someone isn't trying register this node itself
         if node_id == self.node_id() {
             return Err("can't register own node".to_owned()).map_err(logthru_rtab!(error));
         }
 
-        // Insert into bucket, possibly evicting the newest bucket member
-        let noderef = match self.lookup_node_ref(node_id) {
+        // Lock this entire operation
+        let mut inner = self.inner.lock();
+
+        // Look up existing entry
+        let idx = Self::find_bucket_index(&*inner, node_id);
+        let noderef = {
+            let bucket = &mut inner.buckets[idx];
+            let entry = bucket.entry_mut(&node_id);
+            entry.map(|e| NodeRef::new(self.clone(), node_id, e, None))
+        };
+
+        // If one doesn't exist, insert into bucket, possibly evicting a bucket member
+        let noderef = match noderef {
             None => {
                 // Make new entry
-                let mut inner = self.inner.lock();
-                let idx = Self::find_bucket_index(&*inner, node_id);
-                let nr = {
-                    // Get the bucket for the entry
-                    let bucket = &mut inner.buckets[idx];
-                    // Add new entry
-                    let nr = bucket.add_entry(node_id);
+                inner.bucket_entry_count += 1;
+                log_rtab!("Routing table now has {} nodes", inner.bucket_entry_count);
+                let bucket = &mut inner.buckets[idx];
+                let nr = bucket.add_entry(node_id);
 
-                    // Update count
-                    inner.bucket_entry_count += 1;
-                    log_rtab!("Routing table now has {} nodes", inner.bucket_entry_count);
-                    nr
-                };
+                // Update the entry
+                let entry = bucket.entry_mut(&node_id);
+                update_func(entry.unwrap());
 
                 // Kick the bucket
                 // It is important to do this in the same inner lock as the add_entry
@@ -446,7 +458,14 @@ impl RoutingTable {
 
                 nr
             }
-            Some(nr) => nr,
+            Some(nr) => {
+                // Update the entry
+                let bucket = &mut inner.buckets[idx];
+                let entry = bucket.entry_mut(&node_id);
+                update_func(entry.unwrap());
+
+                nr
+            }
         };
 
         Ok(noderef)
@@ -468,10 +487,8 @@ impl RoutingTable {
         node_id: DHTKey,
         node_info: NodeInfo,
     ) -> Result<NodeRef, String> {
-        let nr = self.create_node_ref(node_id)?;
-        nr.operate(move |e| -> Result<(), String> {
+        let nr = self.create_node_ref(node_id, |e| {
             e.update_node_info(node_info);
-            Ok(())
         })?;
 
         Ok(nr)
@@ -485,13 +502,26 @@ impl RoutingTable {
         descriptor: ConnectionDescriptor,
         timestamp: u64,
     ) -> Result<NodeRef, String> {
-        let nr = self.create_node_ref(node_id)?;
-        nr.operate(move |e| {
+        let nr = self.create_node_ref(node_id, |e| {
             // set the most recent node address for connection finding and udp replies
             e.set_last_connection(descriptor, timestamp);
-        });
+        })?;
 
         Ok(nr)
+    }
+
+    fn operate_on_bucket_entry_locked<T, F>(
+        inner: &mut RoutingTableInner,
+        node_id: DHTKey,
+        f: F,
+    ) -> T
+    where
+        F: FnOnce(&mut BucketEntry) -> T,
+    {
+        let idx = Self::find_bucket_index(&*inner, node_id);
+        let bucket = &mut inner.buckets[idx];
+        let entry = bucket.entry_mut(&node_id).unwrap();
+        f(entry)
     }
 
     fn operate_on_bucket_entry<T, F>(&self, node_id: DHTKey, f: F) -> T
@@ -499,10 +529,7 @@ impl RoutingTable {
         F: FnOnce(&mut BucketEntry) -> T,
     {
         let mut inner = self.inner.lock();
-        let idx = Self::find_bucket_index(&*inner, node_id);
-        let bucket = &mut inner.buckets[idx];
-        let entry = bucket.entry_mut(&node_id).unwrap();
-        f(entry)
+        Self::operate_on_bucket_entry_locked(&mut *inner, node_id, f)
     }
 
     pub fn find_inbound_relay(&self, cur_ts: u64) -> Option<NodeRef> {

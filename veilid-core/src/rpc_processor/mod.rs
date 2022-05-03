@@ -45,11 +45,11 @@ impl RespondTo {
                 builder.set_none(());
             }
             Self::Sender(Some(ni)) => {
-                let mut ni_builder = builder.reborrow().init_sender();
+                let mut ni_builder = builder.reborrow().init_sender_with_info();
                 encode_node_info(ni, &mut ni_builder)?;
             }
             Self::Sender(None) => {
-                builder.reborrow().init_sender();
+                builder.reborrow().set_sender(());
             }
             Self::PrivateRoute(pr) => {
                 let mut pr_builder = builder.reborrow().init_private_route();
@@ -616,7 +616,8 @@ impl RPCProcessor {
                     return Err(rpc_error_internal("no response requested"))
                         .map_err(logthru_rpc!());
                 }
-                veilid_capnp::operation::respond_to::Sender(_) => {
+                veilid_capnp::operation::respond_to::SenderWithInfo(_)
+                | veilid_capnp::operation::respond_to::Sender(_) => {
                     // Respond to envelope source node, possibly through a relay if the request arrived that way
                     // -------------------------------
                     match safety_route_spec {
@@ -735,11 +736,15 @@ impl RPCProcessor {
     }
 
     fn wants_answer(&self, operation: &veilid_capnp::operation::Reader) -> Result<bool, RPCError> {
-        match operation.get_respond_to().which() {
-            Ok(veilid_capnp::operation::respond_to::None(_)) => Ok(false),
-            Ok(veilid_capnp::operation::respond_to::Sender(_)) => Ok(true),
-            Ok(veilid_capnp::operation::respond_to::PrivateRoute(_)) => Ok(true),
-            _ => Err(rpc_error_internal("Unknown respond_to")),
+        match operation
+            .get_respond_to()
+            .which()
+            .map_err(map_error_capnp_notinschema!())?
+        {
+            veilid_capnp::operation::respond_to::None(_) => Ok(false),
+            veilid_capnp::operation::respond_to::Sender(_)
+            | veilid_capnp::operation::respond_to::SenderWithInfo(_)
+            | veilid_capnp::operation::respond_to::PrivateRoute(_) => Ok(true),
         }
     }
 
@@ -747,15 +752,20 @@ impl RPCProcessor {
         &self,
         operation: &veilid_capnp::operation::Reader,
     ) -> Result<Option<NodeInfo>, RPCError> {
-        if let veilid_capnp::operation::respond_to::Sender(Ok(sender_ni_reader)) = operation
+        match operation
             .get_respond_to()
             .which()
             .map_err(map_error_capnp_notinschema!())?
         {
-            // Sender DialInfo was specified, update our routing table with it
-            Ok(Some(decode_node_info(&sender_ni_reader, true)?))
-        } else {
-            Ok(None)
+            veilid_capnp::operation::respond_to::SenderWithInfo(Ok(sender_ni_reader)) => {
+                Ok(Some(decode_node_info(&sender_ni_reader, true)?))
+            }
+            veilid_capnp::operation::respond_to::SenderWithInfo(Err(e)) => Err(rpc_error_protocol(
+                format!("invalid sender_with_info node info: {}", e),
+            )),
+            veilid_capnp::operation::respond_to::None(_)
+            | veilid_capnp::operation::respond_to::Sender(_)
+            | veilid_capnp::operation::respond_to::PrivateRoute(_) => Ok(None),
         }
     }
 
