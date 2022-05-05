@@ -37,7 +37,6 @@ fn init_callbacks() {
             case "capabilities.protocol_connect_wss": return true;
             case "capabilities.protocol_accept_wss": return false;
             case "tablestore.directory": return "";
-            case "network.max_connections": return 16;
             case "network.node_id": return "ZLd4uMYdP4qYLtxF6GqrzBb32Z6T3rE2FWMkWup1pdY";
             case "network.node_id_secret": return "s2Gvq6HJOxgQh-3xIgfWSL3I-DWZ2c1RjZLJl2Xmg2E";
             case "network.bootstrap": return [];

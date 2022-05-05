@@ -549,9 +549,12 @@ class VeilidConfigLeases {
 ////////////
 
 class VeilidConfigNetwork {
-  int maxConnections;
   int connectionInitialTimeoutMs;
   int connectionInactivityTimeoutMs;
+  int maxConnectionsPerIp4;
+  int maxConnectionsPerIp6Prefix;
+  int maxConnectionsPerIp6PrefixSize;
+  int maxConnectionFrequencyPerMin;
   int clientWhitelistTimeoutMs;
   String nodeId;
   String nodeIdSecret;
@@ -569,9 +572,12 @@ class VeilidConfigNetwork {
   VeilidConfigLeases leases;
 
   VeilidConfigNetwork({
-    required this.maxConnections,
     required this.connectionInitialTimeoutMs,
     required this.connectionInactivityTimeoutMs,
+    required this.maxConnectionsPerIp4,
+    required this.maxConnectionsPerIp6Prefix,
+    required this.maxConnectionsPerIp6PrefixSize,
+    required this.maxConnectionFrequencyPerMin,
     required this.clientWhitelistTimeoutMs,
     required this.nodeId,
     required this.nodeIdSecret,
@@ -591,9 +597,12 @@ class VeilidConfigNetwork {
 
   Map<String, dynamic> get json {
     return {
-      'max_connections': maxConnections,
       'connection_initial_timeout_ms': connectionInitialTimeoutMs,
       'connection_inactivity_timeout_ms': connectionInactivityTimeoutMs,
+      'max_connections_per_ip4': maxConnectionsPerIp4,
+      'max_connections_per_ip6_prefix': maxConnectionsPerIp6Prefix,
+      'max_connections_per_ip6_prefix_size': maxConnectionsPerIp6PrefixSize,
+      'max_connection_frequency_per_min': maxConnectionFrequencyPerMin,
       'client_whitelist_timeout_ms': clientWhitelistTimeoutMs,
       'node_id': nodeId,
       'node_id_secret': nodeIdSecret,
@@ -613,10 +622,14 @@ class VeilidConfigNetwork {
   }
 
   VeilidConfigNetwork.fromJson(Map<String, dynamic> json)
-      : maxConnections = json['max_connections'],
-        connectionInitialTimeoutMs = json['connection_initial_timeout_ms'],
+      : connectionInitialTimeoutMs = json['connection_initial_timeout_ms'],
         connectionInactivityTimeoutMs =
             json['connection_inactivity_timeout_ms'],
+        maxConnectionsPerIp4 = json['max_connections_per_ip4'],
+        maxConnectionsPerIp6Prefix = json['max_connections_per_ip6_prefix'],
+        maxConnectionsPerIp6PrefixSize =
+            json['max_connections_per_ip6_prefix_size'],
+        maxConnectionFrequencyPerMin = json['max_connection_frequency_per_min'],
         clientWhitelistTimeoutMs = json['client_whitelist_timeout_ms'],
         nodeId = json['node_id'],
         nodeIdSecret = json['node_id_secret'],

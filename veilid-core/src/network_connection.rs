@@ -59,7 +59,6 @@ impl DummyNetworkConnection {
 pub struct NetworkConnectionStats {
     last_message_sent_time: Option<u64>,
     last_message_recv_time: Option<u64>,
-    _established_time: u64,
 }
 
 #[derive(Debug)]
@@ -71,6 +70,7 @@ struct NetworkConnectionInner {
 struct NetworkConnectionArc {
     descriptor: ConnectionDescriptor,
     protocol_connection: ProtocolNetworkConnection,
+    established_time: u64,
     inner: Mutex<NetworkConnectionInner>,
 }
 
@@ -92,7 +92,6 @@ impl NetworkConnection {
             stats: NetworkConnectionStats {
                 last_message_sent_time: None,
                 last_message_recv_time: None,
-                _established_time: intf::get_timestamp(),
             },
         }
     }
@@ -103,6 +102,7 @@ impl NetworkConnection {
         NetworkConnectionArc {
             descriptor,
             protocol_connection,
+            established_time: intf::get_timestamp(),
             inner: Mutex::new(Self::new_inner()),
         }
     }
@@ -160,5 +160,9 @@ impl NetworkConnection {
     pub fn stats(&self) -> NetworkConnectionStats {
         let inner = self.arc.inner.lock();
         inner.stats.clone()
+    }
+
+    pub fn established_time(&self) -> u64 {
+        self.arc.established_time
     }
 }

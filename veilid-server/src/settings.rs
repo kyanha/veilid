@@ -48,10 +48,13 @@ core:
         directory: '%BLOCK_STORE_DIRECTORY%'
         delete: false
     network:
-        max_connections: 16
         connection_initial_timeout_ms: 2000
         connection_inactivity_timeout_ms: 60000
-        client_whitelist_timeout_ms: 300000
+        max_connections_per_ip4: 8
+        max_connections_per_ip6_prefix: 8
+        max_connections_per_ip6_prefix_size: 56
+        max_connection_frequency_per_min: 8
+        client_whitelist_timeout_ms: 300000 
         node_id: ''
         node_id_secret: ''
         bootstrap: []
@@ -538,9 +541,12 @@ pub struct RoutingTable {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Network {
-    pub max_connections: u32,
     pub connection_initial_timeout_ms: u32,
     pub connection_inactivity_timeout_ms: u32,
+    pub max_connections_per_ip4: u32,
+    pub max_connections_per_ip6_prefix: u32,
+    pub max_connections_per_ip6_prefix_size: u32,
+    pub max_connection_frequency_per_min: u32,
     pub client_whitelist_timeout_ms: u32,
     pub node_id: veilid_core::DHTKey,
     pub node_id_secret: veilid_core::DHTKeySecret,
@@ -810,13 +816,25 @@ impl Settings {
                 )),
                 "block_store.delete" => Ok(Box::new(inner.core.block_store.delete)),
 
-                "network.max_connections" => Ok(Box::new(inner.core.network.max_connections)),
                 "network.connection_initial_timeout_ms" => {
                     Ok(Box::new(inner.core.network.connection_initial_timeout_ms))
                 }
                 "network.connection_inactivity_timeout_ms" => Ok(Box::new(
                     inner.core.network.connection_inactivity_timeout_ms,
                 )),
+                "network.max_connections_per_ip4" => {
+                    Ok(Box::new(inner.core.network.max_connections_per_ip4))
+                }
+                "network.max_connections_per_ip6_prefix" => {
+                    Ok(Box::new(inner.core.network.max_connections_per_ip6_prefix))
+                }
+                "network.max_connections_per_ip6_prefix_size" => Ok(Box::new(
+                    inner.core.network.max_connections_per_ip6_prefix_size,
+                )),
+                "network.max_connection_frequency_per_min" => Ok(Box::new(
+                    inner.core.network.max_connection_frequency_per_min,
+                )),
+
                 "network.client_whitelist_timeout_ms" => {
                     Ok(Box::new(inner.core.network.client_whitelist_timeout_ms))
                 }
@@ -1170,9 +1188,12 @@ mod tests {
         );
         assert_eq!(s.core.protected_store.delete, false);
 
-        assert_eq!(s.core.network.max_connections, 16);
         assert_eq!(s.core.network.connection_initial_timeout_ms, 2_000u32);
         assert_eq!(s.core.network.connection_inactivity_timeout_ms, 60_000u32);
+        assert_eq!(s.core.network.max_connections_per_ip4, 8u32);
+        assert_eq!(s.core.network.max_connections_per_ip6_prefix, 8u32);
+        assert_eq!(s.core.network.max_connections_per_ip6_prefix_size, 56u32);
+        assert_eq!(s.core.network.max_connection_frequency_per_min, 8u32);
         assert_eq!(s.core.network.client_whitelist_timeout_ms, 300_000u32);
         assert_eq!(s.core.network.node_id, veilid_core::DHTKey::default());
         assert_eq!(

@@ -43,6 +43,10 @@ impl Network {
         }
     }
 
+
+    fn network_manager(&self) -> NetworkManager {
+        self.inner.lock().network_manager.clone()
+    }
     fn connection_manager(&self) -> ConnectionManager {
         self.inner.lock().network_manager.connection_manager()
     }
@@ -54,6 +58,8 @@ impl Network {
         dial_info: DialInfo,
         data: Vec<u8>,
     ) -> Result<(), String> {
+        let data_len = data.len();
+
         let res = match dial_info.protocol_type() {
             ProtocolType::UDP => {
                 return Err("no support for UDP protocol".to_owned()).map_err(logthru_net!(error))
@@ -62,7 +68,7 @@ impl Network {
                 return Err("no support for TCP protocol".to_owned()).map_err(logthru_net!(error))
             }
             ProtocolType::WS | ProtocolType::WSS => {
-                WebsocketProtocolHandler::send_unbound_message(dial_info, data)
+                WebsocketProtocolHandler::send_unbound_message(dial_info.clone(), data)
                     .await
                     .map_err(logthru_net!())
             }
@@ -80,6 +86,7 @@ impl Network {
         descriptor: ConnectionDescriptor,
         data: Vec<u8>,
     ) -> Result<Option<Vec<u8>>, String> {
+        let data_len = data.len();
         match descriptor.protocol_type() {
             ProtocolType::UDP => {
                 return Err("no support for udp protocol".to_owned()).map_err(logthru_net!(error))
@@ -115,6 +122,7 @@ impl Network {
         dial_info: DialInfo,
         data: Vec<u8>,
     ) -> Result<(), String> {
+        let data_len = data.len();
         if dial_info.protocol_type() == ProtocolType::UDP {
             return Err("no support for UDP protocol".to_owned()).map_err(logthru_net!(error))
         }
@@ -125,7 +133,7 @@ impl Network {
         // Handle connection-oriented protocols
         let conn = self
             .connection_manager()
-            .get_or_create_connection(None, dial_info)
+            .get_or_create_connection(None, dial_info.clone())
             .await?;
 
         let res = conn.send(data).await.map_err(logthru_net!(error));
@@ -143,15 +151,17 @@ impl Network {
         // get protocol config
         self.inner.lock().protocol_config = Some({
             let c = self.config.get();
-            ProtocolConfig {
-                udp_enabled: false, //c.network.protocol.udp.enabled && c.capabilities.protocol_udp,
-                tcp_connect: false, //c.network.protocol.tcp.connect && c.capabilities.protocol_connect_tcp,
-                tcp_listen: false, //c.network.protocol.tcp.listen && c.capabilities.protocol_accept_tcp,
-                ws_connect: c.network.protocol.ws.connect && c.capabilities.protocol_connect_ws,
-                ws_listen: c.network.protocol.ws.listen && c.capabilities.protocol_accept_ws,
-                wss_connect: c.network.protocol.wss.connect && c.capabilities.protocol_connect_wss,
-                wss_listen: c.network.protocol.wss.listen && c.capabilities.protocol_accept_wss,
+            let inbound = ProtocolSet::new();
+            let mut outbound = ProtocolSet::new();
+
+            if c.network.protocol.ws.connect && c.capabilities.protocol_connect_ws {
+                outbound.insert(ProtocolType::WS);
             }
+            if c.network.protocol.wss.connect && c.capabilities.protocol_connect_wss {
+                outbound.insert(ProtocolType::WSS);
+            }
+
+            ProtocolConfig { inbound, outbound }
         });
 
         self.inner.lock().network_started = true;
@@ -174,7 +184,8 @@ impl Network {
         let routing_table = network_manager.routing_table();
 
         // Drop all dial info
-        routing_table.clear_dial_info_details();
+        routing_table.clear_dial_info_details(RoutingDomain::PublicInternet);
+        routing_table.clear_dial_info_details(RoutingDomain::LocalNetwork);
 
         // Cancels all async background tasks by dropping join handles
         *self.inner.lock() = Self::new_inner(network_manager);
@@ -203,6 +214,12 @@ impl Network {
             None
         };
     }
+
+    pub fn reset_network_class(&self) {
+        //let mut inner = self.inner.lock();
+        //inner.network_class = None;
+    }
+
     pub fn get_protocol_config(&self) -> Option<ProtocolConfig> {
         self.inner.lock().protocol_config.clone()
     }

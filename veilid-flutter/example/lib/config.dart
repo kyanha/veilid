@@ -38,9 +38,12 @@ Future<VeilidConfig> getDefaultVeilidConfig() async {
       delete: false,
     ),
     network: VeilidConfigNetwork(
-        maxConnections: 16,
         connectionInitialTimeoutMs: 2000,
         connectionInactivityTimeoutMs: 60000,
+        maxConnectionsPerIp4: 8,
+        maxConnectionsPerIp6Prefix: 8,
+        maxConnectionsPerIp6PrefixSize: 56,
+        maxConnectionFrequencyPerMin: 8,
         clientWhitelistTimeoutMs: 300000,
         nodeId: "",
         nodeIdSecret: "",

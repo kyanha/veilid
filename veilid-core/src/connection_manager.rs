@@ -44,17 +44,18 @@ pub struct ConnectionManager {
 }
 
 impl ConnectionManager {
-    fn new_inner() -> ConnectionManagerInner {
+    fn new_inner(config: VeilidConfig) -> ConnectionManagerInner {
         ConnectionManagerInner {
-            connection_table: ConnectionTable::new(),
+            connection_table: ConnectionTable::new(config),
             connection_processor_jh: None,
             connection_add_channel_tx: None,
         }
     }
     fn new_arc(network_manager: NetworkManager) -> ConnectionManagerArc {
+        let config = network_manager.config();
         ConnectionManagerArc {
             network_manager,
-            inner: AsyncMutex::new(Self::new_inner()),
+            inner: AsyncMutex::new(Self::new_inner(config)),
         }
     }
     pub fn new(network_manager: NetworkManager) -> Self {
@@ -78,16 +79,15 @@ impl ConnectionManager {
     }
 
     pub async fn shutdown(&self) {
-        *self.arc.inner.lock().await = Self::new_inner();
+        *self.arc.inner.lock().await = Self::new_inner(self.arc.network_manager.config());
     }
 
     // Returns a network connection if one already is established
-
     pub async fn get_connection(
         &self,
         descriptor: ConnectionDescriptor,
     ) -> Option<NetworkConnection> {
-        let inner = self.arc.inner.lock().await;
+        let mut inner = self.arc.inner.lock().await;
         inner.connection_table.get_connection(descriptor)
     }
 

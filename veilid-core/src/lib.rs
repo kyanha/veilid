@@ -7,6 +7,7 @@ extern crate alloc;
 mod api_logger;
 mod attachment_manager;
 mod callback_state_machine;
+mod connection_limits;
 mod connection_manager;
 mod connection_table;
 mod core_context;

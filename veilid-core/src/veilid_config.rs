@@ -135,9 +135,12 @@ pub struct VeilidConfigRoutingTable {
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct VeilidConfigNetwork {
-    pub max_connections: u32,
     pub connection_initial_timeout_ms: u32,
     pub connection_inactivity_timeout_ms: u32,
+    pub max_connections_per_ip4: u32,
+    pub max_connections_per_ip6_prefix: u32,
+    pub max_connections_per_ip6_prefix_size: u32,
+    pub max_connection_frequency_per_min: u32,
     pub client_whitelist_timeout_ms: u32,
     pub reverse_connection_receipt_time_ms: u32,
     pub hole_punch_receipt_time_ms: u32,
@@ -294,9 +297,12 @@ impl VeilidConfig {
             get_config!(inner.protected_store.delete);
             get_config!(inner.network.node_id);
             get_config!(inner.network.node_id_secret);
-            get_config!(inner.network.max_connections);
             get_config!(inner.network.connection_initial_timeout_ms);
             get_config!(inner.network.connection_inactivity_timeout_ms);
+            get_config!(inner.network.max_connections_per_ip4);
+            get_config!(inner.network.max_connections_per_ip6_prefix);
+            get_config!(inner.network.max_connections_per_ip6_prefix_size);
+            get_config!(inner.network.max_connection_frequency_per_min);
             get_config!(inner.network.client_whitelist_timeout_ms);
             get_config!(inner.network.bootstrap);
             get_config!(inner.network.routing_table.limit_over_attached);

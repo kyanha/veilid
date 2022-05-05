@@ -469,7 +469,10 @@ impl Network {
                 .await?;
         }
 
-        self.inner.lock().network_class = context.inner.lock().network_class;
+        let network_class = context.inner.lock().network_class;
+        self.inner.lock().network_class = network_class;
+
+        log_net!(debug "network class set to {:?}", network_class);
 
         Ok(())
     }

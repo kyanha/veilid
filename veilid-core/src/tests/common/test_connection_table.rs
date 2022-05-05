@@ -1,10 +1,13 @@
+use super::test_veilid_config::*;
 use crate::connection_table::*;
 use crate::network_connection::*;
 use crate::xx::*;
 use crate::*;
 
 pub async fn test_add_get_remove() {
-    let mut table = ConnectionTable::new();
+    let config = get_config();
+
+    let mut table = ConnectionTable::new(config);
 
     let a1 = ConnectionDescriptor::new_no_local(PeerAddress::new(
         SocketAddress::new(Address::IPV4(Ipv4Addr::new(127, 0, 0, 1)), 8080),

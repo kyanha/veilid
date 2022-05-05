@@ -33,6 +33,14 @@ macro_rules! log_net {
     (warn $fmt:literal, $($arg:expr),+) => {
         warn!(target:"net", $fmt, $($arg),+);
     };
+    (debug $text:expr) => {debug!(
+        target: "net",
+        "{}",
+        $text,
+    )};
+    (debug $fmt:literal, $($arg:expr),+) => {
+        debug!(target:"net", $fmt, $($arg),+);
+    };
     ($text:expr) => {trace!(
         target: "net",
         "{}",

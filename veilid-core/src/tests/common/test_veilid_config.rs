@@ -185,9 +185,12 @@ fn config_callback(key: String) -> ConfigCallbackReturn {
         "protected_store.always_use_insecure_storage" => Ok(Box::new(false)),
         "protected_store.insecure_fallback_directory" => Ok(Box::new(get_protected_store_path())),
         "protected_store.delete" => Ok(Box::new(false)),
-        "network.max_connections" => Ok(Box::new(16u32)),
         "network.connection_initial_timeout_ms" => Ok(Box::new(2_000u32)),
         "network.connection_inactivity_timeout_ms" => Ok(Box::new(60_000u32)),
+        "network.max_connections_per_ip4" => Ok(Box::new(8u32)),
+        "network.max_connections_per_ip6_prefix" => Ok(Box::new(8u32)),
+        "network.max_connections_per_ip6_prefix_size" => Ok(Box::new(56u32)),
+        "network.max_connection_frequency_per_min" => Ok(Box::new(8u32)),
         "network.client_whitelist_timeout_ms" => Ok(Box::new(300_000u32)),
         "network.node_id" => Ok(Box::new(dht::key::DHTKey::default())),
         "network.node_id_secret" => Ok(Box::new(dht::key::DHTKeySecret::default())),
@@ -264,6 +267,18 @@ fn config_callback(key: String) -> ConfigCallbackReturn {
     }
 }
 
+pub fn get_config() -> VeilidConfig {
+    let mut vc = VeilidConfig::new();
+    match vc.setup(Arc::new(config_callback)) {
+        Ok(()) => (),
+        Err(e) => {
+            error!("Error: {}", e);
+            unreachable!();
+        }
+    };
+    vc
+}
+
 pub async fn test_config() {
     let mut vc = VeilidConfig::new();
     match vc.setup(Arc::new(config_callback)) {
@@ -296,9 +311,12 @@ pub async fn test_config() {
         get_protected_store_path()
     );
     assert_eq!(inner.protected_store.delete, false);
-    assert_eq!(inner.network.max_connections, 16);
     assert_eq!(inner.network.connection_initial_timeout_ms, 2_000u32);
     assert_eq!(inner.network.connection_inactivity_timeout_ms, 60_000u32);
+    assert_eq!(inner.network.max_connections_per_ip4, 8u32);
+    assert_eq!(inner.network.max_connections_per_ip6_prefix, 8u32);
+    assert_eq!(inner.network.max_connections_per_ip6_prefix_size, 56u32);
+    assert_eq!(inner.network.max_connection_frequency_per_min, 8u32);
     assert_eq!(inner.network.client_whitelist_timeout_ms, 300_000u32);
     assert!(!inner.network.node_id.valid);
     assert!(!inner.network.node_id_secret.valid);
