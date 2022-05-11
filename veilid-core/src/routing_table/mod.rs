@@ -482,13 +482,13 @@ impl RoutingTable {
 
     // Shortcut function to add a node to our routing table if it doesn't exist
     // and add the dial info we have for it, since that's pretty common
-    pub fn register_node_with_node_info(
+    pub fn register_node_with_signed_node_info(
         &self,
         node_id: DHTKey,
-        node_info: NodeInfo,
+        signed_node_info: SignedNodeInfo,
     ) -> Result<NodeRef, String> {
         let nr = self.create_node_ref(node_id, |e| {
-            e.update_node_info(node_info);
+            e.update_node_info(signed_node_info);
         })?;
 
         Ok(nr)
@@ -542,7 +542,11 @@ impl RoutingTable {
                 // Ensure it's not dead
                 if !matches!(entry.state(cur_ts), BucketEntryState::Dead) {
                     // Ensure this node is not on our local network
-                    if !entry.local_node_info().has_dial_info() {
+                    if !entry
+                        .local_node_info()
+                        .map(|l| l.has_dial_info())
+                        .unwrap_or(false)
+                    {
                         // Ensure we have the node's status
                         if let Some(node_status) = &entry.peer_stats().status {
                             // Ensure the node will relay
@@ -569,8 +573,36 @@ impl RoutingTable {
         best_inbound_relay
     }
 
-    pub async fn find_self(&self, node_ref: NodeRef) -> Result<Vec<NodeRef>, String> {
+    pub fn register_find_node_answer(&self, fna: FindNodeAnswer) -> Result<Vec<NodeRef>, String> {
         let node_id = self.node_id();
+
+        // register nodes we'd found
+        let mut out = Vec::<NodeRef>::with_capacity(fna.peers.len());
+        for p in fna.peers {
+            // if our own node if is in the list then ignore it, as we don't add ourselves to our own routing table
+            if p.node_id.key == node_id {
+                continue;
+            }
+
+            // register the node if it's new
+            let nr = self
+                .register_node_with_signed_node_info(p.node_id.key, p.signed_node_info.clone())
+                .map_err(map_to_string)
+                .map_err(logthru_rtab!(
+                    "couldn't register node {} at {:?}",
+                    p.node_id.key,
+                    &p.signed_node_info
+                ))?;
+            out.push(nr);
+        }
+        Ok(out)
+    }
+
+    pub async fn find_node(
+        &self,
+        node_ref: NodeRef,
+        node_id: DHTKey,
+    ) -> Result<Vec<NodeRef>, String> {
         let rpc_processor = self.rpc_processor();
 
         let res = rpc_processor
@@ -594,29 +626,14 @@ impl RoutingTable {
         self.register_find_node_answer(res)
     }
 
-    pub fn register_find_node_answer(&self, fna: FindNodeAnswer) -> Result<Vec<NodeRef>, String> {
+    pub async fn find_self(&self, node_ref: NodeRef) -> Result<Vec<NodeRef>, String> {
         let node_id = self.node_id();
+        self.find_node(node_ref, node_id).await
+    }
 
-        // register nodes we'd found
-        let mut out = Vec::<NodeRef>::with_capacity(fna.peers.len());
-        for p in fna.peers {
-            // if our own node if is in the list then ignore it, as we don't add ourselves to our own routing table
-            if p.node_id.key == node_id {
-                continue;
-            }
-
-            // register the node if it's new
-            let nr = self
-                .register_node_with_node_info(p.node_id.key, p.node_info.clone())
-                .map_err(map_to_string)
-                .map_err(logthru_rtab!(
-                    "couldn't register node {} at {:?}",
-                    p.node_id.key,
-                    &p.node_info
-                ))?;
-            out.push(nr);
-        }
-        Ok(out)
+    pub async fn find_target(&self, node_ref: NodeRef) -> Result<Vec<NodeRef>, String> {
+        let node_id = node_ref.node_id();
+        self.find_node(node_ref, node_id).await
     }
 
     pub async fn reverse_find_node(&self, node_ref: NodeRef, wide: bool) {
@@ -681,18 +698,39 @@ impl RoutingTable {
         let mut unord = FuturesUnordered::new();
         for (k, v) in bsmap {
             log_rtab!("    bootstrapping {} with {:?}", k.encode(), &v);
+
+            // Make invalid signed node info (no signature)
             let nr = self
-                .register_node_with_node_info(
+                .register_node_with_signed_node_info(
                     k,
-                    NodeInfo {
+                    SignedNodeInfo::with_no_signature(NodeInfo {
                         network_class: NetworkClass::InboundCapable, // Bootstraps are always inbound capable
                         outbound_protocols: ProtocolSet::empty(), // Bootstraps do not participate in relaying and will not make outbound requests
                         dial_info_detail_list: v, // Dial info is as specified in the bootstrap list
                         relay_peer_info: None,    // Bootstraps never require a relay themselves
-                    },
+                    }),
                 )
                 .map_err(logthru_rtab!("Couldn't add bootstrap node: {}", k))?;
-            unord.push(self.reverse_find_node(nr, true));
+
+            // Add this our futures to process in parallel
+            let this = self.clone();
+            unord.push(async move {
+                // Need VALID signed peer info, so ask bootstrap to find_node of itself
+                // which will ensure it has the bootstrap's signed peer info as part of the response
+                let _ = this.find_target(nr.clone()).await;
+
+                // Ensure we got the signed peer info
+                if !nr.operate(|e| e.has_valid_signed_node_info()) {
+                    warn!(
+                        "bootstrap at {:?} did not return valid signed node info",
+                        nr
+                    );
+                    // xxx: delete the node?
+                } else {
+                    // otherwise this bootstrap is valid, lets ask it to find ourselves now
+                    this.reverse_find_node(nr, true).await
+                }
+            });
         }
         while unord.next().await.is_some() {}
         Ok(())
@@ -749,7 +787,7 @@ impl RoutingTable {
                         nr,
                         entry.state_debug_info(cur_ts)
                     );
-                    intf::spawn_local(rpc.clone().rpc_call_info(nr)).detach();
+                    intf::spawn_local(rpc.clone().rpc_call_status(nr)).detach();
                 }
             }
         }

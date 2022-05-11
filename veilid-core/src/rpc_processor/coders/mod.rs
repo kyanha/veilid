@@ -13,6 +13,8 @@ mod protocol_set;
 mod public_key;
 mod sender_info;
 mod signal_info;
+mod signature;
+mod signed_node_info;
 mod socket_address;
 
 pub use address::*;
@@ -30,4 +32,6 @@ pub use protocol_set::*;
 pub use public_key::*;
 pub use sender_info::*;
 pub use signal_info::*;
+pub use signature::*;
+pub use signed_node_info::*;
 pub use socket_address::*;

@@ -365,11 +365,14 @@ impl NetworkManager {
     pub fn generate_node_status(&self) -> NodeStatus {
         let peer_info = self.routing_table().get_own_peer_info();
 
-        let will_route = peer_info.node_info.can_inbound_relay(); // xxx: eventually this may have more criteria added
-        let will_tunnel = peer_info.node_info.can_inbound_relay(); // xxx: we may want to restrict by battery life and network bandwidth at some point
-        let will_signal = peer_info.node_info.can_signal();
-        let will_relay = peer_info.node_info.can_inbound_relay();
-        let will_validate_dial_info = peer_info.node_info.can_validate_dial_info();
+        let will_route = peer_info.signed_node_info.node_info.can_inbound_relay(); // xxx: eventually this may have more criteria added
+        let will_tunnel = peer_info.signed_node_info.node_info.can_inbound_relay(); // xxx: we may want to restrict by battery life and network bandwidth at some point
+        let will_signal = peer_info.signed_node_info.node_info.can_signal();
+        let will_relay = peer_info.signed_node_info.node_info.can_inbound_relay();
+        let will_validate_dial_info = peer_info
+            .signed_node_info
+            .node_info
+            .can_validate_dial_info();
 
         NodeStatus {
             will_route,
@@ -483,8 +486,10 @@ impl NetworkManager {
                 let rpc = self.rpc_processor();
 
                 // Add the peer info to our routing table
-                let peer_nr = routing_table
-                    .register_node_with_node_info(peer_info.node_id.key, peer_info.node_info)?;
+                let peer_nr = routing_table.register_node_with_signed_node_info(
+                    peer_info.node_id.key,
+                    peer_info.signed_node_info,
+                )?;
 
                 // Make a reverse connection to the peer and send the receipt to it
                 rpc.rpc_call_return_receipt(Destination::Direct(peer_nr), None, receipt)
@@ -495,8 +500,10 @@ impl NetworkManager {
                 let routing_table = self.routing_table();
 
                 // Add the peer info to our routing table
-                let mut peer_nr = routing_table
-                    .register_node_with_node_info(peer_info.node_id.key, peer_info.node_info)?;
+                let mut peer_nr = routing_table.register_node_with_signed_node_info(
+                    peer_info.node_id.key,
+                    peer_info.signed_node_info,
+                )?;
 
                 // Get the udp direct dialinfo for the hole punch
                 peer_nr.filter_protocols(ProtocolSet::only(ProtocolType::UDP));
@@ -665,8 +672,9 @@ impl NetworkManager {
                     // Can we receive anything inbound ever?
                     if matches!(our_network_class, NetworkClass::InboundCapable) {
                         // Get the best match dial info for an reverse inbound connection
-                        let reverse_dif = DialInfoFilter::global()
-                            .with_protocol_set(target_node_ref.outbound_protocols());
+                        let reverse_dif = DialInfoFilter::global().with_protocol_set(
+                            target_node_ref.outbound_protocols().unwrap_or_default(),
+                        );
                         if let Some(reverse_did) = routing_table.first_filtered_dial_info_detail(
                             Some(RoutingDomain::PublicInternet),
                             &reverse_dif,
@@ -684,6 +692,7 @@ impl NetworkManager {
                         if our_protocol_config.outbound.contains(ProtocolType::UDP)
                             && target_node_ref
                                 .outbound_protocols()
+                                .unwrap_or_default()
                                 .contains(ProtocolType::UDP)
                         {
                             // Do the target and self nodes have a direct udp dialinfo
@@ -1097,7 +1106,7 @@ impl NetworkManager {
 
         // Get our node's current node info and network class and do the right thing
         let routing_table = self.routing_table();
-        let node_info = routing_table.get_own_peer_info().node_info;
+        let node_info = routing_table.get_own_node_info();
         let network_class = self.get_network_class();
 
         // Do we know our network class yet?
@@ -1123,9 +1132,9 @@ impl NetworkManager {
                         let mut inner = self.inner.lock();
 
                         // Register new outbound relay
-                        let nr = routing_table.register_node_with_node_info(
+                        let nr = routing_table.register_node_with_signed_node_info(
                             outbound_relay_peerinfo.node_id.key,
-                            outbound_relay_peerinfo.node_info,
+                            outbound_relay_peerinfo.signed_node_info,
                         )?;
                         inner.relay_node = Some(nr);
                     }

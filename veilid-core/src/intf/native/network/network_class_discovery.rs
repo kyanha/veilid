@@ -60,13 +60,13 @@ impl DiscoveryContext {
     // Ask for a public address check from a particular noderef
     async fn request_public_address(&self, node_ref: NodeRef) -> Option<SocketAddress> {
         let rpc = self.routing_table.rpc_processor();
-        rpc.rpc_call_info(node_ref.clone())
+        rpc.rpc_call_status(node_ref.clone())
             .await
             .map_err(logthru_net!(
-                "failed to get info answer from {:?}",
+                "failed to get status answer from {:?}",
                 node_ref
             ))
-            .map(|info_answer| info_answer.sender_info.socket_address)
+            .map(|sa| sa.sender_info.socket_address)
             .unwrap_or(None)
     }
 

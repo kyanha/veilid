@@ -63,7 +63,7 @@ impl NodeRef {
         self.routing_table.operate_on_bucket_entry(self.node_id, f)
     }
 
-    pub fn peer_info(&self) -> PeerInfo {
+    pub fn peer_info(&self) -> Option<PeerInfo> {
         self.operate(|e| e.peer_info(self.node_id()))
     }
     pub fn has_seen_our_node_info(&self) -> bool {
@@ -72,23 +72,24 @@ impl NodeRef {
     pub fn set_seen_our_node_info(&self) {
         self.operate(|e| e.set_seen_our_node_info(true));
     }
-
-    pub fn network_class(&self) -> NetworkClass {
-        self.operate(|e| e.node_info().network_class)
+    pub fn network_class(&self) -> Option<NetworkClass> {
+        self.operate(|e| e.node_info().map(|n| n.network_class))
     }
-    pub fn outbound_protocols(&self) -> ProtocolSet {
-        self.operate(|e| e.node_info().outbound_protocols)
+    pub fn outbound_protocols(&self) -> Option<ProtocolSet> {
+        self.operate(|e| e.node_info().map(|n| n.outbound_protocols))
     }
     pub fn relay(&self) -> Option<NodeRef> {
-        let target_rpi = self.operate(|e| e.node_info().relay_peer_info.clone())?;
-        self.routing_table
-            .register_node_with_node_info(target_rpi.node_id.key, target_rpi.node_info)
-            .map_err(logthru_rtab!(error))
-            .ok()
-            .map(|mut nr| {
-                nr.set_filter(self.filter_ref().cloned());
-                nr
-            })
+        let target_rpi = self.operate(|e| e.node_info().map(|n| n.relay_peer_info))?;
+        target_rpi.and_then(|t| {
+            self.routing_table
+                .register_node_with_signed_node_info(t.node_id.key, t.signed_node_info)
+                .map_err(logthru_rtab!(error))
+                .ok()
+                .map(|mut nr| {
+                    nr.set_filter(self.filter_ref().cloned());
+                    nr
+                })
+        })
     }
     pub fn first_filtered_dial_info_detail(
         &self,
@@ -105,8 +106,8 @@ impl NodeRef {
                     PeerScope::All | PeerScope::Local
                 )
             {
-                e.local_node_info()
-                    .first_filtered_dial_info(|di| {
+                e.local_node_info().and_then(|l| {
+                    l.first_filtered_dial_info(|di| {
                         if let Some(filter) = self.filter.as_ref() {
                             di.matches_filter(filter)
                         } else {
@@ -117,6 +118,7 @@ impl NodeRef {
                         class: DialInfoClass::Direct,
                         dial_info: di,
                     })
+                })
             } else {
                 None
             }
@@ -130,12 +132,14 @@ impl NodeRef {
                         PeerScope::All | PeerScope::Global
                     )
                 {
-                    e.node_info().first_filtered_dial_info_detail(|did| {
-                        if let Some(filter) = self.filter.as_ref() {
-                            did.matches_filter(filter)
-                        } else {
-                            true
-                        }
+                    e.node_info().and_then(|n| {
+                        n.first_filtered_dial_info_detail(|did| {
+                            if let Some(filter) = self.filter.as_ref() {
+                                did.matches_filter(filter)
+                            } else {
+                                true
+                            }
+                        })
                     })
                 } else {
                     None
@@ -160,17 +164,19 @@ impl NodeRef {
                     PeerScope::All | PeerScope::Local
                 )
             {
-                for di in e.local_node_info().all_filtered_dial_info(|di| {
-                    if let Some(filter) = self.filter.as_ref() {
-                        di.matches_filter(filter)
-                    } else {
-                        true
+                if let Some(lni) = e.local_node_info() {
+                    for di in lni.all_filtered_dial_info(|di| {
+                        if let Some(filter) = self.filter.as_ref() {
+                            di.matches_filter(filter)
+                        } else {
+                            true
+                        }
+                    }) {
+                        out.push(DialInfoDetail {
+                            class: DialInfoClass::Direct,
+                            dial_info: di,
+                        });
                     }
-                }) {
-                    out.push(DialInfoDetail {
-                        class: DialInfoClass::Direct,
-                        dial_info: di,
-                    });
                 }
             }
             if (routing_domain == None || routing_domain == Some(RoutingDomain::PublicInternet))
@@ -182,13 +188,15 @@ impl NodeRef {
                     PeerScope::All | PeerScope::Global
                 )
             {
-                out.append(&mut e.node_info().all_filtered_dial_info_details(|did| {
-                    if let Some(filter) = self.filter.as_ref() {
-                        did.matches_filter(filter)
-                    } else {
-                        true
-                    }
-                }))
+                if let Some(ni) = e.node_info() {
+                    out.append(&mut ni.all_filtered_dial_info_details(|did| {
+                        if let Some(filter) = self.filter.as_ref() {
+                            did.matches_filter(filter)
+                        } else {
+                            true
+                        }
+                    }))
+                }
             }
         });
         out.remove_duplicates();
@@ -225,7 +233,14 @@ impl NodeRef {
     }
 
     pub fn has_any_dial_info(&self) -> bool {
-        self.operate(|e| e.node_info().has_any_dial_info() || e.local_node_info().has_dial_info())
+        self.operate(|e| {
+            e.node_info()
+                .map(|n| n.has_any_dial_info())
+                .unwrap_or(false)
+                || e.local_node_info()
+                    .map(|l| l.has_dial_info())
+                    .unwrap_or(false)
+        })
     }
 }
 

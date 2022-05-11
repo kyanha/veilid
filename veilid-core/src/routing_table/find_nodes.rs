@@ -22,17 +22,20 @@ impl RoutingTable {
                     let entry = params.1.as_ref().unwrap();
 
                     // skip nodes on our local network here
-                    if entry.local_node_info().has_dial_info() {
+                    if entry.local_node_info().is_some() {
                         return false;
                     }
 
                     // does it have matching public dial info?
                     entry
                         .node_info()
-                        .first_filtered_dial_info_detail(|did| {
-                            did.matches_filter(&dial_info_filter1)
+                        .map(|n| {
+                            n.first_filtered_dial_info_detail(|did| {
+                                did.matches_filter(&dial_info_filter1)
+                            })
+                            .is_some()
                         })
-                        .is_some()
+                        .unwrap_or(false)
                 },
             )),
             // transform
@@ -49,16 +52,30 @@ impl RoutingTable {
 
     // Get our own node's peer info (public node info) so we can share it with other nodes
     pub fn get_own_peer_info(&self) -> PeerInfo {
+        PeerInfo::new(NodeId::new(self.node_id()), self.get_own_signed_node_info())
+    }
+
+    pub fn get_own_signed_node_info(&self) -> SignedNodeInfo {
+        let node_id = NodeId::new(self.node_id());
+        let secret = self.node_id_secret();
+        SignedNodeInfo::with_secret(self.get_own_node_info(), node_id, &secret).unwrap()
+    }
+
+    pub fn get_own_node_info(&self) -> NodeInfo {
         let netman = self.network_manager();
         let relay_node = netman.relay_node();
-        PeerInfo {
-            node_id: NodeId::new(self.node_id()),
-            node_info: NodeInfo {
-                network_class: netman.get_network_class().unwrap_or(NetworkClass::Invalid),
-                outbound_protocols: netman.get_protocol_config().unwrap_or_default().outbound,
-                dial_info_detail_list: self.dial_info_details(RoutingDomain::PublicInternet),
-                relay_peer_info: relay_node.map(|rn| Box::new(rn.peer_info())),
-            },
+        NodeInfo {
+            network_class: netman.get_network_class().unwrap_or(NetworkClass::Invalid),
+            outbound_protocols: netman.get_protocol_config().unwrap_or_default().outbound,
+            dial_info_detail_list: self.dial_info_details(RoutingDomain::PublicInternet),
+            relay_peer_info: relay_node.and_then(|rn| rn.peer_info().map(Box::new)),
+        }
+    }
+
+    pub fn filter_has_valid_signed_node_info(kv: &(&DHTKey, Option<&mut BucketEntry>)) -> bool {
+        match &kv.1 {
+            None => true,
+            Some(b) => b.has_node_info(),
         }
     }
 
@@ -68,7 +85,7 @@ impl RoutingTable {
     ) -> PeerInfo {
         match &kv.1 {
             None => own_peer_info.clone(),
-            Some(entry) => entry.peer_info(*kv.0),
+            Some(entry) => entry.peer_info(*kv.0).unwrap(),
         }
     }
 

@@ -175,8 +175,8 @@ struct ValueData {
 # Operations
 ##############################
 
-struct OperationInfoQ {
-    nodeStatus              @0  :NodeStatus;            # node status update about the infoq sender
+struct OperationStatusQ {
+    nodeStatus              @0  :NodeStatus;            # node status update about the statusq sender
 }
 
 enum NetworkClass {
@@ -221,13 +221,18 @@ struct NodeInfo {
     relayPeerInfo           @3  :PeerInfo;              # (optional) relay peer info for this node
 }
 
+struct SignedNodeInfo {
+    nodeInfo                @0  :NodeInfo;              # node info
+    signature               @1  :Signature;             # signature
+}
+
 struct SenderInfo {
     socketAddress           @0  :SocketAddress;         # socket address was available for peer
 }
 
-struct OperationInfoA {
+struct OperationStatusA {
     nodeStatus              @0  :NodeStatus;            # returned node status
-    senderInfo              @1  :SenderInfo;            # info about InfoQ sender from the perspective of the replier
+    senderInfo              @1  :SenderInfo;            # info about StatusQ sender from the perspective of the replier
 }
 
 struct OperationValidateDialInfo {
@@ -247,7 +252,7 @@ struct OperationFindNodeQ {
 
 struct PeerInfo {
     nodeId                  @0  :NodeID;                # node id for 'closer peer'
-    nodeInfo                @1  :NodeInfo;              # node info for 'closer peer'
+    signedNodeInfo          @1  :SignedNodeInfo;        # signed node info for 'closer peer'
 }
 
 struct OperationFindNodeA {
@@ -263,6 +268,10 @@ struct RoutedOperation {
 struct OperationRoute {
     safetyRoute             @0  :SafetyRoute;           # Where this should go
     operation               @1  :RoutedOperation;       # The operation to be routed
+}
+
+struct OperationNodeInfoUpdate {
+    signedNodeInfo          @0  :SignedNodeInfo;        # Our signed node info
 }
 
 struct OperationGetValueQ {
@@ -405,42 +414,43 @@ struct Operation {
     respondTo :union {
         none                @1  :Void;                  # no response is desired
         sender              @2  :Void;                  # sender without node info
-        senderWithInfo      @3  :NodeInfo;              # some envelope-sender node info to be used for reply
+        senderWithInfo      @3  :SignedNodeInfo;        # some envelope-sender signed node info to be used for reply
         privateRoute        @4  :PrivateRoute;          # embedded private route to be used for reply
     }                              
 
     detail :union {
         # Direct operations
-        infoQ               @5  :OperationInfoQ;
-        infoA               @6  :OperationInfoA;
+        statusQ             @5  :OperationStatusQ;
+        statusA             @6  :OperationStatusA;
         validateDialInfo    @7  :OperationValidateDialInfo;
         findNodeQ           @8  :OperationFindNodeQ;
         findNodeA           @9  :OperationFindNodeA;
-        route               @10  :OperationRoute;
+        route               @10 :OperationRoute;
+        nodeInfoUpdate      @11 :OperationNodeInfoUpdate;
         
         # Routable operations
-        getValueQ           @11 :OperationGetValueQ;
-        getValueA           @12 :OperationGetValueA;
-        setValueQ           @13 :OperationSetValueQ;
-        setValueA           @14 :OperationSetValueA;
-        watchValueQ         @15 :OperationWatchValueQ;
-        watchValueA         @16 :OperationWatchValueA;
-        valueChanged        @17 :OperationValueChanged;
+        getValueQ           @12 :OperationGetValueQ;
+        getValueA           @13 :OperationGetValueA;
+        setValueQ           @14 :OperationSetValueQ;
+        setValueA           @15 :OperationSetValueA;
+        watchValueQ         @16 :OperationWatchValueQ;
+        watchValueA         @17 :OperationWatchValueA;
+        valueChanged        @18 :OperationValueChanged;
         
-        supplyBlockQ        @18 :OperationSupplyBlockQ;
-        supplyBlockA        @19 :OperationSupplyBlockA; 
-        findBlockQ          @20 :OperationFindBlockQ;
-        findBlockA          @21 :OperationFindBlockA; 
+        supplyBlockQ        @19 :OperationSupplyBlockQ;
+        supplyBlockA        @20 :OperationSupplyBlockA; 
+        findBlockQ          @21 :OperationFindBlockQ;
+        findBlockA          @22 :OperationFindBlockA; 
     
-        signal              @22 :OperationSignal;
-        returnReceipt       @23 :OperationReturnReceipt;
+        signal              @23 :OperationSignal;
+        returnReceipt       @24 :OperationReturnReceipt;
         
         # Tunnel operations
-        startTunnelQ        @24 :OperationStartTunnelQ;
-        startTunnelA        @25 :OperationStartTunnelA;
-        completeTunnelQ     @26 :OperationCompleteTunnelQ;
-        completeTunnelA     @27 :OperationCompleteTunnelA;
-        cancelTunnelQ       @28 :OperationCancelTunnelQ; 
-        cancelTunnelA       @29 :OperationCancelTunnelA;
+        startTunnelQ        @25 :OperationStartTunnelQ;
+        startTunnelA        @26 :OperationStartTunnelA;
+        completeTunnelQ     @27 :OperationCompleteTunnelQ;
+        completeTunnelA     @28 :OperationCompleteTunnelA;
+        cancelTunnelQ       @29 :OperationCancelTunnelQ; 
+        cancelTunnelA       @30 :OperationCancelTunnelA;
     }
 }

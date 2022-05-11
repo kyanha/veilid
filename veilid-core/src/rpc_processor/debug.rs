@@ -125,20 +125,24 @@ impl RPCProcessor {
         let respond_to_str = match respond_to {
             veilid_capnp::operation::respond_to::None(_) => "(None)".to_owned(),
             veilid_capnp::operation::respond_to::Sender(_) => "Sender".to_owned(),
-            veilid_capnp::operation::respond_to::SenderWithInfo(ni) => {
-                let ni_reader = match ni {
-                    Ok(nir) => nir,
+            veilid_capnp::operation::respond_to::SenderWithInfo(sni) => {
+                let sni_reader = match sni {
+                    Ok(snir) => snir,
                     Err(e) => {
                         return e.to_string();
                     }
                 };
-                let node_info = match decode_node_info(&ni_reader, true) {
+                let signed_node_info = match decode_signed_node_info(
+                    &sni_reader,
+                    &request_rpcreader.header.envelope.get_sender_id(),
+                    true,
+                ) {
                     Ok(ni) => ni,
                     Err(e) => {
                         return e.to_string();
                     }
                 };
-                format!("Sender({:?})", node_info)
+                format!("Sender({:?})", signed_node_info)
             }
             veilid_capnp::operation::respond_to::PrivateRoute(pr) => {
                 let pr_reader = match pr {
@@ -197,11 +201,11 @@ impl RPCProcessor {
         detail: &veilid_capnp::operation::detail::WhichReader,
     ) -> String {
         match detail {
-            veilid_capnp::operation::detail::InfoQ(_) => {
-                format!("InfoQ")
+            veilid_capnp::operation::detail::StatusQ(_) => {
+                format!("StatusQ")
             }
-            veilid_capnp::operation::detail::InfoA(_) => {
-                format!("InfoA")
+            veilid_capnp::operation::detail::StatusA(_) => {
+                format!("StatusA")
             }
             veilid_capnp::operation::detail::ValidateDialInfo(_) => {
                 format!("ValidateDialInfo")
@@ -254,6 +258,9 @@ impl RPCProcessor {
             }
             veilid_capnp::operation::detail::Route(_) => {
                 format!("Route")
+            }
+            veilid_capnp::operation::detail::NodeInfoUpdate(_) => {
+                format!("NodeInfoUpdate")
             }
             veilid_capnp::operation::detail::GetValueQ(_) => {
                 format!("GetValueQ")

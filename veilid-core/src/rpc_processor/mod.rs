@@ -31,7 +31,7 @@ pub enum Destination {
 #[derive(Debug, Clone)]
 pub enum RespondTo {
     None,
-    Sender(Option<NodeInfo>),
+    Sender(Option<SignedNodeInfo>),
     PrivateRoute(PrivateRoute),
 }
 
@@ -44,9 +44,9 @@ impl RespondTo {
             Self::None => {
                 builder.set_none(());
             }
-            Self::Sender(Some(ni)) => {
-                let mut ni_builder = builder.reborrow().init_sender_with_info();
-                encode_node_info(ni, &mut ni_builder)?;
+            Self::Sender(Some(sni)) => {
+                let mut sni_builder = builder.reborrow().init_sender_with_info();
+                encode_signed_node_info(sni, &mut sni_builder)?;
             }
             Self::Sender(None) => {
                 builder.reborrow().set_sender(());
@@ -130,7 +130,7 @@ struct WaitableReply {
 /////////////////////////////////////////////////////////////////////
 
 #[derive(Clone, Debug, Default)]
-pub struct InfoAnswer {
+pub struct StatusAnswer {
     pub latency: u64,
     pub node_status: NodeStatus,
     pub sender_info: SenderInfo,
@@ -227,7 +227,7 @@ impl RPCProcessor {
             }
         }
         if let Some(rpi) = &node_info.relay_peer_info {
-            for did in &rpi.node_info.dial_info_detail_list {
+            for did in &rpi.signed_node_info.node_info.dial_info_detail_list {
                 if !did.dial_info.is_global() {
                     // non-public address causes rejection
                     return false;
@@ -748,20 +748,21 @@ impl RPCProcessor {
         }
     }
 
-    fn get_respond_to_sender_node_info(
+    fn get_respond_to_sender_signed_node_info(
         &self,
         operation: &veilid_capnp::operation::Reader,
-    ) -> Result<Option<NodeInfo>, RPCError> {
+        sender_node_id: &DHTKey,
+    ) -> Result<Option<SignedNodeInfo>, RPCError> {
         match operation
             .get_respond_to()
             .which()
             .map_err(map_error_capnp_notinschema!())?
         {
-            veilid_capnp::operation::respond_to::SenderWithInfo(Ok(sender_ni_reader)) => {
-                Ok(Some(decode_node_info(&sender_ni_reader, true)?))
-            }
+            veilid_capnp::operation::respond_to::SenderWithInfo(Ok(sender_ni_reader)) => Ok(Some(
+                decode_signed_node_info(&sender_ni_reader, sender_node_id, true)?,
+            )),
             veilid_capnp::operation::respond_to::SenderWithInfo(Err(e)) => Err(rpc_error_protocol(
-                format!("invalid sender_with_info node info: {}", e),
+                format!("invalid sender_with_info signed node info: {}", e),
             )),
             veilid_capnp::operation::respond_to::None(_)
             | veilid_capnp::operation::respond_to::Sender(_)
@@ -779,7 +780,7 @@ impl RPCProcessor {
         SenderInfo { socket_address }
     }
 
-    async fn process_info_q(&self, rpcreader: RPCMessageReader) -> Result<(), RPCError> {
+    async fn process_status_q(&self, rpcreader: RPCMessageReader) -> Result<(), RPCError> {
         let peer_noderef = rpcreader.header.peer_noderef.clone();
         let sender_info = self.generate_sender_info(peer_noderef).await;
 
@@ -795,10 +796,10 @@ impl RPCProcessor {
                 return Ok(());
             }
 
-            // get InfoQ reader
+            // get StatusQ reader
             let iq_reader = match operation.get_detail().which() {
-                Ok(veilid_capnp::operation::detail::Which::InfoQ(Ok(x))) => x,
-                _ => panic!("invalid operation type in process_info_q"),
+                Ok(veilid_capnp::operation::detail::Which::StatusQ(Ok(x))) => x,
+                _ => panic!("invalid operation type in process_status_q"),
             };
 
             // Parse out fields
@@ -810,7 +811,7 @@ impl RPCProcessor {
 
             // update node status for the requesting node to our routing table
             if let Some(sender_nr) = rpcreader.opt_sender_nr.clone() {
-                // Update latest node status in routing table for the infoq sender
+                // Update latest node status in routing table for the statusq sender
                 sender_nr.operate(|e| {
                     e.update_node_status(node_status);
                 });
@@ -823,15 +824,15 @@ impl RPCProcessor {
             let mut respond_to = answer.reborrow().init_respond_to();
             respond_to.set_none(());
             let detail = answer.reborrow().init_detail();
-            let mut info_a = detail.init_info_a();
+            let mut status_a = detail.init_status_a();
 
             // Add node status
             let node_status = self.network_manager().generate_node_status();
-            let mut nsb = info_a.reborrow().init_node_status();
+            let mut nsb = status_a.reborrow().init_node_status();
             encode_node_status(&node_status, &mut nsb)?;
 
             // Add sender info
-            let mut sib = info_a.reborrow().init_sender_info();
+            let mut sib = status_a.reborrow().init_sender_info();
             encode_sender_info(&sender_info, &mut sib)?;
 
             reply_msg.into_reader()
@@ -982,7 +983,7 @@ impl RPCProcessor {
             let closest_nodes = routing_table.find_closest_nodes(
                 target_node_id,
                 // filter
-                None,
+                Some(Box::new(RoutingTable::filter_has_valid_signed_node_info)),
                 // transform
                 |e| RoutingTable::transform_to_peer_info(e, &own_peer_info),
             );
@@ -995,8 +996,8 @@ impl RPCProcessor {
             let mut respond_to = answer.reborrow().init_respond_to();
             respond_to.set_none(());
             let detail = answer.reborrow().init_detail();
-            let info_a = detail.init_find_node_a();
-            let mut peers_builder = info_a.init_peers(
+            let fna = detail.init_find_node_a();
+            let mut peers_builder = fna.init_peers(
                 closest_nodes
                     .len()
                     .try_into()
@@ -1015,6 +1016,46 @@ impl RPCProcessor {
     async fn process_route(&self, _rpcreader: RPCMessageReader) -> Result<(), RPCError> {
         // xxx do not process latency for routed messages
         Err(rpc_error_unimplemented("process_route"))
+    }
+
+    async fn process_node_info_update(&self, rpcreader: RPCMessageReader) -> Result<(), RPCError> {
+        //
+        let sender_node_id = rpcreader.header.envelope.get_sender_id();
+        let signed_node_info = {
+            let operation = rpcreader
+                .reader
+                .get_root::<veilid_capnp::operation::Reader>()
+                .map_err(map_error_capnp_error!())
+                .map_err(logthru_rpc!())?;
+
+            // This should never want an answer
+            if self.wants_answer(&operation)? {
+                return Err(RPCError::InvalidFormat);
+            }
+
+            // get nodeInfoUpdate reader
+            let niumsg_reader = match operation.get_detail().which() {
+                Ok(veilid_capnp::operation::detail::Which::NodeInfoUpdate(Ok(x))) => x,
+                _ => panic!("invalid operation type in process_node_info_update"),
+            };
+
+            // Parse out fields
+            let sni_reader = niumsg_reader
+                .get_signed_node_info()
+                .map_err(map_error_internal!("no valid signed node info"))?;
+            decode_signed_node_info(&sni_reader, &sender_node_id, true)?
+        };
+
+        // Update our routing table with signed node info
+        if !self.filter_peer_scope(&signed_node_info.node_info) {
+            return Err(RPCError::InvalidFormat);
+        }
+        let _ = self
+            .routing_table()
+            .register_node_with_signed_node_info(sender_node_id, signed_node_info)
+            .map_err(RPCError::Internal)?;
+
+        Ok(())
     }
 
     async fn process_get_value_q(&self, _rpcreader: RPCMessageReader) -> Result<(), RPCError> {
@@ -1139,6 +1180,7 @@ impl RPCProcessor {
     //////////////////////////////////////////////////////////////////////
     async fn process_rpc_message_version_0(&self, msg: RPCMessage) -> Result<(), RPCError> {
         let reader = capnp::message::Reader::new(msg.data, Default::default());
+        let sender_node_id = msg.header.envelope.get_sender_id();
         let mut opt_sender_nr: Option<NodeRef> = None;
         let which = {
             let operation = reader
@@ -1151,55 +1193,53 @@ impl RPCProcessor {
                 .which()
                 .map_err(map_error_capnp_notinschema!())?
             {
-                veilid_capnp::operation::detail::InfoQ(_) => (0u32, true),
-                veilid_capnp::operation::detail::InfoA(_) => (1u32, false),
+                veilid_capnp::operation::detail::StatusQ(_) => (0u32, true),
+                veilid_capnp::operation::detail::StatusA(_) => (1u32, false),
                 veilid_capnp::operation::detail::ValidateDialInfo(_) => (2u32, true),
                 veilid_capnp::operation::detail::FindNodeQ(_) => (3u32, true),
                 veilid_capnp::operation::detail::FindNodeA(_) => (4u32, false),
                 veilid_capnp::operation::detail::Route(_) => (5u32, true),
-                veilid_capnp::operation::detail::GetValueQ(_) => (6u32, true),
-                veilid_capnp::operation::detail::GetValueA(_) => (7u32, false),
-                veilid_capnp::operation::detail::SetValueQ(_) => (8u32, true),
-                veilid_capnp::operation::detail::SetValueA(_) => (9u32, false),
-                veilid_capnp::operation::detail::WatchValueQ(_) => (10u32, true),
-                veilid_capnp::operation::detail::WatchValueA(_) => (11u32, false),
-                veilid_capnp::operation::detail::ValueChanged(_) => (12u32, true),
-                veilid_capnp::operation::detail::SupplyBlockQ(_) => (13u32, true),
-                veilid_capnp::operation::detail::SupplyBlockA(_) => (14u32, false),
-                veilid_capnp::operation::detail::FindBlockQ(_) => (15u32, true),
-                veilid_capnp::operation::detail::FindBlockA(_) => (16u32, false),
-                veilid_capnp::operation::detail::Signal(_) => (17u32, true),
-                veilid_capnp::operation::detail::ReturnReceipt(_) => (18u32, true),
-                veilid_capnp::operation::detail::StartTunnelQ(_) => (19u32, true),
-                veilid_capnp::operation::detail::StartTunnelA(_) => (20u32, false),
-                veilid_capnp::operation::detail::CompleteTunnelQ(_) => (21u32, true),
-                veilid_capnp::operation::detail::CompleteTunnelA(_) => (22u32, false),
-                veilid_capnp::operation::detail::CancelTunnelQ(_) => (23u32, true),
-                veilid_capnp::operation::detail::CancelTunnelA(_) => (24u32, false),
+                veilid_capnp::operation::detail::NodeInfoUpdate(_) => (6u32, true),
+                veilid_capnp::operation::detail::GetValueQ(_) => (7u32, true),
+                veilid_capnp::operation::detail::GetValueA(_) => (8u32, false),
+                veilid_capnp::operation::detail::SetValueQ(_) => (9u32, true),
+                veilid_capnp::operation::detail::SetValueA(_) => (10u32, false),
+                veilid_capnp::operation::detail::WatchValueQ(_) => (11u32, true),
+                veilid_capnp::operation::detail::WatchValueA(_) => (12u32, false),
+                veilid_capnp::operation::detail::ValueChanged(_) => (13u32, true),
+                veilid_capnp::operation::detail::SupplyBlockQ(_) => (14u32, true),
+                veilid_capnp::operation::detail::SupplyBlockA(_) => (15u32, false),
+                veilid_capnp::operation::detail::FindBlockQ(_) => (16u32, true),
+                veilid_capnp::operation::detail::FindBlockA(_) => (17u32, false),
+                veilid_capnp::operation::detail::Signal(_) => (18u32, true),
+                veilid_capnp::operation::detail::ReturnReceipt(_) => (19u32, true),
+                veilid_capnp::operation::detail::StartTunnelQ(_) => (20u32, true),
+                veilid_capnp::operation::detail::StartTunnelA(_) => (21u32, false),
+                veilid_capnp::operation::detail::CompleteTunnelQ(_) => (22u32, true),
+                veilid_capnp::operation::detail::CompleteTunnelA(_) => (23u32, false),
+                veilid_capnp::operation::detail::CancelTunnelQ(_) => (24u32, true),
+                veilid_capnp::operation::detail::CancelTunnelA(_) => (25u32, false),
             };
 
             // Accounting for questions we receive
             if is_q {
                 // See if we have some Sender NodeInfo to incorporate
-                opt_sender_nr =
-                    if let Some(sender_ni) = self.get_respond_to_sender_node_info(&operation)? {
-                        // Sender NodeInfo was specified, update our routing table with it
-                        if !self.filter_peer_scope(&sender_ni) {
-                            return Err(RPCError::InvalidFormat);
-                        }
-                        let nr = self
-                            .routing_table()
-                            .register_node_with_node_info(
-                                msg.header.envelope.get_sender_id(),
-                                sender_ni,
-                            )
-                            .map_err(RPCError::Internal)?;
-                        Some(nr)
-                    } else {
-                        // look up sender node, in case it's different than our peer due to relaying
-                        self.routing_table()
-                            .lookup_node_ref(msg.header.envelope.get_sender_id())
-                    };
+                opt_sender_nr = if let Some(sender_ni) =
+                    self.get_respond_to_sender_signed_node_info(&operation, &sender_node_id)?
+                {
+                    // Sender NodeInfo was specified, update our routing table with it
+                    if !self.filter_peer_scope(&sender_ni.node_info) {
+                        return Err(RPCError::InvalidFormat);
+                    }
+                    let nr = self
+                        .routing_table()
+                        .register_node_with_signed_node_info(sender_node_id, sender_ni)
+                        .map_err(RPCError::Internal)?;
+                    Some(nr)
+                } else {
+                    // look up sender node, in case it's different than our peer due to relaying
+                    self.routing_table().lookup_node_ref(sender_node_id)
+                };
 
                 if let Some(sender_nr) = opt_sender_nr.clone() {
                     self.routing_table().stats_question_rcvd(
@@ -1220,31 +1260,32 @@ impl RPCProcessor {
         };
 
         match which {
-            0 => self.process_info_q(rpcreader).await, // InfoQ
-            1 => self.process_answer(rpcreader).await, // InfoA
+            0 => self.process_status_q(rpcreader).await, // StatusQ
+            1 => self.process_answer(rpcreader).await,   // StatusA
             2 => self.process_validate_dial_info(rpcreader).await, // ValidateDialInfo
             3 => self.process_find_node_q(rpcreader).await, // FindNodeQ
-            4 => self.process_answer(rpcreader).await, // FindNodeA
-            5 => self.process_route(rpcreader).await,  // Route
-            6 => self.process_get_value_q(rpcreader).await, // GetValueQ
-            7 => self.process_answer(rpcreader).await, // GetValueA
-            8 => self.process_set_value_q(rpcreader).await, // SetValueQ
-            9 => self.process_answer(rpcreader).await, // SetValueA
-            10 => self.process_watch_value_q(rpcreader).await, // WatchValueQ
-            11 => self.process_answer(rpcreader).await, // WatchValueA
-            12 => self.process_value_changed(rpcreader).await, // ValueChanged
-            13 => self.process_supply_block_q(rpcreader).await, // SupplyBlockQ
-            14 => self.process_answer(rpcreader).await, // SupplyBlockA
-            15 => self.process_find_block_q(rpcreader).await, // FindBlockQ
-            16 => self.process_answer(rpcreader).await, // FindBlockA
-            17 => self.process_signal(rpcreader).await, // SignalQ
-            18 => self.process_return_receipt(rpcreader).await, // ReturnReceipt
-            19 => self.process_start_tunnel_q(rpcreader).await, // StartTunnelQ
-            20 => self.process_answer(rpcreader).await, // StartTunnelA
-            21 => self.process_complete_tunnel_q(rpcreader).await, // CompleteTunnelQ
-            22 => self.process_answer(rpcreader).await, // CompleteTunnelA
-            23 => self.process_cancel_tunnel_q(rpcreader).await, // CancelTunnelQ
-            24 => self.process_answer(rpcreader).await, // CancelTunnelA
+            4 => self.process_answer(rpcreader).await,   // FindNodeA
+            5 => self.process_route(rpcreader).await,    // Route
+            6 => self.process_node_info_update(rpcreader).await, // NodeInfoUpdate
+            7 => self.process_get_value_q(rpcreader).await, // GetValueQ
+            8 => self.process_answer(rpcreader).await,   // GetValueA
+            9 => self.process_set_value_q(rpcreader).await, // SetValueQ
+            10 => self.process_answer(rpcreader).await,  // SetValueA
+            11 => self.process_watch_value_q(rpcreader).await, // WatchValueQ
+            12 => self.process_answer(rpcreader).await,  // WatchValueA
+            13 => self.process_value_changed(rpcreader).await, // ValueChanged
+            14 => self.process_supply_block_q(rpcreader).await, // SupplyBlockQ
+            15 => self.process_answer(rpcreader).await,  // SupplyBlockA
+            16 => self.process_find_block_q(rpcreader).await, // FindBlockQ
+            17 => self.process_answer(rpcreader).await,  // FindBlockA
+            18 => self.process_signal(rpcreader).await,  // SignalQ
+            19 => self.process_return_receipt(rpcreader).await, // ReturnReceipt
+            20 => self.process_start_tunnel_q(rpcreader).await, // StartTunnelQ
+            21 => self.process_answer(rpcreader).await,  // StartTunnelA
+            22 => self.process_complete_tunnel_q(rpcreader).await, // CompleteTunnelQ
+            23 => self.process_answer(rpcreader).await,  // CompleteTunnelA
+            24 => self.process_cancel_tunnel_q(rpcreader).await, // CancelTunnelQ
+            25 => self.process_answer(rpcreader).await,  // CancelTunnelA
             _ => panic!("must update rpc table"),
         }
     }
@@ -1347,38 +1388,43 @@ impl RPCProcessor {
     // or None if the peer has seen our dial info before or our node info is not yet valid
     // because of an unknown network class
     pub fn make_respond_to_sender(&self, peer: NodeRef) -> RespondTo {
-        let our_node_info = self.routing_table().get_own_peer_info().node_info;
         if peer.has_seen_our_node_info()
-            || matches!(our_node_info.network_class, NetworkClass::Invalid)
+            || matches!(
+                self.network_manager()
+                    .get_network_class()
+                    .unwrap_or(NetworkClass::Invalid),
+                NetworkClass::Invalid
+            )
         {
             RespondTo::Sender(None)
         } else {
-            RespondTo::Sender(Some(our_node_info))
+            let our_sni = self.routing_table().get_own_signed_node_info();
+            RespondTo::Sender(Some(our_sni))
         }
     }
 
-    // Send InfoQ RPC request, receive InfoA answer
+    // Send StatusQ RPC request, receive StatusA answer
     // Can be sent via relays, but not via routes
-    pub async fn rpc_call_info(self, peer: NodeRef) -> Result<InfoAnswer, RPCError> {
-        let info_q_msg = {
-            let mut info_q_msg = ::capnp::message::Builder::new_default();
-            let mut question = info_q_msg.init_root::<veilid_capnp::operation::Builder>();
+    pub async fn rpc_call_status(self, peer: NodeRef) -> Result<StatusAnswer, RPCError> {
+        let status_q_msg = {
+            let mut status_q_msg = ::capnp::message::Builder::new_default();
+            let mut question = status_q_msg.init_root::<veilid_capnp::operation::Builder>();
             question.set_op_id(self.get_next_op_id());
             let mut respond_to = question.reborrow().init_respond_to();
             self.make_respond_to_sender(peer.clone())
                 .encode(&mut respond_to)?;
             let detail = question.reborrow().init_detail();
-            let mut iqb = detail.init_info_q();
-            let mut node_status_builder = iqb.reborrow().init_node_status();
+            let mut sqb = detail.init_status_q();
+            let mut node_status_builder = sqb.reborrow().init_node_status();
             let node_status = self.network_manager().generate_node_status();
             encode_node_status(&node_status, &mut node_status_builder)?;
 
-            info_q_msg.into_reader()
+            status_q_msg.into_reader()
         };
 
         // Send the info request
         let waitable_reply = self
-            .request(Destination::Direct(peer.clone()), info_q_msg, None)
+            .request(Destination::Direct(peer.clone()), status_q_msg, None)
             .await?
             .unwrap();
 
@@ -1394,30 +1440,30 @@ impl RPCProcessor {
                 .get_root::<veilid_capnp::operation::Reader>()
                 .map_err(map_error_capnp_error!())
                 .map_err(logthru_rpc!())?;
-            let info_a = match response_operation
+            let status_a = match response_operation
                 .get_detail()
                 .which()
                 .map_err(map_error_capnp_notinschema!())
                 .map_err(logthru_rpc!())?
             {
-                veilid_capnp::operation::detail::InfoA(a) => {
-                    a.map_err(map_error_internal!("Invalid InfoA"))?
+                veilid_capnp::operation::detail::StatusA(a) => {
+                    a.map_err(map_error_internal!("Invalid StatusA"))?
                 }
                 _ => return Err(rpc_error_internal("Incorrect RPC answer for question")),
             };
 
             // Decode node info
-            if !info_a.has_node_status() {
+            if !status_a.has_node_status() {
                 return Err(rpc_error_internal("Missing node status"));
             }
-            let nsr = info_a
+            let nsr = status_a
                 .get_node_status()
                 .map_err(map_error_internal!("Broken node status"))?;
             let node_status = decode_node_status(&nsr)?;
 
             // Decode sender info
-            let sender_info = if info_a.has_sender_info() {
-                let sir = info_a
+            let sender_info = if status_a.has_sender_info() {
+                let sir = status_a
                     .get_sender_info()
                     .map_err(map_error_internal!("Broken sender info"))?;
                 decode_sender_info(&sir)?
@@ -1453,7 +1499,7 @@ impl RPCProcessor {
         }
 
         // Return the answer for anyone who may care
-        let out = InfoAnswer {
+        let out = StatusAnswer {
             latency,
             node_status,
             sender_info,
@@ -1583,7 +1629,7 @@ impl RPCProcessor {
         for p in peers_reader.iter() {
             let peer_info = decode_peer_info(&p, true)?;
 
-            if !self.filter_peer_scope(&peer_info.node_info) {
+            if !self.filter_peer_scope(&peer_info.signed_node_info.node_info) {
                 return Err(RPCError::InvalidFormat);
             }
 
@@ -1593,6 +1639,34 @@ impl RPCProcessor {
         let out = FindNodeAnswer { latency, peers };
 
         Ok(out)
+    }
+
+    // Sends a our node info to another node
+    // Can be sent via all methods including relays and routes
+    pub async fn rpc_call_node_info_update(
+        &self,
+        dest: Destination,
+        safety_route: Option<&SafetyRouteSpec>,
+    ) -> Result<(), RPCError> {
+        let sni_msg = {
+            let mut sni_msg = ::capnp::message::Builder::new_default();
+            let mut question = sni_msg.init_root::<veilid_capnp::operation::Builder>();
+            question.set_op_id(self.get_next_op_id());
+            let mut respond_to = question.reborrow().init_respond_to();
+            respond_to.set_none(());
+            let detail = question.reborrow().init_detail();
+            let niu_builder = detail.init_node_info_update();
+            let mut sni_builder = niu_builder.init_signed_node_info();
+            let sni = self.routing_table().get_own_signed_node_info();
+            encode_signed_node_info(&sni, &mut sni_builder)?;
+
+            sni_msg.into_reader()
+        };
+
+        // Send the node_info_update request
+        self.request(dest, sni_msg, safety_route).await?;
+
+        Ok(())
     }
 
     // Sends a unidirectional signal to a node

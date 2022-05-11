@@ -8,8 +8,8 @@ pub fn encode_peer_info(
     //
     let mut nid_builder = builder.reborrow().init_node_id();
     encode_public_key(&peer_info.node_id.key, &mut nid_builder)?;
-    let mut ni_builder = builder.reborrow().init_node_info();
-    encode_node_info(&peer_info.node_info, &mut ni_builder)?;
+    let mut sni_builder = builder.reborrow().init_signed_node_info();
+    encode_signed_node_info(&peer_info.signed_node_info, &mut sni_builder)?;
 
     Ok(())
 }
@@ -22,14 +22,16 @@ pub fn decode_peer_info(
         .reborrow()
         .get_node_id()
         .map_err(map_error_capnp_error!())?;
-    let ni_reader = reader
+    let sni_reader = reader
         .reborrow()
-        .get_node_info()
+        .get_signed_node_info()
         .map_err(map_error_capnp_error!())?;
-    let node_info = decode_node_info(&ni_reader, allow_relay_peer_info)?;
+    let node_id = NodeId::new(decode_public_key(&nid_reader));
+    let signed_node_info =
+        decode_signed_node_info(&sni_reader, &node_id.key, allow_relay_peer_info)?;
 
     Ok(PeerInfo {
-        node_id: NodeId::new(decode_public_key(&nid_reader)),
-        node_info,
+        node_id,
+        signed_node_info,
     })
 }

@@ -37,8 +37,8 @@ pub struct BucketEntry {
     min_max_version: Option<(u8, u8)>,
     seen_our_node_info: bool,
     last_connection: Option<(ConnectionDescriptor, u64)>,
-    node_info: NodeInfo,
-    local_node_info: LocalNodeInfo,
+    opt_signed_node_info: Option<SignedNodeInfo>,
+    opt_local_node_info: Option<LocalNodeInfo>,
     peer_stats: PeerStats,
     latency_stats_accounting: LatencyStatsAccounting,
     transfer_stats_accounting: TransferStatsAccounting,
@@ -52,8 +52,8 @@ impl BucketEntry {
             min_max_version: None,
             seen_our_node_info: false,
             last_connection: None,
-            node_info: NodeInfo::default(),
-            local_node_info: LocalNodeInfo::default(),
+            opt_signed_node_info: None,
+            opt_local_node_info: None,
             latency_stats_accounting: LatencyStatsAccounting::new(),
             transfer_stats_accounting: TransferStatsAccounting::new(),
             peer_stats: PeerStats {
@@ -107,24 +107,42 @@ impl BucketEntry {
         move |e1, e2| Self::cmp_fastest_reliable(cur_ts, e1, e2)
     }
 
-    pub fn update_node_info(&mut self, node_info: NodeInfo) {
-        self.node_info = node_info
+    pub fn update_node_info(&mut self, signed_node_info: SignedNodeInfo) {
+        self.opt_signed_node_info = Some(signed_node_info);
     }
     pub fn update_local_node_info(&mut self, local_node_info: LocalNodeInfo) {
-        self.local_node_info = local_node_info
+        self.opt_local_node_info = Some(local_node_info)
     }
 
-    pub fn node_info(&self) -> &NodeInfo {
-        &self.node_info
+    pub fn has_node_info(&self) -> bool {
+        self.opt_signed_node_info.is_some()
     }
-    pub fn local_node_info(&self) -> &LocalNodeInfo {
-        &self.local_node_info
-    }
-    pub fn peer_info(&self, key: DHTKey) -> PeerInfo {
-        PeerInfo {
-            node_id: NodeId::new(key),
-            node_info: self.node_info.clone(),
+
+    pub fn has_valid_signed_node_info(&self) -> bool {
+        if let Some(sni) = &self.opt_signed_node_info {
+            sni.signature.valid
+        } else {
+            false
         }
+    }
+
+    pub fn has_local_node_info(&self) -> bool {
+        self.opt_local_node_info.is_some()
+    }
+
+    pub fn node_info(&self) -> Option<NodeInfo> {
+        self.opt_signed_node_info
+            .as_ref()
+            .map(|s| s.node_info.clone())
+    }
+    pub fn local_node_info(&self) -> Option<LocalNodeInfo> {
+        self.opt_local_node_info.clone()
+    }
+    pub fn peer_info(&self, key: DHTKey) -> Option<PeerInfo> {
+        self.opt_signed_node_info.as_ref().map(|s| PeerInfo {
+            node_id: NodeId::new(key),
+            signed_node_info: s.clone(),
+        })
     }
 
     pub fn set_last_connection(&mut self, last_connection: ConnectionDescriptor, timestamp: u64) {

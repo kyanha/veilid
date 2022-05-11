@@ -13,13 +13,13 @@ pub use alloc::string::ToString;
 pub use attachment_manager::AttachmentManager;
 pub use core::str::FromStr;
 pub use dht::crypto::Crypto;
-pub use dht::key::{generate_secret, DHTKey, DHTKeySecret};
+pub use dht::key::{generate_secret, sign, verify, DHTKey, DHTKeySecret, DHTSignature};
 pub use intf::BlockStore;
 pub use intf::ProtectedStore;
 pub use intf::TableStore;
 pub use network_manager::NetworkManager;
 pub use routing_table::RoutingTable;
-pub use rpc_processor::InfoAnswer;
+pub use rpc_processor::StatusAnswer;
 
 use core::fmt;
 use core_context::{api_shutdown, VeilidCoreContext};
@@ -41,6 +41,9 @@ pub enum VeilidAPIError {
         node_id: NodeId,
     },
     NoDialInfo {
+        node_id: NodeId,
+    },
+    NoPeerInfo {
         node_id: NodeId,
     },
     Internal {
@@ -76,6 +79,9 @@ impl fmt::Display for VeilidAPIError {
             }
             VeilidAPIError::NoDialInfo { node_id } => {
                 write!(f, "VeilidAPIError::NoDialInfo({})", node_id)
+            }
+            VeilidAPIError::NoPeerInfo { node_id } => {
+                write!(f, "VeilidAPIError::NoPeerInfo({})", node_id)
             }
             VeilidAPIError::Internal { message } => {
                 write!(f, "VeilidAPIError::Internal({})", message)
@@ -312,7 +318,7 @@ pub struct NodeStatus {
     pub will_validate_dial_info: bool,
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct NodeInfo {
     pub network_class: NetworkClass,
     pub outbound_protocols: ProtocolSet,
@@ -352,7 +358,7 @@ impl NodeInfo {
             || !self
                 .relay_peer_info
                 .as_ref()
-                .map(|rpi| rpi.node_info.has_direct_dial_info())
+                .map(|rpi| rpi.signed_node_info.node_info.has_direct_dial_info())
                 .unwrap_or_default()
     }
 
@@ -409,7 +415,7 @@ impl NodeInfo {
     }
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LocalNodeInfo {
     pub dial_info_list: Vec<DialInfo>,
 }
@@ -978,10 +984,61 @@ impl Default for PeerScope {
     }
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+// Signed NodeInfo that can be passed around amongst peers and verifiable
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SignedNodeInfo {
+    pub node_info: NodeInfo,
+    pub signature: DHTSignature,
+}
+
+impl SignedNodeInfo {
+    pub fn new(
+        node_info: NodeInfo,
+        node_id: NodeId,
+        signature: DHTSignature,
+    ) -> Result<Self, String> {
+        let node_info_bytes = serde_cbor::to_vec(&node_info).map_err(map_to_string)?;
+        verify(&node_id.key, &node_info_bytes, &signature)?;
+        Ok(Self {
+            node_info,
+            signature,
+        })
+    }
+
+    pub fn with_secret(
+        node_info: NodeInfo,
+        node_id: NodeId,
+        secret: &DHTKeySecret,
+    ) -> Result<Self, String> {
+        let node_info_bytes = serde_cbor::to_vec(&node_info).map_err(map_to_string)?;
+        let signature = sign(&node_id.key, secret, &node_info_bytes)?;
+        Ok(Self {
+            node_info,
+            signature,
+        })
+    }
+
+    pub fn with_no_signature(node_info: NodeInfo) -> Self {
+        Self {
+            node_info,
+            signature: DHTSignature::default(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PeerInfo {
     pub node_id: NodeId,
-    pub node_info: NodeInfo,
+    pub signed_node_info: SignedNodeInfo,
+}
+
+impl PeerInfo {
+    pub fn new(node_id: NodeId, signed_node_info: SignedNodeInfo) -> Self {
+        Self {
+            node_id,
+            signed_node_info,
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Eq, Ord, Hash, Serialize, Deserialize)]
@@ -1463,18 +1520,18 @@ impl VeilidAPI {
     ////////////////////////////////////////////////////////////////
     // Direct Node Access (pretty much for testing only)
 
-    pub async fn info(&self, node_id: NodeId) -> Result<InfoAnswer, VeilidAPIError> {
+    pub async fn status(&self, node_id: NodeId) -> Result<StatusAnswer, VeilidAPIError> {
         let rpc = self.rpc_processor()?;
         let routing_table = rpc.routing_table();
         let node_ref = match routing_table.lookup_node_ref(node_id.key) {
             None => return Err(VeilidAPIError::NodeNotFound { node_id }),
             Some(nr) => nr,
         };
-        let info_answer = rpc
-            .rpc_call_info(node_ref)
+        let status_answer = rpc
+            .rpc_call_status(node_ref)
             .await
             .map_err(map_rpc_error!())?;
-        Ok(info_answer)
+        Ok(status_answer)
     }
 
     pub async fn validate_dial_info(
@@ -1513,8 +1570,13 @@ impl VeilidAPI {
             .map_err(map_rpc_error!())?;
 
         let answer = node_ref.peer_info();
-
-        Ok(answer)
+        if let Some(answer) = answer {
+            Ok(answer)
+        } else {
+            Err(VeilidAPIError::NoPeerInfo {
+                node_id: NodeId::new(node_ref.node_id()),
+            })
+        }
     }
 
     pub async fn search_dht_multi(&self, node_id: NodeId) -> Result<Vec<PeerInfo>, VeilidAPIError> {
@@ -1534,7 +1596,7 @@ impl VeilidAPI {
             .await
             .map_err(map_rpc_error!())?;
 
-        let answer = node_refs.iter().map(|x| x.peer_info()).collect();
+        let answer = node_refs.iter().filter_map(|x| x.peer_info()).collect();
 
         Ok(answer)
     }
