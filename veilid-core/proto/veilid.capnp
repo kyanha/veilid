@@ -224,6 +224,7 @@ struct NodeInfo {
 struct SignedNodeInfo {
     nodeInfo                @0  :NodeInfo;              # node info
     signature               @1  :Signature;             # signature
+    timestamp               @2  :UInt64;                # when signed node info was generated
 }
 
 struct SenderInfo {

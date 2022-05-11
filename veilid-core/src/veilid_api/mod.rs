@@ -989,6 +989,7 @@ impl Default for PeerScope {
 pub struct SignedNodeInfo {
     pub node_info: NodeInfo,
     pub signature: DHTSignature,
+    pub timestamp: u64,
 }
 
 impl SignedNodeInfo {
@@ -996,12 +997,18 @@ impl SignedNodeInfo {
         node_info: NodeInfo,
         node_id: NodeId,
         signature: DHTSignature,
+        timestamp: u64,
     ) -> Result<Self, String> {
-        let node_info_bytes = serde_cbor::to_vec(&node_info).map_err(map_to_string)?;
+        let mut node_info_bytes = serde_cbor::to_vec(&node_info).map_err(map_to_string)?;
+        let mut timestamp_bytes = serde_cbor::to_vec(&timestamp).map_err(map_to_string)?;
+
+        node_info_bytes.append(&mut timestamp_bytes);
+
         verify(&node_id.key, &node_info_bytes, &signature)?;
         Ok(Self {
             node_info,
             signature,
+            timestamp,
         })
     }
 
@@ -1010,11 +1017,18 @@ impl SignedNodeInfo {
         node_id: NodeId,
         secret: &DHTKeySecret,
     ) -> Result<Self, String> {
-        let node_info_bytes = serde_cbor::to_vec(&node_info).map_err(map_to_string)?;
+        let timestamp = intf::get_timestamp();
+
+        let mut node_info_bytes = serde_cbor::to_vec(&node_info).map_err(map_to_string)?;
+        let mut timestamp_bytes = serde_cbor::to_vec(&timestamp).map_err(map_to_string)?;
+
+        node_info_bytes.append(&mut timestamp_bytes);
+
         let signature = sign(&node_id.key, secret, &node_info_bytes)?;
         Ok(Self {
             node_info,
             signature,
+            timestamp,
         })
     }
 
@@ -1022,6 +1036,7 @@ impl SignedNodeInfo {
         Self {
             node_info,
             signature: DHTSignature::default(),
+            timestamp: intf::get_timestamp(),
         }
     }
 }

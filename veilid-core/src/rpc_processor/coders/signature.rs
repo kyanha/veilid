@@ -5,7 +5,7 @@ pub fn encode_signature(
     sig: &DHTSignature,
     builder: &mut veilid_capnp::ed25519_signature::Builder,
 ) {
-    if sig.valid {
+    if !sig.valid {
         panic!("don't encode invalid signatures");
     }
 

@@ -108,6 +108,15 @@ impl BucketEntry {
     }
 
     pub fn update_node_info(&mut self, signed_node_info: SignedNodeInfo) {
+        // Don't update with older node info, or something less valid
+        if let Some(current_sni) = &self.opt_signed_node_info {
+            if current_sni.signature.valid && !signed_node_info.signature.valid {
+                return;
+            }
+            if signed_node_info.timestamp < current_sni.timestamp {
+                return;
+            }
+        }
         self.opt_signed_node_info = Some(signed_node_info);
     }
     pub fn update_local_node_info(&mut self, local_node_info: LocalNodeInfo) {

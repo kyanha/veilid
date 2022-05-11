@@ -487,6 +487,16 @@ impl RoutingTable {
         node_id: DHTKey,
         signed_node_info: SignedNodeInfo,
     ) -> Result<NodeRef, String> {
+        // validate signed node info is not something malicious
+        if node_id == self.node_id() {
+            return Err("can't register own node id in routing table".to_owned());
+        }
+        if let Some(rpi) = &signed_node_info.node_info.relay_peer_info {
+            if rpi.node_id.key == node_id {
+                return Err("node can not be its own relay".to_owned());
+            }
+        }
+
         let nr = self.create_node_ref(node_id, |e| {
             e.update_node_info(signed_node_info);
         })?;

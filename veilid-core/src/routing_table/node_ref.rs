@@ -81,6 +81,13 @@ impl NodeRef {
     pub fn relay(&self) -> Option<NodeRef> {
         let target_rpi = self.operate(|e| e.node_info().map(|n| n.relay_peer_info))?;
         target_rpi.and_then(|t| {
+            // If relay is ourselves, then return None, because we can't relay through ourselves
+            // and to contact this node we should have had an existing inbound connection
+            if t.node_id.key == self.routing_table.node_id() {
+                return None;
+            }
+
+            // Register relay node and return noderef
             self.routing_table
                 .register_node_with_signed_node_info(t.node_id.key, t.signed_node_info)
                 .map_err(logthru_rtab!(error))
