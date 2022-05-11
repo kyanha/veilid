@@ -474,6 +474,9 @@ impl Network {
 
         log_net!(debug "network class set to {:?}", network_class);
 
+        // send updates to everyone
+        self.routing_table().send_node_info_updates();
+
         Ok(())
     }
 }
