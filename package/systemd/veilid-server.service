@@ -1,0 +1,20 @@
+# /etc/systemd/system/veilid-server.service
+
+[Unit]
+Description=The Veilid peer-to-peer network server
+Requires=network-online.target
+After=network-online.target
+
+[Service]
+Type=forking
+PIDFile=/run/veilid-server.pid
+ExecStartPre=/usr/bin/rm -f /run/veilid-server.pid
+ExecStart=/usr/bin/veilid-server
+ExecReload=/bin/kill -s HUP $MAINPID
+KillSignal=SIGQUIT
+TimeoutStopSec=5
+KillMode=mixed
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

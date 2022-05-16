@@ -9,6 +9,13 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use veilid_core::xx::SingleShotEventual;
 
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub enum ServerMode {
+    Normal,
+    ShutdownImmediate,
+    DumpTXTRecord,
+}
+
 lazy_static! {
     static ref SHUTDOWN_SWITCH: Mutex<Option<SingleShotEventual<()>>> =
         Mutex::new(Some(SingleShotEventual::new(())));
@@ -21,7 +28,11 @@ pub fn shutdown() {
     }
 }
 
-pub async fn run_veilid_server(settings: Settings, logs: VeilidLogs) -> Result<(), String> {
+pub async fn run_veilid_server(
+    settings: Settings,
+    logs: VeilidLogs,
+    server_mode: ServerMode,
+) -> Result<(), String> {
     let settingsr = settings.read();
 
     // Create client api state change pipe
@@ -44,7 +55,7 @@ pub async fn run_veilid_server(settings: Settings, logs: VeilidLogs) -> Result<(
         .map_err(|e| format!("VeilidCore startup failed: {}", e))?;
 
     // Start client api if one is requested
-    let mut capi = if settingsr.client_api.enabled {
+    let mut capi = if settingsr.client_api.enabled && matches!(server_mode, ServerMode::Normal) {
         let some_capi = client_api::ClientApi::new(veilid_api.clone());
         some_capi
             .clone()
@@ -55,16 +66,18 @@ pub async fn run_veilid_server(settings: Settings, logs: VeilidLogs) -> Result<(
     };
 
     // Drop rwlock on settings
-    let auto_attach = settingsr.auto_attach;
+    let auto_attach = settingsr.auto_attach || !matches!(server_mode, ServerMode::Normal);
     drop(settingsr);
 
-    // Handle state changes on main thread for capnproto rpc
-    let update_receiver_jh = capi.clone().map(|capi| {
-        async_std::task::spawn_local(async move {
-            while let Ok(change) = receiver.recv_async().await {
+    // Process all updates
+    let capi2 = capi.clone();
+    let update_receiver_jh = async_std::task::spawn_local(async move {
+        while let Ok(change) = receiver.recv_async().await {
+            if let Some(capi) = &capi2 {
+                // Handle state changes on main thread for capnproto rpc
                 capi.clone().handle_update(change);
             }
-        })
+        }
     });
     // Handle log messages on main thread for capnproto rpc
     let client_log_receiver_jh = capi.clone().and_then(|capi| {
@@ -103,12 +116,47 @@ pub async fn run_veilid_server(settings: Settings, logs: VeilidLogs) -> Result<(
     });
 
     // Auto-attach if desired
+    let mut out = Ok(());
     if auto_attach {
         info!("Auto-attach to the Veilid network");
         if let Err(e) = veilid_api.attach().await {
-            error!("Auto-attaching to the Veilid network failed: {:?}", e);
+            let outerr = format!("Auto-attaching to the Veilid network failed: {:?}", e);
+            error!("{}", outerr);
+            out = Err(outerr);
             shutdown();
         }
+    }
+
+    // Process dump-txt-record
+    if matches!(server_mode, ServerMode::DumpTXTRecord) {
+        let start_time = Instant::now();
+        while Instant::now().duration_since(start_time) < Duration::from_secs(10) {
+            match veilid_api.get_state().await {
+                Ok(vs) => {
+                    if vs.network.started {
+                        break;
+                    }
+                }
+                Err(e) => {
+                    let outerr = format!("Getting state failed: {:?}", e);
+                    error!("{}", outerr);
+                    out = Err(outerr);
+                    break;
+                }
+            }
+            async_std::task::sleep(Duration::from_millis(100)).await;
+        }
+        match veilid_api.debug("dialinfo txt".to_string()).await {
+            Ok(v) => {
+                print!("{}", v);
+            }
+            Err(e) => {
+                let outerr = format!("Getting dial info failed: {:?}", e);
+                error!("{}", outerr);
+                out = Err(outerr);
+            }
+        };
+        shutdown();
     }
 
     // Idle while waiting to exit
@@ -134,14 +182,12 @@ pub async fn run_veilid_server(settings: Settings, logs: VeilidLogs) -> Result<(
     }
 
     // Wait for update receiver to exit
-    if let Some(update_receiver_jh) = update_receiver_jh {
-        update_receiver_jh.await;
-    }
+    update_receiver_jh.await;
 
     // Wait for client api log receiver to exit
     if let Some(client_log_receiver_jh) = client_log_receiver_jh {
         client_log_receiver_jh.await;
     }
 
-    Ok(())
+    out
 }

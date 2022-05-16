@@ -11,19 +11,27 @@ enum AttachmentState {
     detaching           @7;
 }
 
-struct Attachment {
-    state               @0  :AttachmentState;
+struct VeilidStateAttachment {
+    state               @0 :AttachmentState;
+}
+
+struct VeilidStateNetwork {
+    started             @0 :Bool;
+    bpsDown             @1 :UInt64;
+    bpsUp               @2 :UInt64;
 }
 
 struct VeilidUpdate {
     union {
-        attachment      @0 :Attachment;
-        shutdown        @1 :Void;
+        attachment      @0 :VeilidStateAttachment;
+        network         @1 :VeilidStateNetwork;
+        shutdown        @2 :Void;
     } 
 }
 
 struct VeilidState {
-    attachment          @0 :Attachment;
+    attachment          @0 :VeilidStateAttachment;
+    network             @1 :VeilidStateNetwork;
 }
 
 interface Registration {}

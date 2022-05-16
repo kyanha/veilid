@@ -205,10 +205,6 @@ impl ReceiptManager {
                     let config = self.core().config();
                     let c = config.get();
                     let mut inner = self.inner.lock();
-                    inner.max_server_signal_leases = c.network.leases.max_server_signal_leases as usize;
-                    inner.max_server_relay_leases = c.network.leases.max_server_relay_leases as usize;
-                    inner.max_client_signal_leases = c.network.leases.max_client_signal_leases as usize;
-                    inner.max_client_relay_leases = c.network.leases.max_client_relay_leases as usize;
                 }
         */
         Ok(())

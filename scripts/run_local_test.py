@@ -146,8 +146,8 @@ def main():
         time.sleep(1)
 
         sub_args = base_args.copy()
-        sub_args.append("--subnode_index={}".format(n))
-        sub_args.append("--bootstrap={}".format(main_di))
+        sub_args.append("--subnode-index={}".format(n))
+        sub_args.append("--bootstrap-nodes={}".format(main_di))
         if args.wait_for_debug and (str(n) in args.wait_for_debug):
             sub_args.append("--wait-for-debug")
 

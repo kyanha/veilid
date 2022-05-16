@@ -192,9 +192,12 @@ fn config_callback(key: String) -> ConfigCallbackReturn {
         "network.max_connections_per_ip6_prefix_size" => Ok(Box::new(56u32)),
         "network.max_connection_frequency_per_min" => Ok(Box::new(8u32)),
         "network.client_whitelist_timeout_ms" => Ok(Box::new(300_000u32)),
+        "network.reverse_connection_receipt_time_ms" => Ok(Box::new(5_000u32)),
+        "network.hole_punch_receipt_time_ms" => Ok(Box::new(5_000u32)),
         "network.node_id" => Ok(Box::new(dht::key::DHTKey::default())),
         "network.node_id_secret" => Ok(Box::new(dht::key::DHTKeySecret::default())),
         "network.bootstrap" => Ok(Box::new(Vec::<String>::new())),
+        "network.bootstrap_nodes" => Ok(Box::new(Vec::<String>::new())),
         "network.routing_table.limit_over_attached" => Ok(Box::new(64u32)),
         "network.routing_table.limit_fully_attached" => Ok(Box::new(32u32)),
         "network.routing_table.limit_attached_strong" => Ok(Box::new(16u32)),
@@ -255,10 +258,6 @@ fn config_callback(key: String) -> ConfigCallbackReturn {
         "network.protocol.wss.listen_address" => Ok(Box::new("".to_owned())),
         "network.protocol.wss.path" => Ok(Box::new(String::from("ws"))),
         "network.protocol.wss.url" => Ok(Box::new(Option::<String>::None)),
-        "network.leases.max_server_signal_leases" => Ok(Box::new(256u32)),
-        "network.leases.max_server_relay_leases" => Ok(Box::new(8u32)),
-        "network.leases.max_client_signal_leases" => Ok(Box::new(2u32)),
-        "network.leases.max_client_relay_leases" => Ok(Box::new(2u32)),
         _ => {
             let err = format!("config key '{}' doesn't exist", key);
             debug!("{}", err);
@@ -318,9 +317,12 @@ pub async fn test_config() {
     assert_eq!(inner.network.max_connections_per_ip6_prefix_size, 56u32);
     assert_eq!(inner.network.max_connection_frequency_per_min, 8u32);
     assert_eq!(inner.network.client_whitelist_timeout_ms, 300_000u32);
+    assert_eq!(inner.network.reverse_connection_receipt_time_ms, 5_000u32);
+    assert_eq!(inner.network.hole_punch_receipt_time_ms, 5_000u32);
     assert!(!inner.network.node_id.valid);
     assert!(!inner.network.node_id_secret.valid);
     assert_eq!(inner.network.bootstrap, Vec::<String>::new());
+    assert_eq!(inner.network.bootstrap_nodes, Vec::<String>::new());
     assert_eq!(inner.network.rpc.concurrency, 2u32);
     assert_eq!(inner.network.rpc.queue_size, 128u32);
     assert_eq!(inner.network.rpc.timeout_ms, 10_000u32);

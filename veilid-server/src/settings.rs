@@ -16,12 +16,16 @@ use veilid_core::xx::*;
 pub fn load_default_config() -> Result<config::Config, config::ConfigError> {
     let default_config = String::from(
         r#"---
-daemon: false
+daemon:
+    enabled: false
 client_api:
     enabled: true
     listen_address: 'localhost:5959'
 auto_attach: true
-logging: 
+logging:
+    system:
+        enabled: false
+        level: 'info'
     terminal:
         enabled: true
         level: 'info'
@@ -31,14 +35,14 @@ logging:
         append: true
         level: 'info'
     client:
-        enabled: true
+        enabled: false
         level: 'info'
 testing:
     subnode_index: 0
 core:
     protected_store:
         allow_insecure_fallback: true
-        always_use_insecure_storage: false
+        always_use_insecure_storage: true
         insecure_fallback_directory: '%INSECURE_FALLBACK_DIRECTORY%'
         delete: false
     table_store:
@@ -55,9 +59,12 @@ core:
         max_connections_per_ip6_prefix_size: 56
         max_connection_frequency_per_min: 8
         client_whitelist_timeout_ms: 300000 
+        reverse_connection_receipt_time_ms: 5000 
+        hole_punch_receipt_time_ms: 5000 
         node_id: ''
         node_id_secret: ''
-        bootstrap: []
+        bootstrap: ['bootstrap.veilid.net']
+        bootstrap_nodes: []
         routing_table:
             limit_over_attached: 64
             limit_fully_attached: 32
@@ -90,8 +97,8 @@ core:
         enable_local_peer_scope: false
         restricted_nat_retries: 3
         tls:
-            certificate_path: '/etc/veilid/server.crt'
-            private_key_path: '/etc/veilid/private/server.key'
+            certificate_path: '/etc/veilid-server/server.crt'
+            private_key_path: '/etc/veilid-server/private/server.key'
             connection_initial_timeout_ms: 2000
         application:
             https:
@@ -130,11 +137,6 @@ core:
                 listen_address: ':5150'
                 path: 'ws'
                 # url: ''
-        leases:
-            max_server_signal_leases: 256
-            max_server_relay_leases: 8
-            max_client_signal_leases: 2
-            max_client_relay_leases: 2
         "#,
     )
     .replace(
@@ -403,6 +405,12 @@ pub struct File {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+pub struct System {
+    pub enabled: bool,
+    pub level: LogLevel,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Client {
     pub enabled: bool,
     pub level: LogLevel,
@@ -416,6 +424,7 @@ pub struct ClientApi {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Logging {
+    pub system: System,
     pub terminal: Terminal,
     pub file: File,
     pub client: Client,
@@ -523,14 +532,6 @@ pub struct Dht {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct Leases {
-    pub max_server_signal_leases: u32,
-    pub max_server_relay_leases: u32,
-    pub max_client_signal_leases: u32,
-    pub max_client_relay_leases: u32,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
 pub struct RoutingTable {
     pub limit_over_attached: u32,
     pub limit_fully_attached: u32,
@@ -548,9 +549,12 @@ pub struct Network {
     pub max_connections_per_ip6_prefix_size: u32,
     pub max_connection_frequency_per_min: u32,
     pub client_whitelist_timeout_ms: u32,
+    pub reverse_connection_receipt_time_ms: u32,
+    pub hole_punch_receipt_time_ms: u32,
     pub node_id: veilid_core::DHTKey,
     pub node_id_secret: veilid_core::DHTKeySecret,
-    pub bootstrap: Vec<ParsedNodeDialInfo>,
+    pub bootstrap: Vec<String>,
+    pub bootstrap_nodes: Vec<ParsedNodeDialInfo>,
     pub routing_table: RoutingTable,
     pub rpc: Rpc,
     pub dht: Dht,
@@ -561,7 +565,6 @@ pub struct Network {
     pub tls: Tls,
     pub application: Application,
     pub protocol: Protocol,
-    pub leases: Leases,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -598,8 +601,20 @@ pub struct Core {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+pub struct Daemon {
+    pub enabled: bool,
+    pub pid_file: Option<String>,
+    pub chroot: Option<String>,
+    pub working_directory: Option<String>,
+    pub user: Option<String>,
+    pub group: Option<String>,
+    pub stdout_file: Option<String>,
+    pub stderr_file: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
 pub struct SettingsInner {
-    pub daemon: bool,
+    pub daemon: Daemon,
     pub client_api: ClientApi,
     pub auto_attach: bool,
     pub logging: Logging,
@@ -708,56 +723,68 @@ impl Settings {
         Ok(())
     }
 
-    pub fn get_default_config_path() -> PathBuf {
-        // Get default configuration file location
-        let mut default_config_path =
-            if let Some(my_proj_dirs) = ProjectDirs::from("org", "Veilid", "Veilid") {
-                PathBuf::from(my_proj_dirs.config_dir())
+    fn is_root() -> bool {
+        cfg_if::cfg_if! {
+            if #[cfg(unix)] {
+                use nix::unistd::Uid;
+                Uid::effective().is_root()
             } else {
-                PathBuf::from("./")
-            };
+                false
+            }
+        }
+    }
+
+    pub fn get_default_config_path() -> PathBuf {
+        let mut default_config_path = if Self::is_root() {
+            PathBuf::from("/etc/veilid-server")
+        } else if let Some(my_proj_dirs) = ProjectDirs::from("org", "Veilid", "Veilid") {
+            PathBuf::from(my_proj_dirs.config_dir())
+        } else {
+            PathBuf::from("./")
+        };
+
         default_config_path.push("veilid-server.conf");
 
         default_config_path
     }
 
     pub fn get_default_table_store_path() -> PathBuf {
-        // Get default configuration file location
-        let mut default_config_path =
-            if let Some(my_proj_dirs) = ProjectDirs::from("org", "Veilid", "Veilid") {
-                PathBuf::from(my_proj_dirs.data_local_dir())
-            } else {
-                PathBuf::from("./")
-            };
-        default_config_path.push("table_store");
+        let mut default_db_path = if Self::is_root() {
+            PathBuf::from("/var/db/veilid-server")
+        } else if let Some(my_proj_dirs) = ProjectDirs::from("org", "Veilid", "Veilid") {
+            PathBuf::from(my_proj_dirs.data_local_dir())
+        } else {
+            PathBuf::from("./")
+        };
+        default_db_path.push("table_store");
 
-        default_config_path
+        default_db_path
     }
 
     pub fn get_default_block_store_path() -> PathBuf {
-        // Get default configuration file location
-        let mut default_config_path =
-            if let Some(my_proj_dirs) = ProjectDirs::from("org", "Veilid", "Veilid") {
-                PathBuf::from(my_proj_dirs.data_local_dir())
-            } else {
-                PathBuf::from("./")
-            };
-        default_config_path.push("block_store");
+        let mut default_db_path = if Self::is_root() {
+            PathBuf::from("/var/db/veilid-server")
+        } else if let Some(my_proj_dirs) = ProjectDirs::from("org", "Veilid", "Veilid") {
+            PathBuf::from(my_proj_dirs.data_local_dir())
+        } else {
+            PathBuf::from("./")
+        };
+        default_db_path.push("block_store");
 
-        default_config_path
+        default_db_path
     }
 
     pub fn get_default_protected_store_insecure_fallback_directory() -> PathBuf {
-        // Get default configuration file location
-        let mut default_config_path =
-            if let Some(my_proj_dirs) = ProjectDirs::from("org", "Veilid", "Veilid") {
-                PathBuf::from(my_proj_dirs.data_local_dir())
-            } else {
-                PathBuf::from("./")
-            };
-        default_config_path.push("protected_store");
+        let mut default_db_path = if Self::is_root() {
+            PathBuf::from("/var/db/veilid-server")
+        } else if let Some(my_proj_dirs) = ProjectDirs::from("org", "Veilid", "Veilid") {
+            PathBuf::from(my_proj_dirs.data_local_dir())
+        } else {
+            PathBuf::from("./")
+        };
+        default_db_path.push("protected_store");
 
-        default_config_path
+        default_db_path
     }
 
     pub fn get_core_config_callback(&self) -> veilid_core::ConfigCallback {
@@ -834,17 +861,23 @@ impl Settings {
                 "network.max_connection_frequency_per_min" => Ok(Box::new(
                     inner.core.network.max_connection_frequency_per_min,
                 )),
-
                 "network.client_whitelist_timeout_ms" => {
                     Ok(Box::new(inner.core.network.client_whitelist_timeout_ms))
                 }
+                "network.reverse_connection_receipt_time_ms" => Ok(Box::new(
+                    inner.core.network.reverse_connection_receipt_time_ms,
+                )),
+                "network.hole_punch_receipt_time_ms" => {
+                    Ok(Box::new(inner.core.network.hole_punch_receipt_time_ms))
+                }
                 "network.node_id" => Ok(Box::new(inner.core.network.node_id)),
                 "network.node_id_secret" => Ok(Box::new(inner.core.network.node_id_secret)),
-                "network.bootstrap" => Ok(Box::new(
+                "network.bootstrap" => Ok(Box::new(inner.core.network.bootstrap.clone())),
+                "network.bootstrap_nodes" => Ok(Box::new(
                     inner
                         .core
                         .network
-                        .bootstrap
+                        .bootstrap_nodes
                         .clone()
                         .into_iter()
                         .map(|e| e.node_dial_info_string)
@@ -1112,18 +1145,6 @@ impl Settings {
                         .as_ref()
                         .map(|a| a.urlstring.clone()),
                 )),
-                "network.leases.max_server_signal_leases" => {
-                    Ok(Box::new(inner.core.network.leases.max_server_signal_leases))
-                }
-                "network.leases.max_server_relay_leases" => {
-                    Ok(Box::new(inner.core.network.leases.max_server_relay_leases))
-                }
-                "network.leases.max_client_signal_leases" => {
-                    Ok(Box::new(inner.core.network.leases.max_client_signal_leases))
-                }
-                "network.leases.max_client_relay_leases" => {
-                    Ok(Box::new(inner.core.network.leases.max_client_relay_leases))
-                }
                 _ => Err(format!("config key '{}' doesn't exist", key)),
             };
             out
@@ -1150,7 +1171,14 @@ mod tests {
         let settings = Settings::new(None).unwrap();
 
         let s = settings.read();
-        assert_eq!(s.daemon, false);
+        assert_eq!(s.daemon.enabled, false);
+        assert_eq!(s.daemon.pid_file, None);
+        assert_eq!(s.daemon.chroot, None);
+        assert_eq!(s.daemon.working_directory, None);
+        assert_eq!(s.daemon.user, None);
+        assert_eq!(s.daemon.group, None);
+        assert_eq!(s.daemon.stdout_file, None);
+        assert_eq!(s.daemon.stderr_file, None);
         assert_eq!(s.client_api.enabled, true);
         assert_eq!(s.client_api.listen_address.name, "localhost:5959");
         assert_eq!(
@@ -1164,7 +1192,7 @@ mod tests {
         assert_eq!(s.logging.file.path, "");
         assert_eq!(s.logging.file.append, true);
         assert_eq!(s.logging.file.level, LogLevel::Info);
-        assert_eq!(s.logging.client.enabled, true);
+        assert_eq!(s.logging.client.enabled, false);
         assert_eq!(s.logging.client.level, LogLevel::Info);
         assert_eq!(s.testing.subnode_index, 0);
 
@@ -1181,7 +1209,7 @@ mod tests {
         assert_eq!(s.core.block_store.delete, false);
 
         assert_eq!(s.core.protected_store.allow_insecure_fallback, true);
-        assert_eq!(s.core.protected_store.always_use_insecure_storage, false);
+        assert_eq!(s.core.protected_store.always_use_insecure_storage, true);
         assert_eq!(
             s.core.protected_store.insecure_fallback_directory,
             Settings::get_default_protected_store_insecure_fallback_directory()
@@ -1195,13 +1223,19 @@ mod tests {
         assert_eq!(s.core.network.max_connections_per_ip6_prefix_size, 56u32);
         assert_eq!(s.core.network.max_connection_frequency_per_min, 8u32);
         assert_eq!(s.core.network.client_whitelist_timeout_ms, 300_000u32);
+        assert_eq!(s.core.network.reverse_connection_receipt_time_ms, 5_000u32);
+        assert_eq!(s.core.network.hole_punch_receipt_time_ms, 5_000u32);
         assert_eq!(s.core.network.node_id, veilid_core::DHTKey::default());
         assert_eq!(
             s.core.network.node_id_secret,
             veilid_core::DHTKeySecret::default()
         );
         //
-        assert!(s.core.network.bootstrap.is_empty());
+        assert_eq!(
+            s.core.network.bootstrap,
+            vec!["bootstrap.veilid.net".to_owned()]
+        );
+        assert_eq!(s.core.network.bootstrap_nodes, vec![]);
         //
         assert_eq!(s.core.network.rpc.concurrency, 0);
         assert_eq!(s.core.network.rpc.queue_size, 1024);
@@ -1234,11 +1268,11 @@ mod tests {
         //
         assert_eq!(
             s.core.network.tls.certificate_path,
-            std::path::PathBuf::from("/etc/veilid/server.crt")
+            std::path::PathBuf::from("/etc/veilid-server/server.crt")
         );
         assert_eq!(
             s.core.network.tls.private_key_path,
-            std::path::PathBuf::from("/etc/veilid/private/server.key")
+            std::path::PathBuf::from("/etc/veilid-server/private/server.key")
         );
         assert_eq!(s.core.network.tls.connection_initial_timeout_ms, 2_000u32);
         //
@@ -1317,9 +1351,5 @@ mod tests {
         );
         assert_eq!(s.core.network.protocol.wss.url, None);
         //
-        assert_eq!(s.core.network.leases.max_server_signal_leases, 256);
-        assert_eq!(s.core.network.leases.max_server_relay_leases, 8);
-        assert_eq!(s.core.network.leases.max_client_signal_leases, 2);
-        assert_eq!(s.core.network.leases.max_client_relay_leases, 2);
     }
 }

@@ -90,6 +90,7 @@ pub enum SendDataKind {
 struct NetworkManagerInner {
     routing_table: Option<RoutingTable>,
     components: Option<NetworkComponents>,
+    update_callback: Option<UpdateCallback>,
     stats: NetworkManagerStats,
     client_whitelist: LruCache<key::DHTKey, ClientWhitelistEntry>,
     relay_node: Option<NodeRef>,
@@ -116,6 +117,7 @@ impl NetworkManager {
         NetworkManagerInner {
             routing_table: None,
             components: None,
+            update_callback: None,
             stats: NetworkManagerStats::default(),
             client_whitelist: LruCache::new_unbounded(),
             relay_node: None,
@@ -205,10 +207,11 @@ impl NetworkManager {
         self.inner.lock().relay_node.clone()
     }
 
-    pub async fn init(&self) -> Result<(), String> {
+    pub async fn init(&self, update_callback: UpdateCallback) -> Result<(), String> {
         let routing_table = RoutingTable::new(self.clone());
         routing_table.init().await?;
         self.inner.lock().routing_table = Some(routing_table.clone());
+        self.inner.lock().update_callback = Some(update_callback);
         Ok(())
     }
     pub async fn terminate(&self) {
@@ -219,6 +222,7 @@ impl NetworkManager {
         if let Some(routing_table) = routing_table {
             routing_table.terminate().await;
         }
+        self.inner.lock().update_callback = None;
     }
 
     pub async fn internal_startup(&self) -> Result<(), String> {
@@ -256,7 +260,14 @@ impl NetworkManager {
             self.shutdown().await;
             return Err(e);
         }
+
+        self.send_network_update();
+
         Ok(())
+    }
+
+    pub fn is_started(&self) -> bool {
+        self.inner.lock().components.is_some()
     }
 
     pub async fn shutdown(&self) {
@@ -272,8 +283,13 @@ impl NetworkManager {
         }
 
         // reset the state
-        let mut inner = self.inner.lock();
-        inner.components = None;
+        {
+            let mut inner = self.inner.lock();
+            inner.components = None;
+        }
+
+        // send update
+        self.send_network_update();
 
         trace!("NetworkManager::shutdown end");
     }
@@ -334,7 +350,9 @@ impl NetworkManager {
         // if things can't restart, then we fail out of the attachment manager
         if net.needs_restart() {
             net.shutdown().await;
+            self.send_network_update();
             net.startup().await?;
+            self.send_network_update();
         }
 
         // Run the routing table tick
@@ -1155,35 +1173,41 @@ impl NetworkManager {
     // Compute transfer statistics for the low level network
     async fn rolling_transfers_task_routine(self, last_ts: u64, cur_ts: u64) -> Result<(), String> {
         log_net!("--- network manager rolling_transfers task");
-        let inner = &mut *self.inner.lock();
+        {
+            let inner = &mut *self.inner.lock();
 
-        // Roll the low level network transfer stats for our address
-        inner
-            .stats
-            .self_stats
-            .transfer_stats_accounting
-            .roll_transfers(last_ts, cur_ts, &mut inner.stats.self_stats.transfer_stats);
+            // Roll the low level network transfer stats for our address
+            inner
+                .stats
+                .self_stats
+                .transfer_stats_accounting
+                .roll_transfers(last_ts, cur_ts, &mut inner.stats.self_stats.transfer_stats);
 
-        // Roll all per-address transfers
-        let mut dead_addrs: HashSet<PerAddressStatsKey> = HashSet::new();
-        for (addr, stats) in &mut inner.stats.per_address_stats {
-            stats.transfer_stats_accounting.roll_transfers(
-                last_ts,
-                cur_ts,
-                &mut stats.transfer_stats,
-            );
+            // Roll all per-address transfers
+            let mut dead_addrs: HashSet<PerAddressStatsKey> = HashSet::new();
+            for (addr, stats) in &mut inner.stats.per_address_stats {
+                stats.transfer_stats_accounting.roll_transfers(
+                    last_ts,
+                    cur_ts,
+                    &mut stats.transfer_stats,
+                );
 
-            // While we're here, lets see if this address has timed out
-            if cur_ts - stats.last_seen_ts >= IPADDR_MAX_INACTIVE_DURATION_US {
-                // it's dead, put it in the dead list
-                dead_addrs.insert(*addr);
+                // While we're here, lets see if this address has timed out
+                if cur_ts - stats.last_seen_ts >= IPADDR_MAX_INACTIVE_DURATION_US {
+                    // it's dead, put it in the dead list
+                    dead_addrs.insert(*addr);
+                }
+            }
+
+            // Remove the dead addresses from our tables
+            for da in &dead_addrs {
+                inner.stats.per_address_stats.remove(da);
             }
         }
 
-        // Remove the dead addresses from our tables
-        for da in &dead_addrs {
-            inner.stats.per_address_stats.remove(da);
-        }
+        // Send update
+        self.send_network_update();
+
         Ok(())
     }
 
@@ -1218,6 +1242,45 @@ impl NetworkManager {
             .or_insert(PerAddressStats::default())
             .transfer_stats_accounting
             .add_down(bytes);
+    }
+
+    // Get stats
+    pub fn get_stats(&self) -> NetworkManagerStats {
+        let inner = self.inner.lock();
+        inner.stats.clone()
+    }
+
+    fn get_veilid_state_inner(inner: &NetworkManagerInner) -> VeilidStateNetwork {
+        if inner.components.is_some() {
+            VeilidStateNetwork {
+                started: true,
+                bps_down: inner.stats.self_stats.transfer_stats.down.average,
+                bps_up: inner.stats.self_stats.transfer_stats.up.average,
+            }
+        } else {
+            VeilidStateNetwork {
+                started: false,
+                bps_down: 0,
+                bps_up: 0,
+            }
+        }
+    }
+    pub fn get_veilid_state(&self) -> VeilidStateNetwork {
+        let inner = self.inner.lock();
+        Self::get_veilid_state_inner(&*inner)
+    }
+
+    fn send_network_update(&self) {
+        let (update_cb, state) = {
+            let inner = self.inner.lock();
+            let update_cb = inner.update_callback.clone();
+            if update_cb.is_none() {
+                return;
+            }
+            let state = Self::get_veilid_state_inner(&*inner);
+            (update_cb.unwrap(), state)
+        };
+        update_cb(VeilidUpdate::Network(state));
     }
 
     // Determine if a local IP address has changed

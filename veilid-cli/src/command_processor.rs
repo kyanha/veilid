@@ -277,6 +277,12 @@ debug               - send a debugging command to the Veilid server
         self.inner_mut().ui.set_attachment_state(state);
     }
 
+    pub fn update_network_status(&mut self, started: bool, bps_down: u64, bps_up: u64) {
+        self.inner_mut()
+            .ui
+            .set_network_status(started, bps_down, bps_up);
+    }
+
     pub fn add_log_message(&mut self, message: &str) {
         self.inner().ui.add_node_event(message);
     }

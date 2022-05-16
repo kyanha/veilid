@@ -291,6 +291,8 @@ impl Network {
         let local_dial_info_list = self.create_udp_inbound_sockets(ip_addrs, udp_port).await?;
         let mut static_public = false;
 
+        trace!("UDP: listener started on {:#?}", local_dial_info_list);
+
         // Register local dial info
         for di in &local_dial_info_list {
             // If the local interface address is global, or we are enabling local peer scope
@@ -397,7 +399,7 @@ impl Network {
                 Box::new(|c, t, a| Box::new(WebsocketProtocolHandler::new(c, t, a))),
             )
             .await?;
-        trace!("WS: listener started");
+        trace!("WS: listener started on {:#?}", socket_addresses);
 
         let mut static_public = false;
         let mut registered_addresses: HashSet<IpAddr> = HashSet::new();
@@ -515,7 +517,7 @@ impl Network {
             wss_port,
             ip_addrs
         );
-        let _socket_addresses = self
+        let socket_addresses = self
             .start_tcp_listener(
                 ip_addrs,
                 wss_port,
@@ -523,7 +525,7 @@ impl Network {
                 Box::new(|c, t, a| Box::new(WebsocketProtocolHandler::new(c, t, a))),
             )
             .await?;
-        trace!("WSS: listener started");
+        trace!("WSS: listener started on {:#?}", socket_addresses);
 
         // NOTE: No interface dial info for WSS, as there is no way to connect to a local dialinfo via TLS
         // If the hostname is specified, it is the public dialinfo via the URL. If no hostname
@@ -629,7 +631,7 @@ impl Network {
                 Box::new(|_, _, a| Box::new(RawTcpProtocolHandler::new(a))),
             )
             .await?;
-        trace!("TCP: listener started");
+        trace!("TCP: listener started on {:#?}", socket_addresses);
 
         let mut static_public = false;
         let mut registered_addresses: HashSet<IpAddr> = HashSet::new();

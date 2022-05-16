@@ -28,7 +28,6 @@ fn main() -> Result<(), String> {
 
     // --- Dump Config ---
     if matches.occurrences_of("dump-config") != 0 {
-        //let cfg = config::Config::try_from(&*settingsr);
         return serde_yaml::to_writer(std::io::stdout(), &*settings.read())
             .map_err(|e| e.to_string());
     }
@@ -40,8 +39,37 @@ fn main() -> Result<(), String> {
         return Ok(());
     }
 
+    // See if we're just running a quick command
+    let (server_mode, success, failure) = if matches.occurrences_of("set-node-id") != 0 {
+        (
+            ServerMode::ShutdownImmediate,
+            "Node Id and Secret set successfully",
+            "Failed to set Node Id and Secret",
+        )
+    } else if matches.occurrences_of("dump-txt-record") != 0 {
+        (ServerMode::DumpTXTRecord, "", "Failed to dump txt record")
+    } else {
+        (ServerMode::Normal, "", "")
+    };
+
+    // Handle non-normal server modes
+    if !matches!(server_mode, ServerMode::Normal) {
+        // Init combined console/file logger
+        let logs = VeilidLogs::setup_normal_logs(settings.clone())?;
+        // run the server to set the node id and quit
+        return task::block_on(async { run_veilid_server(settings, logs, server_mode).await })
+            .map(|v| {
+                println!("{}", success);
+                v
+            })
+            .map_err(|e| {
+                println!("{}", failure);
+                e
+            });
+    }
+
     // --- Daemon Mode ----
-    if settings.read().daemon {
+    if settings.read().daemon.enabled {
         cfg_if! {
             if #[cfg(windows)] {
                 return windows::run_service(settings, matches).map_err(|e| format!("{}", e));
@@ -61,5 +89,5 @@ fn main() -> Result<(), String> {
     .expect("Error setting Ctrl-C handler");
 
     // Run the server loop
-    task::block_on(async { run_veilid_server(settings, logs).await })
+    task::block_on(async { run_veilid_server(settings, logs, server_mode).await })
 }

@@ -771,17 +771,36 @@ impl RoutingTable {
         }
     }
 
+    async fn resolve_bootstrap(&self, bootstrap: Vec<String>) -> Result<Vec<String>, String> {
+        let mut out = Vec::<String>::new();
+        for bh in bootstrap {
+            //
+        }
+        Ok(out)
+    }
+
     async fn bootstrap_task_routine(self) -> Result<(), String> {
-        let bootstrap = {
+        let (bootstrap, bootstrap_nodes) = {
             let c = self.config.get();
-            c.network.bootstrap.clone()
+            (
+                c.network.bootstrap.clone(),
+                c.network.bootstrap_nodes.clone(),
+            )
         };
 
         log_rtab!("--- bootstrap_task");
 
+        // If we aren't specifying a bootstrap node list explicitly, then pull from the bootstrap server(s)
+        let bootstrap_nodes = if !bootstrap_nodes.is_empty() {
+            bootstrap_nodes
+        } else {
+            // Resolve bootstrap servers and recurse their TXT entries
+            self.resolve_bootstrap(bootstrap).await?
+        };
+
         // Map all bootstrap entries to a single key with multiple dialinfo
         let mut bsmap: BTreeMap<DHTKey, Vec<DialInfoDetail>> = BTreeMap::new();
-        for b in bootstrap {
+        for b in bootstrap_nodes {
             let ndis = NodeDialInfo::from_str(b.as_str())
                 .map_err(map_to_string)
                 .map_err(logthru_rtab!("Invalid dial info in bootstrap entry: {}", b))?;
@@ -794,7 +813,7 @@ impl RoutingTable {
                     class: DialInfoClass::Direct, // Bootstraps are always directly reachable
                 });
         }
-        log_rtab!("    bootstrap list: {:?}", bsmap);
+        log_rtab!("    bootstrap node dialinfo: {:?}", bsmap);
 
         // Run all bootstrap operations concurrently
         let mut unord = FuturesUnordered::new();

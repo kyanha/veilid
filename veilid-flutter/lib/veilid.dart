@@ -518,36 +518,6 @@ class VeilidConfigRoutingTable {
 
 ////////////
 
-class VeilidConfigLeases {
-  int maxServerSignalLeases;
-  int maxServerRelayLeases;
-  int maxClientSignalLeases;
-  int maxClientRelayLeases;
-
-  VeilidConfigLeases(
-      {required this.maxServerSignalLeases,
-      required this.maxServerRelayLeases,
-      required this.maxClientSignalLeases,
-      required this.maxClientRelayLeases});
-
-  Map<String, dynamic> get json {
-    return {
-      'max_server_signal_leases': maxServerSignalLeases,
-      'max_server_relay_leases': maxServerRelayLeases,
-      'max_client_signal_leases': maxClientSignalLeases,
-      'max_client_relay_leases': maxClientRelayLeases
-    };
-  }
-
-  VeilidConfigLeases.fromJson(Map<String, dynamic> json)
-      : maxServerSignalLeases = json['max_server_signal_leases'],
-        maxServerRelayLeases = json['max_server_relay_leases'],
-        maxClientSignalLeases = json['max_client_signal_leases'],
-        maxClientRelayLeases = json['max_client_relay_leases'];
-}
-
-////////////
-
 class VeilidConfigNetwork {
   int connectionInitialTimeoutMs;
   int connectionInactivityTimeoutMs;
@@ -556,9 +526,12 @@ class VeilidConfigNetwork {
   int maxConnectionsPerIp6PrefixSize;
   int maxConnectionFrequencyPerMin;
   int clientWhitelistTimeoutMs;
+  int reverseConnectionReceiptTimeMs;
+  int holePunchReceiptTimeMs;
   String nodeId;
   String nodeIdSecret;
   List<String> bootstrap;
+  List<String> bootstrapNodes;
   VeilidConfigRoutingTable routingTable;
   VeilidConfigRPC rpc;
   VeilidConfigDHT dht;
@@ -569,7 +542,6 @@ class VeilidConfigNetwork {
   VeilidConfigTLS tls;
   VeilidConfigApplication application;
   VeilidConfigProtocol protocol;
-  VeilidConfigLeases leases;
 
   VeilidConfigNetwork({
     required this.connectionInitialTimeoutMs,
@@ -579,9 +551,12 @@ class VeilidConfigNetwork {
     required this.maxConnectionsPerIp6PrefixSize,
     required this.maxConnectionFrequencyPerMin,
     required this.clientWhitelistTimeoutMs,
+    required this.reverseConnectionReceiptTimeMs,
+    required this.holePunchReceiptTimeMs,
     required this.nodeId,
     required this.nodeIdSecret,
     required this.bootstrap,
+    required this.bootstrapNodes,
     required this.routingTable,
     required this.rpc,
     required this.dht,
@@ -592,7 +567,6 @@ class VeilidConfigNetwork {
     required this.tls,
     required this.application,
     required this.protocol,
-    required this.leases,
   });
 
   Map<String, dynamic> get json {
@@ -604,9 +578,12 @@ class VeilidConfigNetwork {
       'max_connections_per_ip6_prefix_size': maxConnectionsPerIp6PrefixSize,
       'max_connection_frequency_per_min': maxConnectionFrequencyPerMin,
       'client_whitelist_timeout_ms': clientWhitelistTimeoutMs,
+      'reverse_connection_receipt_time_ms': reverseConnectionReceiptTimeMs,
+      'hole_punch_receipt_time_ms': holePunchReceiptTimeMs,
       'node_id': nodeId,
       'node_id_secret': nodeIdSecret,
       'bootstrap': bootstrap,
+      'bootstrap_nodes': bootstrapNodes,
       'routing_table': routingTable.json,
       'rpc': rpc.json,
       'dht': dht.json,
@@ -617,7 +594,6 @@ class VeilidConfigNetwork {
       'tls': tls.json,
       'application': application.json,
       'protocol': protocol.json,
-      'leases': leases.json,
     };
   }
 
@@ -631,9 +607,13 @@ class VeilidConfigNetwork {
             json['max_connections_per_ip6_prefix_size'],
         maxConnectionFrequencyPerMin = json['max_connection_frequency_per_min'],
         clientWhitelistTimeoutMs = json['client_whitelist_timeout_ms'],
+        reverseConnectionReceiptTimeMs =
+            json['reverse_connection_receipt_time_ms'],
+        holePunchReceiptTimeMs = json['hole_punch_receipt_time_ms'],
         nodeId = json['node_id'],
         nodeIdSecret = json['node_id_secret'],
         bootstrap = json['bootstrap'],
+        bootstrapNodes = json['bootstrap_nodes'],
         routingTable = VeilidConfigRoutingTable.fromJson(json['routing_table']),
         rpc = VeilidConfigRPC.fromJson(json['rpc']),
         dht = VeilidConfigDHT.fromJson(json['dht']),
@@ -643,8 +623,7 @@ class VeilidConfigNetwork {
         restrictedNatRetries = json['restricted_nat_retries'],
         tls = VeilidConfigTLS.fromJson(json['tls']),
         application = VeilidConfigApplication.fromJson(json['application']),
-        protocol = VeilidConfigProtocol.fromJson(json['protocol']),
-        leases = VeilidConfigLeases.fromJson(json['leases']);
+        protocol = VeilidConfigProtocol.fromJson(json['protocol']);
 }
 
 ////////////
@@ -824,6 +803,11 @@ abstract class VeilidUpdate {
         {
           return VeilidUpdateAttachment(attachmentStateFromJson(json["state"]));
         }
+      case "Network":
+        {
+          return VeilidUpdateNetwork(
+              json["started"], json["bps_up"], json["bps_down"]);
+        }
       default:
         {
           throw VeilidAPIExceptionInternal(
@@ -846,16 +830,50 @@ class VeilidUpdateAttachment implements VeilidUpdate {
   VeilidUpdateAttachment(this.state);
 }
 
+class VeilidUpdateNetwork implements VeilidUpdate {
+  final bool started;
+  final int bpsDown;
+  final int bpsUp;
+  //
+  VeilidUpdateNetwork(this.started, this.bpsDown, this.bpsUp);
+}
+
+//////////////////////////////////////
+/// VeilidStateAttachment
+
+class VeilidStateAttachment {
+  final AttachmentState state;
+
+  VeilidStateAttachment(this.state);
+
+  VeilidStateAttachment.fromJson(Map<String, dynamic> json)
+      : state = attachmentStateFromJson(json['state']);
+}
+
+//////////////////////////////////////
+/// VeilidStateNetwork
+
+class VeilidStateNetwork {
+  final bool started;
+
+  VeilidStateNetwork(this.started);
+
+  VeilidStateNetwork.fromJson(Map<String, dynamic> json)
+      : started = json['started'];
+}
+
 //////////////////////////////////////
 /// VeilidState
 
 class VeilidState {
-  final AttachmentState attachment;
+  final VeilidStateAttachment attachment;
+  final VeilidStateNetwork network;
 
-  VeilidState(this.attachment);
+  VeilidState(this.attachment, this.network);
 
   VeilidState.fromJson(Map<String, dynamic> json)
-      : attachment = attachmentStateFromJson(json['attachment']);
+      : attachment = VeilidStateAttachment.fromJson(json['attachment']),
+        network = VeilidStateNetwork.fromJson(json['network']);
 }
 
 //////////////////////////////////////

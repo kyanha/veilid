@@ -88,14 +88,29 @@ impl ClientApiConnection {
     }
     async fn process_veilid_state<'a>(
         &'a mut self,
-        state: veilid_state::Reader<'a>,
+        veilid_state: veilid_state::Reader<'a>,
     ) -> Result<(), String> {
         let mut inner = self.inner.borrow_mut();
 
         // Process attachment state
-        let attachment = state.reborrow().get_attachment().map_err(map_to_string)?;
-        let state = attachment.get_state().map_err(map_to_string)?;
-        inner.comproc.update_attachment(state);
+        let attachment = veilid_state
+            .reborrow()
+            .get_attachment()
+            .map_err(map_to_string)?;
+        let attachment_state = attachment.get_state().map_err(map_to_string)?;
+
+        let network = veilid_state
+            .reborrow()
+            .get_network()
+            .map_err(map_to_string)?;
+        let started = network.get_started();
+        let bps_down = network.get_bps_down();
+        let bps_up = network.get_bps_up();
+
+        inner.comproc.update_attachment(attachment_state);
+        inner
+            .comproc
+            .update_network_status(started, bps_down, bps_up);
 
         Ok(())
     }

@@ -445,6 +445,7 @@ impl Network {
         log_net!("updating network class");
 
         let protocol_config = self.inner.lock().protocol_config.unwrap_or_default();
+        let old_network_class = self.inner.lock().network_class;
 
         let context = DiscoveryContext::new(self.routing_table(), self.clone());
 
@@ -470,9 +471,10 @@ impl Network {
         }
 
         let network_class = context.inner.lock().network_class;
-        self.inner.lock().network_class = network_class;
-
-        log_net!(debug "network class set to {:?}", network_class);
+        if network_class != old_network_class {
+            self.inner.lock().network_class = network_class;
+            log_net!(debug "network class changed to {:?}", network_class);
+        }
 
         // send updates to everyone
         self.routing_table().send_node_info_updates();

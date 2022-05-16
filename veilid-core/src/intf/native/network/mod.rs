@@ -214,7 +214,14 @@ impl Network {
                 .interfaces
                 .best_addresses()
                 .iter()
-                .map(|a| SocketAddr::new(*a, from.port()))
+                .filter_map(|a| {
+                    // We create sockets that are only ipv6 or ipv6 (not dual, so only translate matching unspecified address)
+                    if (a.is_ipv4() && from.is_ipv4()) || (a.is_ipv6() && from.is_ipv6()) {
+                        Some(SocketAddr::new(*a, from.port()))
+                    } else {
+                        None
+                    }
+                })
                 .collect()
         }
     }

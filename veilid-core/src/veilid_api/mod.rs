@@ -168,21 +168,36 @@ impl VeilidLogLevel {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VeilidStateLog {
+    pub log_level: VeilidLogLevel,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VeilidStateAttachment {
+    pub state: AttachmentState,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VeilidStateNetwork {
+    pub started: bool,
+    pub bps_down: u64,
+    pub bps_up: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind")]
 pub enum VeilidUpdate {
-    Log {
-        log_level: VeilidLogLevel,
-        message: String,
-    },
-    Attachment {
-        state: AttachmentState,
-    },
+    Log(VeilidStateLog),
+    Attachment(VeilidStateAttachment),
+    Network(VeilidStateNetwork),
     Shutdown,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VeilidState {
-    pub attachment: AttachmentState,
+    pub attachment: VeilidStateAttachment,
+    pub network: VeilidStateNetwork,
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -745,8 +760,37 @@ impl fmt::Display for DialInfo {
         match self {
             DialInfo::UDP(di) => write!(f, "udp|{}", di.socket_address),
             DialInfo::TCP(di) => write!(f, "tcp|{}", di.socket_address),
-            DialInfo::WS(di) => write!(f, "ws|{}|{}", di.socket_address, di.request),
-            DialInfo::WSS(di) => write!(f, "wss|{}|{}", di.socket_address, di.request),
+            DialInfo::WS(di) => {
+                let url = format!("ws://{}", di.request);
+                let split_url = SplitUrl::from_str(&url).unwrap();
+                match split_url.host {
+                    SplitUrlHost::Hostname(_) => {
+                        write!(f, "ws|{}|{}", di.socket_address.to_ip_addr(), di.request)
+                    }
+                    SplitUrlHost::IpAddr(a) => {
+                        if di.socket_address.to_ip_addr() == a {
+                            write!(f, "ws|{}", di.request)
+                        } else {
+                            panic!("resolved address does not match url: {}", di.request);
+                        }
+                    }
+                }
+            }
+            DialInfo::WSS(di) => {
+                let url = format!("wss://{}", di.request);
+                let split_url = SplitUrl::from_str(&url).unwrap();
+                match split_url.host {
+                    SplitUrlHost::Hostname(_) => {
+                        write!(f, "wss|{}|{}", di.socket_address.to_ip_addr(), di.request)
+                    }
+                    SplitUrlHost::IpAddr(_) => {
+                        panic!(
+                            "secure websockets can not use ip address in request: {}",
+                            di.request
+                        );
+                    }
+                }
+            }
         }
     }
 }
@@ -767,18 +811,50 @@ impl FromStr for DialInfo {
                 Ok(DialInfo::tcp(socket_address))
             }
             "ws" => {
-                let (sa, rest) = rest.split_once('|').ok_or_else(|| {
-                    parse_error!("DialInfo::from_str missing socket address '|' separator", s)
-                })?;
-                let socket_address = SocketAddress::from_str(sa)?;
-                DialInfo::try_ws(socket_address, format!("ws://{}", rest))
+                let url = format!("ws://{}", rest);
+                let split_url = SplitUrl::from_str(&url)
+                    .map_err(|e| parse_error!(format!("unable to split WS url: {}", e), url))?;
+                if split_url.scheme != "ws" || !url.starts_with("ws://") {
+                    return Err(parse_error!("incorrect scheme for WS dialinfo", url));
+                }
+                let url_port = split_url.port.unwrap_or(80u16);
+
+                match rest.split_once('|') {
+                    Some((sa, rest)) => {
+                        let address = Address::from_str(sa)?;
+
+                        DialInfo::try_ws(
+                            SocketAddress::new(address, url_port),
+                            format!("ws://{}", rest),
+                        )
+                    }
+                    None => {
+                        let address = Address::from_str(&split_url.host.to_string())?;
+                        DialInfo::try_ws(
+                            SocketAddress::new(address, url_port),
+                            format!("ws://{}", rest),
+                        )
+                    }
+                }
             }
             "wss" => {
-                let (sa, rest) = rest.split_once('|').ok_or_else(|| {
+                let url = format!("wss://{}", rest);
+                let split_url = SplitUrl::from_str(&url)
+                    .map_err(|e| parse_error!(format!("unable to split WSS url: {}", e), url))?;
+                if split_url.scheme != "wss" || !url.starts_with("wss://") {
+                    return Err(parse_error!("incorrect scheme for WSS dialinfo", url));
+                }
+                let url_port = split_url.port.unwrap_or(443u16);
+
+                let (a, rest) = rest.split_once('|').ok_or_else(|| {
                     parse_error!("DialInfo::from_str missing socket address '|' separator", s)
                 })?;
-                let socket_address = SocketAddress::from_str(sa)?;
-                DialInfo::try_wss(socket_address, format!("wss://{}", rest))
+
+                let address = Address::from_str(a)?;
+                DialInfo::try_wss(
+                    SocketAddress::new(address, url_port),
+                    format!("wss://{}", rest),
+                )
             }
             _ => Err(parse_error!("DialInfo::from_str has invalid scheme", s)),
         }
@@ -818,6 +894,14 @@ impl DialInfo {
                 "socket address port doesn't match url port",
                 url
             ));
+        }
+        if let SplitUrlHost::IpAddr(a) = split_url.host {
+            if socket_address.to_ip_addr() != a {
+                return Err(parse_error!(
+                    format!("request address does not match socket address: {}", a),
+                    socket_address
+                ));
+            }
         }
         Ok(Self::WS(DialInfoWS {
             socket_address: socket_address.to_canonical(),
@@ -1497,10 +1581,18 @@ impl VeilidAPI {
     // get a full copy of the current state
     pub async fn get_state(&self) -> Result<VeilidState, VeilidAPIError> {
         let attachment_manager = self.attachment_manager()?;
+        let network_manager = attachment_manager.network_manager();
+
+        let attachment = attachment_manager.get_veilid_state();
+        let network = network_manager.get_veilid_state();
+
         Ok(VeilidState {
-            attachment: attachment_manager.get_state(),
+            attachment,
+            network,
         })
     }
+
+    // get network connectedness
 
     // connect to the network
     pub async fn attach(&self) -> Result<(), VeilidAPIError> {

@@ -2,6 +2,7 @@ use crate::settings::*;
 use clap::{Arg, ArgMatches, Command};
 use std::ffi::OsStr;
 use std::str::FromStr;
+use veilid_core::{DHTKey, DHTKeySecret};
 
 fn do_clap_matches(default_config_path: &OsStr) -> Result<clap::ArgMatches, clap::Error> {
     let matches = Command::new("veilid-server")
@@ -44,8 +45,8 @@ fn do_clap_matches(default_config_path: &OsStr) -> Result<clap::ArgMatches, clap
                 .help("Turn on trace logging on the terminal"),
         )
         .arg(
-            Arg::new("subnode_index")
-                .long("subnode_index")
+            Arg::new("subnode-index")
+                .long("subnode-index")
                 .takes_value(true)
                 .help("Run as an extra daemon on the same machine for testing purposes, specify a number greater than zero to offset the listening ports"),
         )
@@ -53,6 +54,14 @@ fn do_clap_matches(default_config_path: &OsStr) -> Result<clap::ArgMatches, clap
             Arg::new("generate-dht-key")
                 .long("generate-dht-key")
                 .help("Only generate a new dht key and print it"),
+        )
+        .arg(
+            Arg::new("set-node-id")
+                .long("set-node-id")
+                .takes_value(true)
+                .value_name("ID")
+                .help("Set the node id and secret key")
+                .long_help("To specify both node id and secret key on the command line, use a ID:SECRET syntax with a colon, like:\n  zsVXz5aTU98vZxwTcDmvpcnO5g1B2jRO3wpdNiDrRgw:gJzQLmzuBvA-dFvEmLcYvLoO5bh7hzCWFzfpJHapZKg\nIf no colon is used, the node id is specified, and a prompt appears to enter the secret key interactively.")
         )
         .arg(
             Arg::new("delete-protected-store")
@@ -75,11 +84,24 @@ fn do_clap_matches(default_config_path: &OsStr) -> Result<clap::ArgMatches, clap
                 .help("Instead of running the server, print the configuration it would use to the console"),
         )
         .arg(
+            Arg::new("dump-txt-record")
+                .long("dump-txt-record")
+                .help("Prints the bootstrap TXT record for this node and then quits")
+        )
+        .arg(
             Arg::new("bootstrap")
                 .long("bootstrap")
                 .takes_value(true)
                 .value_name("BOOTSTRAP_LIST")
-                .help("Specify a list of bootstrap servers to use"),
+                .help("Specify a list of bootstrap hostnames to use")
+        )
+        .arg(
+            Arg::new("bootstrap-nodes")
+                .conflicts_with("bootstrap")
+                .long("bootstrap-nodes")
+                .takes_value(true)
+                .value_name("BOOTSTRAP_NODE_LIST")
+                .help("Specify a list of bootstrap node dialinfos to use"),
         )
         .arg(
             Arg::new("local")
@@ -123,16 +145,16 @@ pub fn process_command_line() -> Result<(Settings, ArgMatches), String> {
 
     // Set config from command line
     if matches.occurrences_of("daemon") != 0 {
-        settingsrw.daemon = true;
+        settingsrw.daemon.enabled = true;
         settingsrw.logging.terminal.enabled = false;
     }
-    if matches.occurrences_of("subnode_index") != 0 {
-        let subnode_index = match matches.value_of("subnode_index") {
+    if matches.occurrences_of("subnode-index") != 0 {
+        let subnode_index = match matches.value_of("subnode-index") {
             Some(x) => x
                 .parse()
                 .map_err(|e| format!("couldn't parse subnode index: {}", e))?,
             None => {
-                return Err("value not specified for subnode_index".to_owned());
+                return Err("value not specified for subnode-index".to_owned());
             }
         };
         if subnode_index == 0 {
@@ -164,16 +186,61 @@ pub fn process_command_line() -> Result<(Settings, ArgMatches), String> {
     if matches.occurrences_of("delete-table-store") != 0 {
         settingsrw.core.table_store.delete = true;
     }
+    if matches.occurrences_of("dump-txt-record") != 0 {
+        // Turn off terminal logging so we can be interactive
+        settingsrw.logging.terminal.enabled = false;
+    }
+    if let Some(v) = matches.value_of("set-node-id") {
+        // Turn off terminal logging so we can be interactive
+        settingsrw.logging.terminal.enabled = false;
+
+        // Split or get secret
+        let (k, s) = if let Some((k, s)) = v.split_once(':') {
+            let k = DHTKey::try_decode(k)?;
+            let s = DHTKeySecret::try_decode(s)?;
+            (k, s)
+        } else {
+            let k = DHTKey::try_decode(v)?;
+            let buffer = rpassword::prompt_password("Enter secret key (will not echo): ")
+                .map_err(|e| e.to_string())?;
+            let buffer = buffer.trim().to_string();
+            let s = DHTKeySecret::try_decode(&buffer)?;
+            (k, s)
+        };
+        settingsrw.core.network.node_id = k;
+        settingsrw.core.network.node_id_secret = s;
+    }
+
     if matches.occurrences_of("bootstrap") != 0 {
-        let bootstrap = match matches.value_of("bootstrap") {
+        let bootstrap_list = match matches.value_of("bootstrap-list") {
             Some(x) => {
-                println!("Overriding bootstrap with: ");
+                println!("Overriding bootstrap list with: ");
+                let mut out: Vec<String> = Vec::new();
+                for x in x.split(',') {
+                    let x = x.trim().to_string();
+                    println!("    {}", x);
+                    out.push(x);
+                }
+                out
+            }
+            None => {
+                return Err("value not specified for bootstrap list".to_owned());
+            }
+        };
+        settingsrw.core.network.bootstrap = bootstrap_list;
+    }
+
+    if matches.occurrences_of("bootstrap-nodes") != 0 {
+        let bootstrap_list = match matches.value_of("bootstrap-list") {
+            Some(x) => {
+                println!("Overriding bootstrap node list with: ");
                 let mut out: Vec<ParsedNodeDialInfo> = Vec::new();
                 for x in x.split(',') {
+                    let x = x.trim();
                     println!("    {}", x);
                     out.push(ParsedNodeDialInfo::from_str(x).map_err(|e| {
                         format!(
-                            "unable to parse dial info in bootstrap list: {} for {}",
+                            "unable to parse dial info in bootstrap node list: {} for {}",
                             e, x
                         )
                     })?);
@@ -181,10 +248,10 @@ pub fn process_command_line() -> Result<(Settings, ArgMatches), String> {
                 out
             }
             None => {
-                return Err("value not specified for bootstrap".to_owned());
+                return Err("value not specified for bootstrap node list".to_owned());
             }
         };
-        settingsrw.core.network.bootstrap = bootstrap;
+        settingsrw.core.network.bootstrap_nodes = bootstrap_list;
     }
 
     // Apply subnode index if we're testing

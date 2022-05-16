@@ -36,15 +36,25 @@ fn convert_update(
     mut rpc_update: crate::veilid_client_capnp::veilid_update::Builder,
 ) {
     match update {
-        veilid_core::VeilidUpdate::Log {
+        veilid_core::VeilidUpdate::Log(veilid_core::VeilidStateLog {
             log_level: _,
             message: _,
-        } => {
+        }) => {
             panic!("Should not be logging to api in server!");
         }
-        veilid_core::VeilidUpdate::Attachment { state } => {
+        veilid_core::VeilidUpdate::Attachment(veilid_core::VeilidStateAttachment { state }) => {
             let mut att = rpc_update.init_attachment();
             att.set_state(convert_attachment_state(state));
+        }
+        veilid_core::VeilidUpdate::Network(veilid_core::VeilidStateNetwork {
+            started,
+            bps_down,
+            bps_up,
+        }) => {
+            let mut nb = rpc_update.init_network();
+            nb.set_started(*started);
+            nb.set_bps_down(*bps_down);
+            nb.set_bps_up(*bps_up);
         }
         veilid_core::VeilidUpdate::Shutdown => {
             rpc_update.set_shutdown(());
@@ -54,11 +64,15 @@ fn convert_update(
 
 fn convert_state(
     state: &veilid_core::VeilidState,
-    rpc_state: crate::veilid_client_capnp::veilid_state::Builder,
+    mut rpc_state: crate::veilid_client_capnp::veilid_state::Builder,
 ) {
-    rpc_state
-        .init_attachment()
-        .set_state(convert_attachment_state(&state.attachment));
+    let mut ab = rpc_state.reborrow().init_attachment();
+    ab.set_state(convert_attachment_state(&state.attachment.state));
+
+    let mut nb = rpc_state.reborrow().init_network();
+    nb.set_started(state.network.started);
+    nb.set_bps_down(state.network.bps_down);
+    nb.set_bps_up(state.network.bps_up);
 }
 
 // --- interface Registration ---------------------------------

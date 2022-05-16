@@ -104,7 +104,6 @@ pub struct VeilidConfigDHT {
     pub min_peer_count: u32,
     pub min_peer_refresh_time_ms: u32,
     pub validate_dial_info_receipt_time_ms: u32,
-    pub nearby_node_percentage: u32,
 }
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
@@ -117,13 +116,6 @@ pub struct VeilidConfigRPC {
     pub max_route_hop_count: u8,
 }
 
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
-pub struct VeilidConfigLeases {
-    pub max_server_signal_leases: u32,
-    pub max_server_relay_leases: u32,
-    pub max_client_signal_leases: u32,
-    pub max_client_relay_leases: u32,
-}
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct VeilidConfigRoutingTable {
     pub limit_over_attached: u32,
@@ -147,6 +139,7 @@ pub struct VeilidConfigNetwork {
     pub node_id: key::DHTKey,
     pub node_id_secret: key::DHTKeySecret,
     pub bootstrap: Vec<String>,
+    pub bootstrap_nodes: Vec<String>,
     pub routing_table: VeilidConfigRoutingTable,
     pub rpc: VeilidConfigRPC,
     pub dht: VeilidConfigDHT,
@@ -157,7 +150,6 @@ pub struct VeilidConfigNetwork {
     pub tls: VeilidConfigTLS,
     pub application: VeilidConfigApplication,
     pub protocol: VeilidConfigProtocol,
-    pub leases: VeilidConfigLeases,
 }
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
@@ -305,6 +297,7 @@ impl VeilidConfig {
             get_config!(inner.network.max_connection_frequency_per_min);
             get_config!(inner.network.client_whitelist_timeout_ms);
             get_config!(inner.network.bootstrap);
+            get_config!(inner.network.bootstrap_nodes);
             get_config!(inner.network.routing_table.limit_over_attached);
             get_config!(inner.network.routing_table.limit_fully_attached);
             get_config!(inner.network.routing_table.limit_attached_strong);
@@ -365,10 +358,6 @@ impl VeilidConfig {
             get_config!(inner.network.protocol.wss.listen_address);
             get_config!(inner.network.protocol.wss.path);
             get_config!(inner.network.protocol.wss.url);
-            get_config!(inner.network.leases.max_server_signal_leases);
-            get_config!(inner.network.leases.max_server_relay_leases);
-            get_config!(inner.network.leases.max_client_signal_leases);
-            get_config!(inner.network.leases.max_client_relay_leases);
         }
         // Validate settings
         self.validate()?;

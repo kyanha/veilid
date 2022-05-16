@@ -271,15 +271,18 @@ impl AttachmentManager {
         let network_manager = {
             let mut inner = self.inner.lock();
             inner.update_callback = Some(update_callback.clone());
+            let update_callback2 = update_callback.clone();
             inner.attachment_machine.set_state_change_callback(Arc::new(
                 move |_old_state: AttachmentState, new_state: AttachmentState| {
-                    update_callback(VeilidUpdate::Attachment { state: new_state })
+                    update_callback2(VeilidUpdate::Attachment(VeilidStateAttachment {
+                        state: new_state,
+                    }))
                 },
             ));
             inner.network_manager.clone()
         };
 
-        network_manager.init().await?;
+        network_manager.init(update_callback).await?;
 
         Ok(())
     }
@@ -355,5 +358,11 @@ impl AttachmentManager {
     pub fn get_state(&self) -> AttachmentState {
         let attachment_machine = self.inner.lock().attachment_machine.clone();
         attachment_machine.state()
+    }
+
+    pub fn get_veilid_state(&self) -> VeilidStateAttachment {
+        VeilidStateAttachment {
+            state: self.get_state(),
+        }
     }
 }

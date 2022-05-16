@@ -49,6 +49,8 @@ pub type UICallback = Box<dyn Fn(&mut Cursive) + Send>;
 
 struct UIState {
     attachment_state: Dirty<AttachmentState>,
+    network_started: Dirty<bool>,
+    network_down_up: Dirty<(f32, f32)>,
     connection_state: Dirty<ConnectionState>,
 }
 
@@ -56,6 +58,8 @@ impl UIState {
     pub fn new() -> Self {
         Self {
             attachment_state: Dirty::new(AttachmentState::Detached),
+            network_started: Dirty::new(false),
+            network_down_up: Dirty::new((0.0, 0.0)),
             connection_state: Dirty::new(ConnectionState::Disconnected),
         }
     }
@@ -219,6 +223,15 @@ impl UI {
             AttachmentState::FullyAttached => " Attached [||||]",
             AttachmentState::OverAttached => " Attached [++++]",
             AttachmentState::Detaching => "Detaching [////]",
+        }
+    }
+    fn render_network_status(inner: &mut UIInner) -> String {
+        match inner.ui_state.network_started.get() {
+            false => "Down: ----KB/s Up: ----KB/s".to_owned(),
+            true => {
+                let (d, u) = inner.ui_state.network_down_up.get();
+                format!("Down: {:.2}KB/s Up: {:.2}KB/s", d, u)
+            }
         }
     }
     fn render_button_attach<'a>(inner: &mut UIInner) -> (&'a str, bool) {
@@ -576,7 +589,7 @@ impl UI {
                 status.append_styled("|", ColorStyle::highlight_inactive());
                 // Add bandwidth status
                 status.append_styled(
-                    " Down: 0.0KB/s Up: 0.0KB/s ",
+                    format!(" {} ", UI::render_network_status(&mut inner)),
                     ColorStyle::highlight_inactive(),
                 );
                 status.append_styled("|", ColorStyle::highlight_inactive());
@@ -598,6 +611,12 @@ impl UI {
         if inner.ui_state.attachment_state.take_dirty() {
             refresh_statusbar = true;
             refresh_button_attach = true;
+        }
+        if inner.ui_state.network_started.take_dirty() {
+            refresh_statusbar = true;
+        }
+        if inner.ui_state.network_down_up.take_dirty() {
+            refresh_statusbar = true;
         }
         if inner.ui_state.connection_state.take_dirty() {
             refresh_statusbar = true;
@@ -755,6 +774,15 @@ impl UI {
     pub fn set_attachment_state(&mut self, state: AttachmentState) {
         let mut inner = self.inner.borrow_mut();
         inner.ui_state.attachment_state.set(state);
+        let _ = inner.cb_sink.send(Box::new(UI::update_cb));
+    }
+    pub fn set_network_status(&mut self, started: bool, bps_down: u64, bps_up: u64) {
+        let mut inner = self.inner.borrow_mut();
+        inner.ui_state.network_started.set(started);
+        inner.ui_state.network_down_up.set((
+            ((bps_down as f64) / 1000.0f64) as f32,
+            ((bps_up as f64) / 1000.0f64) as f32,
+        ));
         let _ = inner.cb_sink.send(Box::new(UI::update_cb));
     }
     pub fn set_connection_state(&mut self, state: ConnectionState) {

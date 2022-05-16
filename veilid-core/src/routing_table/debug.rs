@@ -22,20 +22,36 @@ impl RoutingTable {
 
         out
     }
-    pub fn debug_info_dialinfo(&self) -> String {
-        let ldis = self.dial_info_details(RoutingDomain::LocalNetwork);
-        let gdis = self.dial_info_details(RoutingDomain::PublicInternet);
-        let mut out = String::new();
+    pub fn debug_info_dialinfo(&self, txt_format: bool) -> String {
+        if txt_format {
+            let mut out = String::new();
 
-        out += "Local Network Dial Info Details:\n";
-        for (n, ldi) in ldis.iter().enumerate() {
-            out += &format!("  {:>2}: {:?}\n", n, ldi);
+            let gdis = self.dial_info_details(RoutingDomain::PublicInternet);
+            if gdis.is_empty() {
+                out += "No TXT Record DialInfo\n";
+            } else {
+                out += "TXT Record DialInfo:\n";
+                out += &format!("{}\n", self.node_id().encode());
+                for gdi in gdis {
+                    out += &format!("{}\n", gdi.dial_info);
+                }
+            }
+            out
+        } else {
+            let ldis = self.dial_info_details(RoutingDomain::LocalNetwork);
+            let gdis = self.dial_info_details(RoutingDomain::PublicInternet);
+            let mut out = String::new();
+
+            out += "Local Network Dial Info Details:\n";
+            for (n, ldi) in ldis.iter().enumerate() {
+                out += &format!("  {:>2}: {:?}\n", n, ldi);
+            }
+            out += "Public Internet Dial Info Details:\n";
+            for (n, gdi) in gdis.iter().enumerate() {
+                out += &format!("  {:>2}: {:?}\n", n, gdi);
+            }
+            out
         }
-        out += "Public Internet Dial Info Details:\n";
-        for (n, gdi) in gdis.iter().enumerate() {
-            out += &format!("  {:>2}: {:?}\n", n, gdi);
-        }
-        out
     }
     pub fn debug_info_entries(&self, limit: usize, min_state: BucketEntryState) -> String {
         let inner = self.inner.lock();

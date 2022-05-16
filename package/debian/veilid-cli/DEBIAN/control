@@ -1,0 +1,10 @@
+Package: veilid-cli
+Version: $CARGO_VERSION
+Section: network
+Priority: optional
+Architecture: $ARCH
+Depends: libc6 (>= 2.23)
+Maintainer: jsmith@veilid.org
+Description: Veilid Server Command Line Interface
+  The Veilid peer-to-peer network server command line interface
+  

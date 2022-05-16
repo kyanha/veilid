@@ -72,7 +72,7 @@ deps:
 
 code:
     FROM +deps
-    COPY --dir .cargo external files scripts veilid-cli veilid-core veilid-server veilid-wasm Cargo.lock Cargo.toml /veilid
+    COPY --dir .cargo external files scripts veilid-cli veilid-core veilid-server veilid-flutter veilid-wasm Cargo.lock Cargo.toml /veilid
     WORKDIR /veilid
 
 # Clippy only
@@ -113,3 +113,36 @@ unit-tests-linux-amd64:
 unit-tests-linux-arm64:
     FROM +code
     RUN cargo test --target aarch64-unknown-linux-gnu --release
+
+# Package 
+package-linux-amd64:
+    FROM +build-linux-amd64
+    #################################
+    ### DEBIAN DPKG .DEB FILES
+    #################################
+    COPY --dir package /veilid
+    # veilid-server
+    RUN /veilid/package/debian/earthly_make_veilid_server_deb.sh amd64 x86_64-unknown-linux-gnu
+    SAVE ARTIFACT --keep-ts /dpkg/out/*.deb AS LOCAL ./target/packages/
+    # veilid-cli
+    RUN /veilid/package/debian/earthly_make_veilid_cli_deb.sh amd64 x86_64-unknown-linux-gnu
+    # save artifacts
+    SAVE ARTIFACT --keep-ts /dpkg/out/*.deb AS LOCAL ./target/packages/
+    
+package-linux-arm64:
+    FROM +build-linux-arm64
+    #################################
+    ### DEBIAN DPKG .DEB FILES
+    #################################
+    COPY --dir package /veilid
+    # veilid-server
+    RUN /veilid/package/debian/earthly_make_veilid_server_deb.sh arm64 aarch64-unknown-linux-gnu
+    SAVE ARTIFACT --keep-ts /dpkg/out/*.deb AS LOCAL ./target/packages/
+    # veilid-cli
+    RUN /veilid/package/debian/earthly_make_veilid_cli_deb.sh arm64 aarch64-unknown-linux-gnu
+    # save artifacts
+    SAVE ARTIFACT --keep-ts /dpkg/out/*.deb AS LOCAL ./target/packages/
+
+package-linux:
+    BUILD +package-linux-amd64
+    BUILD +package-linux-arm64

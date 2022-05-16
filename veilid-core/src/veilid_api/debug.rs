@@ -79,10 +79,16 @@ impl VeilidAPI {
         Ok(routing_table.debug_info_buckets(min_state))
     }
 
-    async fn debug_dialinfo(&self, _args: String) -> Result<String, VeilidAPIError> {
+    async fn debug_dialinfo(&self, args: String) -> Result<String, VeilidAPIError> {
+        let args: Vec<String> = args.split_whitespace().map(|s| s.to_owned()).collect();
+        let is_txt = if args.len() == 1 {
+            args[0] == "txt"
+        } else {
+            false
+        };
         // Dump routing table dialinfo
         let routing_table = self.network_manager()?.routing_table();
-        Ok(routing_table.debug_info_dialinfo())
+        Ok(routing_table.debug_info_dialinfo(is_txt))
     }
 
     async fn debug_entries(&self, args: String) -> Result<String, VeilidAPIError> {
@@ -147,7 +153,7 @@ impl VeilidAPI {
 
         // Must be detached
         if !matches!(
-            self.get_state().await?.attachment,
+            self.get_state().await?.attachment.state,
             AttachmentState::Detached
         ) {
             return Err(VeilidAPIError::Internal {
@@ -168,7 +174,7 @@ impl VeilidAPI {
             if args[0] == "buckets" {
                 // Must be detached
                 if matches!(
-                    self.get_state().await?.attachment,
+                    self.get_state().await?.attachment.state,
                     AttachmentState::Detached | AttachmentState::Detaching
                 ) {
                     return Err(VeilidAPIError::Internal {
@@ -194,7 +200,7 @@ impl VeilidAPI {
 
     async fn debug_attach(&self, _args: String) -> Result<String, VeilidAPIError> {
         if !matches!(
-            self.get_state().await?.attachment,
+            self.get_state().await?.attachment.state,
             AttachmentState::Detached
         ) {
             return Err(VeilidAPIError::Internal {
@@ -209,7 +215,7 @@ impl VeilidAPI {
 
     async fn debug_detach(&self, _args: String) -> Result<String, VeilidAPIError> {
         if matches!(
-            self.get_state().await?.attachment,
+            self.get_state().await?.attachment.state,
             AttachmentState::Detaching
         ) {
             return Err(VeilidAPIError::Internal {

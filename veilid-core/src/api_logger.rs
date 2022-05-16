@@ -136,10 +136,10 @@ impl Log for ApiLogger {
 
                 let s = format!("{}{}{}", tgt, loc, record.args());
 
-                (inner.update_callback)(VeilidUpdate::Log {
+                (inner.update_callback)(VeilidUpdate::Log(VeilidStateLog {
                     log_level: ll,
                     message: s,
-                })
+                }))
             }
         }
     }
