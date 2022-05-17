@@ -482,6 +482,10 @@ impl Network {
         self.inner.lock().network_needs_restart
     }
 
+    pub fn is_started(&self) -> bool {
+        self.inner.lock().network_started
+    }
+
     pub fn restart_network(&self) {
         self.inner.lock().network_needs_restart = true;
     }

@@ -1,6 +1,7 @@
 use crate::settings::*;
 use clap::{Arg, ArgMatches, Command};
 use std::ffi::OsStr;
+use std::path::Path;
 use std::str::FromStr;
 use veilid_core::{DHTKey, DHTKeySecret};
 
@@ -133,12 +134,18 @@ pub fn process_command_line() -> Result<(Settings, ArgMatches), String> {
     }
 
     // Attempt to load configuration
-    let settings = Settings::new(if matches.occurrences_of("config-file") == 0 {
-        None
+    let settings_path = if let Some(config_file) = matches.value_of_os("config-file") {
+        if Path::new(config_file).exists() {
+            Some(config_file)
+        } else {
+            None
+        }
     } else {
-        Some(matches.value_of_os("config-file").unwrap())
-    })
-    .map_err(|e| format!("configuration is invalid: {}", e))?;
+        None
+    };
+
+    let settings =
+        Settings::new(settings_path).map_err(|e| format!("configuration is invalid: {}", e))?;
 
     // write lock the settings
     let mut settingsrw = settings.write();

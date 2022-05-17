@@ -146,12 +146,12 @@ pub async fn run_veilid_server(
             }
             async_std::task::sleep(Duration::from_millis(100)).await;
         }
-        match veilid_api.debug("dialinfo txt".to_string()).await {
+        match veilid_api.debug("txtrecord".to_string()).await {
             Ok(v) => {
                 print!("{}", v);
             }
             Err(e) => {
-                let outerr = format!("Getting dial info failed: {:?}", e);
+                let outerr = format!("Getting TXT record failed: {:?}", e);
                 error!("{}", outerr);
                 out = Err(outerr);
             }

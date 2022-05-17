@@ -51,6 +51,7 @@ digest = "0.9.0"
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 async-std = { version = "^1", features = ["unstable"] }
 async-tungstenite = { version = "^0", features = ["async-std-runtime", "async-tls"] }
+async-std-resolver = { version = "^0" }
 maplit = "^1"
 config = { version = "^0", features = ["yaml"] }
 keyring-manager = { path = "../external/keyring-manager" }

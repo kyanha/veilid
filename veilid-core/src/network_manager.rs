@@ -266,10 +266,6 @@ impl NetworkManager {
         Ok(())
     }
 
-    pub fn is_started(&self) -> bool {
-        self.inner.lock().components.is_some()
-    }
-
     pub async fn shutdown(&self) {
         trace!("NetworkManager::shutdown begin");
 
@@ -1251,7 +1247,7 @@ impl NetworkManager {
     }
 
     fn get_veilid_state_inner(inner: &NetworkManagerInner) -> VeilidStateNetwork {
-        if inner.components.is_some() {
+        if inner.components.is_some() && inner.components.as_ref().unwrap().net.is_started() {
             VeilidStateNetwork {
                 started: true,
                 bps_down: inner.stats.self_stats.transfer_stats.down.average,

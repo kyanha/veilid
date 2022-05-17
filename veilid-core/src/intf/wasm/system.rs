@@ -201,3 +201,12 @@ pub async fn get_outbound_relay_peer() -> Option<crate::veilid_api::PeerInfo> {
 //         panic!("WASM requires browser or nodejs environment");
 //     }   
 // }
+
+
+pub async fn txt_lookup<S: AsRef<str>>(host: S) -> Result<Vec<String>, String> {
+    Err("wasm does not support txt lookup".to_owned())   
+}
+
+pub async fn ptr_lookup(ip_addr: IpAddr) -> Result<String, String> {
+    Err("wasm does not support ptr lookup".to_owned())   
+}

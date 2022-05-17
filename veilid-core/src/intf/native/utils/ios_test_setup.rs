@@ -24,12 +24,9 @@ fn veilid_core_setup_internal<'a>(
     let mut logs: Vec<Box<dyn SharedLogger>> = Vec::new();
 
     let mut cb = ConfigBuilder::new();
-    cb.add_filter_ignore_str("async_std");
-    cb.add_filter_ignore_str("async_io");
-    cb.add_filter_ignore_str("polling");
-    cb.add_filter_ignore_str("rustls");
-    cb.add_filter_ignore_str("async_tungstenite");
-    cb.add_filter_ignore_str("tungstenite");
+    for ig in veilid_core::DEFAULT_LOG_IGNORE_LIST {
+        cb.add_filter_ignore_str(ig);
+    }
 
     if let Some(level) = terminal_log {
         logs.push(TermLogger::new(

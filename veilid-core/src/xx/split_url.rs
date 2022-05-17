@@ -365,8 +365,10 @@ impl fmt::Display for SplitUrl {
                 } else {
                     format!("{}@{}", userinfo, self.host)
                 }
+            } else if let Some(port) = self.port {
+                format!("{}:{}", self.host, port)
             } else {
-                self.host.to_string()
+                format!("{}", self.host)
             }
         };
         if let Some(path) = &self.path {

@@ -129,11 +129,9 @@ cfg_if! {
         pub fn setup() {
             SETUP_ONCE.call_once(|| {
                 let mut cb = ConfigBuilder::new();
-                cb.add_filter_ignore_str("async_std");
-                cb.add_filter_ignore_str("async_io");
-                cb.add_filter_ignore_str("polling");
-                cb.add_filter_ignore_str("netlink_proto");
-                cb.add_filter_ignore_str("netlink_sys");
+                for ig in crate::DEFAULT_LOG_IGNORE_LIST {
+                    cb.add_filter_ignore_str(ig);
+                }
                 TestLogger::init(LevelFilter::Trace, cb.build()).unwrap();
             });
         }

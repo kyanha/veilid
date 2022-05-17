@@ -1035,6 +1035,85 @@ impl DialInfo {
             address_type: Some(self.address_type()),
         }
     }
+
+    pub fn try_vec_from_url(url: String) -> Result<Vec<Self>, VeilidAPIError> {
+        let split_url = SplitUrl::from_str(&url)
+            .map_err(|e| parse_error!(format!("unable to split url: {}", e), url))?;
+
+        let port = match split_url.scheme.as_str() {
+            "udp" | "tcp" => split_url
+                .port
+                .ok_or_else(|| parse_error!("Missing port in udp url", url))?,
+            "ws" => split_url.port.unwrap_or(80u16),
+            "wss" => split_url.port.unwrap_or(443u16),
+            _ => {
+                return Err(parse_error!(
+                    "Invalid dial info url scheme",
+                    split_url.scheme
+                ));
+            }
+        };
+
+        let socket_addrs = match split_url.host {
+            SplitUrlHost::Hostname(_) => split_url
+                .host_port(port)
+                .to_socket_addrs()
+                .map_err(|_| parse_error!("couldn't resolve hostname in url", url))?
+                .collect(),
+            SplitUrlHost::IpAddr(a) => vec![SocketAddr::new(a, port)],
+        };
+
+        let mut out = Vec::new();
+        for sa in socket_addrs {
+            out.push(match split_url.scheme.as_str() {
+                "udp" => Self::udp_from_socketaddr(sa),
+                "tcp" => Self::tcp_from_socketaddr(sa),
+                "ws" => Self::try_ws(
+                    SocketAddress::from_socket_addr(sa).to_canonical(),
+                    url.clone(),
+                )?,
+                "wss" => Self::try_wss(
+                    SocketAddress::from_socket_addr(sa).to_canonical(),
+                    url.clone(),
+                )?,
+                _ => {
+                    unreachable!("Invalid dial info url scheme")
+                }
+            });
+        }
+        Ok(out)
+    }
+
+    pub async fn to_url(&self) -> String {
+        match self {
+            DialInfo::UDP(di) => intf::ptr_lookup(di.socket_address.to_ip_addr())
+                .await
+                .map(|h| format!("udp://{}:{}", h, di.socket_address.port()))
+                .unwrap_or_else(|_| format!("udp://{}", di.socket_address)),
+            DialInfo::TCP(di) => intf::ptr_lookup(di.socket_address.to_ip_addr())
+                .await
+                .map(|h| format!("tcp://{}:{}", h, di.socket_address.port()))
+                .unwrap_or_else(|_| format!("tcp://{}", di.socket_address)),
+            DialInfo::WS(di) => {
+                let mut split_url = SplitUrl::from_str(&format!("ws://{}", di.request)).unwrap();
+                if let SplitUrlHost::IpAddr(a) = split_url.host {
+                    if let Ok(host) = intf::ptr_lookup(a).await {
+                        split_url.host = SplitUrlHost::Hostname(host);
+                    }
+                }
+                split_url.to_string()
+            }
+            DialInfo::WSS(di) => {
+                let mut split_url = SplitUrl::from_str(&format!("wss://{}", di.request)).unwrap();
+                if let SplitUrlHost::IpAddr(a) = split_url.host {
+                    if let Ok(host) = intf::ptr_lookup(a).await {
+                        split_url.host = SplitUrlHost::Hostname(host);
+                    }
+                }
+                split_url.to_string()
+            }
+        }
+    }
 }
 
 impl MatchesDialInfoFilter for DialInfo {

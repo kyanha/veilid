@@ -79,16 +79,16 @@ impl VeilidAPI {
         Ok(routing_table.debug_info_buckets(min_state))
     }
 
-    async fn debug_dialinfo(&self, args: String) -> Result<String, VeilidAPIError> {
-        let args: Vec<String> = args.split_whitespace().map(|s| s.to_owned()).collect();
-        let is_txt = if args.len() == 1 {
-            args[0] == "txt"
-        } else {
-            false
-        };
+    async fn debug_dialinfo(&self, _args: String) -> Result<String, VeilidAPIError> {
         // Dump routing table dialinfo
         let routing_table = self.network_manager()?.routing_table();
-        Ok(routing_table.debug_info_dialinfo(is_txt))
+        Ok(routing_table.debug_info_dialinfo())
+    }
+
+    async fn debug_txtrecord(&self, _args: String) -> Result<String, VeilidAPIError> {
+        // Dump routing table txt record
+        let routing_table = self.network_manager()?.routing_table();
+        Ok(routing_table.debug_info_txtrecord().await)
     }
 
     async fn debug_entries(&self, args: String) -> Result<String, VeilidAPIError> {
@@ -259,6 +259,8 @@ impl VeilidAPI {
             self.debug_buckets(rest).await
         } else if arg == "dialinfo" {
             self.debug_dialinfo(rest).await
+        } else if arg == "txtrecord" {
+            self.debug_txtrecord(rest).await
         } else if arg == "entries" {
             self.debug_entries(rest).await
         } else if arg == "entry" {
