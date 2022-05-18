@@ -3,7 +3,7 @@ use super::*;
 #[derive(Debug, Clone, PartialOrd, PartialEq, Eq, Ord)]
 pub enum RPCError {
     Timeout,
-    InvalidFormat,
+    InvalidFormat(String),
     Unreachable(DHTKey),
     Unimplemented(String),
     Protocol(String),
@@ -13,6 +13,10 @@ pub enum RPCError {
 pub fn rpc_error_internal<T: AsRef<str>>(x: T) -> RPCError {
     error!("RPCError Internal: {}", x.as_ref());
     RPCError::Internal(x.as_ref().to_owned())
+}
+pub fn rpc_error_invalid_format<T: AsRef<str>>(x: T) -> RPCError {
+    error!("RPCError Invalid Format: {}", x.as_ref());
+    RPCError::InvalidFormat(x.as_ref().to_owned())
 }
 pub fn rpc_error_protocol<T: AsRef<str>>(x: T) -> RPCError {
     error!("RPCError Protocol: {}", x.as_ref());
@@ -35,7 +39,7 @@ impl fmt::Display for RPCError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             RPCError::Timeout => write!(f, "[RPCError: Timeout]"),
-            RPCError::InvalidFormat => write!(f, "[RPCError: InvalidFormat]"),
+            RPCError::InvalidFormat(s) => write!(f, "[RPCError: InvalidFormat({})]", s),
             RPCError::Unreachable(k) => write!(f, "[RPCError: Unreachable({})]", k),
             RPCError::Unimplemented(s) => write!(f, "[RPCError: Unimplemented({})]", s),
             RPCError::Protocol(s) => write!(f, "[RPCError: Protocol({})]", s),

@@ -10,7 +10,7 @@ const ROLLING_LATENCIES_SIZE: usize = 10;
 // - Size is number of entries
 // - Interval is number of seconds in each entry
 const ROLLING_TRANSFERS_SIZE: usize = 10;
-pub const ROLLING_TRANSFERS_INTERVAL_SECS: u32 = 10;
+pub const ROLLING_TRANSFERS_INTERVAL_SECS: u32 = 1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct TransferCount {
@@ -71,7 +71,7 @@ impl TransferStatsAccounting {
             transfer_stats.down.minimum.min_assign(bpsd);
             transfer_stats.up.minimum.min_assign(bpsu);
             transfer_stats.down.average += bpsd;
-            transfer_stats.down.average += bpsu;
+            transfer_stats.up.average += bpsu;
         }
         let len = self.rolling_transfers.len() as u64;
         transfer_stats.down.average /= len;

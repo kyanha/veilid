@@ -17,6 +17,13 @@ fn do_clap_matches(default_config_path: &OsStr) -> Result<clap::ArgMatches, clap
                 .help("Run in daemon mode in the background"),
         )
         .arg(
+            Arg::new("foreground")
+                .long("foreground")
+                .short('f')
+                .conflicts_with("daemon")
+                .help("Run in the foreground"),
+        )
+        .arg(
             Arg::new("config-file")
                 .short('c')
                 .long("config-file")
@@ -155,6 +162,9 @@ pub fn process_command_line() -> Result<(Settings, ArgMatches), String> {
         settingsrw.daemon.enabled = true;
         settingsrw.logging.terminal.enabled = false;
     }
+    if matches.occurrences_of("foreground") != 0 {
+        settingsrw.daemon.enabled = false;
+    }
     if matches.occurrences_of("subnode-index") != 0 {
         let subnode_index = match matches.value_of("subnode-index") {
             Some(x) => x
@@ -219,7 +229,7 @@ pub fn process_command_line() -> Result<(Settings, ArgMatches), String> {
     }
 
     if matches.occurrences_of("bootstrap") != 0 {
-        let bootstrap_list = match matches.value_of("bootstrap-list") {
+        let bootstrap_list = match matches.value_of("bootstrap") {
             Some(x) => {
                 println!("Overriding bootstrap list with: ");
                 let mut out: Vec<String> = Vec::new();
@@ -231,14 +241,14 @@ pub fn process_command_line() -> Result<(Settings, ArgMatches), String> {
                 out
             }
             None => {
-                return Err("value not specified for bootstrap list".to_owned());
+                return Err("value not specified for bootstrap".to_owned());
             }
         };
         settingsrw.core.network.bootstrap = bootstrap_list;
     }
 
     if matches.occurrences_of("bootstrap-nodes") != 0 {
-        let bootstrap_list = match matches.value_of("bootstrap-list") {
+        let bootstrap_list = match matches.value_of("bootstrap-nodes") {
             Some(x) => {
                 println!("Overriding bootstrap node list with: ");
                 let mut out: Vec<ParsedNodeDialInfo> = Vec::new();

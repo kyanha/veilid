@@ -9,6 +9,14 @@ use std::net::SocketAddr;
 use std::rc::Rc;
 use veilid_core::xx::*;
 
+macro_rules! capnp_failed {
+    ($ex:expr) => {{
+        let msg = format!("Capnp Error: {}", $ex);
+        error!("{}", msg);
+        Promise::err(capnp::Error::failed(msg))
+    }};
+}
+
 struct VeilidClientImpl {
     comproc: CommandProcessor,
 }
@@ -30,7 +38,7 @@ impl veilid_client::Server for VeilidClientImpl {
         let which = match veilid_update.which() {
             Ok(v) => v,
             Err(e) => {
-                panic!("(missing update kind in schema: {:?})", e);
+                return capnp_failed!(format!("(missing update kind in schema: {:?})", e));
             }
         };
         match which {
@@ -40,8 +48,28 @@ impl veilid_client::Server for VeilidClientImpl {
                 trace!("Attachment: {}", state as u16);
                 self.comproc.update_attachment(state);
             }
-            _ => {
-                panic!("shouldn't get this")
+            veilid_update::Attachment(Err(e)) => {
+                return capnp_failed!(format!("Update Attachment Error: {}", e));
+            }
+            veilid_update::Network(Ok(network)) => {
+                let started = network.get_started();
+                let bps_down = network.get_bps_down();
+                let bps_up = network.get_bps_up();
+
+                trace!(
+                    "Network: started: {}  bps_down: {}  bps_up: {}",
+                    started,
+                    bps_down,
+                    bps_up
+                );
+                self.comproc
+                    .update_network_status(started, bps_down, bps_up);
+            }
+            veilid_update::Network(Err(e)) => {
+                return capnp_failed!(format!("Update Network Error: {}", e));
+            }
+            veilid_update::Shutdown(()) => {
+                return capnp_failed!("Should not get Shutdown here".to_owned());
             }
         }
 

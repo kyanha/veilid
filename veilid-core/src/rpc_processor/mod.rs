@@ -855,7 +855,9 @@ impl RPCProcessor {
 
             // This should never want an answer
             if self.wants_answer(&operation)? {
-                return Err(RPCError::InvalidFormat);
+                return Err(rpc_error_invalid_format(
+                    "validate dial info should not want answer",
+                ));
             }
 
             // get validateDialInfo reader
@@ -958,7 +960,7 @@ impl RPCProcessor {
 
             // find_node must always want an answer
             if !self.wants_answer(&operation)? {
-                return Err(RPCError::InvalidFormat).map_err(logthru_rpc!());
+                return Err(rpc_error_invalid_format("find_node_q should want answer"));
             }
 
             // get findNodeQ reader
@@ -1030,7 +1032,9 @@ impl RPCProcessor {
 
             // This should never want an answer
             if self.wants_answer(&operation)? {
-                return Err(RPCError::InvalidFormat);
+                return Err(rpc_error_invalid_format(
+                    "node_info_update should not want answer",
+                ));
             }
 
             // get nodeInfoUpdate reader
@@ -1048,7 +1052,9 @@ impl RPCProcessor {
 
         // Update our routing table with signed node info
         if !self.filter_peer_scope(&signed_node_info.node_info) {
-            return Err(RPCError::InvalidFormat);
+            return Err(rpc_error_invalid_format(
+                "node_info_update has invalid peer scope",
+            ));
         }
         let _ = self
             .routing_table()
@@ -1092,7 +1098,7 @@ impl RPCProcessor {
 
             // This should never want an answer
             if self.wants_answer(&operation)? {
-                return Err(RPCError::InvalidFormat);
+                return Err(rpc_error_invalid_format("signal should not want answer"));
             }
 
             // get signal reader
@@ -1123,7 +1129,9 @@ impl RPCProcessor {
 
             // This should never want an answer
             if self.wants_answer(&operation)? {
-                return Err(RPCError::InvalidFormat);
+                return Err(rpc_error_invalid_format(
+                    "return receipt should not want answer",
+                ));
             }
 
             // get returnReceipt reader
@@ -1229,7 +1237,9 @@ impl RPCProcessor {
                 {
                     // Sender NodeInfo was specified, update our routing table with it
                     if !self.filter_peer_scope(&sender_ni.node_info) {
-                        return Err(RPCError::InvalidFormat);
+                        return Err(rpc_error_invalid_format(
+                            "respond_to_sender_signed_node_info has invalid peer scope",
+                        ));
                     }
                     let nr = self
                         .routing_table()
@@ -1630,7 +1640,9 @@ impl RPCProcessor {
             let peer_info = decode_peer_info(&p, true)?;
 
             if !self.filter_peer_scope(&peer_info.signed_node_info.node_info) {
-                return Err(RPCError::InvalidFormat);
+                return Err(rpc_error_invalid_format(
+                    "find_node response has invalid peer scope",
+                ));
             }
 
             peers.push(peer_info);

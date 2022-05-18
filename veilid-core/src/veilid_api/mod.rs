@@ -123,8 +123,8 @@ fn convert_rpc_error(x: RPCError) -> VeilidAPIError {
         RPCError::Unimplemented(s) => VeilidAPIError::Unimplemented { message: s },
         RPCError::Internal(s) => VeilidAPIError::Internal { message: s },
         RPCError::Protocol(s) => VeilidAPIError::Internal { message: s },
-        RPCError::InvalidFormat => VeilidAPIError::Internal {
-            message: "Invalid packet format".to_owned(),
+        RPCError::InvalidFormat(s) => VeilidAPIError::Internal {
+            message: format!("Invalid RPC format: {}", s),
         },
     }
 }

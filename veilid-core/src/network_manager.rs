@@ -351,6 +351,12 @@ impl NetworkManager {
             self.send_network_update();
         }
 
+        // Run the rolling transfers task
+        self.unlocked_inner.rolling_transfers_task.tick().await?;
+
+        // Run the relay management task
+        self.unlocked_inner.relay_management_task.tick().await?;
+
         // Run the routing table tick
         routing_table.tick().await?;
 

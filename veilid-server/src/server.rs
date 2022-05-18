@@ -159,6 +159,11 @@ pub async fn run_veilid_server(
         shutdown();
     }
 
+    // Process shutdown-immediate
+    if matches!(server_mode, ServerMode::ShutdownImmediate) {
+        shutdown();
+    }
+
     // Idle while waiting to exit
     let shutdown_switch = {
         let shutdown_switch_locked = SHUTDOWN_SWITCH.lock();
