@@ -48,6 +48,7 @@ impl ProtectedStore {
             let c = self.config.get();
             let mut inner = self.inner.lock();
             if !c.protected_store.always_use_insecure_storage {
+                // Attempt to open the secure keyring
                 cfg_if! {
                     if #[cfg(target_os = "android")] {
                         inner.keyring_manager = KeyringManager::new_secure(&c.program_name, intf::native::utils::android::get_android_globals()).ok();
@@ -70,6 +71,11 @@ impl ProtectedStore {
                         format!("_{}", c.namespace)
                     }
                 ));
+
+                // Ensure permissions are correct
+                ensure_file_private_owner(&insecure_keyring_file)?;
+
+                // Open the insecure keyring
                 inner.keyring_manager = Some(
                     KeyringManager::new_insecure(&c.program_name, &insecure_keyring_file)
                         .map_err(map_to_string)

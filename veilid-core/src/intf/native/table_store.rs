@@ -99,9 +99,17 @@ impl TableStore {
         }
 
         let dbpath = self.get_dbpath(&table_name)?;
+
+        // Ensure permissions are correct
+        ensure_file_private_owner(&dbpath)?;
+
         let cfg = DatabaseConfig::with_columns(column_count);
         let db =
             Database::open(&dbpath, cfg).map_err(|e| format!("failed to open tabledb: {}", e))?;
+
+        // Ensure permissions are correct
+        ensure_file_private_owner(&dbpath)?;
+
         trace!(
             "opened table store '{}' at path '{:?}' with {} columns",
             name,

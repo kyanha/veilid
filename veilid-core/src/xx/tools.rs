@@ -1,5 +1,6 @@
 use crate::xx::*;
 use alloc::string::ToString;
+use std::path::Path;
 
 #[macro_export]
 macro_rules! assert_err {
@@ -183,5 +184,62 @@ impl<T: PartialEq + Clone> Dedup<T> for Vec<T> {
                 true
             }
         })
+    }
+}
+
+cfg_if::cfg_if! {
+    if #[cfg(unix)] {
+        use std::os::unix::fs::MetadataExt;
+        use std::os::unix::prelude::PermissionsExt;
+        use nix::unistd::{chown, Uid, Gid};
+
+        pub fn ensure_file_private_owner<P:AsRef<Path>>(path: P) -> Result<(), String>
+        {
+            let path = path.as_ref();
+            if !path.exists() {
+                return Ok(());
+            }
+
+            let uid = Uid::effective();
+            let gid = Gid::effective();
+            let meta = std::fs::metadata(path).map_err(|e| format!("unable to get metadata for path '{:?}': {}",path, e))?;
+
+            if meta.mode() != 0o600 {
+                std::fs::set_permissions(path,std::fs::Permissions::from_mode(0o600)).map_err(|e| format!("unable to set correct permissions on path '{:?}': {}", path, e))?;
+            }
+            if meta.uid() != uid.as_raw() || meta.gid() != gid.as_raw() {
+                chown(path, Some(uid), Some(gid)).map_err(|e| format!("unable to set correct owner on path '{:?}': {}", path, e))?;
+            }
+            Ok(())
+        }
+    } else if #[cfg(windows)] {
+        use std::os::windows::fs::MetadataExt;
+        use windows_permissions::*;
+        
+        pub fn ensure_file_private_owner<P:AsRef<Path>>(path: P) -> Result<(),String>
+        {
+            let path = path.as_ref();
+            if !path.exists() {
+                return Ok(());
+            }
+
+            // let uid = Uid::effective();
+            // let gid = Gid::effective();
+            let meta = std::fs::metadata(path).map_err(|e| format!("unable to get metadata for path '{:?}': {}",path, e))?;
+
+            if meta.mode() != 0o600 {
+                std::fs::set_permissions(path,std::fs::Permissions::from_mode(0o600)).map_err(|e| format!("unable to set correct permissions on path '{:?}': {}", path, e))?;
+            }
+
+            // if meta.uid() != uid.as_raw() || meta.gid() != gid.as_raw() {
+            //     chown(path, Some(uid), Some(gid)).map_err(|e| format!("unable to set correct owner on path '{:?}': {}", path, e))?;
+            // }
+            Ok(())
+        }
+    } else {
+        pub fn ensure_file_private_owner<P:AsRef<Path>>(path: P) -> Result<(),String>
+        {
+            Ok(())
+        }
     }
 }

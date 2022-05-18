@@ -23,6 +23,9 @@ impl BlockStore {
     }
 
     pub async fn init(&self) -> Result<(), String> {
+        // Ensure permissions are correct
+        // ensure_file_private_owner(&dbpath)?;
+
         Ok(())
     }
 

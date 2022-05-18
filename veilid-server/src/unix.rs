@@ -27,7 +27,7 @@ pub fn run_daemon(settings: Settings, _matches: ArgMatches) -> Result<(), String
         let mut daemon = daemonize::Daemonize::new();
         let s = settings.read();
         if let Some(pid_file) = &s.daemon.pid_file {
-            daemon = daemon.pid_file(pid_file).chown_pid_file(true);
+            daemon = daemon.pid_file(pid_file); //.chown_pid_file(true);
         }
         if let Some(chroot) = &s.daemon.chroot {
             daemon = daemon.chroot(chroot);

@@ -73,6 +73,7 @@ socket2 = "^0"
 bugsalot = "^0"
 chrono = "^0"
 libc = "^0"
+nix = "^0"
 
 # Dependencies for WASM builds only
 [target.'cfg(target_arch = "wasm32")'.dependencies]
@@ -129,6 +130,7 @@ rtnetlink = { version = "^0", default-features = false, features = [ "smol_socke
 # Dependencies for Windows
 [target.'cfg(target_os = "windows")'.dependencies]
 winapi = { version = "^0", features = [ "iptypes", "iphlpapi" ] }
+windows-permissions = "^0"
 
 # Dependencies for iOS
 [target.'cfg(target_os = "ios")'.dependencies]
