@@ -77,10 +77,15 @@ impl Network {
         protocol_handlers: &[Box<dyn ProtocolAcceptHandler>],
     ) -> Result<Option<NetworkConnection>, String> {
         for ah in protocol_handlers.iter() {
-            if let Some(nc) = ah.on_accept(stream.clone(), addr).await? {
+            if let Some(nc) = ah
+                .on_accept(stream.clone(), addr)
+                .await
+                .map_err(logthru_net!())?
+            {
                 return Ok(Some(nc));
             }
         }
+
         Ok(None)
     }
 
@@ -105,7 +110,7 @@ impl Network {
         let std_listener: std::net::TcpListener = socket.into();
         let listener = TcpListener::from(std_listener);
 
-        trace!("spawn_socket_listener: binding successful to {}", addr);
+        debug!("spawn_socket_listener: binding successful to {}", addr);
 
         // Create protocol handler records
         let listener_state = Arc::new(RwLock::new(ListenerState::new()));
@@ -140,7 +145,7 @@ impl Network {
                     };
                     // XXX limiting
 
-                    trace!("TCP connection from: {}", addr);
+                    log_net!("TCP connection from: {}", addr);
 
                     // Create a stream we can peek on
                     let ps = AsyncPeekStream::new(tcp_stream);
@@ -166,6 +171,7 @@ impl Network {
 
                     // Check is this could be TLS
                     let ls = listener_state.read().clone();
+
                     let conn = if ls.tls_acceptor.is_some() && first_packet[0] == 0x16 {
                         this.try_tls_handlers(
                             ls.tls_acceptor.as_ref().unwrap(),
@@ -178,28 +184,34 @@ impl Network {
                     } else {
                         this.try_handlers(ps, addr, &ls.protocol_handlers).await
                     };
+
                     let conn = match conn {
-                        Ok(Some(c)) => c,
+                        Ok(Some(c)) => {
+                            log_net!("protocol handler found for {:?}: {:?}", addr, c);
+                            c
+                        }
                         Ok(None) => {
                             // No protocol handlers matched? drop it.
+                            log_net!(warn "no protocol handler for connection from {:?}", addr);
                             return;
                         }
-                        Err(_) => {
+                        Err(e) => {
                             // Failed to negotiate connection? drop it.
+                            log_net!(warn "failed to negotiate connection from {:?}: {}", addr, e);
                             return;
                         }
                     };
 
                     // Register the new connection in the connection manager
                     if let Err(e) = connection_manager.on_new_connection(conn).await {
-                        error!("failed to register new connection: {}", e);
+                        log_net!(error "failed to register new connection: {}", e);
                     }
                 })
                 .await;
-            trace!("exited incoming loop for {}", addr);
+            log_net!(debug "exited incoming loop for {}", addr);
             // Remove our listener state from this address if we're stopping
             this.inner.lock().listener_states.remove(&addr);
-            trace!("listener state removed for {}", addr);
+            log_net!(debug "listener state removed for {}", addr);
 
             // If this happened our low-level listener socket probably died
             // so it's time to restart the network

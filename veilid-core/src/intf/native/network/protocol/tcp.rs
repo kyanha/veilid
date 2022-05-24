@@ -107,6 +107,7 @@ impl RawTcpProtocolHandler {
         stream: AsyncPeekStream,
         socket_addr: SocketAddr,
     ) -> Result<Option<NetworkConnection>, String> {
+        log_net!("TCP: on_accept_async: enter");
         let mut peekbuf: [u8; PEEK_DETECT_LEN] = [0u8; PEEK_DETECT_LEN];
         let peeklen = stream
             .peek(&mut peekbuf)
@@ -125,7 +126,7 @@ impl RawTcpProtocolHandler {
             ProtocolNetworkConnection::RawTcp(RawTcpNetworkConnection::new(stream)),
         );
 
-        log_net!("on_accept_async from: {}", socket_addr);
+        log_net!(debug "TCP: on_accept_async from: {}", socket_addr);
 
         Ok(Some(conn))
     }

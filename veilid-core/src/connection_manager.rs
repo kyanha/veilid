@@ -97,6 +97,7 @@ impl ConnectionManager {
         inner: &mut ConnectionManagerInner,
         conn: NetworkConnection,
     ) -> Result<(), String> {
+        log_net!("on_new_connection_internal: {:?}", conn);
         let tx = inner
             .connection_add_channel_tx
             .as_ref()

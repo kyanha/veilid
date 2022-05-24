@@ -342,6 +342,9 @@ pub struct NodeInfo {
 }
 
 impl NodeInfo {
+    pub fn is_valid(&self) -> bool {
+        !matches!(self.network_class, NetworkClass::Invalid)
+    }
     pub fn first_filtered_dial_info_detail<F>(&self, filter: F) -> Option<DialInfoDetail>
     where
         F: Fn(&DialInfoDetail) -> bool,
@@ -1036,8 +1039,9 @@ impl DialInfo {
         }
     }
 
-    pub fn try_vec_from_url(url: String) -> Result<Vec<Self>, VeilidAPIError> {
-        let split_url = SplitUrl::from_str(&url)
+    pub fn try_vec_from_url<S: AsRef<str>>(url: S) -> Result<Vec<Self>, VeilidAPIError> {
+        let url = url.as_ref();
+        let split_url = SplitUrl::from_str(url)
             .map_err(|e| parse_error!(format!("unable to split url: {}", e), url))?;
 
         let port = match split_url.scheme.as_str() {
@@ -1070,11 +1074,11 @@ impl DialInfo {
                 "tcp" => Self::tcp_from_socketaddr(sa),
                 "ws" => Self::try_ws(
                     SocketAddress::from_socket_addr(sa).to_canonical(),
-                    url.clone(),
+                    url.to_string(),
                 )?,
                 "wss" => Self::try_wss(
                     SocketAddress::from_socket_addr(sa).to_canonical(),
-                    url.clone(),
+                    url.to_string(),
                 )?,
                 _ => {
                     unreachable!("Invalid dial info url scheme")
@@ -1202,6 +1206,10 @@ impl SignedNodeInfo {
             timestamp: intf::get_timestamp(),
         }
     }
+
+    pub fn is_valid(&self) -> bool {
+        self.signature.valid && self.node_info.is_valid()
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -1281,7 +1289,7 @@ impl MatchesDialInfoFilter for ConnectionDescriptor {
         if !self.matches_peer_scope(filter.peer_scope) {
             return false;
         }
-        if filter.protocol_set.contains(self.protocol_type()) {
+        if !filter.protocol_set.contains(self.protocol_type()) {
             return false;
         }
         if let Some(at) = filter.address_type {
@@ -1356,19 +1364,20 @@ pub struct RPCStats {
     pub messages_sent: u32, // number of rpcs that have been sent in the total_time range
     pub messages_rcvd: u32, // number of rpcs that have been received in the total_time range
     pub questions_in_flight: u32, // number of questions issued that have yet to be answered
-    //pub last_question: Option<u64>, // when the peer was last questioned and we want an answer
-    pub first_consecutive_answer_time: Option<u64>, // the timestamp of the first answer in a series of consecutive questions
+    pub last_question: Option<u64>, // when the peer was last questioned (either successfully or not) and we wanted an answer
+    pub last_seen_ts: Option<u64>, // when the peer was last seen for any reason, including when we first attempted to reach out to it
+    pub first_consecutive_seen_ts: Option<u64>, // the timestamp of the first consecutive proof-of-life for this node (an answer or received question)
     pub recent_lost_answers: u32, // number of answers that have been lost since we lost reliability
+    pub failed_to_send: u32, // number of messages that have failed to send since we last successfully sent one
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct PeerStats {
     pub time_added: u64,               // when the peer was added to the routing table
-    pub last_seen: Option<u64>, // when the peer was last seen for any reason, including when we first attempted to reach out to it
-    pub rpc_stats: RPCStats,    // information about RPCs
+    pub rpc_stats: RPCStats,           // information about RPCs
     pub latency: Option<LatencyStats>, // latencies for communications with the peer
     pub transfer: TransferStatsDownUp, // Stats for communications with the peer
-    pub status: Option<NodeStatus>, // Last known node status
+    pub status: Option<NodeStatus>,    // Last known node status
 }
 
 cfg_if! {

@@ -72,10 +72,13 @@ impl RoutingTable {
         }
     }
 
-    pub fn filter_has_valid_signed_node_info(kv: &(&DHTKey, Option<&mut BucketEntry>)) -> bool {
+    pub fn filter_has_valid_signed_node_info(
+        kv: &(&DHTKey, Option<&mut BucketEntry>),
+        own_peer_info_is_valid: bool,
+    ) -> bool {
         match &kv.1 {
-            None => true,
-            Some(b) => b.has_node_info(),
+            None => own_peer_info_is_valid,
+            Some(b) => b.has_valid_signed_node_info(),
         }
     }
 
@@ -117,10 +120,11 @@ impl RoutingTable {
             nodes.push(selfkv);
         }
         // add all nodes from buckets
+        // Can't use with_entries() here due to lifetime issues
         for b in &mut inner.buckets {
             for (k, v) in b.entries_mut() {
                 // Don't bother with dead nodes
-                if !v.check_dead(cur_ts) {
+                if v.state(cur_ts) >= BucketEntryState::Unreliable {
                     // Apply filter
                     let kv = (k, Some(v));
                     if filter(&kv) {
@@ -159,13 +163,11 @@ impl RoutingTable {
             // filter
             |kv| {
                 if kv.1.is_none() {
-                    // filter out self peer, as it is irrelevant to the 'fastest nodes' search
-                    return false;
+                    // always filter out self peer, as it is irrelevant to the 'fastest nodes' search
+                    false
+                } else {
+                    filter.as_ref().map(|f| f(kv)).unwrap_or(true)
                 }
-                if filter.is_some() && !filter.as_ref().unwrap()(kv) {
-                    return false;
-                }
-                true
             },
             // sort
             |(a_key, a_entry), (b_key, b_entry)| {
@@ -237,16 +239,7 @@ impl RoutingTable {
             node_count,
             cur_ts,
             // filter
-            |kv| {
-                if kv.1.is_none() {
-                    // include self peer, as it is relevant to the 'closest nodes' search
-                    return true;
-                }
-                if filter.is_some() && !filter.as_ref().unwrap()(kv) {
-                    return false;
-                }
-                true
-            },
+            |kv| filter.as_ref().map(|f| f(kv)).unwrap_or(true),
             // sort
             |(a_key, a_entry), (b_key, b_entry)| {
                 // same nodes are always the same

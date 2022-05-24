@@ -88,6 +88,7 @@ macro_rules! map_error_panic {
 }
 
 impl RPCProcessor {
+    #[allow(dead_code)]
     pub(super) fn get_rpc_request_debug_info<T: capnp::message::ReaderSegments>(
         &self,
         dest: &Destination,
@@ -104,6 +105,7 @@ impl RPCProcessor {
             self.get_rpc_message_debug_info(message)
         )
     }
+    #[allow(dead_code)]
     pub(super) fn get_rpc_reply_debug_info<T: capnp::message::ReaderSegments>(
         &self,
         request_rpcreader: &RPCMessageReader,

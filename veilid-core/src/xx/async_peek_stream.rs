@@ -20,6 +20,96 @@ where
     }
 }
 
+////////
+///
+
+pub struct Peek<'a> {
+    aps: AsyncPeekStream,
+    buf: &'a mut [u8],
+}
+
+impl Unpin for Peek<'_> {}
+
+impl Future for Peek<'_> {
+    type Output = std::io::Result<usize>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let this = &mut *self;
+
+        let mut inner = this.aps.inner.lock();
+        let inner = &mut *inner;
+        //
+        let buf_len = this.buf.len();
+        let mut copy_len = buf_len;
+        if buf_len > inner.peekbuf_len {
+            //
+            inner.peekbuf.resize(buf_len, 0u8);
+            let mut read_future = inner
+                .stream
+                .read(&mut inner.peekbuf.as_mut_slice()[inner.peekbuf_len..buf_len]);
+            let read_len = match Pin::new(&mut read_future).poll(cx) {
+                Poll::Pending => {
+                    inner.peekbuf.resize(inner.peekbuf_len, 0u8);
+                    return Poll::Pending;
+                }
+                Poll::Ready(Err(e)) => {
+                    return Poll::Ready(Err(e));
+                }
+                Poll::Ready(Ok(v)) => v,
+            };
+            inner.peekbuf_len += read_len;
+            inner.peekbuf.resize(inner.peekbuf_len, 0u8);
+            copy_len = inner.peekbuf_len;
+        }
+        this.buf[..copy_len].copy_from_slice(&inner.peekbuf[..copy_len]);
+        Poll::Ready(Ok(copy_len))
+    }
+}
+
+////////
+///
+
+pub struct PeekExact<'a> {
+    aps: AsyncPeekStream,
+    buf: &'a mut [u8],
+}
+
+impl Unpin for PeekExact<'_> {}
+
+impl Future for PeekExact<'_> {
+    type Output = std::io::Result<usize>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let this = &mut *self;
+
+        let mut inner = this.aps.inner.lock();
+        let inner = &mut *inner;
+        //
+        let buf_len = this.buf.len();
+        let mut copy_len = buf_len;
+        if buf_len > inner.peekbuf_len {
+            //
+            inner.peekbuf.resize(buf_len, 0u8);
+            let mut read_future = inner
+                .stream
+                .read_exact(&mut inner.peekbuf.as_mut_slice()[inner.peekbuf_len..buf_len]);
+            match Pin::new(&mut read_future).poll(cx) {
+                Poll::Pending => {
+                    inner.peekbuf.resize(inner.peekbuf_len, 0u8);
+                    return Poll::Pending;
+                }
+                Poll::Ready(Err(e)) => {
+                    return Poll::Ready(Err(e));
+                }
+                Poll::Ready(Ok(())) => (),
+            };
+            inner.peekbuf_len = buf_len;
+            copy_len = inner.peekbuf_len;
+        }
+        this.buf[..copy_len].copy_from_slice(&inner.peekbuf[..copy_len]);
+        Poll::Ready(Ok(copy_len))
+    }
+}
 /////////
 ///
 struct AsyncPeekStreamInner {
@@ -50,60 +140,18 @@ impl AsyncPeekStream {
         }
     }
 
-    pub async fn peek(&'_ self, buf: &'_ mut [u8]) -> Result<usize> {
-        let (mut stream, mut peekbuf, mut peekbuf_len) = {
-            let inner = self.inner.lock();
-            (
-                inner.stream.clone_stream(),
-                inner.peekbuf.clone(),
-                inner.peekbuf_len,
-            )
-        };
-        //
-        let buf_len = buf.len();
-        let mut copy_len = buf_len;
-        if buf_len > peekbuf_len {
-            //
-            peekbuf.resize(buf_len, 0u8);
-            let read_len = stream
-                .read(&mut peekbuf.as_mut_slice()[peekbuf_len..buf_len])
-                .await?;
-            peekbuf_len += read_len;
-            copy_len = peekbuf_len;
+    pub fn peek<'a>(&'a self, buf: &'a mut [u8]) -> Peek<'a> {
+        Peek::<'a> {
+            aps: self.clone(),
+            buf,
         }
-        buf[..copy_len].copy_from_slice(&peekbuf[..copy_len]);
-
-        let mut inner = self.inner.lock();
-        inner.peekbuf = peekbuf;
-        inner.peekbuf_len = peekbuf_len;
-        Ok(copy_len)
     }
 
-    pub async fn peek_exact(&'_ self, buf: &'_ mut [u8]) -> Result<()> {
-        let (mut stream, mut peekbuf, mut peekbuf_len) = {
-            let inner = self.inner.lock();
-            (
-                inner.stream.clone_stream(),
-                inner.peekbuf.clone(),
-                inner.peekbuf_len,
-            )
-        };
-        //
-        let buf_len = buf.len();
-        if buf_len > peekbuf_len {
-            //
-            peekbuf.resize(buf_len, 0u8);
-            stream
-                .read_exact(&mut peekbuf.as_mut_slice()[peekbuf_len..buf_len])
-                .await?;
-            peekbuf_len = buf_len;
+    pub fn peek_exact<'a>(&'a self, buf: &'a mut [u8]) -> PeekExact<'a> {
+        PeekExact::<'a> {
+            aps: self.clone(),
+            buf,
         }
-        buf.copy_from_slice(&peekbuf[..buf_len]);
-
-        let mut inner = self.inner.lock();
-        inner.peekbuf = peekbuf;
-        inner.peekbuf_len = peekbuf_len;
-        Ok(())
     }
 }
 

@@ -296,6 +296,8 @@ impl VeilidConfig {
             get_config!(inner.network.max_connections_per_ip6_prefix_size);
             get_config!(inner.network.max_connection_frequency_per_min);
             get_config!(inner.network.client_whitelist_timeout_ms);
+            get_config!(inner.network.reverse_connection_receipt_time_ms);
+            get_config!(inner.network.hole_punch_receipt_time_ms);
             get_config!(inner.network.bootstrap);
             get_config!(inner.network.bootstrap_nodes);
             get_config!(inner.network.routing_table.limit_over_attached);

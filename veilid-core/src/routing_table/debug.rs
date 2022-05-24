@@ -75,25 +75,30 @@ impl RoutingTable {
         let mut cnt = 0;
         out += &format!("Entries: {}\n", inner.bucket_entry_count);
         while b < blen {
-            if inner.buckets[b].entries().len() > 0 {
-                out += &format!("  Bucket #{}:\n", b);
-                for e in inner.buckets[b].entries() {
+            let filtered_entries: Vec<(&DHTKey, &BucketEntry)> = inner.buckets[b]
+                .entries()
+                .filter(|e| {
                     let state = e.1.state(cur_ts);
-                    if state >= min_state {
-                        out += &format!(
-                            "    {} [{}]\n",
-                            e.0.encode(),
-                            match state {
-                                BucketEntryState::Reliable => "R",
-                                BucketEntryState::Unreliable => "U",
-                                BucketEntryState::Dead => "D",
-                            }
-                        );
-
-                        cnt += 1;
-                        if cnt >= limit {
-                            break;
+                    state >= min_state
+                })
+                .collect();
+            if !filtered_entries.is_empty() {
+                out += &format!("  Bucket #{}:\n", b);
+                for e in filtered_entries {
+                    let state = e.1.state(cur_ts);
+                    out += &format!(
+                        "    {} [{}]\n",
+                        e.0.encode(),
+                        match state {
+                            BucketEntryState::Reliable => "R",
+                            BucketEntryState::Unreliable => "U",
+                            BucketEntryState::Dead => "D",
                         }
+                    );
+
+                    cnt += 1;
+                    if cnt >= limit {
+                        break;
                     }
                 }
                 if cnt >= limit {

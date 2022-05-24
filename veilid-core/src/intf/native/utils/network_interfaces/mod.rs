@@ -345,7 +345,11 @@ impl NetworkInterfaces {
         if changed {
             self.cache_best_addresses();
 
-            trace!("NetworkInterfaces refreshed: {:#?}?", self);
+            //trace!("NetworkInterfaces refreshed: {:#?}?", self);
+            trace!(
+                "NetworkInterfaces refreshed: {:#?}?",
+                self.interface_address_cache
+            );
         }
         Ok(changed)
     }

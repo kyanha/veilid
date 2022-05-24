@@ -23,6 +23,9 @@ const UNRELIABLE_PING_INTERVAL_SECS: u32 = 5;
 // remains valid, as well as to make sure we remain in any relay node's routing table
 const KEEPALIVE_PING_INTERVAL_SECS: u32 = 20;
 
+// How many times do we try to ping a never-reached node before we call it dead
+const NEVER_REACHED_PING_COUNT: u32 = 3;
+
 // Do not change order here, it will mess up other sorts
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum BucketEntryState {
@@ -58,7 +61,6 @@ impl BucketEntry {
             transfer_stats_accounting: TransferStatsAccounting::new(),
             peer_stats: PeerStats {
                 time_added: now,
-                last_seen: None,
                 rpc_stats: RPCStats::default(),
                 latency: None,
                 transfer: TransferStatsDownUp::default(),
@@ -129,7 +131,7 @@ impl BucketEntry {
 
     pub fn has_valid_signed_node_info(&self) -> bool {
         if let Some(sni) = &self.opt_signed_node_info {
-            sni.signature.valid
+            sni.is_valid()
         } else {
             false
         }
@@ -213,8 +215,13 @@ impl BucketEntry {
 
     ///// state machine handling
     pub(super) fn check_reliable(&self, cur_ts: u64) -> bool {
-        // if we have had consecutive ping replies for longer that UNRELIABLE_PING_SPAN_SECS
-        match self.peer_stats.rpc_stats.first_consecutive_answer_time {
+        // If we have had any failures to send, this is not reliable
+        if self.peer_stats.rpc_stats.failed_to_send > 0 {
+            return false;
+        }
+
+        // if we have seen the node consistently for longer that UNRELIABLE_PING_SPAN_SECS
+        match self.peer_stats.rpc_stats.first_consecutive_seen_ts {
             None => false,
             Some(ts) => {
                 cur_ts.saturating_sub(ts) >= (UNRELIABLE_PING_SPAN_SECS as u64 * 1000000u64)
@@ -222,10 +229,15 @@ impl BucketEntry {
         }
     }
     pub(super) fn check_dead(&self, cur_ts: u64) -> bool {
+        // If we have failured to send NEVER_REACHED_PING_COUNT times in a row, the node is dead
+        if self.peer_stats.rpc_stats.failed_to_send >= NEVER_REACHED_PING_COUNT {
+            return true;
+        }
         // if we have not heard from the node at all for the duration of the unreliable ping span
-        // a node is not dead if we haven't heard from it yet
-        match self.peer_stats.last_seen {
-            None => false,
+        // a node is not dead if we haven't heard from it yet,
+        // but we give it NEVER_REACHED_PING_COUNT chances to ping before we say it's dead
+        match self.peer_stats.rpc_stats.last_seen_ts {
+            None => self.peer_stats.rpc_stats.recent_lost_answers < NEVER_REACHED_PING_COUNT,
             Some(ts) => {
                 cur_ts.saturating_sub(ts) >= (UNRELIABLE_PING_SPAN_SECS as u64 * 1000000u64)
             }
@@ -233,9 +245,20 @@ impl BucketEntry {
     }
 
     fn needs_constant_ping(&self, cur_ts: u64, interval: u64) -> bool {
-        match self.peer_stats.last_seen {
+        // If we have not either seen the node, nor asked it a question in the last 'interval'
+        // then we should ping it
+        let latest_contact_time = self
+            .peer_stats
+            .rpc_stats
+            .last_seen_ts
+            .max(self.peer_stats.rpc_stats.last_question);
+
+        match latest_contact_time {
             None => true,
-            Some(last_seen) => cur_ts.saturating_sub(last_seen) >= (interval * 1000000u64),
+            Some(latest_contact_time) => {
+                // If we haven't done anything with this node in 'interval' seconds
+                cur_ts.saturating_sub(latest_contact_time) >= (interval * 1000000u64)
+            }
         }
     }
 
@@ -259,19 +282,26 @@ impl BucketEntry {
         match state {
             BucketEntryState::Reliable => {
                 // If we are in a reliable state, we need a ping on an exponential scale
-                match self.peer_stats.last_seen {
-                    None => true,
-                    Some(last_seen) => {
-                        let first_consecutive_answer_time = self
-                            .peer_stats
-                            .rpc_stats
-                            .first_consecutive_answer_time
-                            .unwrap();
-                        let start_of_reliable_time = first_consecutive_answer_time
+                let latest_contact_time = self
+                    .peer_stats
+                    .rpc_stats
+                    .last_seen_ts
+                    .max(self.peer_stats.rpc_stats.last_question);
+
+                match latest_contact_time {
+                    None => {
+                        error!("Peer is reliable, but not seen!");
+                        true
+                    }
+                    Some(latest_contact_time) => {
+                        let first_consecutive_seen_ts =
+                            self.peer_stats.rpc_stats.first_consecutive_seen_ts.unwrap();
+                        let start_of_reliable_time = first_consecutive_seen_ts
                             + ((UNRELIABLE_PING_SPAN_SECS - UNRELIABLE_PING_INTERVAL_SECS) as u64
                                 * 1_000_000u64);
                         let reliable_cur = cur_ts.saturating_sub(start_of_reliable_time);
-                        let reliable_last = last_seen.saturating_sub(start_of_reliable_time);
+                        let reliable_last =
+                            latest_contact_time.saturating_sub(start_of_reliable_time);
 
                         retry_falloff_log(
                             reliable_last,
@@ -292,37 +322,44 @@ impl BucketEntry {
     }
 
     pub(super) fn touch_last_seen(&mut self, ts: u64) {
-        // If we've heard from the node at all, we can always restart our lost ping count
-        self.peer_stats.rpc_stats.recent_lost_answers = 0;
         // Mark the node as seen
-        self.peer_stats.last_seen = Some(ts);
+        if self
+            .peer_stats
+            .rpc_stats
+            .first_consecutive_seen_ts
+            .is_none()
+        {
+            self.peer_stats.rpc_stats.first_consecutive_seen_ts = Some(ts);
+        }
+
+        self.peer_stats.rpc_stats.last_seen_ts = Some(ts);
     }
 
     pub(super) fn state_debug_info(&self, cur_ts: u64) -> String {
-        let first_consecutive_answer_time = if let Some(first_consecutive_answer_time) =
-            self.peer_stats.rpc_stats.first_consecutive_answer_time
+        let first_consecutive_seen_ts = if let Some(first_consecutive_seen_ts) =
+            self.peer_stats.rpc_stats.first_consecutive_seen_ts
         {
             format!(
                 "{}s ago",
-                timestamp_to_secs(cur_ts.saturating_sub(first_consecutive_answer_time))
+                timestamp_to_secs(cur_ts.saturating_sub(first_consecutive_seen_ts))
             )
         } else {
             "never".to_owned()
         };
-        let last_seen = if let Some(last_seen) = self.peer_stats.last_seen {
+        let last_seen_ts_str = if let Some(last_seen_ts) = self.peer_stats.rpc_stats.last_seen_ts {
             format!(
                 "{}s ago",
-                timestamp_to_secs(cur_ts.saturating_sub(last_seen))
+                timestamp_to_secs(cur_ts.saturating_sub(last_seen_ts))
             )
         } else {
             "never".to_owned()
         };
 
         format!(
-            "state: {:?}, first_consecutive_answer_time: {},  last_seen: {}",
+            "state: {:?}, first_consecutive_seen_ts: {},  last_seen_ts: {}",
             self.state(cur_ts),
-            first_consecutive_answer_time,
-            last_seen
+            first_consecutive_seen_ts,
+            last_seen_ts_str
         )
     }
 
@@ -332,11 +369,10 @@ impl BucketEntry {
     pub(super) fn question_sent(&mut self, ts: u64, bytes: u64, expects_answer: bool) {
         self.transfer_stats_accounting.add_up(bytes);
         self.peer_stats.rpc_stats.messages_sent += 1;
+        self.peer_stats.rpc_stats.failed_to_send = 0;
         if expects_answer {
             self.peer_stats.rpc_stats.questions_in_flight += 1;
-        }
-        if self.peer_stats.last_seen.is_none() {
-            self.peer_stats.last_seen = Some(ts);
+            self.peer_stats.rpc_stats.last_question = Some(ts);
         }
     }
     pub(super) fn question_rcvd(&mut self, ts: u64, bytes: u64) {
@@ -344,33 +380,40 @@ impl BucketEntry {
         self.peer_stats.rpc_stats.messages_rcvd += 1;
         self.touch_last_seen(ts);
     }
-    pub(super) fn answer_sent(&mut self, _ts: u64, bytes: u64) {
+    pub(super) fn answer_sent(&mut self, bytes: u64) {
         self.transfer_stats_accounting.add_up(bytes);
         self.peer_stats.rpc_stats.messages_sent += 1;
+        self.peer_stats.rpc_stats.failed_to_send = 0;
     }
     pub(super) fn answer_rcvd(&mut self, send_ts: u64, recv_ts: u64, bytes: u64) {
         self.transfer_stats_accounting.add_down(bytes);
         self.peer_stats.rpc_stats.messages_rcvd += 1;
         self.peer_stats.rpc_stats.questions_in_flight -= 1;
-        if self
-            .peer_stats
-            .rpc_stats
-            .first_consecutive_answer_time
-            .is_none()
-        {
-            self.peer_stats.rpc_stats.first_consecutive_answer_time = Some(recv_ts);
-        }
         self.record_latency(recv_ts - send_ts);
         self.touch_last_seen(recv_ts);
+        self.peer_stats.rpc_stats.recent_lost_answers = 0;
     }
-    pub(super) fn question_lost(&mut self, _ts: u64) {
-        self.peer_stats.rpc_stats.first_consecutive_answer_time = None;
+    pub(super) fn question_lost(&mut self) {
+        self.peer_stats.rpc_stats.first_consecutive_seen_ts = None;
         self.peer_stats.rpc_stats.questions_in_flight -= 1;
+        self.peer_stats.rpc_stats.recent_lost_answers += 1;
+    }
+    pub(super) fn failed_to_send(&mut self, ts: u64, expects_answer: bool) {
+        if expects_answer {
+            self.peer_stats.rpc_stats.last_question = Some(ts);
+        }
+        self.peer_stats.rpc_stats.failed_to_send += 1;
+        self.peer_stats.rpc_stats.first_consecutive_seen_ts = None;
     }
 }
 
 impl Drop for BucketEntry {
     fn drop(&mut self) {
-        assert_eq!(self.ref_count, 0);
+        if self.ref_count != 0 {
+            panic!(
+                "bucket entry dropped with non-zero refcount: {:#?}",
+                self.node_info()
+            )
+        }
     }
 }

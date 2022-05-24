@@ -100,7 +100,7 @@ pub fn new_unbound_shared_tcp_socket(domain: Domain) -> Result<Socket, String> {
     let socket = Socket::new(domain, Type::STREAM, Some(Protocol::TCP))
         .map_err(map_to_string)
         .map_err(logthru_net!("failed to create TCP socket"))?;
-    if let Err(e) = socket.set_linger(None) {
+    if let Err(e) = socket.set_linger(Some(core::time::Duration::from_secs(0))) {
         log_net!(error "Couldn't set TCP linger: {}", e);
     }
     if let Err(e) = socket.set_nodelay(true) {
@@ -144,7 +144,7 @@ pub fn new_bound_first_tcp_socket(local_address: SocketAddr) -> Result<Socket, S
     let socket = Socket::new(domain, Type::STREAM, Some(Protocol::TCP))
         .map_err(map_to_string)
         .map_err(logthru_net!("failed to create TCP socket"))?;
-    if let Err(e) = socket.set_linger(None) {
+    if let Err(e) = socket.set_linger(Some(core::time::Duration::from_secs(0))) {
         log_net!(error "Couldn't set TCP linger: {}", e);
     }
     if let Err(e) = socket.set_nodelay(true) {

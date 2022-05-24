@@ -311,11 +311,11 @@ impl RoutingTable {
 
         // Public dial info changed, go through all nodes and reset their 'seen our node info' bit
         if matches!(domain, RoutingDomain::PublicInternet) {
-            for bucket in &mut inner.buckets {
-                for entry in bucket.entries_mut() {
-                    entry.1.set_seen_our_node_info(false);
-                }
-            }
+            let cur_ts = intf::get_timestamp();
+            Self::with_entries(&mut *inner, cur_ts, BucketEntryState::Dead, |_, e| {
+                e.set_seen_our_node_info(false);
+                Option::<()>::None
+            });
         }
 
         Ok(())
@@ -393,26 +393,18 @@ impl RoutingTable {
                         let mut inner = this.inner.lock();
                         let mut node_refs = Vec::<NodeRef>::with_capacity(inner.bucket_entry_count);
                         let cur_ts = intf::get_timestamp();
-                        for bucket in &mut inner.buckets {
-                            for entry in bucket.entries_mut() {
-                                match entry.1.state(cur_ts) {
-                                    BucketEntryState::Reliable | BucketEntryState::Unreliable => {
-                                        // Only update nodes that haven't seen our node info yet
-                                        if !entry.1.has_seen_our_node_info() {
-                                            node_refs.push(NodeRef::new(
-                                                this.clone(),
-                                                *entry.0,
-                                                entry.1,
-                                                None,
-                                            ));
-                                        }
-                                    }
-                                    BucketEntryState::Dead => {
-                                        // do nothing
-                                    }
-                                }
+                        Self::with_entries(&mut *inner, cur_ts, BucketEntryState::Unreliable, |k, e| {
+                            // Only update nodes that haven't seen our node info yet
+                            if !e.has_seen_our_node_info() {
+                                node_refs.push(NodeRef::new(
+                                    this.clone(),
+                                    *k,
+                                    e,
+                                    None,
+                                ));
                             }
-                        }
+                            Option::<()>::None
+                        });
                         node_refs
                     };
 
@@ -458,8 +450,8 @@ impl RoutingTable {
         for bucket in &mut inner.buckets {
             bucket.kick(0);
         }
-        log_rtab!(
-            "Routing table purge complete. Routing table now has {} nodes",
+        log_rtab!(debug
+             "Routing table purge complete. Routing table now has {} nodes",
             inner.bucket_entry_count
         );
     }
@@ -473,7 +465,7 @@ impl RoutingTable {
         if let Some(dead_node_ids) = bucket.kick(bucket_depth) {
             // Remove counts
             inner.bucket_entry_count -= dead_node_ids.len();
-            log_rtab!("Routing table now has {} nodes", inner.bucket_entry_count);
+            log_rtab!(debug "Routing table now has {} nodes", inner.bucket_entry_count);
 
             // Now purge the routing table inner vectors
             //let filter = |k: &DHTKey| dead_node_ids.contains(k);
@@ -488,6 +480,34 @@ impl RoutingTable {
         distance(&node_id, &inner.node_id)
             .first_nonzero_bit()
             .unwrap()
+    }
+
+    fn get_entry_count(inner: &mut RoutingTableInner, min_state: BucketEntryState) -> usize {
+        let mut count = 0usize;
+        let cur_ts = intf::get_timestamp();
+        Self::with_entries(inner, cur_ts, min_state, |_, _| {
+            count += 1;
+            Option::<()>::None
+        });
+        count
+    }
+
+    fn with_entries<T, F: FnMut(&DHTKey, &mut BucketEntry) -> Option<T>>(
+        inner: &mut RoutingTableInner,
+        cur_ts: u64,
+        min_state: BucketEntryState,
+        mut f: F,
+    ) -> Option<T> {
+        for bucket in &mut inner.buckets {
+            for entry in bucket.entries_mut() {
+                if entry.1.state(cur_ts) >= min_state {
+                    if let Some(out) = f(entry.0, entry.1) {
+                        return Some(out);
+                    }
+                }
+            }
+        }
+        None
     }
 
     fn drop_node_ref(&self, node_id: DHTKey) {
@@ -536,7 +556,8 @@ impl RoutingTable {
             None => {
                 // Make new entry
                 inner.bucket_entry_count += 1;
-                log_rtab!("Routing table now has {} nodes", inner.bucket_entry_count);
+                let cnt = inner.bucket_entry_count;
+                log_rtab!(debug "Routing table now has {} nodes, {} live", cnt, Self::get_entry_count(&mut *inner, BucketEntryState::Unreliable));
                 let bucket = &mut inner.buckets[idx];
                 let nr = bucket.add_entry(node_id);
 
@@ -639,38 +660,32 @@ impl RoutingTable {
         let mut best_inbound_relay: Option<NodeRef> = None;
 
         // Iterate all known nodes for candidates
-        for b in &mut inner.buckets {
-            for (k, entry) in b.entries_mut() {
-                // Ensure it's not dead
-                if !matches!(entry.state(cur_ts), BucketEntryState::Dead) {
-                    // Ensure this node is not on our local network
-                    if !entry
-                        .local_node_info()
-                        .map(|l| l.has_dial_info())
-                        .unwrap_or(false)
-                    {
-                        // Ensure we have the node's status
-                        if let Some(node_status) = &entry.peer_stats().status {
-                            // Ensure the node will relay
-                            if node_status.will_relay {
-                                if let Some(best_inbound_relay) = best_inbound_relay.as_mut() {
-                                    if best_inbound_relay.operate(|best| {
-                                        BucketEntry::cmp_fastest_reliable(cur_ts, best, entry)
-                                    }) == std::cmp::Ordering::Greater
-                                    {
-                                        *best_inbound_relay =
-                                            NodeRef::new(self.clone(), *k, entry, None);
-                                    }
-                                } else {
-                                    best_inbound_relay =
-                                        Some(NodeRef::new(self.clone(), *k, entry, None));
-                                }
+        Self::with_entries(&mut *inner, cur_ts, BucketEntryState::Unreliable, |k, e| {
+            // Ensure this node is not on our local network
+            if !e
+                .local_node_info()
+                .map(|l| l.has_dial_info())
+                .unwrap_or(false)
+            {
+                // Ensure we have the node's status
+                if let Some(node_status) = &e.peer_stats().status {
+                    // Ensure the node will relay
+                    if node_status.will_relay {
+                        if let Some(best_inbound_relay) = best_inbound_relay.as_mut() {
+                            if best_inbound_relay
+                                .operate(|best| BucketEntry::cmp_fastest_reliable(cur_ts, best, e))
+                                == std::cmp::Ordering::Greater
+                            {
+                                *best_inbound_relay = NodeRef::new(self.clone(), *k, e, None);
                             }
+                        } else {
+                            best_inbound_relay = Some(NodeRef::new(self.clone(), *k, e, None));
                         }
                     }
                 }
             }
-        }
+            Option::<()>::None
+        });
 
         best_inbound_relay
     }
@@ -771,11 +786,105 @@ impl RoutingTable {
         }
     }
 
-    async fn resolve_bootstrap(&self, bootstrap: Vec<String>) -> Result<Vec<String>, String> {
-        let mut out = Vec::<String>::new();
+    // Bootstrap lookup process
+    async fn resolve_bootstrap(&self, bootstrap: Vec<String>) -> Result<Vec<NodeDialInfo>, String> {
+        let mut out = Vec::<NodeDialInfo>::new();
+
+        // Resolve from bootstrap root to bootstrap hostnames
+        let mut bsnames = Vec::<String>::new();
         for bh in bootstrap {
-            //
+            // Get TXT record for bootstrap (bootstrap.veilid.net, or similar)
+            let records = intf::txt_lookup(&bh).await?;
+            for record in records {
+                // Split the bootstrap name record by commas
+                for rec in record.split(',') {
+                    let rec = rec.trim();
+                    // If the name specified is fully qualified, go with it
+                    let bsname = if rec.ends_with('.') {
+                        rec.to_string()
+                    }
+                    // If the name is not fully qualified, prepend it to the bootstrap name
+                    else {
+                        format!("{}.{}", rec, bh)
+                    };
+
+                    // Add to the list of bootstrap name to look up
+                    bsnames.push(bsname);
+                }
+            }
         }
+
+        // Get bootstrap nodes from hostnames concurrently
+        let mut unord = FuturesUnordered::new();
+        for bsname in bsnames {
+            unord.push(async move {
+                // look up boostrap node txt records
+                let bsnirecords = match intf::txt_lookup(&bsname).await {
+                    Err(e) => {
+                        warn!("bootstrap node txt lookup failed for {}: {}", bsname, e);
+                        return None;
+                    }
+                    Ok(v) => v,
+                };
+                // for each record resolve into node dial info strings
+                let mut nodedialinfos: Vec<NodeDialInfo> = Vec::new();
+                for bsnirecord in bsnirecords {
+                    // split bootstrap node record by commas. example:
+                    // 7lxDEabK_qgjbe38RtBa3IZLrud84P6NhGP-pRTZzdQ,tcp://bootstrap-dev-alpha.veilid.net:5150,udp://bootstrap-dev-alpha.veilid.net:5150,ws://bootstrap-dev-alpha.veilid.net:5150/ws
+                    let mut records = bsnirecord.split(',').map(|x| x.trim());
+                    let node_id_str = match records.next() {
+                        Some(v) => v,
+                        None => {
+                            warn!("no node id specified in bootstrap node txt record");
+                            continue;
+                        }
+                    };
+                    // Decode the node id
+                    let node_id_key = match DHTKey::try_decode(node_id_str) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            warn!(
+                                "Invalid node id in bootstrap node record {}: {}",
+                                node_id_str, e
+                            );
+                            continue;
+                        }
+                    };
+
+                    // If this is our own node id, then we skip it for bootstrap, in case we are a bootstrap node
+                    if self.node_id() == node_id_key {
+                        continue;
+                    }
+
+                    // Resolve each record and store in node dial infos list
+                    let node_id = NodeId::new(node_id_key);
+                    for rec in records {
+                        let rec = rec.trim();
+                        let dial_infos = match DialInfo::try_vec_from_url(rec) {
+                            Ok(dis) => dis,
+                            Err(e) => {
+                                warn!("Couldn't resolve bootstrap node dial info {}: {}", rec, e);
+                                continue;
+                            }
+                        };
+
+                        for dial_info in dial_infos {
+                            nodedialinfos.push(NodeDialInfo {
+                                node_id: node_id.clone(),
+                                dial_info,
+                            })
+                        }
+                    }
+                }
+                Some(nodedialinfos)
+            });
+        }
+        while let Some(ndis) = unord.next().await {
+            if let Some(mut ndis) = ndis {
+                out.append(&mut ndis);
+            }
+        }
+
         Ok(out)
     }
 
@@ -791,8 +900,18 @@ impl RoutingTable {
         log_rtab!("--- bootstrap_task");
 
         // If we aren't specifying a bootstrap node list explicitly, then pull from the bootstrap server(s)
-        let bootstrap_nodes = if !bootstrap_nodes.is_empty() {
-            bootstrap_nodes
+        let bootstrap_node_dial_infos = if !bootstrap_nodes.is_empty() {
+            let mut bsnvec = Vec::new();
+            for b in bootstrap_nodes {
+                let ndis = NodeDialInfo::from_str(b.as_str())
+                    .map_err(map_to_string)
+                    .map_err(logthru_rtab!(
+                        "Invalid node dial info in bootstrap entry: {}",
+                        b
+                    ))?;
+                bsnvec.push(ndis);
+            }
+            bsnvec
         } else {
             // Resolve bootstrap servers and recurse their TXT entries
             self.resolve_bootstrap(bootstrap).await?
@@ -800,16 +919,13 @@ impl RoutingTable {
 
         // Map all bootstrap entries to a single key with multiple dialinfo
         let mut bsmap: BTreeMap<DHTKey, Vec<DialInfoDetail>> = BTreeMap::new();
-        for b in bootstrap_nodes {
-            let ndis = NodeDialInfo::from_str(b.as_str())
-                .map_err(map_to_string)
-                .map_err(logthru_rtab!("Invalid dial info in bootstrap entry: {}", b))?;
-            let node_id = ndis.node_id.key;
+        for ndi in bootstrap_node_dial_infos {
+            let node_id = ndi.node_id.key;
             bsmap
                 .entry(node_id)
                 .or_insert_with(Vec::new)
                 .push(DialInfoDetail {
-                    dial_info: ndis.dial_info,
+                    dial_info: ndi.dial_info,
                     class: DialInfoClass::Direct, // Bootstraps are always directly reachable
                 });
         }
@@ -846,13 +962,15 @@ impl RoutingTable {
                         "bootstrap at {:?} did not return valid signed node info",
                         nr
                     );
-                    // xxx: delete the node?
+                    // If this node info is invalid, it will time out after being unpingable
                 } else {
                     // otherwise this bootstrap is valid, lets ask it to find ourselves now
                     this.reverse_find_node(nr, true).await
                 }
             });
         }
+
+        // Wait for all bootstrap operations to complete before we complete the singlefuture
         while unord.next().await.is_some() {}
         Ok(())
     }
@@ -865,15 +983,20 @@ impl RoutingTable {
     async fn peer_minimum_refresh_task_routine(self) -> Result<(), String> {
         log_rtab!("--- peer_minimum_refresh task");
 
-        // get list of all peers we know about, even the unreliable ones, and ask them to bootstrap too
+        // get list of all peers we know about, even the unreliable ones, and ask them to find nodes close to our node too
         let noderefs = {
             let mut inner = self.inner.lock();
             let mut noderefs = Vec::<NodeRef>::with_capacity(inner.bucket_entry_count);
-            for b in &mut inner.buckets {
-                for (k, entry) in b.entries_mut() {
-                    noderefs.push(NodeRef::new(self.clone(), *k, entry, None))
-                }
-            }
+            let cur_ts = intf::get_timestamp();
+            Self::with_entries(
+                &mut *inner,
+                cur_ts,
+                BucketEntryState::Unreliable,
+                |k, entry| {
+                    noderefs.push(NodeRef::new(self.clone(), *k, entry, None));
+                    Option::<()>::None
+                },
+            );
             noderefs
         };
         log_rtab!("    refreshing with nodes: {:?}", noderefs);
@@ -892,32 +1015,31 @@ impl RoutingTable {
     // Ping each node in the routing table if they need to be pinged
     // to determine their reliability
     async fn ping_validator_task_routine(self, _last_ts: u64, cur_ts: u64) -> Result<(), String> {
-        log_rtab!("--- ping_validator task");
+        // log_rtab!("--- ping_validator task");
 
         let rpc = self.rpc_processor();
         let netman = self.network_manager();
         let relay_node_id = netman.relay_node().map(|nr| nr.node_id());
 
         let mut inner = self.inner.lock();
-        for b in &mut inner.buckets {
-            for (k, entry) in b.entries_mut() {
-                if entry.needs_ping(k, cur_ts, relay_node_id) {
-                    let nr = NodeRef::new(self.clone(), *k, entry, None);
-                    log_rtab!(
-                        "    --- ping validating: {:?} ({})",
-                        nr,
-                        entry.state_debug_info(cur_ts)
-                    );
-                    intf::spawn_local(rpc.clone().rpc_call_status(nr)).detach();
-                }
+        Self::with_entries(&mut *inner, cur_ts, BucketEntryState::Unreliable, |k, e| {
+            if e.needs_ping(k, cur_ts, relay_node_id) {
+                let nr = NodeRef::new(self.clone(), *k, e, None);
+                log_rtab!(
+                    "    --- ping validating: {:?} ({})",
+                    nr,
+                    e.state_debug_info(cur_ts)
+                );
+                intf::spawn_local(rpc.clone().rpc_call_status(nr)).detach();
             }
-        }
+            Option::<()>::None
+        });
         Ok(())
     }
 
     // Compute transfer statistics to determine how 'fast' a node is
     async fn rolling_transfers_task_routine(self, last_ts: u64, cur_ts: u64) -> Result<(), String> {
-        log_rtab!("--- rolling_transfers task");
+        // log_rtab!("--- rolling_transfers task");
         let inner = &mut *self.inner.lock();
 
         // Roll our own node's transfers
@@ -940,8 +1062,8 @@ impl RoutingTable {
         // Do rolling transfers every ROLLING_TRANSFERS_INTERVAL_SECS secs
         self.unlocked_inner.rolling_transfers_task.tick().await?;
 
-        // If routing table is empty, then add the bootstrap nodes to it
-        if self.inner.lock().bucket_entry_count == 0 {
+        // If routing table has no live entries, then add the bootstrap nodes to it
+        if Self::get_entry_count(&mut *self.inner.lock(), BucketEntryState::Unreliable) == 0 {
             self.unlocked_inner.bootstrap_task.tick().await?;
         }
 
@@ -950,7 +1072,9 @@ impl RoutingTable {
             let c = self.config.get();
             c.network.dht.min_peer_count as usize
         };
-        if self.inner.lock().bucket_entry_count < min_peer_count {
+        if Self::get_entry_count(&mut *self.inner.lock(), BucketEntryState::Unreliable)
+            < min_peer_count
+        {
             self.unlocked_inner.peer_minimum_refresh_task.tick().await?;
         }
         // Ping validate some nodes to groom the table
@@ -987,13 +1111,13 @@ impl RoutingTable {
             e.question_rcvd(ts, bytes);
         })
     }
-    pub fn stats_answer_sent(&self, node_ref: NodeRef, ts: u64, bytes: u64) {
+    pub fn stats_answer_sent(&self, node_ref: NodeRef, bytes: u64) {
         self.inner
             .lock()
             .self_transfer_stats_accounting
             .add_up(bytes);
         node_ref.operate(|e| {
-            e.answer_sent(ts, bytes);
+            e.answer_sent(bytes);
         })
     }
     pub fn stats_answer_rcvd(&self, node_ref: NodeRef, send_ts: u64, recv_ts: u64, bytes: u64) {
@@ -1009,9 +1133,14 @@ impl RoutingTable {
             e.answer_rcvd(send_ts, recv_ts, bytes);
         })
     }
-    pub fn stats_question_lost(&self, node_ref: NodeRef, ts: u64) {
+    pub fn stats_question_lost(&self, node_ref: NodeRef) {
         node_ref.operate(|e| {
-            e.question_lost(ts);
+            e.question_lost();
+        })
+    }
+    pub fn stats_failed_to_send(&self, node_ref: NodeRef, ts: u64, expects_answer: bool) {
+        node_ref.operate(|e| {
+            e.failed_to_send(ts, expects_answer);
         })
     }
 

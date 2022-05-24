@@ -316,6 +316,11 @@ impl Network {
                 &peer_socket_addr,
                 &descriptor.local.map(|sa| sa.to_socket_addr()),
             ) {
+                log_net!(
+                    "send_data_to_existing_connection connectionless to {:?}",
+                    descriptor
+                );
+
                 ph.clone()
                     .send_message(data, peer_socket_addr)
                     .await
@@ -334,6 +339,8 @@ impl Network {
 
         // Try to send to the exact existing connection if one exists
         if let Some(conn) = self.connection_manager().get_connection(descriptor).await {
+            log_net!("send_data_to_existing_connection to {:?}", descriptor);
+
             // connection exists, send over it
             conn.send(data).await.map_err(logthru_net!())?;
 

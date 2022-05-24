@@ -66,10 +66,11 @@ impl Default for NetworkManagerStats {
 }
 
 struct ClientWhitelistEntry {
-    last_seen: u64,
+    last_seen_ts: u64,
 }
 
 // Mechanism required to contact another node
+#[derive(Clone, Debug)]
 enum ContactMethod {
     Unreachable,                       // Node is not reachable by any means
     Direct(DialInfo),                  // Contact the node directly
@@ -294,11 +295,11 @@ impl NetworkManager {
         let mut inner = self.inner.lock();
         match inner.client_whitelist.entry(client) {
             hashlink::lru_cache::Entry::Occupied(mut entry) => {
-                entry.get_mut().last_seen = intf::get_timestamp()
+                entry.get_mut().last_seen_ts = intf::get_timestamp()
             }
             hashlink::lru_cache::Entry::Vacant(entry) => {
                 entry.insert(ClientWhitelistEntry {
-                    last_seen: intf::get_timestamp(),
+                    last_seen_ts: intf::get_timestamp(),
                 });
             }
         }
@@ -309,7 +310,7 @@ impl NetworkManager {
 
         match inner.client_whitelist.entry(client) {
             hashlink::lru_cache::Entry::Occupied(mut entry) => {
-                entry.get_mut().last_seen = intf::get_timestamp();
+                entry.get_mut().last_seen_ts = intf::get_timestamp();
                 true
             }
             hashlink::lru_cache::Entry::Vacant(_) => false,
@@ -324,7 +325,7 @@ impl NetworkManager {
         while inner
             .client_whitelist
             .peek_lru()
-            .map(|v| v.1.last_seen < cutoff_timestamp)
+            .map(|v| v.1.last_seen_ts < cutoff_timestamp)
             .unwrap_or_default()
         {
             inner.client_whitelist.remove_lru();
@@ -441,7 +442,7 @@ impl NetworkManager {
         &self,
         expiration_us: u64,
         extra_data: D,
-    ) -> Result<(Vec<u8>, EventualValueCloneFuture<ReceiptEvent>), String> {
+    ) -> Result<(Vec<u8>, EventualValueFuture<ReceiptEvent>), String> {
         let receipt_manager = self.receipt_manager();
         let routing_table = self.routing_table();
 
@@ -454,7 +455,7 @@ impl NetworkManager {
 
         // Record the receipt for later
         let exp_ts = intf::get_timestamp() + expiration_us;
-        let eventual = SingleShotEventual::new(ReceiptEvent::Cancelled);
+        let eventual = SingleShotEventual::new(Some(ReceiptEvent::Cancelled));
         let instance = eventual.instance();
         receipt_manager.record_single_shot_receipt(receipt, exp_ts, eventual);
 
@@ -761,11 +762,12 @@ impl NetworkManager {
             return Ok(ContactMethod::OutboundRelay(relay_node));
         }
         // Otherwise, we can't reach this node
-        debug!(
-            "unable to reach node {:?}: {}",
-            target_node_ref,
-            target_node_ref.operate(|e| format!("{:#?}", e))
-        );
+        debug!("unable to reach node {:?}", target_node_ref);
+        // trace!(
+        //     "unable to reach node {:?}: {}",
+        //     target_node_ref,
+        //     target_node_ref.operate(|e| format!("{:#?}", e))
+        // );
         Ok(ContactMethod::Unreachable)
     }
 
@@ -797,9 +799,8 @@ impl NetworkManager {
         .await
         .map_err(logthru_net!("failed to send signal to {:?}", relay_nr))
         .map_err(map_to_string)?;
-
         // Wait for the return receipt
-        let inbound_nr = match eventual_value.await {
+        let inbound_nr = match eventual_value.await.take_value().unwrap() {
             ReceiptEvent::Returned(inbound_nr) => inbound_nr,
             ReceiptEvent::Expired => {
                 return Err(format!(
@@ -888,7 +889,7 @@ impl NetworkManager {
         .map_err(map_to_string)?;
 
         // Wait for the return receipt
-        let inbound_nr = match eventual_value.await {
+        let inbound_nr = match eventual_value.await.take_value().unwrap() {
             ReceiptEvent::Returned(inbound_nr) => inbound_nr,
             ReceiptEvent::Expired => {
                 return Err(format!("hole punch receipt expired from {:?}", target_nr));
@@ -957,8 +958,13 @@ impl NetworkManager {
                 data
             };
 
+            log_net!("send_data via dialinfo to {:?}", node_ref);
             // If we don't have last_connection, try to reach out to the peer via its dial info
-            match this.get_contact_method(node_ref).map_err(logthru_net!())? {
+            match this
+                .get_contact_method(node_ref.clone())
+                .map_err(logthru_net!(debug))
+                .map(logthru_net!("get_contact_method for {:?}", node_ref))?
+            {
                 ContactMethod::OutboundRelay(relay_nr) | ContactMethod::InboundRelay(relay_nr) => {
                     this.send_data(relay_nr, data)
                         .await
@@ -985,7 +991,7 @@ impl NetworkManager {
                     .map(|_| SendDataKind::GlobalDirect),
                 ContactMethod::Unreachable => Err("Can't send to this node".to_owned()),
             }
-            .map_err(logthru_net!())
+            .map_err(logthru_net!(debug))
         })
     }
 
@@ -1122,7 +1128,7 @@ impl NetworkManager {
 
     // Keep relays assigned and accessible
     async fn relay_management_task_routine(self, _last_ts: u64, cur_ts: u64) -> Result<(), String> {
-        log_net!("--- network manager relay_management task");
+        // log_net!("--- network manager relay_management task");
 
         // Get our node's current node info and network class and do the right thing
         let routing_table = self.routing_table();
@@ -1174,7 +1180,7 @@ impl NetworkManager {
 
     // Compute transfer statistics for the low level network
     async fn rolling_transfers_task_routine(self, last_ts: u64, cur_ts: u64) -> Result<(), String> {
-        log_net!("--- network manager rolling_transfers task");
+        // log_net!("--- network manager rolling_transfers task");
         {
             let inner = &mut *self.inner.lock();
 

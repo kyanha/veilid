@@ -348,16 +348,12 @@ impl RPCProcessor {
             .map_err(map_error_internal!("invalid timeout"))?;
         // wait for eventualvalue
         let start_ts = get_timestamp();
-        timeout(timeout_ms, waitable_reply.eventual.instance())
+        let res = timeout(timeout_ms, waitable_reply.eventual.instance())
             .await
             .map_err(|_| RPCError::Timeout)?;
-        match waitable_reply.eventual.take_value() {
-            None => panic!("there should be a reply value but there wasn't"),
-            Some(rpcreader) => {
-                let end_ts = get_timestamp();
-                Ok((rpcreader, end_ts - start_ts))
-            }
-        }
+        let rpcreader = res.take_value().unwrap();
+        let end_ts = get_timestamp();
+        Ok((rpcreader, end_ts - start_ts))
     }
     async fn wait_for_reply(
         &self,
@@ -369,7 +365,7 @@ impl RPCProcessor {
                 self.cancel_op_id_waiter(waitable_reply.op_id);
 
                 self.routing_table()
-                    .stats_question_lost(waitable_reply.node_ref.clone(), waitable_reply.send_ts);
+                    .stats_question_lost(waitable_reply.node_ref.clone());
             }
             Ok((rpcreader, _)) => {
                 // Note that we definitely received this node info since we got a reply
@@ -396,7 +392,7 @@ impl RPCProcessor {
         message: capnp::message::Reader<T>,
         safety_route_spec: Option<&SafetyRouteSpec>,
     ) -> Result<Option<WaitableReply>, RPCError> {
-        log_rpc!(self.get_rpc_request_debug_info(&dest, &message, &safety_route_spec));
+        //log_rpc!(self.get_rpc_request_debug_info(&dest, &message, &safety_route_spec));
 
         let (op_id, wants_answer) = {
             let operation = message
@@ -539,6 +535,7 @@ impl RPCProcessor {
 
         // send question
         let bytes = out.len() as u64;
+        let send_ts = get_timestamp();
         let send_data_kind = match self
             .network_manager()
             .send_envelope(node_ref.clone(), Some(out_node_id), out)
@@ -552,12 +549,15 @@ impl RPCProcessor {
                 if eventual.is_some() {
                     self.cancel_op_id_waiter(op_id);
                 }
+
+                self.routing_table()
+                    .stats_failed_to_send(node_ref, send_ts, wants_answer);
+
                 return Err(e);
             }
         };
 
         // Successfully sent
-        let send_ts = get_timestamp();
         self.routing_table()
             .stats_question_sent(node_ref.clone(), send_ts, bytes, wants_answer);
 
@@ -586,7 +586,7 @@ impl RPCProcessor {
         reply_msg: capnp::message::Reader<T>,
         safety_route_spec: Option<&SafetyRouteSpec>,
     ) -> Result<(), RPCError> {
-        log_rpc!(self.get_rpc_reply_debug_info(&request_rpcreader, &reply_msg, &safety_route_spec));
+        // log_rpc!(self.get_rpc_reply_debug_info(&request_rpcreader, &reply_msg, &safety_route_spec));
 
         //
         let out_node_id;
@@ -721,16 +721,19 @@ impl RPCProcessor {
 
         // Send the reply
         let bytes = out.len() as u64;
+        let send_ts = get_timestamp();
         self.network_manager()
             .send_envelope(node_ref.clone(), Some(out_node_id), out)
             .await
-            .map_err(RPCError::Internal)?;
+            .map_err(RPCError::Internal)
+            .map_err(|e| {
+                self.routing_table()
+                    .stats_failed_to_send(node_ref.clone(), send_ts, false);
+                e
+            })?;
 
         // Reply successfully sent
-        let send_ts = get_timestamp();
-
-        self.routing_table()
-            .stats_answer_sent(node_ref, send_ts, bytes);
+        self.routing_table().stats_answer_sent(node_ref, bytes);
 
         Ok(())
     }
@@ -982,10 +985,14 @@ impl RPCProcessor {
 
             // find N nodes closest to the target node in our routing table
             let own_peer_info = routing_table.get_own_peer_info();
+            let own_peer_info_is_valid = own_peer_info.signed_node_info.is_valid();
+
             let closest_nodes = routing_table.find_closest_nodes(
                 target_node_id,
                 // filter
-                Some(Box::new(RoutingTable::filter_has_valid_signed_node_info)),
+                Some(Box::new(move |kv| {
+                    RoutingTable::filter_has_valid_signed_node_info(kv, own_peer_info_is_valid)
+                })),
                 // transform
                 |e| RoutingTable::transform_to_peer_info(e, &own_peer_info),
             );
@@ -1569,7 +1576,7 @@ impl RPCProcessor {
             .await?;
 
         // Wait for receipt
-        match eventual_value.await {
+        match eventual_value.await.take_value().unwrap() {
             ReceiptEvent::Returned(_) => Ok(true),
             ReceiptEvent::Expired => Ok(false),
             ReceiptEvent::Cancelled => {

@@ -62,7 +62,7 @@ pub struct EventualValueFuture<T: Unpin> {
 }
 
 impl<T: Unpin> Future for EventualValueFuture<T> {
-    type Output = ();
+    type Output = EventualValue<T>;
     fn poll(mut self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> task::Poll<Self::Output> {
         let this = &mut *self;
         let out = {
@@ -76,7 +76,7 @@ impl<T: Unpin> Future for EventualValueFuture<T> {
                 for w in wakers {
                     w.wake();
                 }
-                task::Poll::<Self::Output>::Ready(())
+                task::Poll::<Self::Output>::Ready(this.eventual.clone())
             }
         }
     }

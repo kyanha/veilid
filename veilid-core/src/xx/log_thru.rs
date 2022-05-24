@@ -97,6 +97,14 @@ macro_rules! log_rtab {
     (warn $fmt:literal, $($arg:expr),+) => {
         warn!(target:"rtab", $fmt, $($arg),+);
     };
+    (debug $text:expr) => { debug!(
+        target: "rtab",
+        "{}",
+        $text,
+    )};
+    (debug $fmt:literal, $($arg:expr),+) => {
+        debug!(target:"rtab", $fmt, $($arg),+);
+    };
     ($text:expr) => {trace!(
         target: "rtab",
         "{}",
@@ -230,7 +238,7 @@ macro_rules! logthru {
     (error $target:literal) => (|e__| {
         error!(
             target: $target,
-            "[{}]",
+            "[{:?}]",
             e__,
         );
         e__
@@ -238,7 +246,7 @@ macro_rules! logthru {
     (error $target:literal, $text:literal) => (|e__| {
         error!(
             target: $target,
-            "[{}] {}",
+            "[{:?}] {}",
             e__,
             $text
         );
@@ -247,7 +255,7 @@ macro_rules! logthru {
     (error $target:literal, $fmt:literal, $($arg:expr),+) => (|e__| {
         error!(
             target: $target,
-            concat!("[{}] ", $fmt),
+            concat!("[{:?}] ", $fmt),
             e__,
             $($arg),+
         );
@@ -257,7 +265,7 @@ macro_rules! logthru {
     (warn $target:literal) => (|e__| {
         warn!(
             target: $target,
-            "[{}]",
+            "[{:?}]",
             e__,
         );
         e__
@@ -265,7 +273,7 @@ macro_rules! logthru {
     (warn $target:literal, $text:literal) => (|e__| {
         warn!(
             target: $target,
-            "[{}] {}",
+            "[{:?}] {}",
             e__,
             $text
         );
@@ -274,7 +282,7 @@ macro_rules! logthru {
     (warn $target:literal, $fmt:literal, $($arg:expr),+) => (|e__| {
         warn!(
             target: $target,
-            concat!("[{}] ", $fmt),
+            concat!("[{:?}] ", $fmt),
             e__,
             $($arg),+
         );
@@ -284,7 +292,7 @@ macro_rules! logthru {
     (debug $target:literal) => (|e__| {
         debug!(
             target: $target,
-            "[{}]",
+            "[{:?}]",
             e__,
         );
         e__
@@ -292,7 +300,7 @@ macro_rules! logthru {
     (debug $target:literal, $text:literal) => (|e__| {
         debug!(
             target: $target,
-            "[{}] {}",
+            "[{:?}] {}",
             e__,
             $text
         );
@@ -301,7 +309,7 @@ macro_rules! logthru {
     (debug $target:literal, $fmt:literal, $($arg:expr),+) => (|e__| {
         debug!(
             target: $target,
-            concat!("[{}] ", $fmt),
+            concat!("[{:?}] ", $fmt),
             e__,
             $($arg),+
         );
@@ -311,7 +319,7 @@ macro_rules! logthru {
     ($target:literal) => (|e__| {
         trace!(
             target: $target,
-            "[{}]",
+            "[{:?}]",
             e__,
         );
         e__
@@ -319,7 +327,7 @@ macro_rules! logthru {
     ($target:literal, $text:literal) => (|e__| {
         trace!(
             target: $target,
-            "[{}] {}",
+            "[{:?}] {}",
             e__,
             $text
         );
@@ -328,7 +336,7 @@ macro_rules! logthru {
     ($target:literal, $fmt:literal, $($arg:expr),+) => (|e__| {
         trace!(
             target: $target,
-            concat!("[{}] ", $fmt),
+            concat!("[{:?}] ", $fmt),
             e__,
             $($arg),+
         );

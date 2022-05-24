@@ -63,7 +63,7 @@ core:
         hole_punch_receipt_time_ms: 5000 
         node_id: ''
         node_id_secret: ''
-        bootstrap: ['bootstrap.veilid.net']
+        bootstrap: ['bootstrap-dev.veilid.net']
         bootstrap_nodes: []
         routing_table:
             limit_over_attached: 64

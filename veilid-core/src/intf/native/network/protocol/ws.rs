@@ -127,7 +127,9 @@ impl WebsocketProtocolHandler {
         ps: AsyncPeekStream,
         socket_addr: SocketAddr,
     ) -> Result<Option<NetworkConnection>, String> {
+        log_net!("WS: on_accept_async: enter");
         let request_path_len = self.arc.request_path.len() + 2;
+
         let mut peekbuf: Vec<u8> = vec![0u8; request_path_len];
         match io::timeout(
             Duration::from_micros(self.arc.connection_initial_timeout),
@@ -143,6 +145,7 @@ impl WebsocketProtocolHandler {
                 return Err(e).map_err(map_to_string).map_err(logthru_net!(error));
             }
         }
+
         // Check for websocket path
         let matches_path = &peekbuf[0..request_path_len - 2] == self.arc.request_path.as_slice()
             && (peekbuf[request_path_len - 2] == b' '
@@ -150,14 +153,10 @@ impl WebsocketProtocolHandler {
                     && peekbuf[request_path_len - 1] == b' '));
 
         if !matches_path {
-            log_net!(
-                "not websocket: request_path: {}   peekbuf:{}",
-                std::str::from_utf8(&self.arc.request_path).unwrap(),
-                std::str::from_utf8(&peekbuf).unwrap()
-            );
+            log_net!("WS: not websocket");
             return Ok(None);
         }
-        log_net!("found websocket");
+        log_net!("WS: found websocket");
 
         let ws_stream = accept_async(ps)
             .await
@@ -181,6 +180,8 @@ impl WebsocketProtocolHandler {
             ),
             ProtocolNetworkConnection::WsAccepted(WebsocketNetworkConnection::new(ws_stream)),
         );
+
+        log_net!(debug "{}: on_accept_async from: {}", if self.arc.tls { "WSS" } else { "WS" }, socket_addr);
 
         Ok(Some(conn))
     }

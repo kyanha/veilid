@@ -214,8 +214,8 @@ impl NodeRef {
         // Get the last connection and the last time we saw anything with this connection
         let (last_connection, last_seen) = self.operate(|e| {
             if let Some((last_connection, connection_ts)) = e.last_connection() {
-                if let Some(last_seen) = e.peer_stats().last_seen {
-                    Some((last_connection, u64::max(last_seen, connection_ts)))
+                if let Some(last_seen_ts) = e.peer_stats().rpc_stats.last_seen_ts {
+                    Some((last_connection, u64::max(last_seen_ts, connection_ts)))
                 } else {
                     Some((last_connection, connection_ts))
                 }
