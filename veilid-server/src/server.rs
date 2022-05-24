@@ -18,7 +18,7 @@ pub enum ServerMode {
 
 lazy_static! {
     static ref SHUTDOWN_SWITCH: Mutex<Option<SingleShotEventual<()>>> =
-        Mutex::new(Some(SingleShotEventual::new(())));
+        Mutex::new(Some(SingleShotEventual::new(Some(()))));
 }
 
 pub fn shutdown() {
