@@ -23,9 +23,25 @@ type OperationId = u64;
 
 #[derive(Debug, Clone)]
 pub enum Destination {
-    Direct(NodeRef),            // Send to node
-    Relay(NodeRef, DHTKey),     // Send to node for relay purposes
-    PrivateRoute(PrivateRoute), // Send to private route
+    Direct(NodeRef),            // Send to node (target noderef)
+    Relay(NodeRef, DHTKey),     // Send to node for relay purposes (relay noderef, target nodeid)
+    PrivateRoute(PrivateRoute), // Send to private route (privateroute)
+}
+
+impl fmt::Display for Destination {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Destination::Direct(nr) => {
+                write!(f, "{:?}", nr)
+            }
+            Destination::Relay(nr, key) => {
+                write!(f, "{:?}@{:?}", key.encode(), nr)
+            }
+            Destination::PrivateRoute(pr) => {
+                write!(f, "{}", pr)
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -106,7 +122,7 @@ where
         .map_err(logthru_rpc!())?;
     Ok(capnp::Word::words_to_bytes(wordvec.as_slice()).to_vec())
 }
-fn reader_to_vec<'a, T>(reader: capnp::message::Reader<T>) -> Result<Vec<u8>, RPCError>
+fn reader_to_vec<'a, T>(reader: &capnp::message::Reader<T>) -> Result<Vec<u8>, RPCError>
 where
     T: capnp::message::ReaderSegments + 'a,
 {
@@ -392,7 +408,6 @@ impl RPCProcessor {
         message: capnp::message::Reader<T>,
         safety_route_spec: Option<&SafetyRouteSpec>,
     ) -> Result<Option<WaitableReply>, RPCError> {
-        //log_rpc!(self.get_rpc_request_debug_info(&dest, &message, &safety_route_spec));
 
         let (op_id, wants_answer) = {
             let operation = message
@@ -432,7 +447,7 @@ impl RPCProcessor {
                         None => {
                             // If no safety route is being used, and we're not sending to a private
                             // route, we can use a direct envelope instead of routing
-                            out = reader_to_vec(message)?;
+                            out = reader_to_vec(&message)?;
 
                             // Message goes directly to the node
                             out_node_id = node_id;
@@ -446,7 +461,7 @@ impl RPCProcessor {
                             let private_route =
                                 self.new_stub_private_route(node_id, &mut pr_builder)?;
 
-                            let message_vec = reader_to_vec(message)?;
+                            let message_vec = reader_to_vec(&message)?;
                             // first
                             out_node_id = sr
                                 .hops
@@ -472,7 +487,7 @@ impl RPCProcessor {
                     let pr_reader = pr_builder.into_reader();
 
                     // Reply with 'route' operation
-                    let message_vec = reader_to_vec(message)?;
+                    let message_vec = reader_to_vec(&message)?;
                     out_node_id = match safety_route_spec {
                         None => {
                             // If no safety route, the first node is the first hop of the private route
@@ -534,6 +549,8 @@ impl RPCProcessor {
         };
 
         // send question
+        log_rpc!(debug "==>> REQUEST({}) -> {:?}", self.get_rpc_message_debug_info(&message), dest);
+
         let bytes = out.len() as u64;
         let send_ts = get_timestamp();
         let send_data_kind = match self
@@ -586,8 +603,6 @@ impl RPCProcessor {
         reply_msg: capnp::message::Reader<T>,
         safety_route_spec: Option<&SafetyRouteSpec>,
     ) -> Result<(), RPCError> {
-        // log_rpc!(self.get_rpc_reply_debug_info(&request_rpcreader, &reply_msg, &safety_route_spec));
-
         //
         let out_node_id;
         let mut out_noderef: Option<NodeRef> = None;
@@ -601,7 +616,7 @@ impl RPCProcessor {
                 .map_err(map_error_capnp_error!())
                 .map_err(logthru_rpc!())?;
 
-            let reply_vec = reader_to_vec(reply_msg)?;
+            let reply_vec = reader_to_vec(&reply_msg)?;
 
             // To where should we respond?
             match request_operation
@@ -720,6 +735,14 @@ impl RPCProcessor {
         };
 
         // Send the reply
+        log_rpc!(debug "==>> REPLY({}) -> {}{:?}", 
+            self.get_rpc_message_debug_info(&reply_msg), 
+            if out_node_id == node_ref.node_id() {
+                "".to_owned() 
+            } else {
+                format!("{} via ", out_node_id)
+            }, 
+            node_ref);
         let bytes = out.len() as u64;
         let send_ts = get_timestamp();
         self.network_manager()
@@ -1235,6 +1258,12 @@ impl RPCProcessor {
                 veilid_capnp::operation::detail::CancelTunnelQ(_) => (24u32, true),
                 veilid_capnp::operation::detail::CancelTunnelA(_) => (25u32, false),
             };
+
+            log_rpc!(debug "<<== {}({}) <- {}", 
+                if is_q { "REQUEST" } else { "REPLY" }, 
+                self.get_rpc_message_debug_info(&reader), 
+                msg.header.envelope.get_sender_id()
+            );
 
             // Accounting for questions we receive
             if is_q {

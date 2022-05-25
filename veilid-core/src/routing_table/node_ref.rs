@@ -274,7 +274,16 @@ impl Eq for NodeRef {}
 
 impl fmt::Debug for NodeRef {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.node_id.encode())
+        if f.alternate() {
+            write!(
+                f,
+                "{{\n  id: {}\n  filter: {:?}\n}}",
+                self.node_id.encode(),
+                self.filter
+            )
+        } else {
+            write!(f, "{}", self.node_id.encode())
+        }
     }
 }
 

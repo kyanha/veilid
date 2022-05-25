@@ -24,6 +24,22 @@ pub struct PrivateRoute {
     pub hops: Option<RouteHop>,
 }
 
+impl fmt::Display for PrivateRoute {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "PR({:?}+{}{})",
+            self.public_key,
+            self.hop_count,
+            if let Some(hops) = &self.hops {
+                format!("->{}", hops.dial_info)
+            } else {
+                "".to_owned()
+            }
+        )
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum SafetyRouteHops {
     Data(RouteHopData),
@@ -37,6 +53,20 @@ pub struct SafetyRoute {
     pub hops: SafetyRouteHops,
 }
 
+impl fmt::Display for SafetyRoute {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "SR({:?}+{}{})",
+            self.public_key,
+            self.hop_count,
+            match &self.hops {
+                SafetyRouteHops::Data(_) => "".to_owned(),
+                SafetyRouteHops::Private(p) => format!("->{}", p),
+            }
+        )
+    }
+}
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 pub fn encode_route_hop_data(

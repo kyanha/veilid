@@ -88,95 +88,6 @@ macro_rules! map_error_panic {
 }
 
 impl RPCProcessor {
-    #[allow(dead_code)]
-    pub(super) fn get_rpc_request_debug_info<T: capnp::message::ReaderSegments>(
-        &self,
-        dest: &Destination,
-        message: &capnp::message::Reader<T>,
-        safety_route_spec: &Option<&SafetyRouteSpec>,
-    ) -> String {
-        format!(
-            "REQ->{:?}{} {}",
-            dest,
-            match safety_route_spec {
-                None => "".to_owned(),
-                Some(srs) => format!("[{:?}]", srs),
-            },
-            self.get_rpc_message_debug_info(message)
-        )
-    }
-    #[allow(dead_code)]
-    pub(super) fn get_rpc_reply_debug_info<T: capnp::message::ReaderSegments>(
-        &self,
-        request_rpcreader: &RPCMessageReader,
-        reply_msg: &capnp::message::Reader<T>,
-        safety_route_spec: &Option<&SafetyRouteSpec>,
-    ) -> String {
-        let request_operation = match request_rpcreader
-            .reader
-            .get_root::<veilid_capnp::operation::Reader>()
-        {
-            Ok(v) => v,
-            Err(e) => {
-                return format!("invalid operation: {}", e);
-            }
-        };
-
-        let respond_to = match request_operation.get_respond_to().which() {
-            Ok(v) => v,
-            Err(e) => {
-                return format!("(respond_to not in schema: {:?})", e);
-            }
-        };
-        let respond_to_str = match respond_to {
-            veilid_capnp::operation::respond_to::None(_) => "(None)".to_owned(),
-            veilid_capnp::operation::respond_to::Sender(_) => "Sender".to_owned(),
-            veilid_capnp::operation::respond_to::SenderWithInfo(sni) => {
-                let sni_reader = match sni {
-                    Ok(snir) => snir,
-                    Err(e) => {
-                        return e.to_string();
-                    }
-                };
-                let signed_node_info = match decode_signed_node_info(
-                    &sni_reader,
-                    &request_rpcreader.header.envelope.get_sender_id(),
-                    true,
-                ) {
-                    Ok(ni) => ni,
-                    Err(e) => {
-                        return e.to_string();
-                    }
-                };
-                format!("Sender({:?})", signed_node_info)
-            }
-            veilid_capnp::operation::respond_to::PrivateRoute(pr) => {
-                let pr_reader = match pr {
-                    Ok(prr) => prr,
-                    Err(e) => {
-                        return e.to_string();
-                    }
-                };
-                let private_route = match decode_private_route(&pr_reader) {
-                    Ok(pr) => pr,
-                    Err(e) => {
-                        return e.to_string();
-                    }
-                };
-                format!("[PR:{:?}]", private_route)
-            }
-        };
-        format!(
-            "REPLY->{:?}{} {}",
-            respond_to_str,
-            match safety_route_spec {
-                None => "".to_owned(),
-                Some(srs) => format!("[SR:{:?}]", srs),
-            },
-            self.get_rpc_message_debug_info(reply_msg)
-        )
-    }
-
     pub(super) fn get_rpc_message_debug_info<T: capnp::message::ReaderSegments>(
         &self,
         message: &capnp::message::Reader<T>,
@@ -201,130 +112,37 @@ impl RPCProcessor {
         )
     }
 
-    #[allow(clippy::useless_format)]
     pub(super) fn get_rpc_operation_detail_debug_info(
         &self,
         detail: &veilid_capnp::operation::detail::WhichReader,
     ) -> String {
         match detail {
-            veilid_capnp::operation::detail::StatusQ(_) => {
-                format!("StatusQ")
-            }
-            veilid_capnp::operation::detail::StatusA(_) => {
-                format!("StatusA")
-            }
-            veilid_capnp::operation::detail::ValidateDialInfo(_) => {
-                format!("ValidateDialInfo")
-            }
-            veilid_capnp::operation::detail::FindNodeQ(d) => {
-                let fnqr = match d {
-                    Ok(fnqr) => fnqr,
-                    Err(e) => {
-                        return format!("(invalid detail: {})", e);
-                    }
-                };
-                let nidr = match fnqr.get_node_id() {
-                    Ok(nidr) => nidr,
-                    Err(e) => {
-                        return format!("(invalid node id: {})", e);
-                    }
-                };
-                let node_id = decode_public_key(&nidr);
-                format!("FindNodeQ: node_id={}", node_id.encode(),)
-            }
-            veilid_capnp::operation::detail::FindNodeA(d) => {
-                let fnar = match d {
-                    Ok(fnar) => fnar,
-                    Err(e) => {
-                        return format!("(invalid detail: {})", e);
-                    }
-                };
-
-                let p_reader = match fnar.reborrow().get_peers() {
-                    Ok(pr) => pr,
-                    Err(e) => {
-                        return format!("(invalid peers: {})", e);
-                    }
-                };
-                let mut peers = Vec::<PeerInfo>::with_capacity(match p_reader.len().try_into() {
-                    Ok(v) => v,
-                    Err(e) => return format!("invalid peer count: {}", e),
-                });
-                for p in p_reader.iter() {
-                    let peer_info = match decode_peer_info(&p, true) {
-                        Ok(v) => v,
-                        Err(e) => {
-                            return format!("(unable to decode peer info: {})", e);
-                        }
-                    };
-                    peers.push(peer_info);
-                }
-
-                format!("FindNodeA: peers={:#?}", peers)
-            }
-            veilid_capnp::operation::detail::Route(_) => {
-                format!("Route")
-            }
-            veilid_capnp::operation::detail::NodeInfoUpdate(_) => {
-                format!("NodeInfoUpdate")
-            }
-            veilid_capnp::operation::detail::GetValueQ(_) => {
-                format!("GetValueQ")
-            }
-            veilid_capnp::operation::detail::GetValueA(_) => {
-                format!("GetValueA")
-            }
-            veilid_capnp::operation::detail::SetValueQ(_) => {
-                format!("SetValueQ")
-            }
-            veilid_capnp::operation::detail::SetValueA(_) => {
-                format!("SetValueA")
-            }
-            veilid_capnp::operation::detail::WatchValueQ(_) => {
-                format!("WatchValueQ")
-            }
-            veilid_capnp::operation::detail::WatchValueA(_) => {
-                format!("WatchValueA")
-            }
-            veilid_capnp::operation::detail::ValueChanged(_) => {
-                format!("ValueChanged")
-            }
-            veilid_capnp::operation::detail::SupplyBlockQ(_) => {
-                format!("SupplyBlockQ")
-            }
-            veilid_capnp::operation::detail::SupplyBlockA(_) => {
-                format!("SupplyBlockA")
-            }
-            veilid_capnp::operation::detail::FindBlockQ(_) => {
-                format!("FindBlockQ")
-            }
-            veilid_capnp::operation::detail::FindBlockA(_) => {
-                format!("FindBlockA")
-            }
-            veilid_capnp::operation::detail::Signal(_) => {
-                format!("Signal")
-            }
-            veilid_capnp::operation::detail::ReturnReceipt(_) => {
-                format!("ReturnReceipt")
-            }
-            veilid_capnp::operation::detail::StartTunnelQ(_) => {
-                format!("StartTunnelQ")
-            }
-            veilid_capnp::operation::detail::StartTunnelA(_) => {
-                format!("StartTunnelA")
-            }
-            veilid_capnp::operation::detail::CompleteTunnelQ(_) => {
-                format!("CompleteTunnelQ")
-            }
-            veilid_capnp::operation::detail::CompleteTunnelA(_) => {
-                format!("CompleteTunnelA")
-            }
-            veilid_capnp::operation::detail::CancelTunnelQ(_) => {
-                format!("CancelTunnelQ")
-            }
-            veilid_capnp::operation::detail::CancelTunnelA(_) => {
-                format!("CancelTunnelA")
-            }
+            veilid_capnp::operation::detail::StatusQ(_) => "StatusQ".to_owned(),
+            veilid_capnp::operation::detail::StatusA(_) => "StatusA".to_owned(),
+            veilid_capnp::operation::detail::ValidateDialInfo(_) => "ValidateDialInfo".to_owned(),
+            veilid_capnp::operation::detail::FindNodeQ(_) => "FindNodeQ".to_owned(),
+            veilid_capnp::operation::detail::FindNodeA(_) => "FindNodeA".to_owned(),
+            veilid_capnp::operation::detail::Route(_) => "Route".to_owned(),
+            veilid_capnp::operation::detail::NodeInfoUpdate(_) => "NodeInfoUpdate".to_owned(),
+            veilid_capnp::operation::detail::GetValueQ(_) => "GetValueQ".to_owned(),
+            veilid_capnp::operation::detail::GetValueA(_) => "GetValueA".to_owned(),
+            veilid_capnp::operation::detail::SetValueQ(_) => "SetValueQ".to_owned(),
+            veilid_capnp::operation::detail::SetValueA(_) => "SetValueA".to_owned(),
+            veilid_capnp::operation::detail::WatchValueQ(_) => "WatchValueQ".to_owned(),
+            veilid_capnp::operation::detail::WatchValueA(_) => "WatchValueA".to_owned(),
+            veilid_capnp::operation::detail::ValueChanged(_) => "ValueChanged".to_owned(),
+            veilid_capnp::operation::detail::SupplyBlockQ(_) => "SupplyBlockQ".to_owned(),
+            veilid_capnp::operation::detail::SupplyBlockA(_) => "SupplyBlockA".to_owned(),
+            veilid_capnp::operation::detail::FindBlockQ(_) => "FindBlockQ".to_owned(),
+            veilid_capnp::operation::detail::FindBlockA(_) => "FindBlockA".to_owned(),
+            veilid_capnp::operation::detail::Signal(_) => "Signal".to_owned(),
+            veilid_capnp::operation::detail::ReturnReceipt(_) => "ReturnReceipt".to_owned(),
+            veilid_capnp::operation::detail::StartTunnelQ(_) => "StartTunnelQ".to_owned(),
+            veilid_capnp::operation::detail::StartTunnelA(_) => "StartTunnelA".to_owned(),
+            veilid_capnp::operation::detail::CompleteTunnelQ(_) => "CompleteTunnelQ".to_owned(),
+            veilid_capnp::operation::detail::CompleteTunnelA(_) => "CompleteTunnelA".to_owned(),
+            veilid_capnp::operation::detail::CancelTunnelQ(_) => "CancelTunnelQ".to_owned(),
+            veilid_capnp::operation::detail::CancelTunnelA(_) => "CancelTunnelA".to_owned(),
         }
     }
 }
