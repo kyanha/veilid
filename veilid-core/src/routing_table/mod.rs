@@ -364,6 +364,29 @@ impl RoutingTable {
     }
 
     pub async fn terminate(&self) {
+        // Cancel all tasks being ticked
+        if let Err(e) = self.unlocked_inner.rolling_transfers_task.cancel().await {
+            warn!("rolling_transfers_task not cancelled: {}", e);
+        }
+        if let Err(e) = self.unlocked_inner.bootstrap_task.cancel().await {
+            warn!("bootstrap_task not cancelled: {}", e);
+        }
+        if let Err(e) = self.unlocked_inner.peer_minimum_refresh_task.cancel().await {
+            warn!("peer_minimum_refresh_task not cancelled: {}", e);
+        }
+        if let Err(e) = self.unlocked_inner.ping_validator_task.cancel().await {
+            warn!("ping_validator_task not cancelled: {}", e);
+        }
+        if self
+            .unlocked_inner
+            .node_info_update_single_future
+            .cancel()
+            .await
+            .is_err()
+        {
+            warn!("node_info_update_single_future not cancelled");
+        }
+
         *self.inner.lock() = Self::new_inner(self.network_manager());
     }
 

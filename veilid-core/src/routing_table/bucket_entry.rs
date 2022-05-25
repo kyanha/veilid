@@ -45,6 +45,10 @@ pub struct BucketEntry {
     peer_stats: PeerStats,
     latency_stats_accounting: LatencyStatsAccounting,
     transfer_stats_accounting: TransferStatsAccounting,
+    #[cfg(feature = "tracking")]
+    next_track_id: usize,
+    #[cfg(feature = "tracking")]
+    node_ref_tracks: HashMap<usize, backtrace::Backtrace>,
 }
 
 impl BucketEntry {
@@ -57,8 +61,6 @@ impl BucketEntry {
             last_connection: None,
             opt_signed_node_info: None,
             opt_local_node_info: None,
-            latency_stats_accounting: LatencyStatsAccounting::new(),
-            transfer_stats_accounting: TransferStatsAccounting::new(),
             peer_stats: PeerStats {
                 time_added: now,
                 rpc_stats: RPCStats::default(),
@@ -66,7 +68,27 @@ impl BucketEntry {
                 transfer: TransferStatsDownUp::default(),
                 status: None,
             },
+            latency_stats_accounting: LatencyStatsAccounting::new(),
+            transfer_stats_accounting: TransferStatsAccounting::new(),
+            #[cfg(feature = "tracking")]
+            next_track_id: 0,
+            #[cfg(feature = "tracking")]
+            node_ref_tracks: HashMap::new(),
         }
+    }
+
+    #[cfg(feature = "tracking")]
+    pub fn track(&mut self) -> usize {
+        let track_id = self.next_track_id;
+        self.next_track_id += 1;
+        self.node_ref_tracks
+            .insert(track_id, backtrace::Backtrace::new_unresolved());
+        track_id
+    }
+
+    #[cfg(feature = "tracking")]
+    pub fn untrack(&mut self, track_id: usize) {
+        self.node_ref_tracks.remove(&track_id);
     }
 
     pub fn sort_fastest(e1: &Self, e2: &Self) -> std::cmp::Ordering {
@@ -410,6 +432,15 @@ impl BucketEntry {
 impl Drop for BucketEntry {
     fn drop(&mut self) {
         if self.ref_count != 0 {
+            #[cfg(feature = "tracking")]
+            {
+                println!("NodeRef Tracking");
+                for (id, bt) in &mut self.node_ref_tracks {
+                    bt.resolve();
+                    println!("Id: {}\n----------------\n{:#?}", id, bt);
+                }
+            }
+
             panic!(
                 "bucket entry dropped with non-zero refcount: {:#?}",
                 self.node_info()

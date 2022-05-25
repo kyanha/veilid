@@ -52,3 +52,6 @@ serial_test = "^0"
 
 [build-dependencies]
 capnpc = "^0"
+
+[features]
+tracking = ["veilid-core/tracking"]

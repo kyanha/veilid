@@ -270,6 +270,14 @@ impl NetworkManager {
     pub async fn shutdown(&self) {
         trace!("NetworkManager::shutdown begin");
 
+        // Cancel all tasks
+        if let Err(e) = self.unlocked_inner.rolling_transfers_task.cancel().await {
+            warn!("rolling_transfers_task not cancelled: {}", e);
+        }
+        if let Err(e) = self.unlocked_inner.relay_management_task.cancel().await {
+            warn!("relay_management_task not cancelled: {}", e);
+        }
+
         // Shutdown network components if they started up
         let components = self.inner.lock().components.clone();
         if let Some(components) = components {

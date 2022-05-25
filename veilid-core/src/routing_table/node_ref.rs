@@ -10,6 +10,8 @@ pub struct NodeRef {
     routing_table: RoutingTable,
     node_id: DHTKey,
     filter: Option<DialInfoFilter>,
+    #[cfg(feature = "tracking")]
+    track_id: usize,
 }
 
 impl NodeRef {
@@ -20,10 +22,13 @@ impl NodeRef {
         filter: Option<DialInfoFilter>,
     ) -> Self {
         entry.ref_count += 1;
+
         Self {
             routing_table,
             node_id: key,
             filter,
+            #[cfg(feature = "tracking")]
+            track_id: entry.track(),
         }
     }
 
@@ -255,12 +260,15 @@ impl Clone for NodeRef {
     fn clone(&self) -> Self {
         self.operate(move |e| {
             e.ref_count += 1;
-        });
-        Self {
-            routing_table: self.routing_table.clone(),
-            node_id: self.node_id,
-            filter: self.filter.clone(),
-        }
+
+            Self {
+                routing_table: self.routing_table.clone(),
+                node_id: self.node_id,
+                filter: self.filter.clone(),
+                #[cfg(feature = "tracking")]
+                track_id: e.track(),
+            }
+        })
     }
 }
 
@@ -272,23 +280,25 @@ impl PartialEq for NodeRef {
 
 impl Eq for NodeRef {}
 
+impl fmt::Display for NodeRef {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.node_id.encode())
+    }
+}
+
 impl fmt::Debug for NodeRef {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if f.alternate() {
-            write!(
-                f,
-                "{{\n  id: {}\n  filter: {:?}\n}}",
-                self.node_id.encode(),
-                self.filter
-            )
-        } else {
-            write!(f, "{}", self.node_id.encode())
-        }
+        f.debug_struct("NodeRef")
+            .field("node_id", &self.node_id)
+            .field("filter", &self.filter)
+            .finish()
     }
 }
 
 impl Drop for NodeRef {
     fn drop(&mut self) {
+        #[cfg(feature = "tracking")]
+        self.operate(|e| e.untrack(self.track_id));
         self.routing_table.drop_node_ref(self.node_id);
     }
 }

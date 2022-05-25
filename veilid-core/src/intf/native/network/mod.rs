@@ -503,6 +503,11 @@ impl Network {
         let network_manager = self.network_manager();
         let routing_table = self.routing_table();
 
+        // Cancel all tasks
+        if let Err(e) = self.unlocked_inner.update_network_class_task.cancel().await {
+            warn!("update_network_class_task not cancelled: {}", e);
+        }
+
         // Drop all dial info
         routing_table.clear_dial_info_details(RoutingDomain::PublicInternet);
         routing_table.clear_dial_info_details(RoutingDomain::LocalNetwork);
