@@ -4,16 +4,24 @@ use crate::intf::*;
 use crate::routing_table::*;
 use crate::*;
 
+use futures_util::stream::FuturesUnordered;
+use futures_util::FutureExt;
+
+struct DetectedPublicDialInfo {
+    dial_info: DialInfo,
+    class: DialInfoClass,
+}
 struct DiscoveryContextInner {
-    network_class: Option<NetworkClass>,
     // per-protocol
     intf_addrs: Option<Vec<SocketAddress>>,
     protocol_type: Option<ProtocolType>,
     address_type: Option<AddressType>,
-    low_level_protocol_type: Option<ProtocolType>,
     external1_dial_info: Option<DialInfo>,
     external1: Option<SocketAddress>,
     node_b: Option<NodeRef>,
+    // detected public dialinfo
+    detected_network_class: Option<NetworkClass>,
+    detected_public_dial_info: Option<DetectedPublicDialInfo>,
 }
 
 pub struct DiscoveryContext {
@@ -28,15 +36,15 @@ impl DiscoveryContext {
             routing_table,
             net,
             inner: Arc::new(Mutex::new(DiscoveryContextInner {
-                network_class: None,
                 // per-protocol
                 intf_addrs: None,
                 protocol_type: None,
                 address_type: None,
-                low_level_protocol_type: None,
                 external1_dial_info: None,
                 external1: None,
                 node_b: None,
+                detected_network_class: None,
+                detected_public_dial_info: None,
             })),
         }
     }
@@ -45,16 +53,14 @@ impl DiscoveryContext {
     // Utilities
 
     // Pick the best network class we have seen so far
-    pub fn upgrade_network_class(&self, network_class: NetworkClass) {
+    pub fn set_detected_network_class(&self, network_class: NetworkClass) {
         let mut inner = self.inner.lock();
+        inner.detected_network_class = Some(network_class);
+    }
 
-        if let Some(old_nc) = inner.network_class {
-            if network_class < old_nc {
-                inner.network_class = Some(network_class);
-            }
-        } else {
-            inner.network_class = Some(network_class);
-        }
+    pub fn set_detected_public_dial_info(&self, dial_info: DialInfo, class: DialInfoClass) {
+        let mut inner = self.inner.lock();
+        inner.detected_public_dial_info = Some(DetectedPublicDialInfo { dial_info, class });
     }
 
     // Ask for a public address check from a particular noderef
@@ -66,7 +72,11 @@ impl DiscoveryContext {
                 "failed to get status answer from {:?}",
                 node_ref
             ))
-            .map(|sa| sa.sender_info.socket_address)
+            .map(|sa| {
+                let ret = sa.sender_info.socket_address;
+                log_net!("request_public_address: {:?}", ret);
+                ret
+            })
             .unwrap_or(None)
     }
 
@@ -169,12 +179,6 @@ impl DiscoveryContext {
         inner.intf_addrs = Some(intf_addrs);
         inner.protocol_type = Some(protocol_type);
         inner.address_type = Some(address_type);
-        inner.low_level_protocol_type = Some(match protocol_type {
-            ProtocolType::UDP => ProtocolType::UDP,
-            ProtocolType::TCP => ProtocolType::TCP,
-            ProtocolType::WS => ProtocolType::TCP,
-            ProtocolType::WSS => ProtocolType::TCP,
-        });
         inner.external1_dial_info = None;
         inner.external1 = None;
         inner.node_b = None;
@@ -193,6 +197,7 @@ impl DiscoveryContext {
         {
             None => {
                 // If we can't get an external address, exit but don't throw an error so we can try again later
+                log_net!(debug "couldn't get external address 1");
                 return false;
             }
             Some(v) => v,
@@ -203,6 +208,8 @@ impl DiscoveryContext {
         inner.external1_dial_info = Some(external1_dial_info);
         inner.external1 = Some(external1);
         inner.node_b = Some(node_b);
+
+        log_net!(debug "external1_dial_info: {:?}\nexternal1: {:?}\nnode_b: {:?}", inner.external1_dial_info, inner.external1, inner.node_b);
 
         true
     }
@@ -222,29 +229,17 @@ impl DiscoveryContext {
             .await
         {
             // Add public dial info with Direct dialinfo class
-            self.routing_table.register_dial_info(
-                RoutingDomain::PublicInternet,
-                external1_dial_info,
-                DialInfoClass::Direct,
-            )?;
+            self.set_detected_public_dial_info(external1_dial_info, DialInfoClass::Direct);
         }
         // Attempt a UDP port mapping via all available and enabled mechanisms
         else if let Some(external_mapped_dial_info) = self.try_port_mapping().await {
             // Got a port mapping, let's use it
-            self.routing_table.register_dial_info(
-                RoutingDomain::PublicInternet,
-                external_mapped_dial_info,
-                DialInfoClass::Mapped,
-            )?;
+            self.set_detected_public_dial_info(external_mapped_dial_info, DialInfoClass::Mapped);
         } else {
             // Add public dial info with Blocked dialinfo class
-            self.routing_table.register_dial_info(
-                RoutingDomain::PublicInternet,
-                external1_dial_info,
-                DialInfoClass::Blocked,
-            )?;
+            self.set_detected_public_dial_info(external1_dial_info, DialInfoClass::Blocked);
         }
-        self.upgrade_network_class(NetworkClass::InboundCapable);
+        self.set_detected_network_class(NetworkClass::InboundCapable);
         Ok(())
     }
 
@@ -263,12 +258,8 @@ impl DiscoveryContext {
         // Attempt a UDP port mapping via all available and enabled mechanisms
         if let Some(external_mapped_dial_info) = self.try_port_mapping().await {
             // Got a port mapping, let's use it
-            self.routing_table.register_dial_info(
-                RoutingDomain::PublicInternet,
-                external_mapped_dial_info,
-                DialInfoClass::Mapped,
-            )?;
-            self.upgrade_network_class(NetworkClass::InboundCapable);
+            self.set_detected_public_dial_info(external_mapped_dial_info, DialInfoClass::Mapped);
+            self.set_detected_network_class(NetworkClass::InboundCapable);
 
             // No more retries
             return Ok(true);
@@ -283,13 +274,10 @@ impl DiscoveryContext {
         {
             // Yes, another machine can use the dial info directly, so Full Cone
             // Add public dial info with full cone NAT network class
-            self.routing_table.register_dial_info(
-                RoutingDomain::PublicInternet,
-                external1_dial_info,
-                DialInfoClass::FullConeNAT,
-            )?;
-            self.upgrade_network_class(NetworkClass::InboundCapable);
+            self.set_detected_public_dial_info(external1_dial_info, DialInfoClass::FullConeNAT);
+            self.set_detected_network_class(NetworkClass::InboundCapable);
 
+            // No more retries
             return Ok(true);
         }
 
@@ -310,7 +298,7 @@ impl DiscoveryContext {
         // If we have two different external addresses, then this is a symmetric NAT
         if external2 != external1 {
             // Symmetric NAT is outbound only, no public dial info will work
-            self.upgrade_network_class(NetworkClass::OutboundOnly);
+            self.set_detected_network_class(NetworkClass::OutboundOnly);
 
             // No more retries
             return Ok(true);
@@ -326,20 +314,18 @@ impl DiscoveryContext {
             .await
         {
             // Got a reply from a non-default port, which means we're only address restricted
-            self.routing_table.register_dial_info(
-                RoutingDomain::PublicInternet,
+            self.set_detected_public_dial_info(
                 external1_dial_info,
                 DialInfoClass::AddressRestrictedNAT,
-            )?;
+            );
         } else {
             // Didn't get a reply from a non-default port, which means we are also port restricted
-            self.routing_table.register_dial_info(
-                RoutingDomain::PublicInternet,
+            self.set_detected_public_dial_info(
                 external1_dial_info,
                 DialInfoClass::PortRestrictedNAT,
-            )?;
+            );
         }
-        self.upgrade_network_class(NetworkClass::InboundCapable);
+        self.set_detected_network_class(NetworkClass::InboundCapable);
 
         // Allow another retry because sometimes trying again will get us Full Cone NAT instead
         Ok(false)
@@ -442,42 +428,159 @@ impl Network {
     }
 
     pub async fn update_network_class_task_routine(self, _l: u64, _t: u64) -> Result<(), String> {
-        log_net!("updating network class");
+        log_net!("--- updating network class");
+
+        // Ensure we aren't trying to update this without clearing it first
+        let old_network_class = self.inner.lock().network_class;
+        assert_eq!(old_network_class, None);
 
         let protocol_config = self.inner.lock().protocol_config.unwrap_or_default();
-        let old_network_class = self.inner.lock().network_class;
-
-        let context = DiscoveryContext::new(self.routing_table(), self.clone());
+        let mut unord = FuturesUnordered::new();
 
         if protocol_config.inbound.contains(ProtocolType::UDP) {
-            self.update_ipv4_protocol_dialinfo(&context, ProtocolType::UDP)
-                .await?;
-            self.update_ipv6_protocol_dialinfo(&context, ProtocolType::UDP)
-                .await?;
+            // UDPv4
+            unord.push(
+                async {
+                    let udpv4_context = DiscoveryContext::new(self.routing_table(), self.clone());
+                    if let Err(e) = self
+                        .update_ipv4_protocol_dialinfo(&udpv4_context, ProtocolType::UDP)
+                        .await
+                    {
+                        log_net!(debug "Failed UDPv4 dialinfo discovery: {}", e);
+                        return None;
+                    }
+                    Some(udpv4_context)
+                }
+                .boxed(),
+            );
+
+            // UDPv6
+            unord.push(
+                async {
+                    let udpv6_context = DiscoveryContext::new(self.routing_table(), self.clone());
+                    if let Err(e) = self
+                        .update_ipv6_protocol_dialinfo(&udpv6_context, ProtocolType::UDP)
+                        .await
+                    {
+                        log_net!(debug "Failed UDPv6 dialinfo discovery: {}", e);
+                        return None;
+                    }
+                    Some(udpv6_context)
+                }
+                .boxed(),
+            );
         }
 
         if protocol_config.inbound.contains(ProtocolType::TCP) {
-            self.update_ipv4_protocol_dialinfo(&context, ProtocolType::TCP)
-                .await?;
-            self.update_ipv6_protocol_dialinfo(&context, ProtocolType::TCP)
-                .await?;
+            // TCPv4
+            unord.push(
+                async {
+                    let tcpv4_context = DiscoveryContext::new(self.routing_table(), self.clone());
+                    if let Err(e) = self
+                        .update_ipv4_protocol_dialinfo(&tcpv4_context, ProtocolType::TCP)
+                        .await
+                    {
+                        log_net!(debug "Failed TCPv4 dialinfo discovery: {}", e);
+                        return None;
+                    }
+                    Some(tcpv4_context)
+                }
+                .boxed(),
+            );
+
+            // TCPv6
+            unord.push(
+                async {
+                    let tcpv6_context = DiscoveryContext::new(self.routing_table(), self.clone());
+                    if let Err(e) = self
+                        .update_ipv6_protocol_dialinfo(&tcpv6_context, ProtocolType::TCP)
+                        .await
+                    {
+                        log_net!(debug "Failed TCPv6 dialinfo discovery: {}", e);
+                        return None;
+                    }
+                    Some(tcpv6_context)
+                }
+                .boxed(),
+            );
         }
 
         if protocol_config.inbound.contains(ProtocolType::WS) {
-            self.update_ipv4_protocol_dialinfo(&context, ProtocolType::WS)
-                .await?;
-            self.update_ipv6_protocol_dialinfo(&context, ProtocolType::WS)
-                .await?;
+            // WS4
+            unord.push(
+                async {
+                    let wsv4_context = DiscoveryContext::new(self.routing_table(), self.clone());
+                    if let Err(e) = self
+                        .update_ipv4_protocol_dialinfo(&wsv4_context, ProtocolType::WS)
+                        .await
+                    {
+                        log_net!(debug "Failed WSv4 dialinfo discovery: {}", e);
+                        return None;
+                    }
+                    Some(wsv4_context)
+                }
+                .boxed(),
+            );
+
+            // WSv6
+            unord.push(
+                async {
+                    let wsv6_context = DiscoveryContext::new(self.routing_table(), self.clone());
+                    if let Err(e) = self
+                        .update_ipv6_protocol_dialinfo(&wsv6_context, ProtocolType::TCP)
+                        .await
+                    {
+                        log_net!(debug "Failed WSv6 dialinfo discovery: {}", e);
+                        return None;
+                    }
+                    Some(wsv6_context)
+                }
+                .boxed(),
+            );
         }
 
-        let network_class = context.inner.lock().network_class;
-        if network_class != old_network_class {
+        // Wait for all discovery futures to complete and collect contexts
+        let mut contexts = Vec::<DiscoveryContext>::new();
+        let mut network_class = Option::<NetworkClass>::None;
+        while let Some(ctx) = unord.next().await {
+            if let Some(ctx) = ctx {
+                if let Some(nc) = ctx.inner.lock().detected_network_class {
+                    if let Some(last_nc) = network_class {
+                        if nc < last_nc {
+                            network_class = Some(nc);
+                        }
+                    } else {
+                        network_class = Some(nc);
+                    }
+                }
+
+                contexts.push(ctx);
+            }
+        }
+
+        // Get best network class
+        if network_class.is_some() {
+            // Update public dial info
+            let routing_table = self.routing_table();
+            for ctx in contexts {
+                let inner = ctx.inner.lock();
+                if let Some(pdi) = &inner.detected_public_dial_info {
+                    if let Err(e) = routing_table.register_dial_info(
+                        RoutingDomain::PublicInternet,
+                        pdi.dial_info.clone(),
+                        pdi.class,
+                    ) {
+                        log_net!(warn "Failed to register detected public dial info: {}", e);
+                    }
+                }
+            }
+            // Update network class
             self.inner.lock().network_class = network_class;
             log_net!(debug "network class changed to {:?}", network_class);
-        }
 
-        // send updates to everyone
-        self.routing_table().send_node_info_updates();
+            // Send updates to everyone
+            routing_table.send_node_info_updates();
+        }
 
         Ok(())
     }

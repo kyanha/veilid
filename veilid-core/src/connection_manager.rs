@@ -178,7 +178,7 @@ impl ConnectionManager {
                         match res {
                             Ok(v) => v,
                             Err(e) => {
-                                log_net!(error e);
+                                log_net!(debug e);
                                 break;
                             }
                         }

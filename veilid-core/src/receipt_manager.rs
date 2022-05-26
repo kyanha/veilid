@@ -310,6 +310,7 @@ impl ReceiptManager {
         expected_returns: u32,
         callback: impl ReceiptCallback,
     ) {
+        log_rpc!(debug "== New Multiple Receipt ({}) {} ", expected_returns, receipt.get_nonce().encode());
         let record = Arc::new(Mutex::new(ReceiptRecord::from_receipt(
             &receipt,
             expiration,
@@ -318,6 +319,8 @@ impl ReceiptManager {
         )));
         let mut inner = self.inner.lock();
         inner.receipts_by_nonce.insert(receipt.get_nonce(), record);
+
+        Self::update_next_oldest_timestamp(&mut *inner);
     }
 
     pub fn record_single_shot_receipt(
@@ -326,11 +329,15 @@ impl ReceiptManager {
         expiration: u64,
         eventual: ReceiptSingleShotType,
     ) {
+        log_rpc!(debug "== New SingleShot Receipt {}", receipt.get_nonce().encode());
+
         let record = Arc::new(Mutex::new(ReceiptRecord::from_single_shot_receipt(
             &receipt, expiration, eventual,
         )));
         let mut inner = self.inner.lock();
         inner.receipts_by_nonce.insert(receipt.get_nonce(), record);
+
+        Self::update_next_oldest_timestamp(&mut *inner);
     }
 
     fn update_next_oldest_timestamp(inner: &mut ReceiptManagerInner) {
@@ -350,6 +357,8 @@ impl ReceiptManager {
     }
 
     pub async fn cancel_receipt(&self, nonce: &ReceiptNonce) -> Result<(), String> {
+        log_rpc!(debug "== Cancel Receipt {}", nonce.encode());
+
         // Remove the record
         let record = {
             let mut inner = self.inner.lock();
@@ -378,6 +387,8 @@ impl ReceiptManager {
     }
 
     pub async fn handle_receipt(&self, node_ref: NodeRef, receipt: Receipt) -> Result<(), String> {
+        log_rpc!(debug "<<== RECEIPT {} <- {}", receipt.get_nonce().encode(), node_ref);
+
         // Increment return count
         let callback_future = {
             // Look up the receipt record from the nonce

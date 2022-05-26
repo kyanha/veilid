@@ -1186,6 +1186,8 @@ mod tests {
             listen_address_to_socket_addrs("localhost:5959").unwrap()
         );
         assert_eq!(s.auto_attach, true);
+        assert_eq!(s.logging.system.enabled, false);
+        assert_eq!(s.logging.system.level, LogLevel::Info);
         assert_eq!(s.logging.terminal.enabled, true);
         assert_eq!(s.logging.terminal.level, LogLevel::Info);
         assert_eq!(s.logging.file.enabled, false);

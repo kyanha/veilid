@@ -78,7 +78,7 @@ impl RespondTo {
 
 #[derive(Debug, Clone)]
 struct RPCMessageHeader {
-    timestamp: u64,
+    timestamp: u64,             // time the message was received, not sent
     envelope: envelope::Envelope,
     body_len: u64,
     peer_noderef: NodeRef, // ensures node doesn't get evicted from routing table until we're done with it
@@ -911,6 +911,7 @@ impl RPCProcessor {
         if redirect {
             let routing_table = self.routing_table();
             let filter = dial_info.make_filter(true);
+            let sender_id = rpcreader.header.envelope.get_sender_id();
             let peers = routing_table.find_fast_public_nodes_filtered(&filter);
             if peers.is_empty() {
                 return Err(rpc_error_internal(format!(
@@ -919,6 +920,12 @@ impl RPCProcessor {
                 )));
             }
             for peer in peers {
+
+                // Ensure the peer is not the one asking for the validation
+                if peer.node_id() == sender_id {
+                    continue;
+                }                
+
                 // See if this peer will validate dial info
                 let will_validate_dial_info = peer.operate(|e: &mut BucketEntry| {
                     if let Some(ni) = &e.peer_stats().status {
@@ -1259,7 +1266,7 @@ impl RPCProcessor {
                 veilid_capnp::operation::detail::CancelTunnelA(_) => (25u32, false),
             };
 
-            log_rpc!(debug "<<== {}({}) <- {}", 
+            log_rpc!(debug "<<== {}({}) <- {:?}", 
                 if is_q { "REQUEST" } else { "REPLY" }, 
                 self.get_rpc_message_debug_info(&reader), 
                 msg.header.envelope.get_sender_id()
@@ -1604,10 +1611,17 @@ impl RPCProcessor {
         self.request(Destination::Direct(peer), vdi_msg, None)
             .await?;
 
+        log_net!(debug "waiting for validate_dial_info receipt");
         // Wait for receipt
         match eventual_value.await.take_value().unwrap() {
-            ReceiptEvent::Returned(_) => Ok(true),
-            ReceiptEvent::Expired => Ok(false),
+            ReceiptEvent::Returned(_) => {
+                log_net!(debug "validate_dial_info receipt returned");
+                Ok(true)
+            }
+            ReceiptEvent::Expired => {
+                log_net!(debug "validate_dial_info receipt expired");
+                Ok(false)
+            }
             ReceiptEvent::Cancelled => {
                 Err(rpc_error_internal("receipt was dropped before expiration"))
             }

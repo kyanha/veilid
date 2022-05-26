@@ -91,7 +91,8 @@ impl BucketEntry {
         self.node_ref_tracks.remove(&track_id);
     }
 
-    pub fn sort_fastest(e1: &Self, e2: &Self) -> std::cmp::Ordering {
+    // Less is faster
+    pub fn cmp_fastest(e1: &Self, e2: &Self) -> std::cmp::Ordering {
         // Lower latency to the front
         if let Some(e1_latency) = &e1.peer_stats.latency {
             if let Some(e2_latency) = &e2.peer_stats.latency {
@@ -106,6 +107,7 @@ impl BucketEntry {
         }
     }
 
+    // Less is more reliable then faster
     pub fn cmp_fastest_reliable(cur_ts: u64, e1: &Self, e2: &Self) -> std::cmp::Ordering {
         // Reverse compare so most reliable is at front
         let ret = e2.state(cur_ts).cmp(&e1.state(cur_ts));

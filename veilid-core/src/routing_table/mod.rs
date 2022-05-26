@@ -258,11 +258,9 @@ impl RoutingTable {
         dial_info: DialInfo,
         class: DialInfoClass,
     ) -> Result<(), String> {
-        trace!(
-            "registering dial_info with:\n  domain: {:?}\n  dial_info: {:?}\n  class: {:?}",
-            domain,
-            dial_info,
-            class
+        log_rtab!(debug
+            "Registering dial_info with:\n  domain: {:?}\n  dial_info: {:?}\n  class: {:?}",
+            domain, dial_info, class
         );
         let enable_local_peer_scope = {
             let config = self.network_manager().config();
@@ -680,37 +678,46 @@ impl RoutingTable {
 
     pub fn find_inbound_relay(&self, cur_ts: u64) -> Option<NodeRef> {
         let mut inner = self.inner.lock();
-        let mut best_inbound_relay: Option<NodeRef> = None;
+        let inner = &mut *inner;
+        let mut best_inbound_relay: Option<(&DHTKey, &mut BucketEntry)> = None;
 
         // Iterate all known nodes for candidates
-        Self::with_entries(&mut *inner, cur_ts, BucketEntryState::Unreliable, |k, e| {
-            // Ensure this node is not on our local network
-            if !e
-                .local_node_info()
-                .map(|l| l.has_dial_info())
-                .unwrap_or(false)
-            {
-                // Ensure we have the node's status
-                if let Some(node_status) = &e.peer_stats().status {
-                    // Ensure the node will relay
-                    if node_status.will_relay {
-                        if let Some(best_inbound_relay) = best_inbound_relay.as_mut() {
-                            if best_inbound_relay
-                                .operate(|best| BucketEntry::cmp_fastest_reliable(cur_ts, best, e))
-                                == std::cmp::Ordering::Greater
-                            {
-                                *best_inbound_relay = NodeRef::new(self.clone(), *k, e, None);
+        for bucket in &mut inner.buckets {
+            for (k, e) in bucket.entries_mut() {
+                if e.state(cur_ts) >= BucketEntryState::Unreliable {
+                    // Ensure this node is not on our local network
+                    if !e
+                        .local_node_info()
+                        .map(|l| l.has_dial_info())
+                        .unwrap_or(false)
+                    {
+                        // Ensure we have the node's status
+                        if let Some(node_status) = &e.peer_stats().status {
+                            // Ensure the node will relay
+                            if node_status.will_relay {
+                                // Compare against previous candidate
+                                if let Some(best_inbound_relay) = best_inbound_relay.as_mut() {
+                                    // Less is faster
+                                    if BucketEntry::cmp_fastest_reliable(
+                                        cur_ts,
+                                        e,
+                                        best_inbound_relay.1,
+                                    ) == std::cmp::Ordering::Less
+                                    {
+                                        *best_inbound_relay = (k, e);
+                                    }
+                                } else {
+                                    // Always store the first candidate
+                                    best_inbound_relay = Some((k, e));
+                                }
                             }
-                        } else {
-                            best_inbound_relay = Some(NodeRef::new(self.clone(), *k, e, None));
                         }
                     }
                 }
             }
-            Option::<()>::None
-        });
-
-        best_inbound_relay
+        }
+        // Return the best inbound relay noderef
+        best_inbound_relay.map(|(k, e)| NodeRef::new(self.clone(), *k, e, None))
     }
 
     pub fn register_find_node_answer(&self, fna: FindNodeAnswer) -> Result<Vec<NodeRef>, String> {
@@ -920,7 +927,7 @@ impl RoutingTable {
             )
         };
 
-        log_rtab!("--- bootstrap_task");
+        log_rtab!(debug "--- bootstrap_task");
 
         // If we aren't specifying a bootstrap node list explicitly, then pull from the bootstrap server(s)
         let bootstrap_node_dial_infos = if !bootstrap_nodes.is_empty() {
@@ -952,12 +959,11 @@ impl RoutingTable {
                     class: DialInfoClass::Direct, // Bootstraps are always directly reachable
                 });
         }
-        log_rtab!("    bootstrap node dialinfo: {:?}", bsmap);
 
         // Run all bootstrap operations concurrently
         let mut unord = FuturesUnordered::new();
         for (k, v) in bsmap {
-            log_rtab!("    bootstrapping {} with {:?}", k.encode(), &v);
+            log_rtab!("--- bootstrapping {} with {:?}", k.encode(), &v);
 
             // Make invalid signed node info (no signature)
             let nr = self
@@ -970,7 +976,7 @@ impl RoutingTable {
                         relay_peer_info: None,    // Bootstraps never require a relay themselves
                     }),
                 )
-                .map_err(logthru_rtab!("Couldn't add bootstrap node: {}", k))?;
+                .map_err(logthru_rtab!(error "Couldn't add bootstrap node: {}", k))?;
 
             // Add this our futures to process in parallel
             let this = self.clone();
@@ -981,7 +987,7 @@ impl RoutingTable {
 
                 // Ensure we got the signed peer info
                 if !nr.operate(|e| e.has_valid_signed_node_info()) {
-                    warn!(
+                    log_rtab!(warn
                         "bootstrap at {:?} did not return valid signed node info",
                         nr
                     );
@@ -1004,7 +1010,7 @@ impl RoutingTable {
     // Ask our remaining peers to give us more peers before we go
     // back to the bootstrap servers to keep us from bothering them too much
     async fn peer_minimum_refresh_task_routine(self) -> Result<(), String> {
-        log_rtab!("--- peer_minimum_refresh task");
+        // log_rtab!("--- peer_minimum_refresh task");
 
         // get list of all peers we know about, even the unreliable ones, and ask them to find nodes close to our node too
         let noderefs = {
@@ -1022,12 +1028,11 @@ impl RoutingTable {
             );
             noderefs
         };
-        log_rtab!("    refreshing with nodes: {:?}", noderefs);
 
         // do peer minimum search concurrently
         let mut unord = FuturesUnordered::new();
         for nr in noderefs {
-            debug!("    --- peer minimum search with {:?}", nr);
+            log_rtab!("--- peer minimum search with {:?}", nr);
             unord.push(self.reverse_find_node(nr, false));
         }
         while unord.next().await.is_some() {}

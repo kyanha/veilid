@@ -4,6 +4,7 @@ use super::envelope::{MAX_VERSION, MIN_VERSION};
 use super::key::*;
 use crate::xx::*;
 use core::convert::TryInto;
+use data_encoding::BASE64URL_NOPAD;
 
 // #[repr(C, packed)]
 // struct ReceiptHeader {
@@ -31,6 +32,16 @@ pub const MAX_EXTRA_DATA_SIZE: usize = 1024;
 pub const MIN_RECEIPT_SIZE: usize = 128;
 pub const RECEIPT_MAGIC: &[u8; 4] = b"RCPT";
 pub type ReceiptNonce = [u8; 24];
+
+pub trait Encodable {
+    fn encode(&self) -> String;
+}
+
+impl Encodable for ReceiptNonce {
+    fn encode(&self) -> String {
+        BASE64URL_NOPAD.encode(self)
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Receipt {

@@ -63,15 +63,7 @@ pub fn retry_falloff_log(
         true
     } else {
         // Exponential falloff between 'interval_start_us' and 'interval_max_us' microseconds
-        // Optimal equation here is: y = Sum[Power[b,x],{n,0,x}] --> y = (x+1)b^x
-        // but we're just gonna simplify this to a log curve for speed
-        let last_secs = timestamp_to_secs(last_us);
-        let nth = (last_secs / timestamp_to_secs(interval_start_us))
-            .log(interval_multiplier_us)
-            .floor() as i32;
-        let next_secs = timestamp_to_secs(interval_start_us) * interval_multiplier_us.powi(nth + 1);
-        let next_us = secs_to_timestamp(next_secs);
-        cur_us >= next_us
+        last_us <= secs_to_timestamp(timestamp_to_secs(cur_us) / interval_multiplier_us)
     }
 }
 
@@ -215,7 +207,7 @@ cfg_if::cfg_if! {
     } else if #[cfg(windows)] {
         use std::os::windows::fs::MetadataExt;
         use windows_permissions::*;
-        
+
         pub fn ensure_file_private_owner<P:AsRef<Path>>(path: P) -> Result<(),String>
         {
             let path = path.as_ref();
