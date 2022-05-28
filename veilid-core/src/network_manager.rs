@@ -291,6 +291,7 @@ impl NetworkManager {
         {
             let mut inner = self.inner.lock();
             inner.components = None;
+            inner.relay_node = None;
         }
 
         // send update

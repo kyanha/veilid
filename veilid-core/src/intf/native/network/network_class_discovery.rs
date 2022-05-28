@@ -56,11 +56,25 @@ impl DiscoveryContext {
     // Pick the best network class we have seen so far
     pub fn set_detected_network_class(&self, network_class: NetworkClass) {
         let mut inner = self.inner.lock();
+        log_net!( debug
+            "=== set_detected_network_class {:?} {:?}: {:?} ===",
+            inner.protocol_type,
+            inner.address_type,
+            network_class
+        );
+
         inner.detected_network_class = Some(network_class);
     }
 
     pub fn set_detected_public_dial_info(&self, dial_info: DialInfo, class: DialInfoClass) {
         let mut inner = self.inner.lock();
+        log_net!( debug
+            "=== set_detected_public_dial_info {:?} {:?}: {} {:?} ===",
+            inner.protocol_type,
+            inner.address_type,
+            dial_info,
+            class
+        );
         inner.detected_public_dial_info = Some(DetectedPublicDialInfo { dial_info, class });
     }
 
@@ -353,6 +367,11 @@ impl Network {
 
         // Loop for restricted NAT retries
         loop {
+            log_net!(debug
+                "=== update_ipv4_protocol_dialinfo {:?} tries_left={} ===",
+                protocol_type,
+                retry_count
+            );
             // Get our external address from some fast node, call it node 1
             if !context.protocol_get_external_address_1().await {
                 // If we couldn't get an external address, then we should just try the whole network class detection again later
@@ -401,6 +420,8 @@ impl Network {
     ) -> Result<(), String> {
         // Start doing ipv6 protocol
         context.protocol_begin(protocol_type, AddressType::IPV6);
+
+        log_net!(debug "=== update_ipv6_protocol_dialinfo {:?} ===", protocol_type);
 
         // Get our external address from some fast node, call it node 1
         if !context.protocol_get_external_address_1().await {
