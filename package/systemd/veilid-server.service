@@ -6,15 +6,15 @@ Requires=network-online.target
 After=network-online.target
 
 [Service]
-Type=forking
-PIDFile=/run/veilid-server.pid
-ExecStartPre=/usr/bin/rm -f /run/veilid-server.pid
+Type=simple
 ExecStart=/usr/bin/veilid-server
 ExecReload=/bin/kill -s HUP $MAINPID
 KillSignal=SIGQUIT
 TimeoutStopSec=5
-KillMode=mixed
 PrivateTmp=true
+WorkingDirectory=/
+User=veilid
+Group=veilid
 
 [Install]
 WantedBy=multi-user.target

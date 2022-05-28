@@ -183,7 +183,7 @@ cfg_if::cfg_if! {
     if #[cfg(unix)] {
         use std::os::unix::fs::MetadataExt;
         use std::os::unix::prelude::PermissionsExt;
-        use nix::unistd::{chown, Uid, Gid};
+        use nix::unistd::{Uid, Gid};
 
         pub fn ensure_file_private_owner<P:AsRef<Path>>(path: P) -> Result<(), String>
         {
@@ -200,7 +200,7 @@ cfg_if::cfg_if! {
                 std::fs::set_permissions(path,std::fs::Permissions::from_mode(0o600)).map_err(|e| format!("unable to set correct permissions on path '{:?}': {}", path, e))?;
             }
             if meta.uid() != uid.as_raw() || meta.gid() != gid.as_raw() {
-                chown(path, Some(uid), Some(gid)).map_err(|e| format!("unable to set correct owner on path '{:?}': {}", path, e))?;
+                return Err(format!("path has incorrect owner/group: {:?}", path));
             }
             Ok(())
         }
@@ -223,9 +223,9 @@ cfg_if::cfg_if! {
                 std::fs::set_permissions(path,std::fs::Permissions::from_mode(0o600)).map_err(|e| format!("unable to set correct permissions on path '{:?}': {}", path, e))?;
             }
 
-            // if meta.uid() != uid.as_raw() || meta.gid() != gid.as_raw() {
+            //if meta.uid() != uid.as_raw() || meta.gid() != gid.as_raw() {
             //     chown(path, Some(uid), Some(gid)).map_err(|e| format!("unable to set correct owner on path '{:?}': {}", path, e))?;
-            // }
+            //}
             Ok(())
         }
     } else {

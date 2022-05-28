@@ -111,11 +111,13 @@ impl WebsocketProtocolHandler {
             data.len(),
             dial_info,
         );
-
+        
+        // Make the real connection
         let conn = Self::connect(None, dial_info)
             .await
             .map_err(|e| format!("failed to connect websocket for unbound message: {}", e))?;
 
         conn.send(data).await
+        
     }
 }

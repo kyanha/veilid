@@ -143,6 +143,10 @@ impl BucketEntry {
                 return;
             }
         }
+        self.min_max_version = Some((
+            signed_node_info.node_info.min_version,
+            signed_node_info.node_info.max_version,
+        ));
         self.opt_signed_node_info = Some(signed_node_info);
     }
     pub fn update_local_node_info(&mut self, local_node_info: LocalNodeInfo) {

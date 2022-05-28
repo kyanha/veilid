@@ -10,6 +10,9 @@ pub fn encode_node_info(
     let mut ps_builder = builder.reborrow().init_outbound_protocols();
     encode_protocol_set(&node_info.outbound_protocols, &mut ps_builder)?;
 
+    builder.set_min_version(node_info.min_version);
+    builder.set_max_version(node_info.max_version);
+
     let mut didl_builder = builder.reborrow().init_dial_info_detail_list(
         node_info
             .dial_info_detail_list
@@ -51,6 +54,9 @@ pub fn decode_node_info(
             .map_err(map_error_capnp_error!())?,
     )?;
 
+    let min_version = reader.reborrow().get_min_version();
+    let max_version = reader.reborrow().get_max_version();
+
     let didl_reader = reader
         .reborrow()
         .get_dial_info_detail_list()
@@ -84,6 +90,8 @@ pub fn decode_node_info(
     Ok(NodeInfo {
         network_class,
         outbound_protocols,
+        min_version,
+        max_version,
         dial_info_detail_list,
         relay_peer_info,
     })

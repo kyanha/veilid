@@ -33,6 +33,18 @@ pub async fn run_veilid_server(
     logs: VeilidLogs,
     server_mode: ServerMode,
 ) -> Result<(), String> {
+    run_veilid_server_internal(settings, logs, server_mode)
+        .await
+        .map_err(|e| {
+            error!("{}", e);
+            e
+        })
+}
+pub async fn run_veilid_server_internal(
+    settings: Settings,
+    logs: VeilidLogs,
+    server_mode: ServerMode,
+) -> Result<(), String> {
     let settingsr = settings.read();
 
     // Create client api state change pipe

@@ -78,8 +78,8 @@ impl Envelope {
 
     pub fn from_signed_data(data: &[u8]) -> Result<Envelope, ()> {
         // Ensure we are at least the length of the envelope
+        // Silent drop here, as we use zero length packets as part of the protocol for hole punching
         if data.len() < MIN_ENVELOPE_SIZE {
-            trace!("envelope too small: len={}", data.len());
             return Err(());
         }
 

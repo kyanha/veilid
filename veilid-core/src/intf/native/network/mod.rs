@@ -534,10 +534,16 @@ impl Network {
 
     pub async fn tick(&self) -> Result<(), String> {
         let network_class = self.get_network_class().unwrap_or(NetworkClass::Invalid);
+        let routing_table = self.routing_table();
 
         // If we need to figure out our network class, tick the task for it
         if network_class == NetworkClass::Invalid {
-            self.unlocked_inner.update_network_class_task.tick().await?;
+            let rth = routing_table.get_routing_table_health();
+
+            // Need at least two entries to do this
+            if rth.unreliable_entry_count + rth.reliable_entry_count >= 2 {
+                self.unlocked_inner.update_network_class_task.tick().await?;
+            }
         }
 
         Ok(())

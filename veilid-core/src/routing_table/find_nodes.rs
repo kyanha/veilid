@@ -67,6 +67,8 @@ impl RoutingTable {
         NodeInfo {
             network_class: netman.get_network_class().unwrap_or(NetworkClass::Invalid),
             outbound_protocols: netman.get_protocol_config().unwrap_or_default().outbound,
+            min_version: MIN_VERSION,
+            max_version: MAX_VERSION,
             dial_info_detail_list: self.dial_info_details(RoutingDomain::PublicInternet),
             relay_peer_info: relay_node.and_then(|rn| rn.peer_info().map(Box::new)),
         }

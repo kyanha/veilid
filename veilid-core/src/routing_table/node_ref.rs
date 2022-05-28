@@ -228,6 +228,14 @@ impl NodeRef {
                 None
             }
         })?;
+
+        // Verify this connection matches the noderef filter
+        if let Some(filter) = &self.filter {
+            if !last_connection.matches_filter(filter) {
+                return None;
+            }
+        }
+
         // Should we check the connection table?
         if last_connection.protocol_type().is_connection_oriented() {
             // Look the connection up in the connection manager and see if it's still there

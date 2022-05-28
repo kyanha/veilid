@@ -22,7 +22,7 @@ use data_encoding::BASE64URL_NOPAD;
 //     reserved: u8,                // 0x05: Reserved for future use
 //     size: u16,                   // 0x06: Total size of the receipt including the extra data and the signature. Maximum size is 1152 bytes.
 //     nonce: [u8; 24],             // 0x08: Randomly chosen bytes that represent a unique receipt. Could be used to encrypt the extra data, but it's not required.
-//     sender_id: [u8; 32],         // 0x20: Node ID of the message source, which is the Ed25519 public key of the sender (must be verified with find_node if this is a new node_id/address combination)
+//     sender_id: [u8; 32],         // 0x20: Node ID of the message source, which is the Ed25519 public key of the sender
 //     extra_data: [u8; ??],        // 0x40: Extra data is appended (arbitrary extra data, not encrypted by receipt itself, maximum size is 1024 bytes)
 //     signature: [u8; 64],         // 0x?? (end-0x40): Ed25519 signature of the entire receipt including header and extra data is appended to the packet
 // }

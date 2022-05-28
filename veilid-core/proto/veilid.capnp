@@ -111,12 +111,12 @@ struct NodeDialInfo {
 ##############################
 
 struct SignalInfoHolePunch {
-    receipt                 @0  :Data;                  # receipt to return with hole punch
+    receiptNonce            @0  :Nonce;                 # receipt to return with hole punch
     peerInfo                @1  :PeerInfo;              # peer info of the signal sender for hole punch attempt
 }
 
 struct SignalInfoReverseConnect {
-    receipt                 @0  :Data;                  # receipt to return with reverse connect
+    receiptNonce            @0  :Nonce;                 # receipt to return with reverse connect
     peerInfo                @1  :PeerInfo;              # peer info of the signal sender for reverse connect attempt
 }
 
@@ -217,8 +217,10 @@ struct ProtocolSet {
 struct NodeInfo {
     networkClass            @0  :NetworkClass;          # network class of this node
     outboundProtocols       @1  :ProtocolSet;           # protocols that can go outbound
-    dialInfoDetailList      @2  :List(DialInfoDetail);  # inbound dial info details for this node
-    relayPeerInfo           @3  :PeerInfo;              # (optional) relay peer info for this node
+    minVersion              @2  :UInt8;                 # minimum protocol version for rpc
+    maxVersion              @3  :UInt8;                 # maximum protocol version for rpc
+    dialInfoDetailList      @4  :List(DialInfoDetail);  # inbound dial info details for this node
+    relayPeerInfo           @5  :PeerInfo;              # (optional) relay peer info for this node
 }
 
 struct SignedNodeInfo {
@@ -238,13 +240,15 @@ struct OperationStatusA {
 
 struct OperationValidateDialInfo {
     dialInfo                @0  :DialInfo;              # dial info to use for the receipt
-    receipt                 @1  :Data;                  # receipt to return to dial info to prove it is reachable
-    redirect                @2  :Bool;                  # request a different node do the validate
-    alternatePort           @3  :Bool;                  # return receipt from a different source port than the default
+    minVersion              @1  :UInt8;                 # minimum version for the direct receipt
+    maxVersion              @2  :UInt8;                 # maximum version for the direct receipt
+    receiptNonce            @3  :Nonce;                 # receipt to return to dial info to prove it is reachable
+    redirect                @4  :Bool;                  # request a different node do the validate
 }
 
 struct OperationReturnReceipt {
-    receipt                 @0  :Data;                  # receipt being returned to its origin
+    receiptNonce            @0  :Nonce;                 # receipt being returned to its origin
+    extraData               @1  :Data;                  # extra data for receipt
 }
 
 struct OperationFindNodeQ {    

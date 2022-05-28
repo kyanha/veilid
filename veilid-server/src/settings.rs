@@ -89,7 +89,7 @@ core:
             set_value_timeout:
             set_value_count: 20
             set_value_fanout: 5
-            min_peer_count: 20
+            min_peer_count: 1 # 20
             min_peer_refresh_time_ms: 2000
             validate_dial_info_receipt_time_ms: 5000
         upnp: false
@@ -97,8 +97,8 @@ core:
         enable_local_peer_scope: false
         restricted_nat_retries: 3
         tls:
-            certificate_path: '/etc/veilid-server/server.crt'
-            private_key_path: '/etc/veilid-server/private/server.key'
+            certificate_path: '%CERTIFICATE_DIRECTORY%/server.crt'
+            private_key_path: '%PRIVATE_KEY_DIRECTORY%/server.key'
             connection_initial_timeout_ms: 2000
         application:
             https:
@@ -150,6 +150,14 @@ core:
     .replace(
         "%INSECURE_FALLBACK_DIRECTORY%",
         &Settings::get_default_protected_store_insecure_fallback_directory().to_string_lossy(),
+    )
+    .replace(
+        "%CERTIFICATE_DIRECTORY%",
+        &Settings::get_default_certificate_directory().to_string_lossy(),
+    )
+    .replace(
+        "%PRIVATE_KEY_DIRECTORY%",
+        &Settings::get_default_private_key_directory().to_string_lossy(),
     );
     config::Config::builder()
         .add_source(config::File::from_str(
@@ -723,68 +731,123 @@ impl Settings {
         Ok(())
     }
 
-    fn is_root() -> bool {
-        cfg_if::cfg_if! {
-            if #[cfg(unix)] {
-                use nix::unistd::Uid;
-                Uid::effective().is_root()
-            } else {
-                false
+    pub fn get_default_config_path() -> PathBuf {
+        #[cfg(unix)]
+        {
+            let globalpath = PathBuf::from("/etc/veilid-server/veilid-server.conf");
+            if globalpath.exists() {
+                return globalpath;
             }
         }
-    }
 
-    pub fn get_default_config_path() -> PathBuf {
-        let mut default_config_path = if Self::is_root() {
-            PathBuf::from("/etc/veilid-server")
-        } else if let Some(my_proj_dirs) = ProjectDirs::from("org", "Veilid", "Veilid") {
+        let mut cfg_path = if let Some(my_proj_dirs) = ProjectDirs::from("org", "Veilid", "Veilid")
+        {
             PathBuf::from(my_proj_dirs.config_dir())
         } else {
             PathBuf::from("./")
         };
+        cfg_path.push("veilid-server.conf");
 
-        default_config_path.push("veilid-server.conf");
-
-        default_config_path
+        cfg_path
     }
 
     pub fn get_default_table_store_path() -> PathBuf {
-        let mut default_db_path = if Self::is_root() {
-            PathBuf::from("/var/db/veilid-server")
-        } else if let Some(my_proj_dirs) = ProjectDirs::from("org", "Veilid", "Veilid") {
+        #[cfg(unix)]
+        {
+            let globalpath = PathBuf::from("/var/db/veilid-server/table_store");
+            if globalpath.exists() {
+                return globalpath;
+            }
+        }
+
+        let mut ts_path = if let Some(my_proj_dirs) = ProjectDirs::from("org", "Veilid", "Veilid") {
             PathBuf::from(my_proj_dirs.data_local_dir())
         } else {
             PathBuf::from("./")
         };
-        default_db_path.push("table_store");
+        ts_path.push("table_store");
 
-        default_db_path
+        ts_path
     }
 
     pub fn get_default_block_store_path() -> PathBuf {
-        let mut default_db_path = if Self::is_root() {
-            PathBuf::from("/var/db/veilid-server")
-        } else if let Some(my_proj_dirs) = ProjectDirs::from("org", "Veilid", "Veilid") {
+        #[cfg(unix)]
+        {
+            let globalpath = PathBuf::from("/var/db/veilid-server/block_store");
+            if globalpath.exists() {
+                return globalpath;
+            }
+        }
+
+        let mut bs_path = if let Some(my_proj_dirs) = ProjectDirs::from("org", "Veilid", "Veilid") {
             PathBuf::from(my_proj_dirs.data_local_dir())
         } else {
             PathBuf::from("./")
         };
-        default_db_path.push("block_store");
+        bs_path.push("block_store");
 
-        default_db_path
+        bs_path
     }
 
     pub fn get_default_protected_store_insecure_fallback_directory() -> PathBuf {
-        let mut default_db_path = if Self::is_root() {
-            PathBuf::from("/var/db/veilid-server")
-        } else if let Some(my_proj_dirs) = ProjectDirs::from("org", "Veilid", "Veilid") {
+        #[cfg(unix)]
+        {
+            let globalpath = PathBuf::from("/var/db/veilid-server/protected_store");
+            if globalpath.exists() {
+                return globalpath;
+            }
+        }
+
+        let mut ps_path = if let Some(my_proj_dirs) = ProjectDirs::from("org", "Veilid", "Veilid") {
             PathBuf::from(my_proj_dirs.data_local_dir())
         } else {
             PathBuf::from("./")
         };
-        default_db_path.push("protected_store");
+        ps_path.push("protected_store");
 
-        default_db_path
+        ps_path
+    }
+
+    pub fn get_default_certificate_directory() -> PathBuf {
+        #[cfg(unix)]
+        {
+            let mut globalpath = PathBuf::from("/etc/veilid-server");
+            if globalpath.exists() {
+                globalpath.push("ssl");
+                globalpath.push("certs");
+                return globalpath;
+            }
+        }
+
+        let mut c_path = if let Some(my_proj_dirs) = ProjectDirs::from("org", "Veilid", "Veilid") {
+            PathBuf::from(my_proj_dirs.data_local_dir())
+        } else {
+            PathBuf::from("./")
+        };
+        c_path.push("ssl");
+        c_path.push("certs");
+        c_path
+    }
+
+    pub fn get_default_private_key_directory() -> PathBuf {
+        #[cfg(unix)]
+        {
+            let mut globalpath = PathBuf::from("/etc/veilid-server");
+            if globalpath.exists() {
+                globalpath.push("ssl");
+                globalpath.push("keys");
+                return globalpath;
+            }
+        }
+
+        let mut pk_path = if let Some(my_proj_dirs) = ProjectDirs::from("org", "Veilid", "Veilid") {
+            PathBuf::from(my_proj_dirs.data_local_dir())
+        } else {
+            PathBuf::from("./")
+        };
+        pk_path.push("ssl");
+        pk_path.push("keys");
+        pk_path
     }
 
     pub fn get_core_config_callback(&self) -> veilid_core::ConfigCallback {

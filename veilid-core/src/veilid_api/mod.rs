@@ -14,6 +14,7 @@ pub use attachment_manager::AttachmentManager;
 pub use core::str::FromStr;
 pub use dht::crypto::Crypto;
 pub use dht::key::{generate_secret, sign, verify, DHTKey, DHTKeySecret, DHTSignature};
+pub use dht::receipt::ReceiptNonce;
 pub use intf::BlockStore;
 pub use intf::ProtectedStore;
 pub use intf::TableStore;
@@ -337,6 +338,8 @@ pub struct NodeStatus {
 pub struct NodeInfo {
     pub network_class: NetworkClass,
     pub outbound_protocols: ProtocolSet,
+    pub min_version: u8,
+    pub max_version: u8,
     pub dial_info_detail_list: Vec<DialInfoDetail>,
     pub relay_peer_info: Option<Box<PeerInfo>>,
 }
@@ -1039,6 +1042,36 @@ impl DialInfo {
         }
     }
 
+    pub fn try_vec_from_short<S: AsRef<str>, H: AsRef<str>>(
+        short: S,
+        hostname: H,
+    ) -> Result<Vec<Self>, VeilidAPIError> {
+        let short = short.as_ref();
+        let hostname = hostname.as_ref();
+
+        if short.len() < 2 {
+            return Err(parse_error!("invalid short url length", short));
+        }
+        let url = match &short[0..1] {
+            "U" => {
+                format!("udp://{}:{}", hostname, &short[1..])
+            }
+            "T" => {
+                format!("tcp://{}:{}", hostname, &short[1..])
+            }
+            "W" => {
+                format!("ws://{}:{}", hostname, &short[1..])
+            }
+            "S" => {
+                format!("wss://{}:{}", hostname, &short[1..])
+            }
+            _ => {
+                return Err(parse_error!("invalid short url type", short));
+            }
+        };
+        Self::try_vec_from_url(url)
+    }
+
     pub fn try_vec_from_url<S: AsRef<str>>(url: S) -> Result<Vec<Self>, VeilidAPIError> {
         let url = url.as_ref();
         let split_url = SplitUrl::from_str(url)
@@ -1088,6 +1121,60 @@ impl DialInfo {
         Ok(out)
     }
 
+    pub async fn to_short(&self) -> (String, String) {
+        match self {
+            DialInfo::UDP(di) => (
+                format!("U{}", di.socket_address.port()),
+                intf::ptr_lookup(di.socket_address.to_ip_addr())
+                    .await
+                    .unwrap_or_else(|_| di.socket_address.to_string()),
+            ),
+            DialInfo::TCP(di) => (
+                format!("T{}", di.socket_address.port()),
+                intf::ptr_lookup(di.socket_address.to_ip_addr())
+                    .await
+                    .unwrap_or_else(|_| di.socket_address.to_string()),
+            ),
+            DialInfo::WS(di) => {
+                let mut split_url = SplitUrl::from_str(&format!("ws://{}", di.request)).unwrap();
+                if let SplitUrlHost::IpAddr(a) = split_url.host {
+                    if let Ok(host) = intf::ptr_lookup(a).await {
+                        split_url.host = SplitUrlHost::Hostname(host);
+                    }
+                }
+                (
+                    format!(
+                        "W{}{}",
+                        split_url.port.unwrap_or(80),
+                        split_url
+                            .path
+                            .map(|p| format!("/{}", p))
+                            .unwrap_or_default()
+                    ),
+                    split_url.host.to_string(),
+                )
+            }
+            DialInfo::WSS(di) => {
+                let mut split_url = SplitUrl::from_str(&format!("wss://{}", di.request)).unwrap();
+                if let SplitUrlHost::IpAddr(a) = split_url.host {
+                    if let Ok(host) = intf::ptr_lookup(a).await {
+                        split_url.host = SplitUrlHost::Hostname(host);
+                    }
+                }
+                (
+                    format!(
+                        "S{}{}",
+                        split_url.port.unwrap_or(443),
+                        split_url
+                            .path
+                            .map(|p| format!("/{}", p))
+                            .unwrap_or_default()
+                    ),
+                    split_url.host.to_string(),
+                )
+            }
+        }
+    }
     pub async fn to_url(&self) -> String {
         match self {
             DialInfo::UDP(di) => intf::ptr_lookup(di.socket_address.to_ip_addr())
@@ -1395,13 +1482,13 @@ cfg_if! {
 pub enum SignalInfo {
     HolePunch {
         // UDP Hole Punch Request
-        receipt: Vec<u8>,    // Receipt to be returned after the hole punch
-        peer_info: PeerInfo, // Sender's peer info
+        receipt_nonce: ReceiptNonce, // Receipt to be returned after the hole punch
+        peer_info: PeerInfo,         // Sender's peer info
     },
     ReverseConnect {
         // Reverse Connection Request
-        receipt: Vec<u8>,    // Receipt to be returned by the reverse connection
-        peer_info: PeerInfo, // Sender's peer info
+        receipt_nonce: ReceiptNonce, // Receipt to be returned by the reverse connection
+        peer_info: PeerInfo,         // Sender's peer info
     },
     // XXX: WebRTC
     // XXX: App-level signalling
@@ -1734,7 +1821,6 @@ impl VeilidAPI {
         node_id: NodeId,
         dial_info: DialInfo,
         redirect: bool,
-        alternate_port: bool,
     ) -> Result<bool, VeilidAPIError> {
         let rpc = self.rpc_processor()?;
         let routing_table = rpc.routing_table();
@@ -1742,7 +1828,7 @@ impl VeilidAPI {
             None => return Err(VeilidAPIError::NodeNotFound { node_id }),
             Some(nr) => nr,
         };
-        rpc.rpc_call_validate_dial_info(node_ref.clone(), dial_info, redirect, alternate_port)
+        rpc.rpc_call_validate_dial_info(node_ref.clone(), dial_info, redirect)
             .await
             .map_err(map_rpc_error!())
     }

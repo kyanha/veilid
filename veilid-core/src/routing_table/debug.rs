@@ -30,18 +30,41 @@ impl RoutingTable {
         if gdis.is_empty() {
             out += "No TXT Record\n";
         } else {
-            out += "TXT Record:\n";
-            out += &self.node_id().encode();
-
-            let mut urls = Vec::new();
+            let mut short_urls = Vec::new();
+            let mut some_hostname = Option::<String>::None;
             for gdi in gdis {
-                urls.push(gdi.dial_info.to_url().await);
-            }
-            urls.sort();
-            urls.dedup();
+                let (short_url, hostname) = gdi.dial_info.to_short().await;
+                if let Some(h) = &some_hostname {
+                    if h != &hostname {
+                        return format!(
+                            "Inconsistent hostnames for dial info: {} vs {}",
+                            some_hostname.unwrap(),
+                            hostname
+                        );
+                    }
+                } else {
+                    some_hostname = Some(hostname);
+                }
 
-            for url in urls {
-                out += &format!(",{}", url);
+                short_urls.push(short_url);
+            }
+            if some_hostname.is_none() || short_urls.is_empty() {
+                return "No dial info for bootstrap host".to_owned();
+            }
+            short_urls.sort();
+            short_urls.dedup();
+
+            out += "TXT Record:\n";
+            out += &format!(
+                "{},{},{},{},{}",
+                BOOTSTRAP_TXT_VERSION,
+                MIN_VERSION,
+                MAX_VERSION,
+                self.node_id().encode(),
+                some_hostname.unwrap()
+            );
+            for short_url in short_urls {
+                out += &format!(",{}", short_url);
             }
             out += "\n";
         }
