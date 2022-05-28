@@ -111,12 +111,12 @@ struct NodeDialInfo {
 ##############################
 
 struct SignalInfoHolePunch {
-    receiptNonce            @0  :Nonce;                 # receipt to return with hole punch
+    receipt                 @0  :Data;                  # receipt to return with hole punch
     peerInfo                @1  :PeerInfo;              # peer info of the signal sender for hole punch attempt
 }
 
 struct SignalInfoReverseConnect {
-    receiptNonce            @0  :Nonce;                 # receipt to return with reverse connect
+    receipt                 @0  :Data;                  # receipt to return with reverse connect
     peerInfo                @1  :PeerInfo;              # peer info of the signal sender for reverse connect attempt
 }
 
@@ -240,15 +240,12 @@ struct OperationStatusA {
 
 struct OperationValidateDialInfo {
     dialInfo                @0  :DialInfo;              # dial info to use for the receipt
-    minVersion              @1  :UInt8;                 # minimum version for the direct receipt
-    maxVersion              @2  :UInt8;                 # maximum version for the direct receipt
-    receiptNonce            @3  :Nonce;                 # receipt to return to dial info to prove it is reachable
-    redirect                @4  :Bool;                  # request a different node do the validate
+    receipt                 @1  :Data;                  # receipt to return to dial info to prove it is reachable
+    redirect                @2  :Bool;                  # request a different node do the validate
 }
 
 struct OperationReturnReceipt {
-    receiptNonce            @0  :Nonce;                 # receipt being returned to its origin
-    extraData               @1  :Data;                  # extra data for receipt
+    receipt                 @0  :Data;                  # receipt being returned to its origin
 }
 
 struct OperationFindNodeQ {    

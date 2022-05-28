@@ -423,41 +423,53 @@ impl NetworkManager {
     }
 
     // Generates a multi-shot/normal receipt
-    pub fn generate_receipt(
+    pub fn generate_receipt<D: AsRef<[u8]>>(
         &self,
         expiration_us: u64,
         expected_returns: u32,
+        extra_data: D,
         callback: impl ReceiptCallback,
-    ) -> Result<ReceiptNonce, String> {
+    ) -> Result<Vec<u8>, String> {
         let receipt_manager = self.receipt_manager();
+        let routing_table = self.routing_table();
 
-        // Generate receipt nonce
-        let receipt_nonce = Crypto::get_random_nonce();
+        // Generate receipt and serialized form to return
+        let nonce = Crypto::get_random_nonce();
+        let receipt = Receipt::try_new(0, nonce, routing_table.node_id(), extra_data)?;
+        let out = receipt
+            .to_signed_data(&routing_table.node_id_secret())
+            .map_err(|_| "failed to generate signed receipt".to_owned())?;
 
         // Record the receipt for later
         let exp_ts = intf::get_timestamp() + expiration_us;
-        receipt_manager.record_receipt(receipt_nonce, exp_ts, expected_returns, callback);
+        receipt_manager.record_receipt(receipt, exp_ts, expected_returns, callback);
 
-        Ok(receipt_nonce)
+        Ok(out)
     }
 
     // Generates a single-shot/normal receipt
-    pub fn generate_single_shot_receipt(
+    pub fn generate_single_shot_receipt<D: AsRef<[u8]>>(
         &self,
         expiration_us: u64,
-    ) -> Result<(ReceiptNonce, EventualValueFuture<ReceiptEvent>), String> {
+        extra_data: D,
+    ) -> Result<(Vec<u8>, EventualValueFuture<ReceiptEvent>), String> {
         let receipt_manager = self.receipt_manager();
+        let routing_table = self.routing_table();
 
-        // Generate receipt nonce
-        let receipt_nonce = Crypto::get_random_nonce();
+        // Generate receipt and serialized form to return
+        let nonce = Crypto::get_random_nonce();
+        let receipt = Receipt::try_new(0, nonce, routing_table.node_id(), extra_data)?;
+        let out = receipt
+            .to_signed_data(&routing_table.node_id_secret())
+            .map_err(|_| "failed to generate signed receipt".to_owned())?;
 
         // Record the receipt for later
         let exp_ts = intf::get_timestamp() + expiration_us;
         let eventual = SingleShotEventual::new(Some(ReceiptEvent::Cancelled));
         let instance = eventual.instance();
-        receipt_manager.record_single_shot_receipt(receipt_nonce, exp_ts, eventual);
+        receipt_manager.record_single_shot_receipt(receipt, exp_ts, eventual);
 
-        Ok((receipt_nonce, instance))
+        Ok((out, instance))
     }
 
     // Process a received out-of-band receipt
@@ -468,34 +480,31 @@ impl NetworkManager {
         let receipt_manager = self.receipt_manager();
 
         let receipt = Receipt::from_signed_data(receipt_data.as_ref())
-            .map_err(|_| "failed to parse signed receipt".to_owned())?;
+            .map_err(|_| "failed to parse signed out-of-band receipt".to_owned())?;
 
-        receipt_manager
-            .handle_receipt(receipt.get_nonce(), receipt.get_extra_data().to_vec(), None)
-            .await
+        receipt_manager.handle_receipt(receipt, None).await
     }
 
     // Process a received in-band receipt
-    pub async fn handle_in_band_receipt(
+    pub async fn handle_in_band_receipt<R: AsRef<[u8]>>(
         &self,
-        receipt_nonce: ReceiptNonce,
-        extra_data: Vec<u8>,
+        receipt_data: R,
         inbound_nr: NodeRef,
     ) -> Result<(), String> {
         let receipt_manager = self.receipt_manager();
 
+        let receipt = Receipt::from_signed_data(receipt_data.as_ref())
+            .map_err(|_| "failed to parse signed in-band receipt".to_owned())?;
+
         receipt_manager
-            .handle_receipt(receipt_nonce, extra_data, Some(inbound_nr))
+            .handle_receipt(receipt, Some(inbound_nr))
             .await
     }
 
     // Process a received signal
     pub async fn handle_signal(&self, signal_info: SignalInfo) -> Result<(), String> {
         match signal_info {
-            SignalInfo::ReverseConnect {
-                receipt_nonce,
-                peer_info,
-            } => {
+            SignalInfo::ReverseConnect { receipt, peer_info } => {
                 let routing_table = self.routing_table();
                 let rpc = self.rpc_processor();
 
@@ -506,14 +515,11 @@ impl NetworkManager {
                 )?;
 
                 // Make a reverse connection to the peer and send the receipt to it
-                rpc.rpc_call_return_receipt(Destination::Direct(peer_nr), None, receipt_nonce, [])
+                rpc.rpc_call_return_receipt(Destination::Direct(peer_nr), None, receipt)
                     .await
                     .map_err(map_to_string)?;
             }
-            SignalInfo::HolePunch {
-                receipt_nonce,
-                peer_info,
-            } => {
+            SignalInfo::HolePunch { receipt, peer_info } => {
                 let routing_table = self.routing_table();
                 let rpc = self.rpc_processor();
 
@@ -547,7 +553,7 @@ impl NetworkManager {
                 // XXX: do we need a delay here? or another hole punch packet?
 
                 // Return the receipt using the same dial info send the receipt to it
-                rpc.rpc_call_return_receipt(Destination::Direct(peer_nr), None, receipt_nonce, [])
+                rpc.rpc_call_return_receipt(Destination::Direct(peer_nr), None, receipt)
                     .await
                     .map_err(map_to_string)?;
             }
@@ -634,21 +640,16 @@ impl NetworkManager {
     }
 
     // Called by the RPC handler when we want to issue an direct receipt
-    pub async fn send_out_of_band_receipt<D: AsRef<[u8]>>(
+    pub async fn send_out_of_band_receipt(
         &self,
         dial_info: DialInfo,
-        version: u8,
-        receipt_nonce: Nonce,
-        extra_data: D,
+        rcpt_data: Vec<u8>,
     ) -> Result<(), String> {
-        let routing_table = self.routing_table();
-        let node_id = routing_table.node_id();
-        let node_id_secret = routing_table.node_id_secret();
-
-        let receipt = Receipt::try_new(version, receipt_nonce, node_id, extra_data)?;
-        let rcpt_data = receipt
-            .to_signed_data(&node_id_secret)
-            .map_err(|_| "failed to sign receipt".to_owned())?;
+        // Do we need to validate the outgoing receipt? Probably not
+        // because it is supposed to be opaque and the
+        // recipient/originator does the validation
+        // Also, in the case of an old 'version', returning the receipt
+        // should not be subject to our ability to decode it
 
         // Send receipt directly
         self.net()
@@ -785,8 +786,8 @@ impl NetworkManager {
         // Build a return receipt for the signal
         let receipt_timeout =
             ms_to_us(self.config.get().network.reverse_connection_receipt_time_ms);
-        let (receipt_nonce, eventual_value) = self
-            .generate_single_shot_receipt(receipt_timeout)
+        let (receipt, eventual_value) = self
+            .generate_single_shot_receipt(receipt_timeout, [])
             .map_err(map_to_string)?;
 
         // Get our peer info
@@ -797,23 +798,17 @@ impl NetworkManager {
         rpc.rpc_call_signal(
             Destination::Relay(relay_nr.clone(), target_nr.node_id()),
             None,
-            SignalInfo::ReverseConnect {
-                receipt_nonce,
-                peer_info,
-            },
+            SignalInfo::ReverseConnect { receipt, peer_info },
         )
         .await
         .map_err(logthru_net!("failed to send signal to {:?}", relay_nr))
         .map_err(map_to_string)?;
         // Wait for the return receipt
         let inbound_nr = match eventual_value.await.take_value().unwrap() {
-            ReceiptEvent::ReturnedOutOfBand { extra_data: _ } => {
+            ReceiptEvent::ReturnedOutOfBand => {
                 return Err("reverse connect receipt should be returned in-band".to_owned());
             }
-            ReceiptEvent::ReturnedInBand {
-                inbound_noderef,
-                extra_data: _,
-            } => inbound_noderef,
+            ReceiptEvent::ReturnedInBand { inbound_noderef } => inbound_noderef,
             ReceiptEvent::Expired => {
                 return Err(format!(
                     "reverse connect receipt expired from {:?}",
@@ -871,8 +866,8 @@ impl NetworkManager {
         // Build a return receipt for the signal
         let receipt_timeout =
             ms_to_us(self.config.get().network.reverse_connection_receipt_time_ms);
-        let (receipt_nonce, eventual_value) = self
-            .generate_single_shot_receipt(receipt_timeout)
+        let (receipt, eventual_value) = self
+            .generate_single_shot_receipt(receipt_timeout, [])
             .map_err(map_to_string)?;
 
         // Get our peer info
@@ -894,10 +889,7 @@ impl NetworkManager {
         rpc.rpc_call_signal(
             Destination::Relay(relay_nr.clone(), target_nr.node_id()),
             None,
-            SignalInfo::HolePunch {
-                receipt_nonce,
-                peer_info,
-            },
+            SignalInfo::HolePunch { receipt, peer_info },
         )
         .await
         .map_err(logthru_net!("failed to send signal to {:?}", relay_nr))
@@ -905,13 +897,10 @@ impl NetworkManager {
 
         // Wait for the return receipt
         let inbound_nr = match eventual_value.await.take_value().unwrap() {
-            ReceiptEvent::ReturnedOutOfBand { extra_data: _ } => {
+            ReceiptEvent::ReturnedOutOfBand => {
                 return Err("hole punch receipt should be returned in-band".to_owned());
             }
-            ReceiptEvent::ReturnedInBand {
-                inbound_noderef,
-                extra_data: _,
-            } => inbound_noderef,
+            ReceiptEvent::ReturnedInBand { inbound_noderef } => inbound_noderef,
             ReceiptEvent::Expired => {
                 return Err(format!("hole punch receipt expired from {}", target_nr));
             }

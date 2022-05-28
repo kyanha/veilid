@@ -8,13 +8,8 @@ use xx::*;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ReceiptEvent {
-    ReturnedOutOfBand {
-        extra_data: Vec<u8>,
-    },
-    ReturnedInBand {
-        inbound_noderef: NodeRef,
-        extra_data: Vec<u8>,
-    },
+    ReturnedOutOfBand,
+    ReturnedInBand { inbound_noderef: NodeRef },
     Expired,
     Cancelled,
 }
@@ -25,24 +20,24 @@ cfg_if! {
             fn call(
                 &self,
                 event: ReceiptEvent,
-                nonce: ReceiptNonce,
+                receipt: Receipt,
                 returns_so_far: u32,
                 expected_returns: u32,
             ) -> SystemPinBoxFuture<()>;
         }
         impl<T, F> ReceiptCallback for T
         where
-            T: Fn(ReceiptEvent, ReceiptNonce, u32, u32) -> F + 'static,
+            T: Fn(ReceiptEvent, Receipt, u32, u32) -> F + 'static,
             F: Future<Output = ()> + 'static,
         {
             fn call(
                 &self,
                 event: ReceiptEvent,
-                nonce: ReceiptNonce,
+                receipt: Receipt,
                 returns_so_far: u32,
                 expected_returns: u32,
             ) -> SystemPinBoxFuture<()> {
-                Box::pin(self(event, nonce, returns_so_far, expected_returns))
+                Box::pin(self(event, receipt, returns_so_far, expected_returns))
             }
         }
     } else {
@@ -50,24 +45,24 @@ cfg_if! {
             fn call(
                 &self,
                 event: ReceiptEvent,
-                nonce: ReceiptNonce,
+                receipt: Receipt,
                 returns_so_far: u32,
                 expected_returns: u32,
             ) -> SystemPinBoxFuture<()>;
         }
         impl<F, T> ReceiptCallback for T
         where
-            T: Fn(ReceiptEvent, ReceiptNonce, u32, u32) -> F + Send + 'static,
+            T: Fn(ReceiptEvent, Receipt, u32, u32) -> F + Send + 'static,
             F: Future<Output = ()> + Send + 'static
         {
             fn call(
                 &self,
                 event: ReceiptEvent,
-                nonce: ReceiptNonce,
+                receipt: Receipt,
                 returns_so_far: u32,
                 expected_returns: u32,
             ) -> SystemPinBoxFuture<()> {
-                Box::pin(self(event, nonce, returns_so_far, expected_returns))
+                Box::pin(self(event, receipt, returns_so_far, expected_returns))
             }
         }
     }
@@ -95,7 +90,7 @@ impl fmt::Debug for ReceiptRecordCallbackType {
 
 pub struct ReceiptRecord {
     expiration_ts: u64,
-    nonce: ReceiptNonce,
+    receipt: Receipt,
     expected_returns: u32,
     returns_so_far: u32,
     receipt_callback: ReceiptRecordCallbackType,
@@ -105,7 +100,7 @@ impl fmt::Debug for ReceiptRecord {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ReceiptRecord")
             .field("expiration_ts", &self.expiration_ts)
-            .field("nonce", &self.nonce)
+            .field("receipt", &self.receipt)
             .field("expected_returns", &self.expected_returns)
             .field("returns_so_far", &self.returns_so_far)
             .field("receipt_callback", &self.receipt_callback)
@@ -115,14 +110,14 @@ impl fmt::Debug for ReceiptRecord {
 
 impl ReceiptRecord {
     pub fn new(
-        receipt_nonce: ReceiptNonce,
+        receipt: Receipt,
         expiration_ts: u64,
         expected_returns: u32,
         receipt_callback: impl ReceiptCallback,
     ) -> Self {
         Self {
             expiration_ts,
-            nonce: receipt_nonce,
+            receipt,
             expected_returns,
             returns_so_far: 0u32,
             receipt_callback: ReceiptRecordCallbackType::Normal(Box::new(receipt_callback)),
@@ -130,13 +125,13 @@ impl ReceiptRecord {
     }
 
     pub fn new_single_shot(
-        receipt_nonce: ReceiptNonce,
+        receipt: Receipt,
         expiration_ts: u64,
         eventual: ReceiptSingleShotType,
     ) -> Self {
         Self {
             expiration_ts,
-            nonce: receipt_nonce,
+            receipt,
             returns_so_far: 0u32,
             expected_returns: 1u32,
             receipt_callback: ReceiptRecordCallbackType::SingleShot(Some(eventual)),
@@ -223,7 +218,7 @@ impl ReceiptManager {
         match &mut record_mut.receipt_callback {
             ReceiptRecordCallbackType::Normal(callback) => Some(callback.call(
                 evt,
-                record_mut.nonce,
+                record_mut.receipt.clone(),
                 record_mut.returns_so_far,
                 record_mut.expected_returns,
             )),
@@ -308,14 +303,15 @@ impl ReceiptManager {
 
     pub fn record_receipt(
         &self,
-        receipt_nonce: ReceiptNonce,
+        receipt: Receipt,
         expiration: u64,
         expected_returns: u32,
         callback: impl ReceiptCallback,
     ) {
+        let receipt_nonce = receipt.get_nonce();
         log_rpc!(debug "== New Multiple Receipt ({}) {} ", expected_returns, receipt_nonce.encode());
         let record = Arc::new(Mutex::new(ReceiptRecord::new(
-            receipt_nonce,
+            receipt,
             expiration,
             expected_returns,
             callback,
@@ -328,16 +324,15 @@ impl ReceiptManager {
 
     pub fn record_single_shot_receipt(
         &self,
-        receipt_nonce: ReceiptNonce,
+        receipt: Receipt,
         expiration: u64,
         eventual: ReceiptSingleShotType,
     ) {
+        let receipt_nonce = receipt.get_nonce();
         log_rpc!(debug "== New SingleShot Receipt {}", receipt_nonce.encode());
 
         let record = Arc::new(Mutex::new(ReceiptRecord::new_single_shot(
-            receipt_nonce,
-            expiration,
-            eventual,
+            receipt, expiration, eventual,
         )));
         let mut inner = self.inner.lock();
         inner.records_by_nonce.insert(receipt_nonce, record);
@@ -393,10 +388,12 @@ impl ReceiptManager {
 
     pub async fn handle_receipt(
         &self,
-        receipt_nonce: ReceiptNonce,
-        extra_data: Vec<u8>,
+        receipt: Receipt,
         inbound_noderef: Option<NodeRef>,
     ) -> Result<(), String> {
+        let receipt_nonce = receipt.get_nonce();
+        let extra_data = receipt.get_extra_data();
+
         log_rpc!(debug "<<== RECEIPT {} <- {}{}",
             receipt_nonce.encode(),
             if let Some(nr) = &inbound_noderef {
@@ -427,12 +424,9 @@ impl ReceiptManager {
 
             // Get the receipt event to return
             let receipt_event = if let Some(inbound_noderef) = inbound_noderef {
-                ReceiptEvent::ReturnedInBand {
-                    inbound_noderef,
-                    extra_data,
-                }
+                ReceiptEvent::ReturnedInBand { inbound_noderef }
             } else {
-                ReceiptEvent::ReturnedOutOfBand { extra_data }
+                ReceiptEvent::ReturnedOutOfBand
             };
 
             let callback_future = Self::perform_callback(receipt_event, &mut record_mut);

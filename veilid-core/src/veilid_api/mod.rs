@@ -1482,13 +1482,13 @@ cfg_if! {
 pub enum SignalInfo {
     HolePunch {
         // UDP Hole Punch Request
-        receipt_nonce: ReceiptNonce, // Receipt to be returned after the hole punch
-        peer_info: PeerInfo,         // Sender's peer info
+        receipt: Vec<u8>,    // Receipt to be returned after the hole punch
+        peer_info: PeerInfo, // Sender's peer info
     },
     ReverseConnect {
         // Reverse Connection Request
-        receipt_nonce: ReceiptNonce, // Receipt to be returned by the reverse connection
-        peer_info: PeerInfo,         // Sender's peer info
+        receipt: Vec<u8>,    // Receipt to be returned by the reverse connection
+        peer_info: PeerInfo, // Sender's peer info
     },
     // XXX: WebRTC
     // XXX: App-level signalling

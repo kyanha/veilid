@@ -872,7 +872,7 @@ impl RPCProcessor {
         rpcreader: RPCMessageReader,
     ) -> Result<(), RPCError> {
         //
-        let (redirect, dial_info, receipt_nonce, min_version, max_version) = {
+        let (redirect, dial_info, receipt) = {
             let operation = rpcreader
                 .reader
                 .get_root::<veilid_capnp::operation::Reader>()
@@ -893,20 +893,17 @@ impl RPCProcessor {
             };
 
             // Parse out fields
-            let min_version = vdi_reader.get_min_version();
-            let max_version = vdi_reader.get_max_version();
             let redirect = vdi_reader.get_redirect();
             let dial_info = decode_dial_info(
                 &vdi_reader
                     .get_dial_info()
-                    .map_err(map_error_internal!("no valid dial info"))?,
+                    .map_err(map_error_internal!("no valid dial info in process_validate_dial_info"))?,
             )?;
-            let rn_reader = vdi_reader
-                .get_receipt_nonce()
-                .map_err(map_error_internal!("no valid receipt nonce"))?;
-            let receipt_nonce = decode_nonce(&rn_reader);
+            let receipt = vdi_reader
+                .get_receipt()
+                .map_err(map_error_internal!("no valid receipt in process_validate_dial_info"))?.to_vec();
 
-            (redirect, dial_info, receipt_nonce, min_version, max_version)
+            (redirect, dial_info, receipt)
         };
 
         // Redirect this request if we are asked to
@@ -949,12 +946,12 @@ impl RPCProcessor {
                     let detail = question.reborrow().init_detail();
                     let mut vdi_builder = detail.init_validate_dial_info();
                     vdi_builder.set_redirect(false);
-                    vdi_builder.set_min_version(min_version);
-                    vdi_builder.set_max_version(max_version);
                     let mut di_builder = vdi_builder.reborrow().init_dial_info();
                     encode_dial_info(&dial_info, &mut di_builder)?;
-                    let mut rn_builder = vdi_builder.reborrow().init_receipt_nonce();
-                    encode_nonce(&receipt_nonce, &mut rn_builder);
+                    let r_builder = vdi_builder.init_receipt(receipt.len().try_into().map_err(
+                        map_error_protocol!("invalid receipt length in process_validate_dial_info"),
+                    )?);
+                    r_builder.copy_from_slice(&receipt);
                     vdi_msg.into_reader()
                 };
 
@@ -967,25 +964,13 @@ impl RPCProcessor {
 
         // Otherwise send a return receipt directly
         // Possibly from an alternate port
-        let version = {
-            #[allow(clippy::absurd_extreme_comparisons)]
-            if min_version > MAX_VERSION || max_version < MIN_VERSION {
-                return Err(rpc_error_protocol(format!(
-                    "can't send direct receipt to {} because version is unsupported: ({},{})",
-                    dial_info, min_version, max_version
-                )))
-                .map_err(
-                    logthru_rpc!(debug)); 
-            }
-            cmp::min(max_version, MAX_VERSION)
-        };
         let network_manager = self.network_manager();
         network_manager
-            .send_out_of_band_receipt(dial_info.clone(), version, receipt_nonce, [])
+            .send_out_of_band_receipt(dial_info.clone(), receipt)
             .await
             .map_err(map_error_string!())
             .map_err(
-                logthru_net!(error "failed to send direct receipt to dial info: {}, version={}", dial_info, version),
+                logthru_net!(error "failed to send direct receipt to dial info: {}", dial_info),
             )?;
 
         Ok(())
@@ -1166,7 +1151,7 @@ impl RPCProcessor {
     }
 
     async fn process_return_receipt(&self, rpcreader: RPCMessageReader) -> Result<(), RPCError> {
-        let (receipt_nonce, extra_data) = {
+        let receipt = {
             let operation = rpcreader
                 .reader
                 .get_root::<veilid_capnp::operation::Reader>()
@@ -1186,24 +1171,16 @@ impl RPCProcessor {
                 _ => panic!("invalid operation type in process_return_receipt"),
             };
 
-            // Get receipt nonce
-            let rn_reader = rr_reader
-                .get_receipt_nonce()
-                .map_err(map_error_internal!("no valid receipt_nonce"))?;
-            let receipt_nonce = decode_nonce(&rn_reader);
-
-            // Get receipt extra data
-            let extra_data = rr_reader
-                .get_extra_data()
-                .map_err(map_error_internal!("no valid extra data"))?;
-
-            (receipt_nonce, extra_data.to_vec())
+            // Get receipt
+            rr_reader
+                .get_receipt()
+                .map_err(map_error_internal!("no valid receipt in process_return_receipt"))?.to_vec()
         };
 
         // Handle it
         let network_manager = self.network_manager();
         network_manager
-            .handle_in_band_receipt(receipt_nonce, extra_data, rpcreader.header.peer_noderef)
+            .handle_in_band_receipt(receipt, rpcreader.header.peer_noderef)
             .await
             .map_err(map_error_string!())
     }
@@ -1602,17 +1579,17 @@ impl RPCProcessor {
             let mut vdi_builder = detail.init_validate_dial_info();
 
             // Generate receipt and waitable eventual so we can see if we get the receipt back
-            let (receipt_nonce, eventual_value) = network_manager
-                .generate_single_shot_receipt(receipt_time)
+            let (receipt, eventual_value) = network_manager
+                .generate_single_shot_receipt(receipt_time, [])
                 .map_err(map_error_string!())?;
 
             vdi_builder.set_redirect(redirect);
-            vdi_builder.set_min_version(MIN_VERSION);
-            vdi_builder.set_max_version(MAX_VERSION);
             let mut di_builder = vdi_builder.reborrow().init_dial_info();
             encode_dial_info(&dial_info, &mut di_builder)?;
-            let mut rn_builder = vdi_builder.reborrow().init_receipt_nonce();
-            encode_nonce(&receipt_nonce, &mut rn_builder);
+            let r_builder = vdi_builder.init_receipt(receipt.len().try_into().map_err(
+                map_error_protocol!("invalid receipt length in validate dial info"),
+            )?);
+            r_builder.copy_from_slice(&receipt);
             
             (vdi_msg.into_reader(), eventual_value)
         };
@@ -1627,13 +1604,10 @@ impl RPCProcessor {
         match eventual_value.await.take_value().unwrap() {
             ReceiptEvent::ReturnedInBand {
                 inbound_noderef: _,
-                extra_data:_
             } => {
                 Err(rpc_error_internal("validate_dial_info receipt should be returned out-of-band"))
             }
-            ReceiptEvent::ReturnedOutOfBand {
-                extra_data:_
-            } => {
+            ReceiptEvent::ReturnedOutOfBand => {
                 log_net!(debug "validate_dial_info receipt returned");
                 Ok(true)
             }
@@ -1779,14 +1753,13 @@ impl RPCProcessor {
 
     // Sends a unidirectional in-band return receipt
     // Can be sent via all methods including relays and routes
-    pub async fn rpc_call_return_receipt<B: AsRef<[u8]>>(
+    pub async fn rpc_call_return_receipt<D: AsRef<[u8]>>(
         &self,
         dest: Destination,
         safety_route: Option<&SafetyRouteSpec>,
-        receipt_nonce: Nonce,
-        extra_data: B,
+        receipt: D,
     ) -> Result<(), RPCError> {        
-        let extra_data = extra_data.as_ref();
+        let receipt = receipt.as_ref();
 
         let rr_msg = {
             let mut rr_msg = ::capnp::message::Builder::new_default();
@@ -1795,13 +1768,11 @@ impl RPCProcessor {
             let mut respond_to = question.reborrow().init_respond_to();
             respond_to.set_none(());
             let detail = question.reborrow().init_detail();
-            let mut rr_builder = detail.init_return_receipt();
-            let mut rn_builder = rr_builder.reborrow().init_receipt_nonce();
-            encode_nonce(&receipt_nonce, &mut rn_builder);
-            let ed_builder = rr_builder.init_extra_data(extra_data.len().try_into().map_err(
-                map_error_protocol!("invalid extra data length in return receipt"),
+            let rr_builder = detail.init_return_receipt();
+            let r_builder = rr_builder.init_receipt(receipt.len().try_into().map_err(
+                map_error_protocol!("invalid receipt length in return receipt"),
             )?);
-            ed_builder.copy_from_slice(extra_data);
+            r_builder.copy_from_slice(receipt);
 
             rr_msg.into_reader()
         };

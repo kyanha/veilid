@@ -91,11 +91,11 @@ core:
             set_value_fanout: 5
             min_peer_count: 1 # 20
             min_peer_refresh_time_ms: 2000
-            validate_dial_info_receipt_time_ms: 1000
+            validate_dial_info_receipt_time_ms: 2000
         upnp: false
         natpmp: false
         enable_local_peer_scope: false
-        restricted_nat_retries: 5
+        restricted_nat_retries: 0
         tls:
             certificate_path: '%CERTIFICATE_DIRECTORY%/server.crt'
             private_key_path: '%PRIVATE_KEY_DIRECTORY%/server.key'
