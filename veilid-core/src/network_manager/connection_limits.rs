@@ -130,6 +130,7 @@ impl ConnectionLimits {
                 let cnt = &mut *self.conn_count_by_ip4.entry(v4).or_default();
                 assert!(*cnt <= self.max_connections_per_ip4);
                 if *cnt == self.max_connections_per_ip4 {
+                    warn!("address filter count exceeded: {:?}", v4);
                     return Err(AddressFilterError::CountExceeded);
                 }
                 // See if this ip block has connected too frequently
@@ -140,6 +141,7 @@ impl ConnectionLimits {
                 });
                 assert!(tstamps.len() <= self.max_connection_frequency_per_min);
                 if tstamps.len() == self.max_connection_frequency_per_min {
+                    warn!("address filter rate exceeded: {:?}", v4);
                     return Err(AddressFilterError::RateExceeded);
                 }
 
@@ -152,12 +154,14 @@ impl ConnectionLimits {
                 let cnt = &mut *self.conn_count_by_ip6_prefix.entry(v6).or_default();
                 assert!(*cnt <= self.max_connections_per_ip6_prefix);
                 if *cnt == self.max_connections_per_ip6_prefix {
+                    warn!("address filter count exceeded: {:?}", v6);
                     return Err(AddressFilterError::CountExceeded);
                 }
                 // See if this ip block has connected too frequently
                 let tstamps = &mut self.conn_timestamps_by_ip6_prefix.entry(v6).or_default();
                 assert!(tstamps.len() <= self.max_connection_frequency_per_min);
                 if tstamps.len() == self.max_connection_frequency_per_min {
+                    warn!("address filter rate exceeded: {:?}", v6);
                     return Err(AddressFilterError::RateExceeded);
                 }
 

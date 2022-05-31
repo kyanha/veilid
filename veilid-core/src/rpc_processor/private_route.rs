@@ -4,7 +4,7 @@ impl RPCProcessor {
     //////////////////////////////////////////////////////////////////////
     pub(super) fn new_stub_private_route<'a, T>(
         &self,
-        dest_node_id: key::DHTKey,
+        dest_node_id: DHTKey,
         builder: &'a mut ::capnp::message::Builder<T>,
     ) -> Result<veilid_capnp::private_route::Reader<'a>, RPCError>
     where

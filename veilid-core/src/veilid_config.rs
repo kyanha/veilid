@@ -1,9 +1,10 @@
-use crate::dht::key;
+use crate::dht::*;
 use crate::intf;
 use crate::xx::*;
 
 use serde::*;
 
+////////////////////////////////////////////////////////////////////////////////////////////////
 cfg_if! {
     if #[cfg(target_arch = "wasm32")] {
         pub type ConfigCallbackReturn = Result<Box<dyn core::any::Any>, String>;
@@ -136,8 +137,8 @@ pub struct VeilidConfigNetwork {
     pub client_whitelist_timeout_ms: u32,
     pub reverse_connection_receipt_time_ms: u32,
     pub hole_punch_receipt_time_ms: u32,
-    pub node_id: key::DHTKey,
-    pub node_id_secret: key::DHTKeySecret,
+    pub node_id: DHTKey,
+    pub node_id_secret: DHTKeySecret,
     pub bootstrap: Vec<String>,
     pub bootstrap_nodes: Vec<String>,
     pub routing_table: VeilidConfigRoutingTable,
@@ -528,7 +529,7 @@ impl VeilidConfig {
             debug!("pulling node id from storage");
             if let Some(s) = protected_store.load_user_secret_string("node_id").await? {
                 debug!("node id found in storage");
-                node_id = key::DHTKey::try_decode(s.as_str())?
+                node_id = DHTKey::try_decode(s.as_str())?
             } else {
                 debug!("node id not found in storage");
             }
@@ -542,7 +543,7 @@ impl VeilidConfig {
                 .await?
             {
                 debug!("node id secret found in storage");
-                node_id_secret = key::DHTKeySecret::try_decode(s.as_str())?
+                node_id_secret = DHTKeySecret::try_decode(s.as_str())?
             } else {
                 debug!("node id secret not found in storage");
             }
@@ -551,7 +552,7 @@ impl VeilidConfig {
         // If we have a node id from storage, check it
         if node_id.valid && node_id_secret.valid {
             // Validate node id
-            if !key::validate_key(&node_id, &node_id_secret) {
+            if !validate_key(&node_id, &node_id_secret) {
                 return Err("node id secret and node id key don't match".to_owned());
             }
         }
@@ -559,7 +560,7 @@ impl VeilidConfig {
         // If we still don't have a valid node id, generate one
         if !node_id.valid || !node_id_secret.valid {
             debug!("generating new node id");
-            let (i, s) = key::generate_secret();
+            let (i, s) = generate_secret();
             node_id = i;
             node_id_secret = s;
         }

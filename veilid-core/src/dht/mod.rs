@@ -1,8 +1,10 @@
-pub mod crypto;
-pub mod envelope;
-pub mod key;
-pub mod receipt;
-pub mod value;
+mod crypto;
+mod envelope;
+mod key;
+mod receipt;
+mod value;
+
+pub mod tests;
 
 pub use crypto::*;
 pub use envelope::*;

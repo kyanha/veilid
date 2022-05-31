@@ -1,14 +1,10 @@
-use super::sockets::*;
 use super::*;
-use crate::intf::*;
-use crate::network_manager::MAX_MESSAGE_SIZE;
-use crate::*;
-use async_std::net::TcpStream;
-use core::fmt;
-use futures_util::io::{AsyncReadExt, AsyncWriteExt};
+use futures_util::{AsyncReadExt, AsyncWriteExt};
+use sockets::*;
 
 pub struct RawTcpNetworkConnection {
     stream: AsyncPeekStream,
+    tcp_stream: TcpStream,
 }
 
 impl fmt::Debug for RawTcpNetworkConnection {
@@ -18,15 +14,21 @@ impl fmt::Debug for RawTcpNetworkConnection {
 }
 
 impl RawTcpNetworkConnection {
-    pub fn new(stream: AsyncPeekStream) -> Self {
-        Self { stream }
+    pub fn new(stream: AsyncPeekStream, tcp_stream: TcpStream) -> Self {
+        Self { stream, tcp_stream }
     }
 
     pub async fn close(&self) -> Result<(), String> {
+        // Make an attempt to flush the stream
         self.stream
             .clone()
             .close()
             .await
+            .map_err(map_to_string)
+            .map_err(logthru_net!())?;
+        // Then forcibly close the socket
+        self.tcp_stream
+            .shutdown(Shutdown::Both)
             .map_err(map_to_string)
             .map_err(logthru_net!())
     }
@@ -40,7 +42,6 @@ impl RawTcpNetworkConnection {
         let header = [b'V', b'L', len as u8, (len >> 8) as u8];
 
         let mut stream = self.stream.clone();
-
         stream
             .write_all(&header)
             .await
@@ -105,6 +106,7 @@ impl RawTcpProtocolHandler {
     async fn on_accept_async(
         self,
         stream: AsyncPeekStream,
+        tcp_stream: TcpStream,
         socket_addr: SocketAddr,
     ) -> Result<Option<NetworkConnection>, String> {
         log_net!("TCP: on_accept_async: enter");
@@ -123,7 +125,7 @@ impl RawTcpProtocolHandler {
         let local_address = self.inner.lock().local_address;
         let conn = NetworkConnection::from_protocol(
             ConnectionDescriptor::new(peer_addr, SocketAddress::from_socket_addr(local_address)),
-            ProtocolNetworkConnection::RawTcp(RawTcpNetworkConnection::new(stream)),
+            ProtocolNetworkConnection::RawTcp(RawTcpNetworkConnection::new(stream, tcp_stream)),
         );
 
         log_net!(debug "TCP: on_accept_async from: {}", socket_addr);
@@ -146,22 +148,17 @@ impl RawTcpProtocolHandler {
             }
         };
 
-        // Connect to the remote address
-        let remote_socket2_addr = socket2::SockAddr::from(remote_socket_addr);
-        socket
-            .connect(&remote_socket2_addr)
+        // Non-blocking connect to remote address
+        let ts = nonblocking_connect(socket, remote_socket_addr).await
             .map_err(map_to_string)
             .map_err(logthru_net!(error "local_address={:?} remote_addr={}", local_address, remote_socket_addr))?;
-
-        let std_stream: std::net::TcpStream = socket.into();
-        let ts = TcpStream::from(std_stream);
 
         // See what local address we ended up with and turn this into a stream
         let actual_local_address = ts
             .local_addr()
             .map_err(map_to_string)
             .map_err(logthru_net!("could not get local address from TCP stream"))?;
-        let ps = AsyncPeekStream::new(ts);
+        let ps = AsyncPeekStream::new(ts.clone());
 
         // Wrap the stream in a network connection and return it
         let conn = NetworkConnection::from_protocol(
@@ -169,7 +166,7 @@ impl RawTcpProtocolHandler {
                 local: Some(SocketAddress::from_socket_addr(actual_local_address)),
                 remote: dial_info.to_peer_address(),
             },
-            ProtocolNetworkConnection::RawTcp(RawTcpNetworkConnection::new(ps)),
+            ProtocolNetworkConnection::RawTcp(RawTcpNetworkConnection::new(ps, ts)),
         );
         Ok(conn)
     }
@@ -187,10 +184,34 @@ impl RawTcpProtocolHandler {
             socket_addr
         );
 
-        let mut stream = TcpStream::connect(socket_addr)
+        // Make a shared socket
+        let socket = new_unbound_shared_tcp_socket(socket2::Domain::for_address(socket_addr))?;
+
+        // Non-blocking connect to remote address
+        let ts = nonblocking_connect(socket, socket_addr)
             .await
-            .map_err(|e| format!("failed to connect TCP for unbound message: {}", e))?;
-        stream.write_all(&data).await.map_err(|e| format!("{}", e))
+            .map_err(map_to_string)
+            .map_err(logthru_net!(error "remote_addr={}", socket_addr))?;
+
+        // See what local address we ended up with and turn this into a stream
+        let actual_local_address = ts
+            .local_addr()
+            .map_err(map_to_string)
+            .map_err(logthru_net!("could not get local address from TCP stream"))?;
+        let ps = AsyncPeekStream::new(ts.clone());
+
+        // Wrap the stream in a network connection and return it
+        let conn = NetworkConnection::from_protocol(
+            ConnectionDescriptor {
+                local: Some(SocketAddress::from_socket_addr(actual_local_address)),
+                remote: PeerAddress::new(
+                    SocketAddress::from_socket_addr(socket_addr),
+                    ProtocolType::TCP,
+                ),
+            },
+            ProtocolNetworkConnection::RawTcp(RawTcpNetworkConnection::new(ps, ts)),
+        );
+        conn.send(data).await
     }
 }
 
@@ -198,8 +219,9 @@ impl ProtocolAcceptHandler for RawTcpProtocolHandler {
     fn on_accept(
         &self,
         stream: AsyncPeekStream,
+        tcp_stream: TcpStream,
         peer_addr: SocketAddr,
     ) -> SystemPinBoxFuture<core::result::Result<Option<NetworkConnection>, String>> {
-        Box::pin(self.clone().on_accept_async(stream, peer_addr))
+        Box::pin(self.clone().on_accept_async(stream, tcp_stream, peer_addr))
     }
 }

@@ -1,5 +1,5 @@
-use crate::connection_limits::*;
-use crate::network_connection::*;
+use super::connection_limits::*;
+use super::network_connection::*;
 use crate::xx::*;
 use crate::*;
 use alloc::collections::btree_map::Entry;
@@ -67,6 +67,7 @@ impl ConnectionTable {
         // then drop the least recently used connection
         if self.conn_by_descriptor[index].len() > self.max_connections[index] {
             if let Some((lruk, _)) = self.conn_by_descriptor[index].remove_lru() {
+                warn!("XX: connection lru out: {:?}", lruk);
                 self.remove_connection_records(lruk);
             }
         }
@@ -74,7 +75,7 @@ impl ConnectionTable {
         // add connection records
         let conns = self.conns_by_remote.entry(descriptor.remote).or_default();
 
-        //warn!("add_connection: {:?}", conn);
+        warn!("add_connection: {:?}", conn);
         conns.push(conn);
 
         Ok(())
@@ -86,7 +87,7 @@ impl ConnectionTable {
     ) -> Option<NetworkConnection> {
         let index = protocol_to_index(descriptor.protocol_type());
         let out = self.conn_by_descriptor[index].get(&descriptor).cloned();
-        //warn!("get_connection: {:?} -> {:?}", descriptor, out);
+        warn!("get_connection: {:?} -> {:?}", descriptor, out);
         out
     }
 
@@ -98,12 +99,22 @@ impl ConnectionTable {
             .conns_by_remote
             .get(&remote)
             .map(|v| v[(v.len() - 1)].clone());
-        //warn!("get_last_connection_by_remote: {:?} -> {:?}", remote, out);
+        warn!("get_last_connection_by_remote: {:?} -> {:?}", remote, out);
         if let Some(connection) = &out {
             // lru bump
             let index = protocol_to_index(connection.connection_descriptor().protocol_type());
             let _ = self.conn_by_descriptor[index].get(&connection.connection_descriptor());
         }
+        out
+    }
+
+    pub fn get_connections_by_remote(&mut self, remote: PeerAddress) -> Vec<NetworkConnection> {
+        let out = self
+            .conns_by_remote
+            .get(&remote)
+            .cloned()
+            .unwrap_or_default();
+        warn!("get_connections_by_remote: {:?} -> {:?}", remote, out);
         out
     }
 
@@ -144,7 +155,7 @@ impl ConnectionTable {
         &mut self,
         descriptor: ConnectionDescriptor,
     ) -> Result<NetworkConnection, String> {
-        //warn!("remove_connection: {:?}", descriptor);
+        warn!("remove_connection: {:?}", descriptor);
         let index = protocol_to_index(descriptor.protocol_type());
         let out = self.conn_by_descriptor[index]
             .remove(&descriptor)

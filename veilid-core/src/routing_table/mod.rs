@@ -1040,7 +1040,10 @@ impl RoutingTable {
 
         // Run all bootstrap operations concurrently
         let mut unord = FuturesUnordered::new();
-        for (k, v) in bsmap {
+        for (k, mut v) in bsmap {
+            // Sort dial info so we get the preferred order correct
+            v.dial_info_details.sort();
+
             log_rtab!("--- bootstrapping {} with {:?}", k.encode(), &v);
 
             // Make invalid signed node info (no signature)

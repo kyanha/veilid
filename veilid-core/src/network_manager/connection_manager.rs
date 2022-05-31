@@ -1,29 +1,16 @@
-use crate::connection_table::*;
-use crate::intf::*;
-use crate::network_connection::*;
-use crate::network_manager::*;
+use super::*;
 use crate::xx::*;
-use crate::*;
-use futures_util::stream::{FuturesUnordered, StreamExt};
-use futures_util::{select, FutureExt};
+use connection_table::*;
+use network_connection::*;
 
 const CONNECTION_PROCESSOR_CHANNEL_SIZE: usize = 128usize;
 
 ///////////////////////////////////////////////////////////
 // Connection manager
 
+#[derive(Debug)]
 struct ConnectionManagerInner {
     connection_table: ConnectionTable,
-    connection_processor_jh: Option<JoinHandle<()>>,
-    connection_add_channel_tx: Option<flume::Sender<SystemPinBoxFuture<()>>>,
-}
-
-impl core::fmt::Debug for ConnectionManagerInner {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("ConnectionManagerInner")
-            .field("connection_table", &self.connection_table)
-            .finish()
-    }
 }
 
 struct ConnectionManagerArc {
@@ -47,8 +34,6 @@ impl ConnectionManager {
     fn new_inner(config: VeilidConfig) -> ConnectionManagerInner {
         ConnectionManagerInner {
             connection_table: ConnectionTable::new(config),
-            connection_processor_jh: None,
-            connection_add_channel_tx: None,
         }
     }
     fn new_arc(network_manager: NetworkManager) -> ConnectionManagerArc {
@@ -70,15 +55,12 @@ impl ConnectionManager {
 
     pub async fn startup(&self) {
         trace!("startup connection manager");
-        let mut inner = self.arc.inner.lock().await;
-        let cac = flume::bounded(CONNECTION_PROCESSOR_CHANNEL_SIZE);
-        inner.connection_add_channel_tx = Some(cac.0);
-        let rx = cac.1.clone();
-        let this = self.clone();
-        inner.connection_processor_jh = Some(spawn(this.connection_processor(rx)));
+        //let mut inner = self.arc.inner.lock().await;
     }
 
     pub async fn shutdown(&self) {
+        // xxx close all connections in the connection table
+
         *self.arc.inner.lock().await = Self::new_inner(self.arc.network_manager.config());
     }
 
@@ -127,6 +109,12 @@ impl ConnectionManager {
         local_addr: Option<SocketAddr>,
         dial_info: DialInfo,
     ) -> Result<NetworkConnection, String> {
+        log_net!(
+            "== get_or_create_connection local_addr={:?} dial_info={:?}",
+            local_addr.green(),
+            dial_info.green()
+        );
+
         let peer_address = dial_info.to_peer_address();
         let descriptor = match local_addr {
             Some(la) => {
@@ -143,10 +131,46 @@ impl ConnectionManager {
             .connection_table
             .get_last_connection_by_remote(descriptor.remote)
         {
+            log_net!(
+                "== Returning existing connection local_addr={:?} peer_address={:?}",
+                local_addr.green(),
+                peer_address.green()
+            );
+
             return Ok(conn);
         }
 
-        // If not, attempt new connection
+        // Drop any other protocols connections that have the same local addr
+        // otherwise this connection won't succeed due to binding
+        if let Some(local_addr) = local_addr {
+            if local_addr.port() != 0 {
+                for pt in [ProtocolType::TCP, ProtocolType::WS, ProtocolType::WSS] {
+                    let pa = PeerAddress::new(descriptor.remote.socket_address, pt);
+                    for conn in inner.connection_table.get_connections_by_remote(pa) {
+                        let desc = conn.connection_descriptor();
+                        let mut kill = false;
+                        if let Some(conn_local) = desc.local {
+                            if (local_addr.ip().is_unspecified()
+                                || (local_addr.ip() == conn_local.to_ip_addr()))
+                                && conn_local.port() == local_addr.port()
+                            {
+                                kill = true;
+                            }
+                        }
+                        if kill {
+                            log_net!(debug
+                                ">< Terminating connection local_addr={:?} peer_address={:?}",
+                                local_addr.green(),
+                                pa.green()
+                            );
+                            conn.close().await?;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Attempt new connection
         let conn = NetworkConnection::connect(local_addr, dial_info).await?;
 
         self.on_new_connection_internal(&mut *inner, conn.clone())?;
@@ -159,7 +183,7 @@ impl ConnectionManager {
         this: ConnectionManager,
         conn: NetworkConnection,
     ) -> SystemPinBoxFuture<()> {
-        log_net!("Starting process_connection loop for {:?}", conn);
+        log_net!("Starting process_connection loop for {:?}", conn.green());
         let network_manager = this.network_manager();
         Box::pin(async move {
             //
@@ -185,7 +209,7 @@ impl ConnectionManager {
                     }
                     _ = intf::sleep(inactivity_timeout).fuse()=> {
                         // timeout
-                        log_net!("connection timeout on {:?}", descriptor);
+                        log_net!("connection timeout on {:?}", descriptor.green());
                         break;
                     }
                 };
@@ -198,6 +222,12 @@ impl ConnectionManager {
                 }
             }
 
+            log_net!(
+                "== Connection loop finished local_addr={:?} remote={:?}",
+                descriptor.local.green(),
+                descriptor.remote.green()
+            );
+
             if let Err(e) = this
                 .arc
                 .inner
@@ -209,50 +239,5 @@ impl ConnectionManager {
                 log_net!(error e);
             }
         })
-    }
-
-    // Process connection oriented sockets in the background
-    // This never terminates and must have its task cancelled once started
-    // Task cancellation is performed by shutdown() by dropping the join handle
-    async fn connection_processor(self, rx: flume::Receiver<SystemPinBoxFuture<()>>) {
-        let mut connection_futures: FuturesUnordered<SystemPinBoxFuture<()>> =
-            FuturesUnordered::new();
-        loop {
-            // Either process an existing connection, or receive a new one to add to our list
-            select! {
-                x = connection_futures.next().fuse() => {
-                    // Processed some connection to completion, or there are none left
-                    match x {
-                        Some(()) => {
-                            // Processed some connection to completion
-                        }
-                        None => {
-                            // No connections to process, wait for one
-                            match rx.recv_async().await {
-                                Ok(v) => {
-                                    connection_futures.push(v);
-                                }
-                                Err(e) => {
-                                    log_net!(error "connection processor error: {:?}", e);
-                                    // xxx: do something here?? should the network be restarted if this happens?
-                                }
-                            };
-                        }
-                    }
-                }
-                x = rx.recv_async().fuse() => {
-                    // Got a new connection future
-                    match x {
-                        Ok(v) => {
-                            connection_futures.push(v);
-                        }
-                        Err(e) => {
-                            log_net!(error "connection processor error: {:?}", e);
-                            // xxx: do something here?? should the network be restarted if this happens?
-                        }
-                    };
-                }
-            }
-        }
     }
 }

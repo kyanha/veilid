@@ -38,6 +38,7 @@ json = "^0"
 flume = { version = "^0", features = ["async"] }
 enumset = { version= "^1", features = ["serde"] }
 backtrace = { version = "^0", optional = true }
+owo-colors = "^3"
 
 ed25519-dalek = { version = "^1", default_features = false, features = ["alloc", "u64_backend"] }
 x25519-dalek = { package = "x25519-dalek-ng", version = "^1", default_features = false, features = ["u64_backend"] }
@@ -52,6 +53,7 @@ digest = "0.9.0"
 # Linux, Windows, Mac, iOS, Android
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 async-std = { version = "^1", features = ["unstable"] }
+async-io = { version = "^1" }
 async-tungstenite = { version = "^0", features = ["async-std-runtime", "async-tls"] }
 async-std-resolver = { version = "^0" }
 maplit = "^1"
@@ -63,7 +65,6 @@ webpki = "^0"
 webpki-roots = "^0"
 rustls = "^0.19"
 rustls-pemfile = "^0.2"
-num_cpus = "^1"
 futures-util = { version = "^0", default-features = false, features = ["async-await", "sink", "std", "io"] }
 keyvaluedb-sqlite = { path = "../external/keyvaluedb/keyvaluedb-sqlite" }
 data-encoding = { version = "^2" }

@@ -1,6 +1,6 @@
 use crate::*;
 use core::fmt;
-use dht::receipt::*;
+use dht::*;
 use futures_util::stream::{FuturesUnordered, StreamExt};
 use network_manager::*;
 use routing_table::*;

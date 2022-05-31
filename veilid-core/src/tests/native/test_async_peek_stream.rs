@@ -1,12 +1,11 @@
-use crate::xx::*;
-use core::time::Duration;
+use super::*;
+use async_std::net::{TcpListener, TcpStream};
+use async_std::prelude::FutureExt;
+use async_std::task;
+use futures_util::{AsyncReadExt, AsyncWriteExt};
+use std::io;
 
 static MESSAGE: &[u8; 62] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-
-use async_std::io;
-use async_std::net::{TcpListener, TcpStream};
-use async_std::prelude::*;
-use async_std::task;
 
 async fn make_tcp_loopback() -> Result<(TcpStream, TcpStream), io::Error> {
     let listener = TcpListener::bind("127.0.0.1:0").await?;

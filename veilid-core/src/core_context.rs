@@ -1,6 +1,6 @@
 use crate::api_logger::*;
 use crate::attachment_manager::*;
-use crate::dht::crypto::Crypto;
+use crate::dht::Crypto;
 use crate::intf::*;
 use crate::veilid_api::*;
 use crate::veilid_config::*;

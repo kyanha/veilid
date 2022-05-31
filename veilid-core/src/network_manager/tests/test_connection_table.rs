@@ -1,6 +1,6 @@
-use super::test_veilid_config::*;
-use crate::connection_table::*;
-use crate::network_connection::*;
+use super::connection_table::*;
+use super::network_connection::*;
+use crate::tests::common::test_veilid_config::*;
 use crate::xx::*;
 use crate::*;
 

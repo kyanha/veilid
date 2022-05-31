@@ -1,6 +1,5 @@
-use super::sockets::*;
 use super::*;
-use futures_util::stream;
+use sockets::*;
 
 impl Network {
     pub(super) async fn create_udp_listener_tasks(&self) -> Result<(), String> {
@@ -42,7 +41,7 @@ impl Network {
                 }
 
                 // Spawn a local async task for each socket
-                let mut protocol_handlers_unordered = stream::FuturesUnordered::new();
+                let mut protocol_handlers_unordered = FuturesUnordered::new();
                 let network_manager = this.network_manager();
 
                 for ph in protocol_handlers {

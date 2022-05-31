@@ -1,5 +1,4 @@
 use super::test_veilid_config::*;
-use crate::dht::key;
 use crate::intf::*;
 use crate::xx::*;
 use crate::*;
@@ -131,13 +130,13 @@ pub async fn test_cbor(ts: TableStore) {
 
     let _ = ts.delete("test");
     let db = ts.open("test", 3).await.expect("should have opened");
-    let (dht_key, _) = key::generate_secret();
+    let (dht_key, _) = generate_secret();
 
     assert!(db.store_cbor(0, b"asdf", &dht_key).await.is_ok());
 
-    assert_eq!(db.load_cbor::<key::DHTKey>(0, b"qwer").await, Ok(None));
+    assert_eq!(db.load_cbor::<DHTKey>(0, b"qwer").await, Ok(None));
 
-    let d = match db.load_cbor::<key::DHTKey>(0, b"asdf").await {
+    let d = match db.load_cbor::<DHTKey>(0, b"asdf").await {
         Ok(x) => x,
         Err(e) => {
             panic!("couldn't decode cbor: {}", e);
@@ -151,7 +150,7 @@ pub async fn test_cbor(ts: TableStore) {
     );
 
     assert!(
-        db.load_cbor::<key::DHTKey>(1, b"foo").await.is_err(),
+        db.load_cbor::<DHTKey>(1, b"foo").await.is_err(),
         "should fail to load cbor"
     );
 }

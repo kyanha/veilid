@@ -1,8 +1,5 @@
-use super::test_veilid_config::*;
-use crate::dht::crypto::*;
-use crate::dht::envelope::*;
-use crate::dht::key::*;
-use crate::dht::receipt::*;
+use super::*;
+use crate::tests::common::test_veilid_config::*;
 use crate::xx::*;
 use crate::*;
 

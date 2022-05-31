@@ -1,6 +1,8 @@
 use crate::xx::*;
 use crate::*;
-use socket2::{Domain, Protocol, Socket, Type};
+use async_io::Async;
+use async_std::net::TcpStream;
+use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 
 cfg_if! {
     if #[cfg(windows)] {
@@ -44,7 +46,7 @@ pub fn new_unbound_shared_udp_socket(domain: Domain) -> Result<Socket, String> {
 pub fn new_bound_shared_udp_socket(local_address: SocketAddr) -> Result<Socket, String> {
     let domain = Domain::for_address(local_address);
     let socket = new_unbound_shared_udp_socket(domain)?;
-    let socket2_addr = socket2::SockAddr::from(local_address);
+    let socket2_addr = SockAddr::from(local_address);
     socket.bind(&socket2_addr).map_err(|e| {
         format!(
             "failed to bind UDP socket to '{}' in domain '{:?}': {} ",
@@ -68,7 +70,7 @@ pub fn new_bound_first_udp_socket(local_address: SocketAddr) -> Result<Socket, S
     }
     // Bind the socket -first- before turning on 'reuse address' this way it will
     // fail if the port is already taken
-    let socket2_addr = socket2::SockAddr::from(local_address);
+    let socket2_addr = SockAddr::from(local_address);
 
     // On windows, do SO_EXCLUSIVEADDRUSE before the bind to ensure the port is fully available
     cfg_if! {
@@ -128,7 +130,7 @@ pub fn new_bound_shared_tcp_socket(local_address: SocketAddr) -> Result<Socket, 
 
     let socket = new_unbound_shared_tcp_socket(domain)?;
 
-    let socket2_addr = socket2::SockAddr::from(local_address);
+    let socket2_addr = SockAddr::from(local_address);
     socket
         .bind(&socket2_addr)
         .map_err(|e| format!("failed to bind TCP socket: {}", e))?;
@@ -165,7 +167,7 @@ pub fn new_bound_first_tcp_socket(local_address: SocketAddr) -> Result<Socket, S
 
     // Bind the socket -first- before turning on 'reuse address' this way it will
     // fail if the port is already taken
-    let socket2_addr = socket2::SockAddr::from(local_address);
+    let socket2_addr = SockAddr::from(local_address);
     socket
         .bind(&socket2_addr)
         .map_err(|e| format!("failed to bind TCP socket: {}", e))?;
@@ -183,4 +185,38 @@ pub fn new_bound_first_tcp_socket(local_address: SocketAddr) -> Result<Socket, S
     log_net!("created bound first tcp socket on {:?}", &local_address);
 
     Ok(socket)
+}
+
+// Non-blocking connect is tricky when you want to start with a prepared socket
+pub async fn nonblocking_connect(socket: Socket, addr: SocketAddr) -> std::io::Result<TcpStream> {
+    // Set for non blocking connect
+    socket.set_nonblocking(true)?;
+
+    // Make socket2 SockAddr
+    let socket2_addr = socket2::SockAddr::from(addr);
+
+    // Connect to the remote address
+    match socket.connect(&socket2_addr) {
+        Ok(()) => Ok(()),
+        #[cfg(unix)]
+        Err(err) if err.raw_os_error() == Some(libc::EINPROGRESS) => Ok(()),
+        Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => Ok(()),
+        Err(e) => Err(e),
+    }?;
+
+    let async_stream = Async::new(std::net::TcpStream::from(socket))?;
+
+    // The stream becomes writable when connected
+    intf::timeout(2000, async_stream.writable())
+        .await
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::TimedOut, e))??;
+
+    // Check low level error
+    let async_stream = match async_stream.get_ref().take_error()? {
+        None => Ok(async_stream),
+        Some(err) => Err(err),
+    }?;
+
+    // Convert back to inner and then return async version
+    Ok(TcpStream::from(async_stream.into_inner()?))
 }

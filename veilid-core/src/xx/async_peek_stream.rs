@@ -1,19 +1,16 @@
-use crate::xx::*;
-use core::pin::Pin;
-use core::task::{Context, Poll};
-use futures_util::io::AsyncRead as Read;
-use futures_util::io::AsyncReadExt;
-use futures_util::io::AsyncWrite as Write;
-use std::io::Result;
+use super::*;
+use futures_util::AsyncReadExt;
+use std::io;
+use task::{Context, Poll};
 
 ////////
 ///
-trait SendStream: Read + Write + Send + Unpin {
+trait SendStream: AsyncRead + AsyncWrite + Send + Unpin {
     fn clone_stream(&self) -> Box<dyn SendStream>;
 }
 impl<S> SendStream for S
 where
-    S: Read + Write + Send + Clone + Unpin + 'static,
+    S: AsyncRead + AsyncWrite + Send + Clone + Unpin + 'static,
 {
     fn clone_stream(&self) -> Box<dyn SendStream> {
         Box::new(self.clone())
@@ -121,7 +118,7 @@ struct AsyncPeekStreamInner {
 #[derive(Clone)]
 pub struct AsyncPeekStream
 where
-    Self: Read + Write + Send + Unpin,
+    Self: AsyncRead + AsyncWrite + Send + Unpin,
 {
     inner: Arc<Mutex<AsyncPeekStreamInner>>,
 }
@@ -129,7 +126,7 @@ where
 impl AsyncPeekStream {
     pub fn new<S>(stream: S) -> Self
     where
-        S: Read + Write + Send + Clone + Unpin + 'static,
+        S: AsyncRead + AsyncWrite + Send + Clone + Unpin + 'static,
     {
         Self {
             inner: Arc::new(Mutex::new(AsyncPeekStreamInner {
@@ -155,16 +152,16 @@ impl AsyncPeekStream {
     }
 }
 
-impl Read for AsyncPeekStream {
+impl AsyncRead for AsyncPeekStream {
     fn poll_read(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
         buf: &mut [u8],
-    ) -> Poll<Result<usize>> {
+    ) -> Poll<io::Result<usize>> {
         let mut inner = self.inner.lock();
         //
         let buflen = buf.len();
-        let bufcopylen = cmp::min(buflen, inner.peekbuf_len);
+        let bufcopylen = core::cmp::min(buflen, inner.peekbuf_len);
         let bufreadlen = if buflen > inner.peekbuf_len {
             buflen - inner.peekbuf_len
         } else {
@@ -204,16 +201,20 @@ impl Read for AsyncPeekStream {
     }
 }
 
-impl Write for AsyncPeekStream {
-    fn poll_write(self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &[u8]) -> Poll<Result<usize>> {
+impl AsyncWrite for AsyncPeekStream {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<io::Result<usize>> {
         let mut inner = self.inner.lock();
         Pin::new(&mut inner.stream).poll_write(cx, buf)
     }
-    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>> {
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         let mut inner = self.inner.lock();
         Pin::new(&mut inner.stream).poll_flush(cx)
     }
-    fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>> {
+    fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         let mut inner = self.inner.lock();
         Pin::new(&mut inner.stream).poll_close(cx)
     }

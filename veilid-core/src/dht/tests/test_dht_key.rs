@@ -1,6 +1,6 @@
 #![allow(clippy::bool_assert_comparison)]
 
-use crate::dht::key;
+use super::*;
 use crate::xx::*;
 use core::convert::TryFrom;
 

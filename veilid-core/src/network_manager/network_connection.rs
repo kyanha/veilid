@@ -1,39 +1,46 @@
-use crate::intf::*;
+use super::*;
 use crate::xx::*;
-use crate::*;
 
-///////////////////////////////////////////////////////////
-// Accept
+cfg_if::cfg_if! {
+    if #[cfg(target_arch = "wasm32")] {
+        // No accept support for WASM
+    } else {
+        use async_std::net::*;
 
-pub trait ProtocolAcceptHandler: ProtocolAcceptHandlerClone + Send + Sync {
-    fn on_accept(
-        &self,
-        stream: AsyncPeekStream,
-        peer_addr: SocketAddr,
-    ) -> SystemPinBoxFuture<Result<Option<NetworkConnection>, String>>;
-}
+        ///////////////////////////////////////////////////////////
+        // Accept
 
-pub trait ProtocolAcceptHandlerClone {
-    fn clone_box(&self) -> Box<dyn ProtocolAcceptHandler>;
-}
+        pub trait ProtocolAcceptHandler: ProtocolAcceptHandlerClone + Send + Sync {
+            fn on_accept(
+                &self,
+                stream: AsyncPeekStream,
+                tcp_stream: TcpStream,
+                peer_addr: SocketAddr,
+            ) -> SystemPinBoxFuture<Result<Option<NetworkConnection>, String>>;
+        }
 
-impl<T> ProtocolAcceptHandlerClone for T
-where
-    T: 'static + ProtocolAcceptHandler + Clone,
-{
-    fn clone_box(&self) -> Box<dyn ProtocolAcceptHandler> {
-        Box::new(self.clone())
+        pub trait ProtocolAcceptHandlerClone {
+            fn clone_box(&self) -> Box<dyn ProtocolAcceptHandler>;
+        }
+
+        impl<T> ProtocolAcceptHandlerClone for T
+        where
+            T: 'static + ProtocolAcceptHandler + Clone,
+        {
+            fn clone_box(&self) -> Box<dyn ProtocolAcceptHandler> {
+                Box::new(self.clone())
+            }
+        }
+        impl Clone for Box<dyn ProtocolAcceptHandler> {
+            fn clone(&self) -> Box<dyn ProtocolAcceptHandler> {
+                self.clone_box()
+            }
+        }
+
+        pub type NewProtocolAcceptHandler =
+            dyn Fn(VeilidConfig, bool, SocketAddr) -> Box<dyn ProtocolAcceptHandler> + Send;
     }
 }
-impl Clone for Box<dyn ProtocolAcceptHandler> {
-    fn clone(&self) -> Box<dyn ProtocolAcceptHandler> {
-        self.clone_box()
-    }
-}
-
-pub type NewProtocolAcceptHandler =
-    dyn Fn(VeilidConfig, bool, SocketAddr) -> Box<dyn ProtocolAcceptHandler> + Send;
-
 ///////////////////////////////////////////////////////////
 // Dummy protocol network connection for testing
 

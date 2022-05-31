@@ -8,14 +8,12 @@ pub use private_route::*;
 use crate::dht::*;
 use crate::intf::*;
 use crate::xx::*;
-use crate::*;
 use capnp::message::ReaderSegments;
 use coders::*;
-use core::convert::{TryFrom, TryInto};
-use core::fmt;
 use network_manager::*;
 use receipt_manager::*;
 use routing_table::*;
+use super::*;
 
 /////////////////////////////////////////////////////////////////////
 
@@ -79,7 +77,7 @@ impl RespondTo {
 #[derive(Debug, Clone)]
 struct RPCMessageHeader {
     timestamp: u64,             // time the message was received, not sent
-    envelope: envelope::Envelope,
+    envelope: Envelope,
     body_len: u64,
     peer_noderef: NodeRef, // ensures node doesn't get evicted from routing table until we're done with it
 }
@@ -163,8 +161,8 @@ pub struct FindNodeAnswer {
 pub struct RPCProcessorInner {
     network_manager: NetworkManager,
     routing_table: RoutingTable,
-    node_id: key::DHTKey,
-    node_id_secret: key::DHTKeySecret,
+    node_id: DHTKey,
+    node_id_secret: DHTKeySecret,
     send_channel: Option<flume::Sender<RPCMessage>>,
     timeout: u64,
     max_route_hop_count: usize,
@@ -185,8 +183,8 @@ impl RPCProcessor {
         RPCProcessorInner {
             network_manager: network_manager.clone(),
             routing_table: network_manager.routing_table(),
-            node_id: key::DHTKey::default(),
-            node_id_secret: key::DHTKeySecret::default(),
+            node_id: DHTKey::default(),
+            node_id_secret: DHTKeySecret::default(),
             send_channel: None,
             timeout: 10000000,
             max_route_hop_count: 7,
@@ -215,11 +213,11 @@ impl RPCProcessor {
         self.inner.lock().routing_table.clone()
     }
 
-    pub fn node_id(&self) -> key::DHTKey {
+    pub fn node_id(&self) -> DHTKey {
         self.inner.lock().node_id
     }
 
-    pub fn node_id_secret(&self) -> key::DHTKeySecret {
+    pub fn node_id_secret(&self) -> DHTKeySecret {
         self.inner.lock().node_id_secret
     }
 
@@ -258,7 +256,7 @@ impl RPCProcessor {
     // Search the DHT for a single node closest to a key and add it to the routing table and return the node reference
     pub async fn search_dht_single_key(
         &self,
-        node_id: key::DHTKey,
+        node_id: DHTKey,
         _count: u32,
         _fanout: u32,
         _timeout: Option<u64>,
@@ -273,7 +271,7 @@ impl RPCProcessor {
     // Search the DHT for the 'count' closest nodes to a key, adding them all to the routing table if they are not there and returning their node references
     pub async fn search_dht_multi_key(
         &self,
-        _node_id: key::DHTKey,
+        _node_id: DHTKey,
         _count: u32,
         _fanout: u32,
         _timeout: Option<u64>,
@@ -286,7 +284,7 @@ impl RPCProcessor {
     // Note: This routine can possible be recursive, hence the SystemPinBoxFuture async form
     pub fn resolve_node(
         &self,
-        node_id: key::DHTKey,
+        node_id: DHTKey,
     ) -> SystemPinBoxFuture<Result<NodeRef, RPCError>> {
         let this = self.clone();
         Box::pin(async move {
@@ -557,7 +555,6 @@ impl RPCProcessor {
             .network_manager()
             .send_envelope(node_ref.clone(), Some(out_node_id), out)
             .await
-            .map_err(logthru_rpc!(error))
             .map_err(RPCError::Internal)
         {
             Ok(v) => v,
@@ -1406,7 +1403,7 @@ impl RPCProcessor {
 
     pub fn enqueue_message(
         &self,
-        envelope: envelope::Envelope,
+        envelope: Envelope,
         body: Vec<u8>,
         peer_noderef: NodeRef,
     ) -> Result<(), String> {
@@ -1626,7 +1623,7 @@ impl RPCProcessor {
     pub async fn rpc_call_find_node(
         self,
         dest: Destination,
-        key: key::DHTKey,
+        key: DHTKey,
         safety_route: Option<&SafetyRouteSpec>,
         respond_to: RespondTo,
     ) -> Result<FindNodeAnswer, RPCError> {

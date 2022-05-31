@@ -1,8 +1,7 @@
-use super::sockets::*;
 use super::*;
 use crate::intf::*;
-use crate::network_connection::*;
 use async_tls::TlsAcceptor;
+use sockets::*;
 
 /////////////////////////////////////////////////////////////////
 
@@ -43,6 +42,7 @@ impl Network {
         &self,
         tls_acceptor: &TlsAcceptor,
         stream: AsyncPeekStream,
+        tcp_stream: TcpStream,
         addr: SocketAddr,
         protocol_handlers: &[Box<dyn ProtocolAcceptHandler>],
         tls_connection_initial_timeout: u64,
@@ -67,18 +67,20 @@ impl Network {
         .map_err(map_to_string)
         .map_err(logthru_net!())?;
 
-        self.try_handlers(ps, addr, protocol_handlers).await
+        self.try_handlers(ps, tcp_stream, addr, protocol_handlers)
+            .await
     }
 
     async fn try_handlers(
         &self,
         stream: AsyncPeekStream,
+        tcp_stream: TcpStream,
         addr: SocketAddr,
         protocol_handlers: &[Box<dyn ProtocolAcceptHandler>],
     ) -> Result<Option<NetworkConnection>, String> {
         for ah in protocol_handlers.iter() {
             if let Some(nc) = ah
-                .on_accept(stream.clone(), addr)
+                .on_accept(stream.clone(), tcp_stream.clone(), addr)
                 .await
                 .map_err(logthru_net!())?
             {
@@ -148,7 +150,7 @@ impl Network {
                     log_net!("TCP connection from: {}", addr);
 
                     // Create a stream we can peek on
-                    let ps = AsyncPeekStream::new(tcp_stream);
+                    let ps = AsyncPeekStream::new(tcp_stream.clone());
 
                     /////////////////////////////////////////////////////////////
                     let mut first_packet = [0u8; PEEK_DETECT_LEN];
@@ -176,13 +178,15 @@ impl Network {
                         this.try_tls_handlers(
                             ls.tls_acceptor.as_ref().unwrap(),
                             ps,
+                            tcp_stream,
                             addr,
                             &ls.tls_protocol_handlers,
                             tls_connection_initial_timeout,
                         )
                         .await
                     } else {
-                        this.try_handlers(ps, addr, &ls.protocol_handlers).await
+                        this.try_handlers(ps, tcp_stream, addr, &ls.protocol_handlers)
+                            .await
                     };
 
                     let conn = match conn {

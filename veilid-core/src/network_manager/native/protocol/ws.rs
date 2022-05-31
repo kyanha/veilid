@@ -1,29 +1,22 @@
-use super::sockets::*;
 use super::*;
-use crate::intf::*;
-use crate::network_manager::MAX_MESSAGE_SIZE;
-use crate::*;
-use alloc::sync::Arc;
 use async_std::io;
-use async_std::net::*;
 use async_tls::TlsConnector;
 use async_tungstenite::tungstenite::protocol::Message;
 use async_tungstenite::{accept_async, client_async, WebSocketStream};
-use core::fmt;
-use core::time::Duration;
-use futures_util::sink::SinkExt;
-use futures_util::stream::StreamExt;
+use futures_util::SinkExt;
+use sockets::*;
 
 pub type WebSocketNetworkConnectionAccepted = WebsocketNetworkConnection<AsyncPeekStream>;
 pub type WebsocketNetworkConnectionWSS =
-    WebsocketNetworkConnection<async_tls::client::TlsStream<async_std::net::TcpStream>>;
-pub type WebsocketNetworkConnectionWS = WebsocketNetworkConnection<async_std::net::TcpStream>;
+    WebsocketNetworkConnection<async_tls::client::TlsStream<TcpStream>>;
+pub type WebsocketNetworkConnectionWS = WebsocketNetworkConnection<TcpStream>;
 
 pub struct WebsocketNetworkConnection<T>
 where
     T: io::Read + io::Write + Send + Unpin + 'static,
 {
-    ws_stream: CloneStream<WebSocketStream<T>>,
+    stream: CloneStream<WebSocketStream<T>>,
+    tcp_stream: TcpStream,
 }
 
 impl<T> fmt::Debug for WebsocketNetworkConnection<T>
@@ -39,21 +32,33 @@ impl<T> WebsocketNetworkConnection<T>
 where
     T: io::Read + io::Write + Send + Unpin + 'static,
 {
-    pub fn new(ws_stream: WebSocketStream<T>) -> Self {
+    pub fn new(stream: WebSocketStream<T>, tcp_stream: TcpStream) -> Self {
         Self {
-            ws_stream: CloneStream::new(ws_stream),
+            stream: CloneStream::new(stream),
+            tcp_stream,
         }
     }
 
     pub async fn close(&self) -> Result<(), String> {
-        self.ws_stream.clone().close().await.map_err(map_to_string)
+        // Make an attempt to flush the stream
+        self.stream
+            .clone()
+            .close()
+            .await
+            .map_err(map_to_string)
+            .map_err(logthru_net!())?;
+        // Then forcibly close the socket
+        self.tcp_stream
+            .shutdown(Shutdown::Both)
+            .map_err(map_to_string)
+            .map_err(logthru_net!())
     }
 
     pub async fn send(&self, message: Vec<u8>) -> Result<(), String> {
         if message.len() > MAX_MESSAGE_SIZE {
             return Err("received too large WS message".to_owned());
         }
-        self.ws_stream
+        self.stream
             .clone()
             .send(Message::binary(message))
             .await
@@ -62,7 +67,7 @@ where
     }
 
     pub async fn recv(&self) -> Result<Vec<u8>, String> {
-        let out = match self.ws_stream.clone().next().await {
+        let out = match self.stream.clone().next().await {
             Some(Ok(Message::Binary(v))) => v,
             Some(Ok(_)) => {
                 return Err("Unexpected WS message type".to_owned()).map_err(logthru_net!(error));
@@ -125,6 +130,7 @@ impl WebsocketProtocolHandler {
     pub async fn on_accept_async(
         self,
         ps: AsyncPeekStream,
+        tcp_stream: TcpStream,
         socket_addr: SocketAddr,
     ) -> Result<Option<NetworkConnection>, String> {
         log_net!("WS: on_accept_async: enter");
@@ -178,7 +184,9 @@ impl WebsocketProtocolHandler {
                 peer_addr,
                 SocketAddress::from_socket_addr(self.arc.local_address),
             ),
-            ProtocolNetworkConnection::WsAccepted(WebsocketNetworkConnection::new(ws_stream)),
+            ProtocolNetworkConnection::WsAccepted(WebsocketNetworkConnection::new(
+                ws_stream, tcp_stream,
+            )),
         );
 
         log_net!(debug "{}: on_accept_async from: {}", if self.arc.tls { "WSS" } else { "WS" }, socket_addr);
@@ -214,14 +222,10 @@ impl WebsocketProtocolHandler {
             }
         };
 
-        // Connect to the remote address
-        let remote_socket2_addr = socket2::SockAddr::from(remote_socket_addr);
-        socket
-            .connect(&remote_socket2_addr)
+        // Non-blocking connect to remote address
+        let tcp_stream = nonblocking_connect(socket, remote_socket_addr).await
             .map_err(map_to_string)
-            .map_err(logthru_net!(error "local_address={:?} remote_socket_addr={}", local_address, remote_socket_addr))?;
-        let std_stream: std::net::TcpStream = socket.into();
-        let tcp_stream = TcpStream::from(std_stream);
+            .map_err(logthru_net!(error "local_address={:?} remote_addr={}", local_address, remote_socket_addr))?;
 
         // See what local address we ended up with
         let actual_local_addr = tcp_stream
@@ -238,7 +242,7 @@ impl WebsocketProtocolHandler {
         if tls {
             let connector = TlsConnector::default();
             let tls_stream = connector
-                .connect(domain.to_string(), tcp_stream)
+                .connect(domain.to_string(), tcp_stream.clone())
                 .await
                 .map_err(map_to_string)
                 .map_err(logthru_net!(error))?;
@@ -249,16 +253,20 @@ impl WebsocketProtocolHandler {
 
             Ok(NetworkConnection::from_protocol(
                 descriptor,
-                ProtocolNetworkConnection::Wss(WebsocketNetworkConnection::new(ws_stream)),
+                ProtocolNetworkConnection::Wss(WebsocketNetworkConnection::new(
+                    ws_stream, tcp_stream,
+                )),
             ))
         } else {
-            let (ws_stream, _response) = client_async(request, tcp_stream)
+            let (ws_stream, _response) = client_async(request, tcp_stream.clone())
                 .await
                 .map_err(map_to_string)
                 .map_err(logthru_net!(error))?;
             Ok(NetworkConnection::from_protocol(
                 descriptor,
-                ProtocolNetworkConnection::Ws(WebsocketNetworkConnection::new(ws_stream)),
+                ProtocolNetworkConnection::Ws(WebsocketNetworkConnection::new(
+                    ws_stream, tcp_stream,
+                )),
             ))
         }
     }
@@ -285,8 +293,9 @@ impl ProtocolAcceptHandler for WebsocketProtocolHandler {
     fn on_accept(
         &self,
         stream: AsyncPeekStream,
+        tcp_stream: TcpStream,
         peer_addr: SocketAddr,
     ) -> SystemPinBoxFuture<Result<Option<NetworkConnection>, String>> {
-        Box::pin(self.clone().on_accept_async(stream, peer_addr))
+        Box::pin(self.clone().on_accept_async(stream, tcp_stream, peer_addr))
     }
 }

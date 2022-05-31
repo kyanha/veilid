@@ -4,9 +4,8 @@ pub mod udp;
 pub mod wrtc;
 pub mod ws;
 
-use crate::network_connection::*;
+use super::*;
 use crate::xx::*;
-use crate::*;
 
 #[derive(Debug)]
 pub enum ProtocolNetworkConnection {

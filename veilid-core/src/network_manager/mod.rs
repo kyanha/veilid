@@ -1,11 +1,34 @@
 use crate::*;
+
+#[cfg(not(target_arch = "wasm32"))]
+mod native;
+#[cfg(target_arch = "wasm32")]
+mod wasm;
+
+mod connection_limits;
+mod connection_manager;
+mod connection_table;
+mod network_connection;
+
+pub mod tests;
+
+////////////////////////////////////////////////////////////////////////////////////////
+
+pub use network_connection::*;
+
+////////////////////////////////////////////////////////////////////////////////////////
+
 use connection_manager::*;
 use dht::*;
 use hashlink::LruCache;
 use intf::*;
+#[cfg(not(target_arch = "wasm32"))]
+use native::*;
 use receipt_manager::*;
 use routing_table::*;
 use rpc_processor::*;
+#[cfg(target_arch = "wasm32")]
+use wasm::*;
 use xx::*;
 
 ////////////////////////////////////////////////////////////////////////////////////////
@@ -93,9 +116,9 @@ struct NetworkManagerInner {
     components: Option<NetworkComponents>,
     update_callback: Option<UpdateCallback>,
     stats: NetworkManagerStats,
-    client_whitelist: LruCache<key::DHTKey, ClientWhitelistEntry>,
+    client_whitelist: LruCache<DHTKey, ClientWhitelistEntry>,
     relay_node: Option<NodeRef>,
-    public_address_check_cache: LruCache<key::DHTKey, SocketAddress>,
+    public_address_check_cache: LruCache<DHTKey, SocketAddress>,
 }
 
 struct NetworkManagerUnlockedInner {
@@ -300,7 +323,7 @@ impl NetworkManager {
         trace!("NetworkManager::shutdown end");
     }
 
-    pub fn update_client_whitelist(&self, client: key::DHTKey) {
+    pub fn update_client_whitelist(&self, client: DHTKey) {
         let mut inner = self.inner.lock();
         match inner.client_whitelist.entry(client) {
             hashlink::lru_cache::Entry::Occupied(mut entry) => {
@@ -314,7 +337,7 @@ impl NetworkManager {
         }
     }
 
-    pub fn check_client_whitelist(&self, client: key::DHTKey) -> bool {
+    pub fn check_client_whitelist(&self, client: DHTKey) -> bool {
         let mut inner = self.inner.lock();
 
         match inner.client_whitelist.entry(client) {
@@ -565,7 +588,7 @@ impl NetworkManager {
     // Builds an envelope for sending over the network
     fn build_envelope<B: AsRef<[u8]>>(
         &self,
-        dest_node_id: key::DHTKey,
+        dest_node_id: DHTKey,
         version: u8,
         body: B,
     ) -> Result<Vec<u8>, String> {

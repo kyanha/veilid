@@ -94,7 +94,12 @@ where
 }
 
 pub fn get_concurrency() -> u32 {
-    num_cpus::get() as u32
+    std::thread::available_parallelism()
+        .map(|x| x.get())
+        .unwrap_or_else(|e| {
+            warn!("unable to get concurrency defaulting to single core: {}", e);
+            1
+        }) as u32
 }
 
 pub async fn get_outbound_relay_peer() -> Option<crate::veilid_api::PeerInfo> {
