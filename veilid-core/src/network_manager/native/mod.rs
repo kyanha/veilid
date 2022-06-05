@@ -341,7 +341,7 @@ impl Network {
             log_net!("send_data_to_existing_connection to {:?}", descriptor);
 
             // connection exists, send over it
-            conn.send(data).await.map_err(logthru_net!())?;
+            conn.send_async(data).await.map_err(logthru_net!())?;
 
             // Network accounting
             self.network_manager()
@@ -389,7 +389,7 @@ impl Network {
             .get_or_create_connection(Some(local_addr), dial_info.clone())
             .await?;
 
-        let res = conn.send(data).await.map_err(logthru_net!(error));
+        let res = conn.send_async(data).await.map_err(logthru_net!(error));
         if res.is_ok() {
             // Network accounting
             self.network_manager()

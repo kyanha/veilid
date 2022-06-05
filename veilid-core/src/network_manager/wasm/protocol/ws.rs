@@ -13,6 +13,7 @@ struct WebsocketNetworkConnectionInner {
 
 #[derive(Clone)]
 pub struct WebsocketNetworkConnection {
+    descriptor: ConnectionDescriptor,
     inner: Arc<WebsocketNetworkConnectionInner>,
 }
 
@@ -23,13 +24,20 @@ impl fmt::Debug for WebsocketNetworkConnection {
 }
 
 impl WebsocketNetworkConnection {
-    pub fn new(ws_meta: WsMeta, ws_stream: WsStream) -> Self {
+    pub fn new(
+        descriptor: ConnectionDescriptor,
+        ws_meta: WsMeta, ws_stream: WsStream) -> Self {
         Self {
+            descriptor,
             inner: Arc::new(WebsocketNetworkConnectionInner {
                 ws_meta,
                 ws_stream: CloneStream::new(ws_stream),
             }),
         }
+    }
+
+    pub fn descriptor(&self) -> ConnectionDescriptor {
+        self.descriptor.clone()
     }
 
     pub async fn close(&self) -> Result<(), String> {
@@ -73,7 +81,7 @@ impl WebsocketProtocolHandler {
     pub async fn connect(
         local_address: Option<SocketAddr>,
         dial_info: DialInfo,
-    ) -> Result<NetworkConnection, String> {
+    ) -> Result<ProtocolNetworkConnection, String> {
         
         assert!(local_address.is_none());
 
@@ -96,10 +104,10 @@ impl WebsocketProtocolHandler {
 
         // Make our connection descriptor
 
-        Ok(NetworkConnection::from_protocol(ConnectionDescriptor {
+        Ok(ProtocolNetworkConnection::Ws(WebsocketNetworkConnection::new(ConnectionDescriptor {
             local: None,
             remote: dial_info.to_peer_address(),
-        },ProtocolNetworkConnection::Ws(WebsocketNetworkConnection::new(wsmeta, wsio))))
+        }, wsmeta, wsio)))
     }
 
     pub async fn send_unbound_message(dial_info: DialInfo, data: Vec<u8>) -> Result<(), String> {

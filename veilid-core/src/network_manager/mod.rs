@@ -5,6 +5,7 @@ mod native;
 #[cfg(target_arch = "wasm32")]
 mod wasm;
 
+mod connection_handle;
 mod connection_limits;
 mod connection_manager;
 mod connection_table;
@@ -17,8 +18,9 @@ pub mod tests;
 pub use network_connection::*;
 
 ////////////////////////////////////////////////////////////////////////////////////////
-
+use connection_limits::*;
 use connection_manager::*;
+use connection_handle::*;
 use dht::*;
 use hashlink::LruCache;
 use intf::*;
@@ -1034,7 +1036,7 @@ impl NetworkManager {
     // Called when a packet potentially containing an RPC envelope is received by a low-level
     // network protocol handler. Processes the envelope, authenticates and decrypts the RPC message
     // and passes it to the RPC handler
-    pub async fn on_recv_envelope(
+    async fn on_recv_envelope(
         &self,
         data: &[u8],
         descriptor: ConnectionDescriptor,

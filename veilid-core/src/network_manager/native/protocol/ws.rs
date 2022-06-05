@@ -15,6 +15,7 @@ pub struct WebsocketNetworkConnection<T>
 where
     T: io::Read + io::Write + Send + Unpin + 'static,
 {
+    descriptor: ConnectionDescriptor,
     stream: CloneStream<WebSocketStream<T>>,
     tcp_stream: TcpStream,
 }
@@ -32,11 +33,20 @@ impl<T> WebsocketNetworkConnection<T>
 where
     T: io::Read + io::Write + Send + Unpin + 'static,
 {
-    pub fn new(stream: WebSocketStream<T>, tcp_stream: TcpStream) -> Self {
+    pub fn new(
+        descriptor: ConnectionDescriptor,
+        stream: WebSocketStream<T>,
+        tcp_stream: TcpStream,
+    ) -> Self {
         Self {
+            descriptor,
             stream: CloneStream::new(stream),
             tcp_stream,
         }
+    }
+
+    pub fn descriptor(&self) -> ConnectionDescriptor {
+        self.descriptor.clone()
     }
 
     pub async fn close(&self) -> Result<(), String> {
@@ -132,7 +142,7 @@ impl WebsocketProtocolHandler {
         ps: AsyncPeekStream,
         tcp_stream: TcpStream,
         socket_addr: SocketAddr,
-    ) -> Result<Option<NetworkConnection>, String> {
+    ) -> Result<Option<ProtocolNetworkConnection>, String> {
         log_net!("WS: on_accept_async: enter");
         let request_path_len = self.arc.request_path.len() + 2;
 
@@ -179,25 +189,24 @@ impl WebsocketProtocolHandler {
         let peer_addr =
             PeerAddress::new(SocketAddress::from_socket_addr(socket_addr), protocol_type);
 
-        let conn = NetworkConnection::from_protocol(
+        let conn = ProtocolNetworkConnection::WsAccepted(WebsocketNetworkConnection::new(
             ConnectionDescriptor::new(
                 peer_addr,
                 SocketAddress::from_socket_addr(self.arc.local_address),
             ),
-            ProtocolNetworkConnection::WsAccepted(WebsocketNetworkConnection::new(
-                ws_stream, tcp_stream,
-            )),
-        );
+            ws_stream,
+            tcp_stream,
+        ));
 
         log_net!(debug "{}: on_accept_async from: {}", if self.arc.tls { "WSS" } else { "WS" }, socket_addr);
 
         Ok(Some(conn))
     }
 
-    pub async fn connect(
+    async fn connect_internal(
         local_address: Option<SocketAddr>,
         dial_info: DialInfo,
-    ) -> Result<NetworkConnection, String> {
+    ) -> Result<ProtocolNetworkConnection, String> {
         // Split dial info up
         let (tls, scheme) = match &dial_info {
             DialInfo::WS(_) => (false, "ws"),
@@ -251,24 +260,25 @@ impl WebsocketProtocolHandler {
                 .map_err(map_to_string)
                 .map_err(logthru_net!(error))?;
 
-            Ok(NetworkConnection::from_protocol(
-                descriptor,
-                ProtocolNetworkConnection::Wss(WebsocketNetworkConnection::new(
-                    ws_stream, tcp_stream,
-                )),
+            Ok(ProtocolNetworkConnection::Wss(
+                WebsocketNetworkConnection::new(descriptor, ws_stream, tcp_stream),
             ))
         } else {
             let (ws_stream, _response) = client_async(request, tcp_stream.clone())
                 .await
                 .map_err(map_to_string)
                 .map_err(logthru_net!(error))?;
-            Ok(NetworkConnection::from_protocol(
-                descriptor,
-                ProtocolNetworkConnection::Ws(WebsocketNetworkConnection::new(
-                    ws_stream, tcp_stream,
-                )),
+            Ok(ProtocolNetworkConnection::Ws(
+                WebsocketNetworkConnection::new(descriptor, ws_stream, tcp_stream),
             ))
         }
+    }
+
+    pub async fn connect(
+        local_address: Option<SocketAddr>,
+        dial_info: DialInfo,
+    ) -> Result<ProtocolNetworkConnection, String> {
+        Self::connect_internal(local_address, dial_info).await
     }
 
     pub async fn send_unbound_message(dial_info: DialInfo, data: Vec<u8>) -> Result<(), String> {
@@ -281,11 +291,11 @@ impl WebsocketProtocolHandler {
             dial_info,
         );
 
-        let conn = Self::connect(None, dial_info.clone())
+        let protconn = Self::connect_internal(None, dial_info.clone())
             .await
             .map_err(|e| format!("failed to connect websocket for unbound message: {}", e))?;
 
-        conn.send(data).await
+        protconn.send(data).await
     }
 }
 
@@ -295,7 +305,7 @@ impl ProtocolAcceptHandler for WebsocketProtocolHandler {
         stream: AsyncPeekStream,
         tcp_stream: TcpStream,
         peer_addr: SocketAddr,
-    ) -> SystemPinBoxFuture<Result<Option<NetworkConnection>, String>> {
+    ) -> SystemPinBoxFuture<Result<Option<ProtocolNetworkConnection>, String>> {
         Box::pin(self.clone().on_accept_async(stream, tcp_stream, peer_addr))
     }
 }

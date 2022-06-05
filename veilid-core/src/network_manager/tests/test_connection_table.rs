@@ -52,10 +52,15 @@ pub async fn test_add_get_remove() {
     );
 
     let c1 = NetworkConnection::dummy(a1);
+    let c1h = c1.get_handle();
     let c2 = NetworkConnection::dummy(a2);
+    //let c2h = c2.get_handle();
     let c3 = NetworkConnection::dummy(a3);
+    //let c3h = c3.get_handle();
     let c4 = NetworkConnection::dummy(a4);
+    //let c4h = c4.get_handle();
     let c5 = NetworkConnection::dummy(a5);
+    //let c5h = c5.get_handle();
 
     assert_eq!(a1, c2.connection_descriptor());
     assert_ne!(a3, c4.connection_descriptor());
@@ -63,36 +68,39 @@ pub async fn test_add_get_remove() {
 
     assert_eq!(table.connection_count(), 0);
     assert_eq!(table.get_connection(a1), None);
-    table.add_connection(c1.clone()).unwrap();
+    table.add_connection(c1).unwrap();
 
     assert_eq!(table.connection_count(), 1);
     assert_err!(table.remove_connection(a3));
     assert_err!(table.remove_connection(a4));
     assert_eq!(table.connection_count(), 1);
-    assert_eq!(table.get_connection(a1), Some(c1.clone()));
-    assert_eq!(table.get_connection(a1), Some(c1.clone()));
+    assert_eq!(table.get_connection(a1), Some(c1h.clone()));
+    assert_eq!(table.get_connection(a1), Some(c1h.clone()));
     assert_eq!(table.connection_count(), 1);
-    assert_err!(table.add_connection(c1.clone()));
-    assert_err!(table.add_connection(c2.clone()));
+    assert_err!(table.add_connection(c2));
     assert_eq!(table.connection_count(), 1);
-    assert_eq!(table.get_connection(a1), Some(c1.clone()));
-    assert_eq!(table.get_connection(a1), Some(c1.clone()));
+    assert_eq!(table.get_connection(a1), Some(c1h.clone()));
+    assert_eq!(table.get_connection(a1), Some(c1h.clone()));
     assert_eq!(table.connection_count(), 1);
-    assert_eq!(table.remove_connection(a2), Ok(c1.clone()));
+    assert_eq!(table.remove_connection(a2), Ok(()));
     assert_eq!(table.connection_count(), 0);
     assert_err!(table.remove_connection(a2));
     assert_eq!(table.connection_count(), 0);
     assert_eq!(table.get_connection(a2), None);
     assert_eq!(table.get_connection(a1), None);
     assert_eq!(table.connection_count(), 0);
-    table.add_connection(c1.clone()).unwrap();
+    let c1 = NetworkConnection::dummy(a1);
+    //let c1h = c1.get_handle();
+    table.add_connection(c1).unwrap();
+    let c2 = NetworkConnection::dummy(a2);
+    //let c2h = c2.get_handle();
     assert_err!(table.add_connection(c2));
-    table.add_connection(c3.clone()).unwrap();
-    table.add_connection(c4.clone()).unwrap();
+    table.add_connection(c3).unwrap();
+    table.add_connection(c4).unwrap();
     assert_eq!(table.connection_count(), 3);
-    assert_eq!(table.remove_connection(a2), Ok(c1));
-    assert_eq!(table.remove_connection(a3), Ok(c3));
-    assert_eq!(table.remove_connection(a4), Ok(c4));
+    assert_eq!(table.remove_connection(a2), Ok(()));
+    assert_eq!(table.remove_connection(a3), Ok(()));
+    assert_eq!(table.remove_connection(a4), Ok(()));
     assert_eq!(table.connection_count(), 0);
 }
 

@@ -1,5 +1,5 @@
 use super::*;
-use crate::xx::*;
+use futures_util::{FutureExt, StreamExt};
 
 cfg_if::cfg_if! {
     if #[cfg(target_arch = "wasm32")] {
@@ -16,7 +16,7 @@ cfg_if::cfg_if! {
                 stream: AsyncPeekStream,
                 tcp_stream: TcpStream,
                 peer_addr: SocketAddr,
-            ) -> SystemPinBoxFuture<Result<Option<NetworkConnection>, String>>;
+            ) -> SystemPinBoxFuture<Result<Option<ProtocolNetworkConnection>, String>>;
         }
 
         pub trait ProtocolAcceptHandlerClone {
@@ -45,9 +45,14 @@ cfg_if::cfg_if! {
 // Dummy protocol network connection for testing
 
 #[derive(Debug)]
-pub struct DummyNetworkConnection {}
+pub struct DummyNetworkConnection {
+    descriptor: ConnectionDescriptor,
+}
 
 impl DummyNetworkConnection {
+    pub fn descriptor(&self) -> ConnectionDescriptor {
+        self.descriptor.clone()
+    }
     pub fn close(&self) -> Result<(), String> {
         Ok(())
     }
@@ -62,6 +67,14 @@ impl DummyNetworkConnection {
 ///////////////////////////////////////////////////////////
 // Top-level protocol independent network connection object
 
+#[derive(Clone, Copy, Debug)]
+enum RecvLoopAction {
+    Send,
+    Recv,
+    Finish,
+    Timeout,
+}
+
 #[derive(Debug, Clone)]
 pub struct NetworkConnectionStats {
     last_message_sent_time: Option<u64>,
@@ -69,107 +82,249 @@ pub struct NetworkConnectionStats {
 }
 
 #[derive(Debug)]
-struct NetworkConnectionInner {
-    stats: NetworkConnectionStats,
-}
-
-#[derive(Debug)]
-struct NetworkConnectionArc {
-    descriptor: ConnectionDescriptor,
-    protocol_connection: ProtocolNetworkConnection,
-    established_time: u64,
-    inner: Mutex<NetworkConnectionInner>,
-}
-
-#[derive(Clone, Debug)]
 pub struct NetworkConnection {
-    arc: Arc<NetworkConnectionArc>,
+    descriptor: ConnectionDescriptor,
+    _processor: Option<JoinHandle<()>>,
+    established_time: u64,
+    stats: Arc<Mutex<NetworkConnectionStats>>,
+    sender: flume::Sender<Vec<u8>>,
 }
-impl PartialEq for NetworkConnection {
-    fn eq(&self, other: &Self) -> bool {
-        Arc::as_ptr(&self.arc) == Arc::as_ptr(&other.arc)
-    }
-}
-
-impl Eq for NetworkConnection {}
 
 impl NetworkConnection {
-    fn new_inner() -> NetworkConnectionInner {
-        NetworkConnectionInner {
-            stats: NetworkConnectionStats {
+    pub(super) fn dummy(descriptor: ConnectionDescriptor) -> Self {
+        // Create handle for sending (dummy is immediately disconnected)
+        let (sender, _receiver) = flume::bounded(intf::get_concurrency() as usize);
+
+        Self {
+            descriptor,
+            _processor: None,
+            established_time: intf::get_timestamp(),
+            stats: Arc::new(Mutex::new(NetworkConnectionStats {
                 last_message_sent_time: None,
                 last_message_recv_time: None,
-            },
-        }
-    }
-    fn new_arc(
-        descriptor: ConnectionDescriptor,
-        protocol_connection: ProtocolNetworkConnection,
-    ) -> NetworkConnectionArc {
-        NetworkConnectionArc {
-            descriptor,
-            protocol_connection,
-            established_time: intf::get_timestamp(),
-            inner: Mutex::new(Self::new_inner()),
+            })),
+            sender,
         }
     }
 
-    pub fn dummy(descriptor: ConnectionDescriptor) -> Self {
-        NetworkConnection::from_protocol(
-            descriptor,
-            ProtocolNetworkConnection::Dummy(DummyNetworkConnection {}),
-        )
-    }
-
-    pub fn from_protocol(
-        descriptor: ConnectionDescriptor,
+    pub(super) fn from_protocol(
+        connection_manager: ConnectionManager,
         protocol_connection: ProtocolNetworkConnection,
     ) -> Self {
-        Self {
-            arc: Arc::new(Self::new_arc(descriptor, protocol_connection)),
-        }
-    }
+        // Get timeout
+        let network_manager = connection_manager.network_manager();
+        let inactivity_timeout = network_manager
+            .config()
+            .get()
+            .network
+            .connection_inactivity_timeout_ms;
 
-    pub async fn connect(
-        local_address: Option<SocketAddr>,
-        dial_info: DialInfo,
-    ) -> Result<NetworkConnection, String> {
-        ProtocolNetworkConnection::connect(local_address, dial_info).await
+        // Get descriptor
+        let descriptor = protocol_connection.descriptor();
+
+        // Create handle for sending
+        let (sender, receiver) = flume::bounded(intf::get_concurrency() as usize);
+
+        // Create stats
+        let stats = Arc::new(Mutex::new(NetworkConnectionStats {
+            last_message_sent_time: None,
+            last_message_recv_time: None,
+        }));
+
+        // Spawn connection processor and pass in protocol connection
+        let processor = intf::spawn_local(Self::process_connection(
+            connection_manager,
+            descriptor.clone(),
+            receiver,
+            protocol_connection,
+            inactivity_timeout,
+            stats.clone(),
+        ));
+
+        // Return the connection
+        Self {
+            descriptor,
+            _processor: Some(processor),
+            established_time: intf::get_timestamp(),
+            stats,
+            sender,
+        }
     }
 
     pub fn connection_descriptor(&self) -> ConnectionDescriptor {
-        self.arc.descriptor
+        self.descriptor.clone()
     }
 
-    pub async fn close(&self) -> Result<(), String> {
-        self.arc.protocol_connection.close().await
+    pub fn get_handle(&self) -> ConnectionHandle {
+        ConnectionHandle::new(self.descriptor.clone(), self.sender.clone())
     }
 
-    pub async fn send(&self, message: Vec<u8>) -> Result<(), String> {
+    async fn send_internal(
+        protocol_connection: &ProtocolNetworkConnection,
+        stats: Arc<Mutex<NetworkConnectionStats>>,
+        message: Vec<u8>,
+    ) -> Result<(), String> {
         let ts = intf::get_timestamp();
-        let out = self.arc.protocol_connection.send(message).await;
+        let out = protocol_connection.send(message).await;
         if out.is_ok() {
-            let mut inner = self.arc.inner.lock();
-            inner.stats.last_message_sent_time.max_assign(Some(ts));
+            let mut stats = stats.lock();
+            stats.last_message_sent_time.max_assign(Some(ts));
         }
         out
     }
-    pub async fn recv(&self) -> Result<Vec<u8>, String> {
+    async fn recv_internal(
+        protocol_connection: &ProtocolNetworkConnection,
+        stats: Arc<Mutex<NetworkConnectionStats>>,
+    ) -> Result<Vec<u8>, String> {
         let ts = intf::get_timestamp();
-        let out = self.arc.protocol_connection.recv().await;
+        let out = protocol_connection.recv().await;
         if out.is_ok() {
-            let mut inner = self.arc.inner.lock();
-            inner.stats.last_message_recv_time.max_assign(Some(ts));
+            let mut stats = stats.lock();
+            stats.last_message_recv_time.max_assign(Some(ts));
         }
         out
     }
 
     pub fn stats(&self) -> NetworkConnectionStats {
-        let inner = self.arc.inner.lock();
-        inner.stats.clone()
+        let stats = self.stats.lock();
+        stats.clone()
     }
 
     pub fn established_time(&self) -> u64 {
-        self.arc.established_time
+        self.established_time
+    }
+
+    // Connection receiver loop
+    fn process_connection(
+        connection_manager: ConnectionManager,
+        descriptor: ConnectionDescriptor,
+        receiver: flume::Receiver<Vec<u8>>,
+        protocol_connection: ProtocolNetworkConnection,
+        connection_inactivity_timeout_ms: u32,
+        stats: Arc<Mutex<NetworkConnectionStats>>,
+    ) -> SystemPinBoxFuture<()> {
+        Box::pin(async move {
+            log_net!(
+                "Starting process_connection loop for {:?}",
+                descriptor.green()
+            );
+
+            let network_manager = connection_manager.network_manager();
+            let mut unord = FuturesUnordered::new();
+            let mut need_receiver = true;
+            let mut need_sender = true;
+
+            // Push mutable timer so we can reset it
+            // Normally we would use an io::timeout here, but WASM won't support that, so we use a mutable sleep future
+            let new_timer = || {
+                intf::sleep(connection_inactivity_timeout_ms).then(|_| async {
+                    // timeout
+                    log_net!("connection timeout on {:?}", descriptor.green());
+                    RecvLoopAction::Timeout
+                })
+            };
+            let timer = MutableFuture::new(new_timer());
+            unord.push(timer.clone().boxed());
+
+            loop {
+                // Add another message sender future if necessary
+                if need_sender {
+                    need_sender = false;
+                    unord.push(
+                        receiver
+                            .recv_async()
+                            .then(|res| async {
+                                match res {
+                                    Ok(message) => {
+                                        // send the packet
+                                        if let Err(e) = Self::send_internal(
+                                            &protocol_connection,
+                                            stats.clone(),
+                                            message,
+                                        )
+                                        .await
+                                        {
+                                            // Sending the packet along can fail, if so, this connection is dead
+                                            log_net!(debug e);
+                                            RecvLoopAction::Finish
+                                        } else {
+                                            RecvLoopAction::Send
+                                        }
+                                    }
+                                    Err(e) => {
+                                        // All senders gone, shouldn't happen since we store one alongside the join handle
+                                        log_net!(warn e);
+                                        RecvLoopAction::Finish
+                                    }
+                                }
+                            })
+                            .boxed(),
+                    );
+                }
+
+                // Add another message receiver future if necessary
+                if need_receiver {
+                    need_sender = false;
+                    unord.push(
+                        Self::recv_internal(&protocol_connection, stats.clone())
+                            .then(|res| async {
+                                match res {
+                                    Ok(message) => {
+                                        // Pass received messages up to the network manager for processing
+                                        if let Err(e) = network_manager
+                                            .on_recv_envelope(message.as_slice(), descriptor)
+                                            .await
+                                        {
+                                            log_net!(error e);
+                                            RecvLoopAction::Finish
+                                        } else {
+                                            RecvLoopAction::Recv
+                                        }
+                                    }
+                                    Err(e) => {
+                                        // Connection unable to receive, closed
+                                        log_net!(warn e);
+                                        RecvLoopAction::Finish
+                                    }
+                                }
+                            })
+                            .boxed(),
+                    );
+                }
+
+                // Process futures
+                match unord.next().await {
+                    Some(RecvLoopAction::Send) => {
+                        // Don't reset inactivity timer if we're only sending
+
+                        need_sender = true;
+                    }
+                    Some(RecvLoopAction::Recv) => {
+                        // Reset inactivity timer since we got something from this connection
+                        timer.set(new_timer());
+
+                        need_receiver = true;
+                    }
+                    Some(RecvLoopAction::Finish) | Some(RecvLoopAction::Timeout) => {
+                        break;
+                    }
+
+                    None => {
+                        // Should not happen
+                        unreachable!();
+                    }
+                }
+            }
+
+            log_net!(
+                "== Connection loop finished local_addr={:?} remote={:?}",
+                descriptor.local.green(),
+                descriptor.remote.green()
+            );
+
+            connection_manager
+                .report_connection_finished(descriptor)
+                .await
+        })
     }
 }

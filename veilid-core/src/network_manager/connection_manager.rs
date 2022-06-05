@@ -3,8 +3,6 @@ use crate::xx::*;
 use connection_table::*;
 use network_connection::*;
 
-const CONNECTION_PROCESSOR_CHANNEL_SIZE: usize = 128usize;
-
 ///////////////////////////////////////////////////////////
 // Connection manager
 
@@ -59,8 +57,7 @@ impl ConnectionManager {
     }
 
     pub async fn shutdown(&self) {
-        // xxx close all connections in the connection table
-
+        // Drops connection table, which drops all connections in it
         *self.arc.inner.lock().await = Self::new_inner(self.arc.network_manager.config());
     }
 
@@ -68,47 +65,48 @@ impl ConnectionManager {
     pub async fn get_connection(
         &self,
         descriptor: ConnectionDescriptor,
-    ) -> Option<NetworkConnection> {
+    ) -> Option<ConnectionHandle> {
         let mut inner = self.arc.inner.lock().await;
         inner.connection_table.get_connection(descriptor)
     }
 
-    // Internal routine to register new connection atomically
-    fn on_new_connection_internal(
+    // Internal routine to register new connection atomically.
+    // Registers connection in the connection table for later access
+    // and spawns a message processing loop for the connection
+    fn on_new_protocol_network_connection(
         &self,
         inner: &mut ConnectionManagerInner,
-        conn: NetworkConnection,
-    ) -> Result<(), String> {
-        log_net!("on_new_connection_internal: {:?}", conn);
-        let tx = inner
-            .connection_add_channel_tx
-            .as_ref()
-            .ok_or_else(fn_string!("connection channel isn't open yet"))?
-            .clone();
+        conn: ProtocolNetworkConnection,
+    ) -> Result<ConnectionHandle, String> {
+        log_net!("on_new_protocol_network_connection: {:?}", conn);
 
-        let receiver_loop_future = Self::process_connection(self.clone(), conn.clone());
-        tx.try_send(receiver_loop_future)
-            .map_err(map_to_string)
-            .map_err(logthru_net!(error "failed to start receiver loop"))?;
-
-        // If the receiver loop started successfully,
-        // add the new connection to the table
-        inner.connection_table.add_connection(conn)
+        // Wrap with NetworkConnection object to start the connection processing loop
+        let conn = NetworkConnection::from_protocol(self.clone(), conn);
+        let handle = conn.get_handle();
+        // Add to the connection table
+        inner.connection_table.add_connection(conn)?;
+        Ok(handle)
     }
 
     // Called by low-level network when any connection-oriented protocol connection appears
-    // either from incoming or outgoing connections. Registers connection in the connection table for later access
-    // and spawns a message processing loop for the connection
-    pub async fn on_new_connection(&self, conn: NetworkConnection) -> Result<(), String> {
+    // either from incoming connections.
+    pub(super) async fn on_accepted_protocol_network_connection(
+        &self,
+        conn: ProtocolNetworkConnection,
+    ) -> Result<(), String> {
         let mut inner = self.arc.inner.lock().await;
-        self.on_new_connection_internal(&mut *inner, conn)
+        self.on_new_protocol_network_connection(&mut *inner, conn)
+            .map(drop)
     }
 
+    // Called when we want to create a new connection or get the current one that already exists
+    // This will kill off any connections that are in conflict with the new connection to be made
+    // in order to make room for the new connection in the system's connection table
     pub async fn get_or_create_connection(
         &self,
         local_addr: Option<SocketAddr>,
         dial_info: DialInfo,
-    ) -> Result<NetworkConnection, String> {
+    ) -> Result<ConnectionHandle, String> {
         log_net!(
             "== get_or_create_connection local_addr={:?} dial_info={:?}",
             local_addr.green(),
@@ -146,8 +144,10 @@ impl ConnectionManager {
             if local_addr.port() != 0 {
                 for pt in [ProtocolType::TCP, ProtocolType::WS, ProtocolType::WSS] {
                     let pa = PeerAddress::new(descriptor.remote.socket_address, pt);
-                    for conn in inner.connection_table.get_connections_by_remote(pa) {
-                        let desc = conn.connection_descriptor();
+                    for desc in inner
+                        .connection_table
+                        .get_connection_descriptors_by_remote(pa)
+                    {
                         let mut kill = false;
                         if let Some(conn_local) = desc.local {
                             if (local_addr.ip().is_unspecified()
@@ -163,7 +163,9 @@ impl ConnectionManager {
                                 local_addr.green(),
                                 pa.green()
                             );
-                            conn.close().await?;
+                            if let Err(e) = inner.connection_table.remove_connection(descriptor) {
+                                log_net!(error e);
+                            }
                         }
                     }
                 }
@@ -171,73 +173,17 @@ impl ConnectionManager {
         }
 
         // Attempt new connection
-        let conn = NetworkConnection::connect(local_addr, dial_info).await?;
+        let conn = ProtocolNetworkConnection::connect(local_addr, dial_info).await?;
 
-        self.on_new_connection_internal(&mut *inner, conn.clone())?;
-
-        Ok(conn)
+        self.on_new_protocol_network_connection(&mut *inner, conn)
     }
 
-    // Connection receiver loop
-    fn process_connection(
-        this: ConnectionManager,
-        conn: NetworkConnection,
-    ) -> SystemPinBoxFuture<()> {
-        log_net!("Starting process_connection loop for {:?}", conn.green());
-        let network_manager = this.network_manager();
-        Box::pin(async move {
-            //
-            let descriptor = conn.connection_descriptor();
-            let inactivity_timeout = this
-                .network_manager()
-                .config()
-                .get()
-                .network
-                .connection_inactivity_timeout_ms;
-            loop {
-                // process inactivity timeout on receives only
-                // if you want a keepalive, it has to be requested from the other side
-                let message = select! {
-                    res = conn.recv().fuse() => {
-                        match res {
-                            Ok(v) => v,
-                            Err(e) => {
-                                log_net!(debug e);
-                                break;
-                            }
-                        }
-                    }
-                    _ = intf::sleep(inactivity_timeout).fuse()=> {
-                        // timeout
-                        log_net!("connection timeout on {:?}", descriptor.green());
-                        break;
-                    }
-                };
-                if let Err(e) = network_manager
-                    .on_recv_envelope(message.as_slice(), descriptor)
-                    .await
-                {
-                    log_net!(error e);
-                    break;
-                }
-            }
-
-            log_net!(
-                "== Connection loop finished local_addr={:?} remote={:?}",
-                descriptor.local.green(),
-                descriptor.remote.green()
-            );
-
-            if let Err(e) = this
-                .arc
-                .inner
-                .lock()
-                .await
-                .connection_table
-                .remove_connection(descriptor)
-            {
-                log_net!(error e);
-            }
-        })
+    // Callback from network connection receive loop when it exits
+    // cleans up the entry in the connection table
+    pub(super) async fn report_connection_finished(&self, descriptor: ConnectionDescriptor) {
+        let mut inner = self.arc.inner.lock().await;
+        if let Err(e) = inner.connection_table.remove_connection(descriptor) {
+            log_net!(error e);
+        }
     }
 }

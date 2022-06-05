@@ -3,7 +3,6 @@ use core::cmp::{Eq, Ord, Ordering, PartialEq, PartialOrd};
 use core::convert::{TryFrom, TryInto};
 use core::fmt;
 use core::hash::{Hash, Hasher};
-use hex;
 
 use crate::veilid_rng::*;
 use ed25519_dalek::{Keypair, PublicKey, Signature};

@@ -1,7 +1,4 @@
-use super::connection_limits::*;
-use super::network_connection::*;
-use crate::xx::*;
-use crate::*;
+use super::*;
 use alloc::collections::btree_map::Entry;
 use hashlink::LruCache;
 
@@ -9,7 +6,7 @@ use hashlink::LruCache;
 pub struct ConnectionTable {
     max_connections: Vec<usize>,
     conn_by_descriptor: Vec<LruCache<ConnectionDescriptor, NetworkConnection>>,
-    conns_by_remote: BTreeMap<PeerAddress, Vec<NetworkConnection>>,
+    descriptors_by_remote: BTreeMap<PeerAddress, Vec<ConnectionDescriptor>>,
     address_filter: ConnectionLimits,
 }
 
@@ -39,7 +36,7 @@ impl ConnectionTable {
                 LruCache::new_unbounded(),
                 LruCache::new_unbounded(),
             ],
-            conns_by_remote: BTreeMap::new(),
+            descriptors_by_remote: BTreeMap::new(),
             address_filter: ConnectionLimits::new(config),
         }
     }
@@ -60,7 +57,7 @@ impl ConnectionTable {
         self.address_filter.add(ip_addr).map_err(map_to_string)?;
 
         // Add the connection to the table
-        let res = self.conn_by_descriptor[index].insert(descriptor, conn.clone());
+        let res = self.conn_by_descriptor[index].insert(descriptor.clone(), conn);
         assert!(res.is_none());
 
         // if we have reached the maximum number of connections per protocol type
@@ -73,49 +70,54 @@ impl ConnectionTable {
         }
 
         // add connection records
-        let conns = self.conns_by_remote.entry(descriptor.remote).or_default();
+        let descriptors = self
+            .descriptors_by_remote
+            .entry(descriptor.remote)
+            .or_default();
 
-        warn!("add_connection: {:?}", conn);
-        conns.push(conn);
+        warn!("add_connection: {:?}", descriptor);
+        descriptors.push(descriptor);
 
         Ok(())
     }
 
-    pub fn get_connection(
-        &mut self,
-        descriptor: ConnectionDescriptor,
-    ) -> Option<NetworkConnection> {
+    pub fn get_connection(&mut self, descriptor: ConnectionDescriptor) -> Option<ConnectionHandle> {
+        warn!("get_connection: {:?}", descriptor);
         let index = protocol_to_index(descriptor.protocol_type());
-        let out = self.conn_by_descriptor[index].get(&descriptor).cloned();
-        warn!("get_connection: {:?} -> {:?}", descriptor, out);
-        out
+        let out = self.conn_by_descriptor[index].get(&descriptor);
+        out.map(|c| c.get_handle())
     }
 
     pub fn get_last_connection_by_remote(
         &mut self,
         remote: PeerAddress,
-    ) -> Option<NetworkConnection> {
-        let out = self
-            .conns_by_remote
+    ) -> Option<ConnectionHandle> {
+        warn!("get_last_connection_by_remote: {:?}", remote);
+        let descriptor = self
+            .descriptors_by_remote
             .get(&remote)
             .map(|v| v[(v.len() - 1)].clone());
-        warn!("get_last_connection_by_remote: {:?} -> {:?}", remote, out);
-        if let Some(connection) = &out {
+        if let Some(descriptor) = descriptor {
             // lru bump
-            let index = protocol_to_index(connection.connection_descriptor().protocol_type());
-            let _ = self.conn_by_descriptor[index].get(&connection.connection_descriptor());
+            let index = protocol_to_index(descriptor.protocol_type());
+            let handle = self.conn_by_descriptor[index]
+                .get(&descriptor)
+                .map(|c| c.get_handle());
+            handle
+        } else {
+            None
         }
-        out
     }
 
-    pub fn get_connections_by_remote(&mut self, remote: PeerAddress) -> Vec<NetworkConnection> {
-        let out = self
-            .conns_by_remote
+    pub fn get_connection_descriptors_by_remote(
+        &mut self,
+        remote: PeerAddress,
+    ) -> Vec<ConnectionDescriptor> {
+        warn!("get_connection_descriptors_by_remote: {:?}", remote);
+        self.descriptors_by_remote
             .get(&remote)
             .cloned()
-            .unwrap_or_default();
-        warn!("get_connections_by_remote: {:?} -> {:?}", remote, out);
-        out
+            .unwrap_or_default()
     }
 
     pub fn connection_count(&self) -> usize {
@@ -126,7 +128,7 @@ impl ConnectionTable {
         let ip_addr = descriptor.remote.socket_address.to_ip_addr();
 
         // conns_by_remote
-        match self.conns_by_remote.entry(descriptor.remote) {
+        match self.descriptors_by_remote.entry(descriptor.remote) {
             Entry::Vacant(_) => {
                 panic!("inconsistency in connection table")
             }
@@ -135,7 +137,7 @@ impl ConnectionTable {
 
                 // Remove one matching connection from the list
                 for (n, elem) in v.iter().enumerate() {
-                    if elem.connection_descriptor() == descriptor {
+                    if *elem == descriptor {
                         v.remove(n);
                         break;
                     }
@@ -151,18 +153,14 @@ impl ConnectionTable {
             .expect("Inconsistency in connection table");
     }
 
-    pub fn remove_connection(
-        &mut self,
-        descriptor: ConnectionDescriptor,
-    ) -> Result<NetworkConnection, String> {
+    pub fn remove_connection(&mut self, descriptor: ConnectionDescriptor) -> Result<(), String> {
         warn!("remove_connection: {:?}", descriptor);
         let index = protocol_to_index(descriptor.protocol_type());
-        let out = self.conn_by_descriptor[index]
+        let _ = self.conn_by_descriptor[index]
             .remove(&descriptor)
             .ok_or_else(|| format!("Connection not in table: {:?}", descriptor))?;
 
         self.remove_connection_records(descriptor);
-
-        Ok(out)
+        Ok(())
     }
 }

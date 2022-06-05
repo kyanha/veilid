@@ -7,7 +7,7 @@ use sockets::*;
 
 #[derive(Clone)]
 pub struct ListenerState {
-    pub protocol_handlers: Vec<Box<dyn ProtocolAcceptHandler + 'static>>,
+    pub protocol_accept_handlers: Vec<Box<dyn ProtocolAcceptHandler + 'static>>,
     pub tls_protocol_handlers: Vec<Box<dyn ProtocolAcceptHandler + 'static>>,
     pub tls_acceptor: Option<TlsAcceptor>,
 }
@@ -15,7 +15,7 @@ pub struct ListenerState {
 impl ListenerState {
     pub fn new() -> Self {
         Self {
-            protocol_handlers: Vec::new(),
+            protocol_accept_handlers: Vec::new(),
             tls_protocol_handlers: Vec::new(),
             tls_acceptor: None,
         }
@@ -46,7 +46,7 @@ impl Network {
         addr: SocketAddr,
         protocol_handlers: &[Box<dyn ProtocolAcceptHandler>],
         tls_connection_initial_timeout: u64,
-    ) -> Result<Option<NetworkConnection>, String> {
+    ) -> Result<Option<ProtocolNetworkConnection>, String> {
         let ts = tls_acceptor
             .accept(stream)
             .await
@@ -76,9 +76,9 @@ impl Network {
         stream: AsyncPeekStream,
         tcp_stream: TcpStream,
         addr: SocketAddr,
-        protocol_handlers: &[Box<dyn ProtocolAcceptHandler>],
-    ) -> Result<Option<NetworkConnection>, String> {
-        for ah in protocol_handlers.iter() {
+        protocol_accept_handlers: &[Box<dyn ProtocolAcceptHandler>],
+    ) -> Result<Option<ProtocolNetworkConnection>, String> {
+        for ah in protocol_accept_handlers.iter() {
             if let Some(nc) = ah
                 .on_accept(stream.clone(), tcp_stream.clone(), addr)
                 .await
@@ -185,7 +185,7 @@ impl Network {
                         )
                         .await
                     } else {
-                        this.try_handlers(ps, tcp_stream, addr, &ls.protocol_handlers)
+                        this.try_handlers(ps, tcp_stream, addr, &ls.protocol_accept_handlers)
                             .await
                     };
 
@@ -207,7 +207,10 @@ impl Network {
                     };
 
                     // Register the new connection in the connection manager
-                    if let Err(e) = connection_manager.on_new_connection(conn).await {
+                    if let Err(e) = connection_manager
+                        .on_accepted_protocol_network_connection(conn)
+                        .await
+                    {
                         log_net!(error "failed to register new connection: {}", e);
                     }
                 })
@@ -270,7 +273,7 @@ impl Network {
                     ));
             } else {
                 ls.write()
-                    .protocol_handlers
+                    .protocol_accept_handlers
                     .push(new_protocol_accept_handler(
                         self.network_manager().config(),
                         false,

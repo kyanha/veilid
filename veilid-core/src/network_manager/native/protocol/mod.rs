@@ -21,7 +21,7 @@ impl ProtocolNetworkConnection {
     pub async fn connect(
         local_address: Option<SocketAddr>,
         dial_info: DialInfo,
-    ) -> Result<NetworkConnection, String> {
+    ) -> Result<ProtocolNetworkConnection, String> {
         match dial_info.protocol_type() {
             ProtocolType::UDP => {
                 panic!("Should not connect to UDP dialinfo");
@@ -52,6 +52,16 @@ impl ProtocolNetworkConnection {
             ProtocolType::WS | ProtocolType::WSS => {
                 ws::WebsocketProtocolHandler::send_unbound_message(dial_info, data).await
             }
+        }
+    }
+
+    pub fn descriptor(&self) -> ConnectionDescriptor {
+        match self {
+            Self::Dummy(d) => d.descriptor(),
+            Self::RawTcp(t) => t.descriptor(),
+            Self::WsAccepted(w) => w.descriptor(),
+            Self::Ws(w) => w.descriptor(),
+            Self::Wss(w) => w.descriptor(),
         }
     }
 
