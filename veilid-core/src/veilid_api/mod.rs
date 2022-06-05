@@ -1315,8 +1315,8 @@ impl PeerInfo {
 
 #[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Eq, Ord, Hash, Serialize, Deserialize)]
 pub struct PeerAddress {
-    pub socket_address: SocketAddress,
-    pub protocol_type: ProtocolType,
+    socket_address: SocketAddress,
+    protocol_type: ProtocolType,
 }
 
 impl PeerAddress {
@@ -1325,6 +1325,14 @@ impl PeerAddress {
             socket_address: socket_address.to_canonical(),
             protocol_type,
         }
+    }
+
+    pub fn socket_address(&self) -> &SocketAddress {
+        &self.socket_address
+    }
+
+    pub fn protocol_type(&self) -> ProtocolType {
+        self.protocol_type
     }
 
     pub fn to_socket_addr(&self) -> SocketAddr {
@@ -1338,8 +1346,8 @@ impl PeerAddress {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct ConnectionDescriptor {
-    pub remote: PeerAddress,
-    pub local: Option<SocketAddress>,
+    remote: PeerAddress,
+    local: Option<SocketAddress>,
 }
 
 impl ConnectionDescriptor {
@@ -1354,6 +1362,15 @@ impl ConnectionDescriptor {
             remote,
             local: None,
         }
+    }
+    pub fn remote(&self) -> PeerAddress {
+        self.remote
+    }
+    pub fn remote_address(&self) -> &SocketAddress {
+        self.remote.socket_address()
+    }
+    pub fn local(&self) -> Option<SocketAddress> {
+        self.local
     }
     pub fn protocol_type(&self) -> ProtocolType {
         self.remote.protocol_type

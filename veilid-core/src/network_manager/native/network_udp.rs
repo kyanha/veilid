@@ -55,7 +55,7 @@ impl Network {
 
                             // Network accounting
                             network_manager.stats_packet_rcvd(
-                                descriptor.remote.to_socket_addr().ip(),
+                                descriptor.remote_address().to_ip_addr(),
                                 size as u64,
                             );
 

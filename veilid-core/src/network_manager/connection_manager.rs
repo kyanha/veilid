@@ -127,7 +127,7 @@ impl ConnectionManager {
 
         if let Some(conn) = inner
             .connection_table
-            .get_last_connection_by_remote(descriptor.remote)
+            .get_last_connection_by_remote(descriptor.remote())
         {
             log_net!(
                 "== Returning existing connection local_addr={:?} peer_address={:?}",
@@ -138,34 +138,39 @@ impl ConnectionManager {
             return Ok(conn);
         }
 
-        // Drop any other protocols connections that have the same local addr
+        // Drop any other protocols connections to this remote that have the same local addr
         // otherwise this connection won't succeed due to binding
+        let mut killed = false;
         if let Some(local_addr) = local_addr {
             if local_addr.port() != 0 {
                 for pt in [ProtocolType::TCP, ProtocolType::WS, ProtocolType::WSS] {
-                    let pa = PeerAddress::new(descriptor.remote.socket_address, pt);
-                    for desc in inner
+                    let pa = PeerAddress::new(descriptor.remote_address().clone(), pt);
+                    for prior_descriptor in inner
                         .connection_table
                         .get_connection_descriptors_by_remote(pa)
                     {
                         let mut kill = false;
-                        if let Some(conn_local) = desc.local {
+                        // See if the local address would collide
+                        if let Some(prior_local) = prior_descriptor.local() {
                             if (local_addr.ip().is_unspecified()
-                                || (local_addr.ip() == conn_local.to_ip_addr()))
-                                && conn_local.port() == local_addr.port()
+                                || prior_local.to_ip_addr().is_unspecified()
+                                || (local_addr.ip() == prior_local.to_ip_addr()))
+                                && prior_local.port() == local_addr.port()
                             {
                                 kill = true;
                             }
                         }
                         if kill {
                             log_net!(debug
-                                ">< Terminating connection local_addr={:?} peer_address={:?}",
-                                local_addr.green(),
-                                pa.green()
+                                ">< Terminating connection prior_descriptor={:?}",
+                                prior_descriptor
                             );
-                            if let Err(e) = inner.connection_table.remove_connection(descriptor) {
+                            if let Err(e) =
+                                inner.connection_table.remove_connection(prior_descriptor)
+                            {
                                 log_net!(error e);
                             }
+                            killed = true;
                         }
                     }
                 }
@@ -173,7 +178,21 @@ impl ConnectionManager {
         }
 
         // Attempt new connection
-        let conn = ProtocolNetworkConnection::connect(local_addr, dial_info).await?;
+        let mut retry_count = if killed { 2 } else { 0 };
+
+        let conn = loop {
+            match ProtocolNetworkConnection::connect(local_addr, dial_info.clone()).await {
+                Ok(v) => break Ok(v),
+                Err(e) => {
+                    if retry_count == 0 {
+                        break Err(e);
+                    }
+                    log_net!(debug "get_or_create_connection retries left: {}", retry_count);
+                    retry_count -= 1;
+                    intf::sleep(500).await;
+                }
+            }
+        }?;
 
         self.on_new_protocol_network_connection(&mut *inner, conn)
     }

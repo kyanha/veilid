@@ -150,6 +150,12 @@ impl DiscoveryContext {
         redirect: bool,
     ) -> bool {
         let rpc = self.routing_table.rpc_processor();
+
+        // asking for node validation doesn't have to use the dial info filter of the dial info we are validating
+        let mut node_ref = node_ref.clone();
+        node_ref.set_filter(None);
+
+        // ask the node to send us a dial info validation receipt
         rpc.rpc_call_validate_dial_info(node_ref.clone(), dial_info, redirect)
             .await
             .map_err(logthru_net!(
@@ -229,7 +235,7 @@ impl DiscoveryContext {
 
     // If we know we are not behind NAT, check our firewall status
     pub async fn protocol_process_no_nat(&self) -> Result<(), String> {
-        let (node_b, external_1_dial_info) = {
+        let (node_1, external_1_dial_info) = {
             let inner = self.inner.lock();
             (
                 inner.node_1.as_ref().unwrap().clone(),
@@ -239,7 +245,7 @@ impl DiscoveryContext {
 
         // Do a validate_dial_info on the external address from a redirected node
         if self
-            .validate_dial_info(node_b.clone(), external_1_dial_info.clone(), true)
+            .validate_dial_info(node_1.clone(), external_1_dial_info.clone(), true)
             .await
         {
             // Add public dial info with Direct dialinfo class

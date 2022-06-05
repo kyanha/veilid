@@ -18,9 +18,9 @@ pub mod tests;
 pub use network_connection::*;
 
 ////////////////////////////////////////////////////////////////////////////////////////
+use connection_handle::*;
 use connection_limits::*;
 use connection_manager::*;
-use connection_handle::*;
 use dht::*;
 use hashlink::LruCache;
 use intf::*;
@@ -1048,7 +1048,7 @@ impl NetworkManager {
         );
 
         // Network accounting
-        self.stats_packet_rcvd(descriptor.remote.to_socket_addr().ip(), data.len() as u64);
+        self.stats_packet_rcvd(descriptor.remote_address().to_ip_addr(), data.len() as u64);
 
         // Ensure we can read the magic number
         if data.len() < 4 {

@@ -310,10 +310,10 @@ impl Network {
         // Handle connectionless protocol
         if descriptor.protocol_type() == ProtocolType::UDP {
             // send over the best udp socket we have bound since UDP is not connection oriented
-            let peer_socket_addr = descriptor.remote.to_socket_addr();
+            let peer_socket_addr = descriptor.remote().to_socket_addr();
             if let Some(ph) = self.find_best_udp_protocol_handler(
                 &peer_socket_addr,
-                &descriptor.local.map(|sa| sa.to_socket_addr()),
+                &descriptor.local().map(|sa| sa.to_socket_addr()),
             ) {
                 log_net!(
                     "send_data_to_existing_connection connectionless to {:?}",
@@ -345,7 +345,7 @@ impl Network {
 
             // Network accounting
             self.network_manager()
-                .stats_packet_sent(descriptor.remote.to_socket_addr().ip(), data_len as u64);
+                .stats_packet_sent(descriptor.remote().to_socket_addr().ip(), data_len as u64);
 
             // Data was consumed
             Ok(None)

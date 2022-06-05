@@ -243,10 +243,10 @@ impl WebsocketProtocolHandler {
             .map_err(logthru_net!())?;
 
         // Make our connection descriptor
-        let descriptor = ConnectionDescriptor {
-            local: Some(SocketAddress::from_socket_addr(actual_local_addr)),
-            remote: dial_info.to_peer_address(),
-        };
+        let descriptor = ConnectionDescriptor::new(
+            dial_info.to_peer_address(),
+            SocketAddress::from_socket_addr(actual_local_addr),
+        );
         // Negotiate TLS if this is WSS
         if tls {
             let connector = TlsConnector::default();

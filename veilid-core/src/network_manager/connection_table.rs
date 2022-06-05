@@ -43,7 +43,7 @@ impl ConnectionTable {
 
     pub fn add_connection(&mut self, conn: NetworkConnection) -> Result<(), String> {
         let descriptor = conn.connection_descriptor();
-        let ip_addr = descriptor.remote.socket_address.to_ip_addr();
+        let ip_addr = descriptor.remote_address().to_ip_addr();
 
         let index = protocol_to_index(descriptor.protocol_type());
         if self.conn_by_descriptor[index].contains_key(&descriptor) {
@@ -72,7 +72,7 @@ impl ConnectionTable {
         // add connection records
         let descriptors = self
             .descriptors_by_remote
-            .entry(descriptor.remote)
+            .entry(descriptor.remote())
             .or_default();
 
         warn!("add_connection: {:?}", descriptor);
@@ -125,10 +125,10 @@ impl ConnectionTable {
     }
 
     fn remove_connection_records(&mut self, descriptor: ConnectionDescriptor) {
-        let ip_addr = descriptor.remote.socket_address.to_ip_addr();
+        let ip_addr = descriptor.remote_address().to_ip_addr();
 
         // conns_by_remote
-        match self.descriptors_by_remote.entry(descriptor.remote) {
+        match self.descriptors_by_remote.entry(descriptor.remote()) {
             Entry::Vacant(_) => {
                 panic!("inconsistency in connection table")
             }

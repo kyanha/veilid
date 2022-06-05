@@ -317,9 +317,8 @@ impl NetworkConnection {
             }
 
             log_net!(
-                "== Connection loop finished local_addr={:?} remote={:?}",
-                descriptor.local.green(),
-                descriptor.remote.green()
+                "== Connection loop finished descriptor={:?}",
+                descriptor.green()
             );
 
             connection_manager

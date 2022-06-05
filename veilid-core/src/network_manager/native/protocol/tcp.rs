@@ -180,10 +180,10 @@ impl RawTcpProtocolHandler {
 
         // Wrap the stream in a network connection and return it
         let conn = ProtocolNetworkConnection::RawTcp(RawTcpNetworkConnection::new(
-            ConnectionDescriptor {
-                local: Some(SocketAddress::from_socket_addr(actual_local_address)),
-                remote: dial_info.to_peer_address(),
-            },
+            ConnectionDescriptor::new(
+                dial_info.to_peer_address(),
+                SocketAddress::from_socket_addr(actual_local_address),
+            ),
             ps,
             ts,
         ));

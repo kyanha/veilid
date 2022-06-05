@@ -799,7 +799,7 @@ impl RPCProcessor {
         let socket_address = peer_noderef
             .last_connection()
             .await
-            .map(|c| c.remote.socket_address);
+            .map(|c| c.remote_address().clone());
         SenderInfo { socket_address }
     }
 
@@ -905,27 +905,51 @@ impl RPCProcessor {
 
         // Redirect this request if we are asked to
         if redirect {
+
+            // Find peers capable of validating this dial info
+            // We filter on the -outgoing- protocol capability status not the node's dial info
+            // Use the address type though, to ensure we reach an ipv6 capable node if this is
+            // an ipv6 address
             let routing_table = self.routing_table();
-            let filter = dial_info.make_filter(true);
+            let filter = DialInfoFilter::global().with_address_type(dial_info.address_type());
             let sender_id = rpcreader.header.envelope.get_sender_id();
-            let peers = routing_table.find_fast_public_nodes_filtered(&filter);
+            let mut peers = routing_table.find_fast_public_nodes_filtered(&filter);
             if peers.is_empty() {
                 return Err(rpc_error_internal(format!(
                     "no peers matching filter '{:?}'",
                     filter
                 )));
             }
-            for peer in peers {
+            for peer in &mut peers {
 
                 // Ensure the peer is not the one asking for the validation
                 if peer.node_id() == sender_id {
                     continue;
-                }                
+                }
+   
+                // Release the filter on the peer because we don't need to send the redirect with the filter
+                // we just wanted to make sure we only selected nodes that were capable of
+                // using the correct protocol for the dial info being validated
+                peer.set_filter(None);
+
+                // Ensure the peer's status is known and that it is capable of
+                // making outbound connections for the dial info we want to verify                  
+                // and if this peer can validate dial info
+                let can_contact_dial_info = peer.operate(|e: &mut BucketEntry| {
+                    if let Some(ni) = &e.node_info() {
+                        ni.outbound_protocols.contains(dial_info.protocol_type()) && ni.can_validate_dial_info()
+                    } else {
+                        false
+                    }
+                });
+                if !can_contact_dial_info {
+                    continue;
+                }
 
                 // See if this peer will validate dial info
                 let will_validate_dial_info = peer.operate(|e: &mut BucketEntry| {
-                    if let Some(ni) = &e.peer_stats().status {
-                        ni.will_validate_dial_info
+                    if let Some(status) = &e.peer_stats().status {
+                        status.will_validate_dial_info
                     } else {
                         true
                     }
@@ -933,6 +957,7 @@ impl RPCProcessor {
                 if !will_validate_dial_info {
                     continue;
                 }
+
                 // Make a copy of the request, without the redirect flag
                 let vdi_msg_reader = {
                     let mut vdi_msg = ::capnp::message::Builder::new_default();
