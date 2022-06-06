@@ -9,12 +9,7 @@ FROM --platform amd64 ubuntu:16.04
 # Install build prerequisites
 deps-base:
     RUN apt-get -y update
-    RUN apt-get install -y software-properties-common
-    RUN add-apt-repository -y ppa:deadsnakes/ppa
-    RUN apt-get -y update
-    RUN apt-get install -y iproute2 curl build-essential cmake libssl-dev openssl file git pkg-config python3.8 python3.8-distutils python3.8-dev libdbus-1-dev libdbus-glib-1-dev libgirepository1.0-dev libcairo2-dev 
-    RUN apt-get remove -y python3.5
-    RUN curl https://bootstrap.pypa.io/get-pip.py | python3.8
+    RUN apt-get install -y iproute2 curl build-essential cmake libssl-dev openssl file git pkg-config libdbus-1-dev libdbus-glib-1-dev libgirepository1.0-dev libcairo2-dev 
 
 # Install Cap'n Proto
 deps-capnp:
@@ -57,17 +52,9 @@ deps-android:
     RUN cd /Android; unzip /Android/cmdline-tools.zip
     RUN yes | /Android/cmdline-tools/bin/sdkmanager --sdk_root=/Android/Sdk build-tools\;30.0.3 ndk\;22.0.7026061 cmake\;3.18.1 platform-tools platforms\;android-30
     
-# Install stub secrets daemon for keyring tests
-deps-secretsd:
-    FROM +deps-android
-    COPY scripts/earthly/secretsd /secretsd
-    RUN pip install -r /secretsd/requirements.txt
-    RUN pip install keyring
-    RUN cp /secretsd/dbus/org.freedesktop.secrets.service /usr/share/dbus-1/services/org.freedesktop.secrets.service
-
 # Clean up the apt cache to save space
 deps:
-    FROM +deps-secretsd
+    FROM +deps-android
     RUN apt-get clean
 
 code:

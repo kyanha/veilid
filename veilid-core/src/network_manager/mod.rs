@@ -1062,8 +1062,13 @@ impl NetworkManager {
         }
 
         // Decode envelope header (may fail signature validation)
-        let envelope =
-            Envelope::from_signed_data(data).map_err(|_| "envelope failed to decode".to_owned())?;
+        let envelope = Envelope::from_signed_data(data).map_err(|_| {
+            format!(
+                "envelope failed to decode from {:?}: {} bytes",
+                descriptor,
+                data.len()
+            )
+        })?;
 
         // Get routing table and rpc processor
         let (routing_table, rpc) = {
