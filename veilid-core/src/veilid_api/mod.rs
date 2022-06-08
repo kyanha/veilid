@@ -177,6 +177,24 @@ impl VeilidLogLevel {
             log::Level::Trace => VeilidLogLevel::Trace,
         }
     }
+    pub fn to_tracing_level(&self) -> tracing::Level {
+        match self {
+            Self::Error => tracing::Level::ERROR,
+            Self::Warn => tracing::Level::WARN,
+            Self::Info => tracing::Level::INFO,
+            Self::Debug => tracing::Level::DEBUG,
+            Self::Trace => tracing::Level::TRACE,
+        }
+    }
+    pub fn to_log_level(&self) -> log::Level {
+        match self {
+            Self::Error => log::Level::Error,
+            Self::Warn => log::Level::Warn,
+            Self::Info => log::Level::Info,
+            Self::Debug => log::Level::Debug,
+            Self::Trace => log::Level::Trace,
+        }
+    }
 }
 
 impl fmt::Display for VeilidLogLevel {

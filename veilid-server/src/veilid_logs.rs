@@ -10,17 +10,7 @@ pub struct VeilidLogs {
     pub guard: Option<non_blocking::WorkerGuard>,
 }
 
-fn logfilter<T: AsRef<str>, V: AsRef<[T]>>(
-    metadata: &Metadata,
-    max_level: veilid_core::VeilidLogLevel,
-    ignore_list: V,
-) -> bool {
-    // Skip things out of level
-    let log_level = veilid_core::VeilidLogLevel::from_tracing_level(*metadata.level());
-    if log_level <= max_level {
-        return true;
-    }
-
+fn logfilter<T: AsRef<str>, V: AsRef<[T]>>(metadata: &Metadata, ignore_list: V) -> bool {
     // Skip filtered targets
     !match (metadata.target(), ignore_list.as_ref()) {
         (path, ignore) if !ignore.is_empty() => {
@@ -44,21 +34,19 @@ impl VeilidLogs {
 
         let subscriber = Registry::default();
 
-        let subscriber = subscriber.with(
-            EnvFilter::builder()
-                .with_default_directive(level_filters::LevelFilter::INFO.into())
-                .from_env_lossy(),
-        );
-
         let subscriber = subscriber.with(if settingsr.logging.terminal.enabled {
-            let terminal_max_log_level = convert_loglevel(settingsr.logging.terminal.level);
+            let terminal_max_log_level: level_filters::LevelFilter =
+                convert_loglevel(settingsr.logging.terminal.level)
+                    .to_tracing_level()
+                    .into();
             let ignore_list = ignore_list.clone();
             Some(
                 fmt::Layer::new()
                     .compact()
                     .with_writer(std::io::stdout)
+                    .with_filter(terminal_max_log_level)
                     .with_filter(filter::FilterFn::new(move |metadata| {
-                        logfilter(metadata, terminal_max_log_level, &ignore_list)
+                        logfilter(metadata, &ignore_list)
                     })),
             )
         } else {
@@ -67,7 +55,10 @@ impl VeilidLogs {
 
         let mut guard = None;
         let subscriber = subscriber.with(if settingsr.logging.file.enabled {
-            let file_max_log_level = convert_loglevel(settingsr.logging.file.level);
+            let file_max_log_level: level_filters::LevelFilter =
+                convert_loglevel(settingsr.logging.file.level)
+                    .to_tracing_level()
+                    .into();
 
             let log_path = Path::new(&settingsr.logging.file.path);
             let full_path = std::env::current_dir()
@@ -98,8 +89,9 @@ impl VeilidLogs {
                 fmt::Layer::new()
                     .compact()
                     .with_writer(non_blocking_appender)
+                    .with_filter(file_max_log_level)
                     .with_filter(filter::FilterFn::new(move |metadata| {
-                        logfilter(metadata, file_max_log_level, &ignore_list)
+                        logfilter(metadata, &ignore_list)
                     })),
             )
         } else {
@@ -117,10 +109,13 @@ impl VeilidLogs {
             if #[cfg(target_os = "linux")] {
                 let subscriber = subscriber.with(if settingsr.logging.system.enabled {
                     let ignore_list = ignore_list.clone();
-                    let system_max_log_level = convert_loglevel(settingsr.logging.system.level);
-                    Some(tracing_journald::layer().map_err(|e| format!("failed to set up journald logging: {}", e))?.with_filter(filter::FilterFn::new(move |metadata| {
-                        logfilter(metadata, system_max_log_level, &ignore_list)
-                    })))
+                    let system_max_log_level: level_filters::LevelFilter = convert_loglevel(settingsr.logging.system.level).to_tracing_level().into();
+                    Some(tracing_journald::layer().map_err(|e| format!("failed to set up journald logging: {}", e))?
+                        .with_filter(system_max_log_level)
+                        .with_filter(filter::FilterFn::new(move |metadata| {
+                            logfilter(metadata, &ignore_list)
+                        }))
+                    )
                 } else {
                     None
                 });
