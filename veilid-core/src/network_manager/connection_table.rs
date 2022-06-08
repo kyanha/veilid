@@ -64,7 +64,7 @@ impl ConnectionTable {
         // then drop the least recently used connection
         if self.conn_by_descriptor[index].len() > self.max_connections[index] {
             if let Some((lruk, _)) = self.conn_by_descriptor[index].remove_lru() {
-                warn!("XX: connection lru out: {:?}", lruk);
+                debug!("connection lru out: {:?}", lruk);
                 self.remove_connection_records(lruk);
             }
         }
@@ -75,14 +75,12 @@ impl ConnectionTable {
             .entry(descriptor.remote())
             .or_default();
 
-        warn!("add_connection: {:?}", descriptor);
         descriptors.push(descriptor);
 
         Ok(())
     }
 
     pub fn get_connection(&mut self, descriptor: ConnectionDescriptor) -> Option<ConnectionHandle> {
-        warn!("get_connection: {:?}", descriptor);
         let index = protocol_to_index(descriptor.protocol_type());
         let out = self.conn_by_descriptor[index].get(&descriptor);
         out.map(|c| c.get_handle())
@@ -92,7 +90,6 @@ impl ConnectionTable {
         &mut self,
         remote: PeerAddress,
     ) -> Option<ConnectionHandle> {
-        warn!("get_last_connection_by_remote: {:?}", remote);
         let descriptor = self
             .descriptors_by_remote
             .get(&remote)
@@ -113,7 +110,6 @@ impl ConnectionTable {
         &mut self,
         remote: PeerAddress,
     ) -> Vec<ConnectionDescriptor> {
-        warn!("get_connection_descriptors_by_remote: {:?}", remote);
         self.descriptors_by_remote
             .get(&remote)
             .cloned()
@@ -154,7 +150,6 @@ impl ConnectionTable {
     }
 
     pub fn remove_connection(&mut self, descriptor: ConnectionDescriptor) -> Result<(), String> {
-        warn!("remove_connection: {:?}", descriptor);
         let index = protocol_to_index(descriptor.protocol_type());
         let _ = self.conn_by_descriptor[index]
             .remove(&descriptor)

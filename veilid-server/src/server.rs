@@ -1,6 +1,6 @@
 use crate::client_api;
 use crate::settings::*;
-use flume::{bounded, Receiver, Sender};
+use flume::{unbounded, Receiver, Sender};
 use lazy_static::*;
 use parking_lot::Mutex;
 use std::sync::Arc;
@@ -45,7 +45,7 @@ pub async fn run_veilid_server_internal(
     let (sender, receiver): (
         Sender<veilid_core::VeilidUpdate>,
         Receiver<veilid_core::VeilidUpdate>,
-    ) = bounded(1);
+    ) = unbounded();
 
     // Create VeilidCore setup
     let update_callback = Arc::new(move |change: veilid_core::VeilidUpdate| {

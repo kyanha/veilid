@@ -32,7 +32,16 @@ fn do_clap_matches(default_config_path: &OsStr) -> Result<clap::ArgMatches, clap
                 .default_value_os(default_config_path)
                 .allow_invalid_utf8(true)
                 .help("Specify a configuration file to use"),
-        ).arg(
+        )
+        .arg(
+            Arg::new("set-config")
+                .short('s')
+                .long("set-config")
+                .takes_value(true)
+                .multiple_occurrences(true)
+                .help("Specify configuration value to set (key in dot format, value in json format), eg: logging.api.enabled=true")
+        )
+        .arg(
             Arg::new("attach")
                 .long("attach")
                 .takes_value(true)
@@ -270,9 +279,20 @@ pub fn process_command_line() -> Result<(Settings, ArgMatches), String> {
         };
         settingsrw.core.network.bootstrap_nodes = bootstrap_list;
     }
+    drop(settingsrw);
+
+    // Set specific config settings
+    if let Some(set_configs) = matches.values_of("set-config") {
+        for set_config in set_configs {
+            if let Some((k, v)) = set_config.split_once('=') {
+                let k = k.trim();
+                let v = v.trim();
+                settings.set(k, v)?;
+            }
+        }
+    }
 
     // Apply subnode index if we're testing
-    drop(settingsrw);
     settings
         .apply_subnode_index()
         .map_err(|_| "failed to apply subnode index".to_owned())?;

@@ -849,6 +849,142 @@ impl Settings {
         pk_path
     }
 
+    pub fn set(&self, key: &str, value: &str) -> Result<(), String> {
+        let mut inner = self.inner.write();
+
+        macro_rules! set_config_value {
+            ($innerkey:expr, $value:expr) => {{
+                let innerkeyname = &stringify!($innerkey)[6..];
+                if innerkeyname == key {
+                    match veilid_core::deserialize_json(value) {
+                        Ok(v) => {
+                            $innerkey = v;
+                            return Ok(());
+                        }
+                        Err(e) => {
+                            return Err(format!(
+                                "invalid type for key {}, value: {}: {}",
+                                key, value, e
+                            ))
+                        }
+                    }
+                }
+            }};
+        }
+        set_config_value!(inner.daemon.enabled, value);
+        set_config_value!(inner.client_api.enabled, value);
+        set_config_value!(inner.client_api.listen_address, value);
+        set_config_value!(inner.auto_attach, value);
+        set_config_value!(inner.logging.system.enabled, value);
+        set_config_value!(inner.logging.system.level, value);
+        set_config_value!(inner.logging.terminal.enabled, value);
+        set_config_value!(inner.logging.terminal.level, value);
+        set_config_value!(inner.logging.file.enabled, value);
+        set_config_value!(inner.logging.file.path, value);
+        set_config_value!(inner.logging.file.append, value);
+        set_config_value!(inner.logging.file.level, value);
+        set_config_value!(inner.logging.api.enabled, value);
+        set_config_value!(inner.logging.api.level, value);
+        set_config_value!(inner.testing.subnode_index, value);
+        set_config_value!(inner.core.protected_store.allow_insecure_fallback, value);
+        set_config_value!(
+            inner.core.protected_store.always_use_insecure_storage,
+            value
+        );
+        set_config_value!(
+            inner.core.protected_store.insecure_fallback_directory,
+            value
+        );
+        set_config_value!(inner.core.protected_store.delete, value);
+        set_config_value!(inner.core.table_store.directory, value);
+        set_config_value!(inner.core.table_store.delete, value);
+        set_config_value!(inner.core.block_store.directory, value);
+        set_config_value!(inner.core.block_store.delete, value);
+        set_config_value!(inner.core.network.connection_initial_timeout_ms, value);
+        set_config_value!(inner.core.network.connection_inactivity_timeout_ms, value);
+        set_config_value!(inner.core.network.max_connections_per_ip4, value);
+        set_config_value!(inner.core.network.max_connections_per_ip6_prefix, value);
+        set_config_value!(
+            inner.core.network.max_connections_per_ip6_prefix_size,
+            value
+        );
+        set_config_value!(inner.core.network.max_connection_frequency_per_min, value);
+        set_config_value!(inner.core.network.client_whitelist_timeout_ms, value);
+        set_config_value!(inner.core.network.reverse_connection_receipt_time_ms, value);
+        set_config_value!(inner.core.network.hole_punch_receipt_time_ms, value);
+        set_config_value!(inner.core.network.node_id, value);
+        set_config_value!(inner.core.network.node_id_secret, value);
+        set_config_value!(inner.core.network.bootstrap, value);
+        set_config_value!(inner.core.network.bootstrap_nodes, value);
+        set_config_value!(inner.core.network.routing_table.limit_over_attached, value);
+        set_config_value!(inner.core.network.routing_table.limit_fully_attached, value);
+        set_config_value!(
+            inner.core.network.routing_table.limit_attached_strong,
+            value
+        );
+        set_config_value!(inner.core.network.routing_table.limit_attached_good, value);
+        set_config_value!(inner.core.network.routing_table.limit_attached_weak, value);
+        set_config_value!(inner.core.network.rpc.concurrency, value);
+        set_config_value!(inner.core.network.rpc.queue_size, value);
+        set_config_value!(inner.core.network.rpc.max_timestamp_behind_ms, value);
+        set_config_value!(inner.core.network.rpc.max_timestamp_ahead_ms, value);
+        set_config_value!(inner.core.network.rpc.timeout_ms, value);
+        set_config_value!(inner.core.network.rpc.max_route_hop_count, value);
+        set_config_value!(inner.core.network.dht.resolve_node_timeout_ms, value);
+        set_config_value!(inner.core.network.dht.resolve_node_count, value);
+        set_config_value!(inner.core.network.dht.resolve_node_fanout, value);
+        set_config_value!(inner.core.network.dht.max_find_node_count, value);
+        set_config_value!(inner.core.network.dht.get_value_timeout_ms, value);
+        set_config_value!(inner.core.network.dht.get_value_count, value);
+        set_config_value!(inner.core.network.dht.get_value_fanout, value);
+        set_config_value!(inner.core.network.dht.set_value_timeout_ms, value);
+        set_config_value!(inner.core.network.dht.set_value_count, value);
+        set_config_value!(inner.core.network.dht.set_value_fanout, value);
+        set_config_value!(inner.core.network.dht.min_peer_count, value);
+        set_config_value!(inner.core.network.dht.min_peer_refresh_time_ms, value);
+        set_config_value!(
+            inner.core.network.dht.validate_dial_info_receipt_time_ms,
+            value
+        );
+        set_config_value!(inner.core.network.upnp, value);
+        set_config_value!(inner.core.network.natpmp, value);
+        set_config_value!(inner.core.network.enable_local_peer_scope, value);
+        set_config_value!(inner.core.network.restricted_nat_retries, value);
+        set_config_value!(inner.core.network.tls.certificate_path, value);
+        set_config_value!(inner.core.network.tls.private_key_path, value);
+        set_config_value!(inner.core.network.tls.connection_initial_timeout_ms, value);
+        set_config_value!(inner.core.network.application.https.enabled, value);
+        set_config_value!(inner.core.network.application.https.listen_address, value);
+        set_config_value!(inner.core.network.application.https.path, value);
+        set_config_value!(inner.core.network.application.https.url, value);
+        set_config_value!(inner.core.network.application.http.enabled, value);
+        set_config_value!(inner.core.network.application.http.listen_address, value);
+        set_config_value!(inner.core.network.application.http.path, value);
+        set_config_value!(inner.core.network.application.http.url, value);
+        set_config_value!(inner.core.network.protocol.udp.enabled, value);
+        set_config_value!(inner.core.network.protocol.udp.socket_pool_size, value);
+        set_config_value!(inner.core.network.protocol.udp.listen_address, value);
+        set_config_value!(inner.core.network.protocol.udp.public_address, value);
+        set_config_value!(inner.core.network.protocol.tcp.connect, value);
+        set_config_value!(inner.core.network.protocol.tcp.listen, value);
+        set_config_value!(inner.core.network.protocol.tcp.max_connections, value);
+        set_config_value!(inner.core.network.protocol.tcp.listen_address, value);
+        set_config_value!(inner.core.network.protocol.tcp.public_address, value);
+        set_config_value!(inner.core.network.protocol.ws.connect, value);
+        set_config_value!(inner.core.network.protocol.ws.listen, value);
+        set_config_value!(inner.core.network.protocol.ws.max_connections, value);
+        set_config_value!(inner.core.network.protocol.ws.listen_address, value);
+        set_config_value!(inner.core.network.protocol.ws.path, value);
+        set_config_value!(inner.core.network.protocol.ws.url, value);
+        set_config_value!(inner.core.network.protocol.wss.connect, value);
+        set_config_value!(inner.core.network.protocol.wss.listen, value);
+        set_config_value!(inner.core.network.protocol.wss.max_connections, value);
+        set_config_value!(inner.core.network.protocol.wss.listen_address, value);
+        set_config_value!(inner.core.network.protocol.wss.path, value);
+        set_config_value!(inner.core.network.protocol.wss.url, value);
+        Err("settings key not found".to_owned())
+    }
+
     pub fn get_core_config_callback(&self) -> veilid_core::ConfigCallback {
         let inner = self.inner.clone();
 
