@@ -15,6 +15,12 @@ fn logfilter<T: AsRef<str>, V: AsRef<[T]>>(
     max_level: veilid_core::VeilidLogLevel,
     ignore_list: V,
 ) -> bool {
+    // Skip things out of level
+    let log_level = veilid_core::VeilidLogLevel::from_tracing_level(*metadata.level());
+    if log_level <= max_level {
+        return true;
+    }
+
     // Skip filtered targets
     !match (metadata.target(), ignore_list.as_ref()) {
         (path, ignore) if !ignore.is_empty() => {
@@ -46,6 +52,7 @@ impl VeilidLogs {
 
         let subscriber = subscriber.with(if settingsr.logging.terminal.enabled {
             let terminal_max_log_level = convert_loglevel(settingsr.logging.terminal.level);
+            let ignore_list = ignore_list.clone();
             Some(
                 fmt::Layer::new()
                     .compact()
@@ -86,11 +93,12 @@ impl VeilidLogs {
                 tracing_appender::non_blocking(appender);
             guard = Some(non_blocking_guard);
 
+            let ignore_list = ignore_list.clone();
             Some(
                 fmt::Layer::new()
                     .compact()
                     .with_writer(non_blocking_appender)
-                    .with_filter(filter::FilterFn::new(|metadata| {
+                    .with_filter(filter::FilterFn::new(move |metadata| {
                         logfilter(metadata, file_max_log_level, &ignore_list)
                     })),
             )
@@ -108,8 +116,9 @@ impl VeilidLogs {
         cfg_if! {
             if #[cfg(target_os = "linux")] {
                 let subscriber = subscriber.with(if settingsr.logging.system.enabled {
+                    let ignore_list = ignore_list.clone();
                     let system_max_log_level = convert_loglevel(settingsr.logging.system.level);
-                    Some(tracing_journald::layer().map_err(|e| format!("failed to set up journald logging: {}", e))?.with_filter(filter::FilterFn::new(|metadata| {
+                    Some(tracing_journald::layer().map_err(|e| format!("failed to set up journald logging: {}", e))?.with_filter(filter::FilterFn::new(move |metadata| {
                         logfilter(metadata, system_max_log_level, &ignore_list)
                     })))
                 } else {

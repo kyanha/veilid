@@ -93,7 +93,7 @@ pub fn run_daemon(settings: Settings, _matches: ArgMatches) -> Result<(), String
     };
 
     // Init combined console/file logger
-    let logs = VeilidLogs::setup(settings.clone())?;
+    let _logs = VeilidLogs::setup(settings.clone())?;
 
     // Daemonize
     daemon
@@ -109,7 +109,7 @@ pub fn run_daemon(settings: Settings, _matches: ArgMatches) -> Result<(), String
 
         let signals_task = async_std::task::spawn(handle_signals(signals));
 
-        let res = run_veilid_server(settings, logs, ServerMode::Normal).await;
+        let res = run_veilid_server(settings, ServerMode::Normal).await;
 
         // Terminate the signal stream.
         handle.close();

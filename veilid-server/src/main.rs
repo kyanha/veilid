@@ -4,7 +4,6 @@
 
 mod client_api;
 mod cmdline;
-mod log_safe_channel;
 mod server;
 mod settings;
 #[cfg(unix)]
@@ -58,9 +57,9 @@ fn main() -> Result<(), String> {
     // Handle non-normal server modes
     if !matches!(server_mode, ServerMode::Normal) {
         // Init combined console/file logger
-        let logs = VeilidLogs::setup(settings.clone())?;
+        let _logs = VeilidLogs::setup(settings.clone())?;
         // run the server to set the node id and quit
-        return task::block_on(async { run_veilid_server(settings, logs, server_mode).await })
+        return task::block_on(async { run_veilid_server(settings, server_mode).await })
             .map(|v| {
                 println!("{}", success);
                 v
@@ -83,7 +82,7 @@ fn main() -> Result<(), String> {
     }
 
     // Init combined console/file logger
-    let logs = VeilidLogs::setup(settings.clone())?;
+    let _logs = VeilidLogs::setup(settings.clone())?;
 
     // --- Normal Startup ---
     ctrlc::set_handler(move || {
@@ -92,5 +91,5 @@ fn main() -> Result<(), String> {
     .expect("Error setting Ctrl-C handler");
 
     // Run the server loop
-    task::block_on(async { run_veilid_server(settings, logs, server_mode).await })
+    task::block_on(async { run_veilid_server(settings, server_mode).await })
 }

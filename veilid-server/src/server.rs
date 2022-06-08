@@ -1,6 +1,5 @@
 use crate::client_api;
 use crate::settings::*;
-use crate::veilid_logs::*;
 use flume::{bounded, Receiver, Sender};
 use lazy_static::*;
 use parking_lot::Mutex;
@@ -28,12 +27,8 @@ pub fn shutdown() {
     }
 }
 
-pub async fn run_veilid_server(
-    settings: Settings,
-    logs: VeilidLogs,
-    server_mode: ServerMode,
-) -> Result<(), String> {
-    run_veilid_server_internal(settings, logs, server_mode)
+pub async fn run_veilid_server(settings: Settings, server_mode: ServerMode) -> Result<(), String> {
+    run_veilid_server_internal(settings, server_mode)
         .await
         .map_err(|e| {
             error!("{}", e);
@@ -42,7 +37,6 @@ pub async fn run_veilid_server(
 }
 pub async fn run_veilid_server_internal(
     settings: Settings,
-    logs: VeilidLogs,
     server_mode: ServerMode,
 ) -> Result<(), String> {
     let settingsr = settings.read();

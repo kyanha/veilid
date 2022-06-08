@@ -1,6 +1,5 @@
 use crate::command_processor::*;
 use crate::settings::Settings;
-use crate::veilid_client_capnp::*;
 use crossbeam_channel::Sender;
 use cursive::align::*;
 use cursive::event::*;
@@ -15,7 +14,7 @@ use log::*;
 use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 use std::rc::Rc;
-// use thiserror::Error;
+use veilid_core::*;
 
 //////////////////////////////////////////////////////////////
 ///
@@ -280,9 +279,8 @@ impl UI {
                 .button("Close", move |s| {
                     s.pop_layer();
                     close_cb(s);
-                })
-                //.wrap_with(CircularFocus::new)
-                //.wrap_tab(),
+                }), //.wrap_with(CircularFocus::new)
+                    //.wrap_tab(),
         );
         s.set_global_callback(cursive::event::Event::Key(Key::Esc), move |s| {
             s.set_global_callback(cursive::event::Event::Key(Key::Esc), UI::quit_handler);

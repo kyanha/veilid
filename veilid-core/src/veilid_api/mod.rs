@@ -179,6 +179,19 @@ impl VeilidLogLevel {
     }
 }
 
+impl fmt::Display for VeilidLogLevel {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        let text = match self {
+            Self::Error => "ERROR",
+            Self::Warn => "WARN",
+            Self::Info => "INFO",
+            Self::Debug => "DEBUG",
+            Self::Trace => "TRACE",
+        };
+        write!(f, "{}", text)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VeilidStateLog {
     pub log_level: VeilidLogLevel,

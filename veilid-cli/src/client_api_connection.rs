@@ -8,6 +8,7 @@ use std::cell::RefCell;
 use std::net::SocketAddr;
 use std::rc::Rc;
 use veilid_core::xx::*;
+use veilid_core::*;
 
 macro_rules! capnp_failed {
     ($ex:expr) => {{
@@ -15,6 +16,17 @@ macro_rules! capnp_failed {
         error!("{}", msg);
         Promise::err(capnp::Error::failed(msg))
     }};
+}
+
+macro_rules! pry_result {
+    ($ex:expr) => {
+        match $ex {
+            Ok(v) => v,
+            Err(e) => {
+                return capnp_failed!(e);
+            }
+        }
+    };
 }
 
 struct VeilidClientImpl {
@@ -34,55 +46,21 @@ impl veilid_client::Server for VeilidClientImpl {
         _results: veilid_client::UpdateResults,
     ) -> Promise<(), ::capnp::Error> {
         let veilid_update = pry!(pry!(params.get()).get_veilid_update());
+        let veilid_update: VeilidUpdate = pry_result!(deserialize_json(veilid_update));
 
-        let which = match veilid_update.which() {
-            Ok(v) => v,
-            Err(e) => {
-                return capnp_failed!(format!("(missing update kind in schema: {:?})", e));
+        match veilid_update {
+            VeilidUpdate::Log(log) => {
+                self.comproc.update_log(log);
             }
-        };
-        match which {
-            veilid_update::Attachment(Ok(attachment)) => {
-                let state = pry!(attachment.get_state());
-
-                trace!("Attachment: {}", state as u16);
-                self.comproc.update_attachment(state);
+            VeilidUpdate::Attachment(attachment) => {
+                self.comproc.update_attachment(attachment);
             }
-            veilid_update::Attachment(Err(e)) => {
-                return capnp_failed!(format!("Update Attachment Error: {}", e));
+            VeilidUpdate::Network(network) => {
+                self.comproc.update_network_status(network);
             }
-            veilid_update::Network(Ok(network)) => {
-                let started = network.get_started();
-                let bps_down = network.get_bps_down();
-                let bps_up = network.get_bps_up();
-
-                trace!(
-                    "Network: started: {}  bps_down: {}  bps_up: {}",
-                    started,
-                    bps_down,
-                    bps_up
-                );
-                self.comproc
-                    .update_network_status(started, bps_down, bps_up);
-            }
-            veilid_update::Network(Err(e)) => {
-                return capnp_failed!(format!("Update Network Error: {}", e));
-            }
-            veilid_update::Shutdown(()) => {
-                return capnp_failed!("Should not get Shutdown here".to_owned());
-            }
+            VeilidUpdate::Shutdown => self.comproc.update_shutdown(),
         }
 
-        Promise::ok(())
-    }
-
-    fn log_message(
-        &mut self,
-        params: veilid_client::LogMessageParams,
-        _results: veilid_client::LogMessageResults,
-    ) -> Promise<(), ::capnp::Error> {
-        let message = pry!(pry!(params.get()).get_message());
-        self.comproc.add_log_message(message);
         Promise::ok(())
     }
 }
@@ -116,53 +94,20 @@ impl ClientApiConnection {
     }
     async fn process_veilid_state<'a>(
         &'a mut self,
-        veilid_state: veilid_state::Reader<'a>,
+        veilid_state: VeilidState,
     ) -> Result<(), String> {
         let mut inner = self.inner.borrow_mut();
-
-        // Process attachment state
-        let attachment = veilid_state
-            .reborrow()
-            .get_attachment()
-            .map_err(map_to_string)?;
-        let attachment_state = attachment.get_state().map_err(map_to_string)?;
-
-        let network = veilid_state
-            .reborrow()
-            .get_network()
-            .map_err(map_to_string)?;
-        let started = network.get_started();
-        let bps_down = network.get_bps_down();
-        let bps_up = network.get_bps_up();
-
-        inner.comproc.update_attachment(attachment_state);
-        inner
-            .comproc
-            .update_network_status(started, bps_down, bps_up);
+        inner.comproc.update_attachment(veilid_state.attachment);
+        inner.comproc.update_network_status(veilid_state.network);
 
         Ok(())
     }
 
-    async fn handle_connection(&mut self) -> Result<(), String> {
-        trace!("ClientApiConnection::handle_connection");
-        let connect_addr = self.inner.borrow().connect_addr.unwrap();
-        // Connect the TCP socket
-        let stream = async_std::net::TcpStream::connect(connect_addr)
-            .await
-            .map_err(map_to_string)?;
-        // If it succeed, disable nagle algorithm
-        stream.set_nodelay(true).map_err(map_to_string)?;
-
-        // Create the VAT network
-        let (reader, writer) = stream.split();
-        let rpc_network = Box::new(twoparty::VatNetwork::new(
-            reader,
-            writer,
-            rpc_twoparty_capnp::Side::Client,
-            Default::default(),
-        ));
-        // Create the rpc system
-        let mut rpc_system = RpcSystem::new(rpc_network, None);
+    async fn spawn_rpc_system(
+        &mut self,
+        connect_addr: SocketAddr,
+        mut rpc_system: RpcSystem<rpc_twoparty_capnp::Side>,
+    ) -> Result<(), String> {
         let mut request;
         {
             let mut inner = self.inner.borrow_mut();
@@ -195,29 +140,72 @@ impl ClientApiConnection {
                 ));
         }
 
-        // Process the rpc system until we decide we're done
-        if let Ok(rpc_jh) = AsyncStd.spawn_handle_local(rpc_system) {
-            // Send the request and get the state object and the registration object
-            if let Ok(response) = request.send().promise.await {
-                if let Ok(response) = response.get() {
-                    if let Ok(_registration) = response.get_registration() {
-                        if let Ok(state) = response.get_state() {
-                            // Set up our state for the first time
-                            if self.process_veilid_state(state).await.is_ok() {
-                                // Don't drop the registration, doing so will remove the client
-                                // object mapping from the server which we need for the update backchannel
+        let rpc_jh = AsyncStd
+            .spawn_handle_local(rpc_system)
+            .map_err(|e| format!("failed to spawn rpc system: {}", e))?;
 
-                                // Wait until rpc system completion or disconnect was requested
-                                if let Err(e) = rpc_jh.await {
-                                    error!("Client RPC system error: {}", e);
-                                }
-                            }
-                        }
-                    }
-                }
+        // Send the request and get the state object and the registration object
+        let response = request
+            .send()
+            .promise
+            .await
+            .map_err(|e| format!("failed to send register request: {}", e))?;
+        let response = response
+            .get()
+            .map_err(|e| format!("failed to get register response: {}", e))?;
+
+        // Get the registration object, which drops our connection when it is dropped
+        let _registration = response
+            .get_registration()
+            .map_err(|e| format!("failed to get registration object: {}", e))?;
+
+        // Get the initial veilid state
+        let veilid_state = response
+            .get_state()
+            .map_err(|e| format!("failed to get initial veilid state: {}", e))?;
+
+        // Set up our state for the first time
+        let veilid_state: VeilidState = deserialize_json(veilid_state)
+            .map_err(|e| format!("failed to get deserialize veilid state: {}", e))?;
+        self.process_veilid_state(veilid_state).await?;
+
+        // Don't drop the registration, doing so will remove the client
+        // object mapping from the server which we need for the update backchannel
+
+        // Wait until rpc system completion or disconnect was requested
+        rpc_jh
+            .await
+            .map_err(|e| format!("client RPC system error: {}", e))
+    }
+
+    async fn handle_connection(&mut self) -> Result<(), String> {
+        trace!("ClientApiConnection::handle_connection");
+        let connect_addr = self.inner.borrow().connect_addr.unwrap();
+        // Connect the TCP socket
+        let stream = async_std::net::TcpStream::connect(connect_addr)
+            .await
+            .map_err(map_to_string)?;
+        // If it succeed, disable nagle algorithm
+        stream.set_nodelay(true).map_err(map_to_string)?;
+
+        // Create the VAT network
+        let (reader, writer) = stream.split();
+        let rpc_network = Box::new(twoparty::VatNetwork::new(
+            reader,
+            writer,
+            rpc_twoparty_capnp::Side::Client,
+            Default::default(),
+        ));
+
+        // Create the rpc system
+        let rpc_system = RpcSystem::new(rpc_network, None);
+
+        // Process the rpc system until we decide we're done
+        match self.spawn_rpc_system(connect_addr, rpc_system).await {
+            Ok(()) => {}
+            Err(e) => {
+                error!("Failed to spawn client RPC system: {}", e);
             }
-        } else {
-            error!("Failed to spawn client RPC system");
         }
 
         // Drop the server and disconnector too (if we still have it)

@@ -1,7 +1,6 @@
 use crate::client_api_connection::*;
 use crate::settings::Settings;
 use crate::ui::*;
-use crate::veilid_client_capnp::*;
 use async_std::prelude::FutureExt;
 use log::*;
 use std::cell::*;
@@ -273,18 +272,23 @@ debug               - send a debugging command to the Veilid server
     // called by client_api_connection
     // calls into ui
     ////////////////////////////////////////////
-    pub fn update_attachment(&mut self, state: AttachmentState) {
-        self.inner_mut().ui.set_attachment_state(state);
+    pub fn update_attachment(&mut self, attachment: veilid_core::VeilidStateAttachment) {
+        self.inner_mut().ui.set_attachment_state(attachment.state);
     }
 
-    pub fn update_network_status(&mut self, started: bool, bps_down: u64, bps_up: u64) {
+    pub fn update_network_status(&mut self, network: veilid_core::VeilidStateNetwork) {
         self.inner_mut()
             .ui
-            .set_network_status(started, bps_down, bps_up);
+            .set_network_status(network.started, network.bps_down, network.bps_up);
     }
 
-    pub fn add_log_message(&mut self, message: &str) {
-        self.inner().ui.add_node_event(message);
+    pub fn update_log(&mut self, log: veilid_core::VeilidStateLog) {
+        let message = format!("{}: {}", log.log_level, log.message);
+        self.inner().ui.add_node_event(&message);
+    }
+
+    pub fn update_shutdown(&mut self) {
+        // Do nothing with this, we'll process shutdown when rpc connection closes
     }
 
     // called by client_api_connection
