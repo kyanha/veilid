@@ -139,11 +139,11 @@ pub fn get_veilid_state() -> Promise {
 }
 
 #[wasm_bindgen()]
-pub fn change_log_level(log_level: String) -> Promise {
+pub fn change_api_log_level(log_level: String) -> Promise {
     wrap_api_future(async move {
         let veilid_api = get_veilid_api()?;
         let log_level: veilid_core::VeilidConfigLogLevel = deserialize_json(&log_level)?;
-        veilid_api.change_log_level(log_level).await;
+        veilid_api.change_api_log_level(log_level).await;
         APIRESULT_UNDEFINED
     })
 }

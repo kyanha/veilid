@@ -1,7 +1,9 @@
 #![allow(dead_code)]
 
 mod debug;
+mod serialize_helpers;
 pub use debug::*;
+pub use serialize_helpers::*;
 
 use crate::*;
 
@@ -21,6 +23,7 @@ pub use network_manager::NetworkManager;
 pub use routing_table::RoutingTable;
 pub use rpc_processor::StatusAnswer;
 
+use api_tracing_layer::*;
 use core::fmt;
 use core_context::{api_shutdown, VeilidCoreContext};
 use enumset::*;
@@ -146,7 +149,7 @@ macro_rules! parse_error {
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Copy, Serialize, Deserialize)]
 pub enum VeilidLogLevel {
     Error = 1,
     Warn,
@@ -156,13 +159,22 @@ pub enum VeilidLogLevel {
 }
 
 impl VeilidLogLevel {
+    pub fn from_tracing_level(level: tracing::Level) -> VeilidLogLevel {
+        match level {
+            tracing::Level::ERROR => VeilidLogLevel::Error,
+            tracing::Level::WARN => VeilidLogLevel::Warn,
+            tracing::Level::INFO => VeilidLogLevel::Info,
+            tracing::Level::DEBUG => VeilidLogLevel::Debug,
+            tracing::Level::TRACE => VeilidLogLevel::Trace,
+        }
+    }
     pub fn from_log_level(level: log::Level) -> VeilidLogLevel {
         match level {
-            Level::Error => VeilidLogLevel::Error,
-            Level::Warn => VeilidLogLevel::Warn,
-            Level::Info => VeilidLogLevel::Info,
-            Level::Debug => VeilidLogLevel::Debug,
-            Level::Trace => VeilidLogLevel::Trace,
+            log::Level::Error => VeilidLogLevel::Error,
+            log::Level::Warn => VeilidLogLevel::Warn,
+            log::Level::Info => VeilidLogLevel::Info,
+            log::Level::Debug => VeilidLogLevel::Debug,
+            log::Level::Trace => VeilidLogLevel::Trace,
         }
     }
 }
@@ -1804,15 +1816,8 @@ impl VeilidAPI {
     }
 
     // Change api logging level if it is enabled
-    pub async fn change_log_level(&self, log_level: VeilidConfigLogLevel) {
-        cfg_if! {
-            if #[cfg(target_arch = "wasm32")] {
-                set_max_level(log_level.to_level_filter());
-            } else {
-                use api_logger::ApiLogger;
-                ApiLogger::change_log_level(log_level.to_level_filter());
-            }
-        }
+    pub async fn change_api_log_level(&self, log_level: VeilidConfigLogLevel) {
+        ApiTracingLayer::change_api_log_level(log_level.to_veilid_log_level());
     }
 
     ////////////////////////////////////////////////////////////////

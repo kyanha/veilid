@@ -169,7 +169,7 @@ fn config_callback(key: String) -> ConfigCallbackReturn {
     match key.as_str() {
         "program_name" => Ok(Box::new(String::from("Veilid"))),
         "namespace" => Ok(Box::new(String::from(""))),
-        "log_level" => Ok(Box::new(VeilidConfigLogLevel::Off)),
+        "api_log_level" => Ok(Box::new(VeilidConfigLogLevel::Off)),
         "capabilities.protocol_udp" => Ok(Box::new(true)),
         "capabilities.protocol_connect_tcp" => Ok(Box::new(true)),
         "capabilities.protocol_accept_tcp" => Ok(Box::new(true)),
@@ -291,7 +291,7 @@ pub async fn test_config() {
     let inner = vc.get();
     assert_eq!(inner.program_name, String::from("Veilid"));
     assert_eq!(inner.namespace, String::from(""));
-    assert_eq!(inner.log_level, VeilidConfigLogLevel::Off);
+    assert_eq!(inner.api_log_level, VeilidConfigLogLevel::Off);
     assert_eq!(inner.capabilities.protocol_udp, true);
     assert_eq!(inner.capabilities.protocol_connect_tcp, true);
     assert_eq!(inner.capabilities.protocol_accept_tcp, true);

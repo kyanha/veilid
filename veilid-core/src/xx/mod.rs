@@ -20,12 +20,12 @@ pub use futures_util::future::{select, Either};
 pub use futures_util::select;
 pub use futures_util::stream::FuturesUnordered;
 pub use futures_util::{AsyncRead, AsyncWrite};
-pub use log::*;
 pub use log_thru::*;
 pub use owo_colors::OwoColorize;
 pub use parking_lot::*;
 pub use split_url::*;
 pub use static_assertions::*;
+pub use tracing::*;
 
 pub type PinBox<T> = Pin<Box<T>>;
 pub type PinBoxFuture<T> = PinBox<dyn Future<Output = T> + 'static>;

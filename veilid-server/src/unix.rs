@@ -93,7 +93,7 @@ pub fn run_daemon(settings: Settings, _matches: ArgMatches) -> Result<(), String
     };
 
     // Init combined console/file logger
-    let logs = VeilidLogs::setup_normal_logs(settings.clone())?;
+    let logs = VeilidLogs::setup(settings.clone())?;
 
     // Daemonize
     daemon

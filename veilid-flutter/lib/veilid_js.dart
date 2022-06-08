@@ -46,8 +46,8 @@ class VeilidJS implements Veilid {
   }
 
   @override
-  Future<void> changeLogLevel(VeilidConfigLogLevel logLevel) {
-    return _wrapApiPromise(js_util.callMethod(wasm, "change_log_level",
+  Future<void> changeApiLogLevel(VeilidConfigLogLevel logLevel) {
+    return _wrapApiPromise(js_util.callMethod(wasm, "change_api_log_level",
         [jsonEncode(logLevel.json, toEncodable: veilidApiToEncodable)]));
   }
 

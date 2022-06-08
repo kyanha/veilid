@@ -1,13 +1,11 @@
 use crate::dart_isolate_wrapper::*;
-use crate::dart_serialize::*;
-
 use allo_isolate::*;
 use async_std::sync::Mutex as AsyncMutex;
 use ffi_support::*;
 use lazy_static::*;
-use log::*;
 use std::os::raw::c_char;
 use std::sync::Arc;
+use tracing::*;
 
 // Globals
 
@@ -71,7 +69,7 @@ pub extern "C" fn initialize_veilid_flutter(dart_post_c_object_ptr: ffi::DartPos
             } else {
                 ("<unknown>", 0)
             };
-            log::error!("### Rust `panic!` hit at file '{}', line {}", file, line);
+            error!("### Rust `panic!` hit at file '{}', line {}", file, line);
             if let Some(s) = panic_info.payload().downcast_ref::<&str>() {
                 error!("panic payload: {:?}", s);
             } else if let Some(s) = panic_info.payload().downcast_ref::<String>() {
@@ -81,7 +79,7 @@ pub extern "C" fn initialize_veilid_flutter(dart_post_c_object_ptr: ffi::DartPos
             } else {
                 error!("no panic payload");
             }
-            log::error!("  Complete stack trace:\n{:?}", backtrace::Backtrace::new());
+            error!("  Complete stack trace:\n{:?}", backtrace::Backtrace::new());
 
             // And stop the process, no recovery is going to be possible here
             std::process::abort();
@@ -143,12 +141,13 @@ pub extern "C" fn get_veilid_state(port: i64) {
 }
 
 #[no_mangle]
-pub extern "C" fn change_log_level(port: i64, log_level: FfiStr) {
+pub extern "C" fn change_api_log_level(port: i64, log_level: FfiStr) {
     let log_level = log_level.into_opt_string();
     DartIsolateWrapper::new(port).spawn_result_json(async move {
-        let log_level: veilid_core::VeilidConfigLogLevel = deserialize_opt_json(log_level)?;
+        let log_level: veilid_core::VeilidConfigLogLevel =
+            veilid_core::deserialize_opt_json(log_level)?;
         let veilid_api = get_veilid_api().await?;
-        veilid_api.change_log_level(log_level).await;
+        veilid_api.change_api_log_level(log_level).await;
         APIRESULT_VOID
     });
 }

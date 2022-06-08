@@ -1,4 +1,4 @@
-use crate::api_logger::*;
+use crate::api_tracing_layer::*;
 use crate::attachment_manager::*;
 use crate::dht::Crypto;
 use crate::intf::*;
@@ -60,11 +60,15 @@ impl ServicesContext {
     }
 
     pub async fn startup(&mut self) -> Result<(), VeilidAPIError> {
-        let log_level: VeilidConfigLogLevel = self.config.get().log_level;
-        if log_level != VeilidConfigLogLevel::Off {
-            ApiLogger::init(log_level.to_level_filter(), self.update_callback.clone()).await;
+        let api_log_level: VeilidConfigLogLevel = self.config.get().api_log_level;
+        if api_log_level != VeilidConfigLogLevel::Off {
+            ApiTracingLayer::init(
+                api_log_level.to_veilid_log_level(),
+                self.update_callback.clone(),
+            )
+            .await;
             for ig in crate::DEFAULT_LOG_IGNORE_LIST {
-                ApiLogger::add_filter_ignore_str(ig);
+                ApiTracingLayer::add_filter_ignore_str(ig);
             }
             info!("Veilid logging initialized");
         }
@@ -154,7 +158,7 @@ impl ServicesContext {
         info!("Veilid API shutdown complete");
 
         // api logger terminate is idempotent
-        ApiLogger::terminate().await;
+        ApiTracingLayer::terminate().await;
 
         // send final shutdown update
         (self.update_callback)(VeilidUpdate::Shutdown);

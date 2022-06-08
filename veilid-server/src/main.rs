@@ -24,6 +24,9 @@ pub mod veilid_client_capnp {
 }
 
 fn main() -> Result<(), String> {
+    #[cfg(windows)]
+    let _ = ansi_term::enable_ansi_support();
+
     let (settings, matches) = cmdline::process_command_line()?;
 
     // --- Dump Config ---
@@ -55,7 +58,7 @@ fn main() -> Result<(), String> {
     // Handle non-normal server modes
     if !matches!(server_mode, ServerMode::Normal) {
         // Init combined console/file logger
-        let logs = VeilidLogs::setup_normal_logs(settings.clone())?;
+        let logs = VeilidLogs::setup(settings.clone())?;
         // run the server to set the node id and quit
         return task::block_on(async { run_veilid_server(settings, logs, server_mode).await })
             .map(|v| {
@@ -80,7 +83,7 @@ fn main() -> Result<(), String> {
     }
 
     // Init combined console/file logger
-    let logs = VeilidLogs::setup_normal_logs(settings.clone())?;
+    let logs = VeilidLogs::setup(settings.clone())?;
 
     // --- Normal Startup ---
     ctrlc::set_handler(move || {

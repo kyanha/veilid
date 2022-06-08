@@ -7,73 +7,17 @@ use failure::*;
 use futures::io::AsyncReadExt;
 use futures::FutureExt as FuturesFutureExt;
 use futures::StreamExt;
-use log::*;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::rc::Rc;
+use tracing::*;
 use veilid_core::xx::Eventual;
+use veilid_core::*;
 
 #[derive(Fail, Debug)]
 #[fail(display = "Client API error: {}", _0)]
 pub struct ClientAPIError(String);
-
-fn convert_attachment_state(state: &veilid_core::AttachmentState) -> AttachmentState {
-    match state {
-        veilid_core::AttachmentState::Detached => AttachmentState::Detached,
-        veilid_core::AttachmentState::Attaching => AttachmentState::Attaching,
-        veilid_core::AttachmentState::AttachedWeak => AttachmentState::AttachedWeak,
-        veilid_core::AttachmentState::AttachedGood => AttachmentState::AttachedGood,
-        veilid_core::AttachmentState::AttachedStrong => AttachmentState::AttachedStrong,
-        veilid_core::AttachmentState::FullyAttached => AttachmentState::FullyAttached,
-        veilid_core::AttachmentState::OverAttached => AttachmentState::OverAttached,
-        veilid_core::AttachmentState::Detaching => AttachmentState::Detaching,
-    }
-}
-
-fn convert_update(
-    update: &veilid_core::VeilidUpdate,
-    mut rpc_update: crate::veilid_client_capnp::veilid_update::Builder,
-) {
-    match update {
-        veilid_core::VeilidUpdate::Log(veilid_core::VeilidStateLog {
-            log_level: _,
-            message: _,
-        }) => {
-            panic!("Should not be logging to api in server!");
-        }
-        veilid_core::VeilidUpdate::Attachment(veilid_core::VeilidStateAttachment { state }) => {
-            let mut att = rpc_update.init_attachment();
-            att.set_state(convert_attachment_state(state));
-        }
-        veilid_core::VeilidUpdate::Network(veilid_core::VeilidStateNetwork {
-            started,
-            bps_down,
-            bps_up,
-        }) => {
-            let mut nb = rpc_update.init_network();
-            nb.set_started(*started);
-            nb.set_bps_down(*bps_down);
-            nb.set_bps_up(*bps_up);
-        }
-        veilid_core::VeilidUpdate::Shutdown => {
-            rpc_update.set_shutdown(());
-        }
-    }
-}
-
-fn convert_state(
-    state: &veilid_core::VeilidState,
-    mut rpc_state: crate::veilid_client_capnp::veilid_state::Builder,
-) {
-    let mut ab = rpc_state.reborrow().init_attachment();
-    ab.set_state(convert_attachment_state(&state.attachment.state));
-
-    let mut nb = rpc_state.reborrow().init_network();
-    nb.set_started(state.network.started);
-    nb.set_bps_down(state.network.bps_down);
-    nb.set_bps_up(state.network.bps_up);
-}
 
 // --- interface Registration ---------------------------------
 
@@ -166,11 +110,17 @@ impl veilid_server::Server for VeilidServerImpl {
                 .get_state()
                 .await
                 .map_err(|e| ::capnp::Error::failed(format!("{:?}", e)))?;
+            let state = serialize_json(state);
 
             let mut res = results.get();
             res.set_registration(registration);
-            let rpc_state = res.init_state();
-            convert_state(&state, rpc_state);
+            let mut rpc_state = res.init_state(
+                state
+                    .len()
+                    .try_into()
+                    .map_err(|e| ::capnp::Error::failed(format!("{:?}", e)))?,
+            );
+            rpc_state.push_str(&state);
 
             Ok(())
         })
@@ -256,9 +206,17 @@ impl veilid_server::Server for VeilidServerImpl {
                 .get_state()
                 .await
                 .map_err(|e| ::capnp::Error::failed(format!("{:?}", e)))?;
+            let state = serialize_json(state);
 
-            let rpc_state = results.get().init_state();
-            convert_state(&state, rpc_state);
+            let res = results.get();
+            let mut rpc_state = res.init_state(
+                state
+                    .len()
+                    .try_into()
+                    .map_err(|e| ::capnp::Error::failed(format!("{:?}", e)))?,
+            );
+            rpc_state.push_str(&state);
+
             Ok(())
         })
     }
@@ -345,7 +303,7 @@ impl ClientApi {
 
     fn send_request_to_all_clients<F, T>(self: Rc<Self>, request: F)
     where
-        F: Fn(u64, &mut RegistrationHandle) -> ::capnp::capability::RemotePromise<T>,
+        F: Fn(u64, &mut RegistrationHandle) -> Option<::capnp::capability::RemotePromise<T>>,
         T: capnp::traits::Pipelined + for<'a> capnp::traits::Owned<'a> + 'static + Unpin,
     {
         // Send status update to each registered client
@@ -361,40 +319,44 @@ impl ClientApi {
             }
             registration.requests_in_flight += 1;
 
-            let request_promise = request(id, registration);
-
-            let registration_map2 = registration_map1.clone();
-            async_std::task::spawn_local(request_promise.promise.map(move |r| match r {
-                Ok(_) => {
-                    if let Some(ref mut s) =
-                        registration_map2.borrow_mut().registrations.get_mut(&id)
-                    {
-                        s.requests_in_flight -= 1;
+            if let Some(request_promise) = request(id, registration) {
+                let registration_map2 = registration_map1.clone();
+                async_std::task::spawn_local(request_promise.promise.map(move |r| match r {
+                    Ok(_) => {
+                        if let Some(ref mut s) =
+                            registration_map2.borrow_mut().registrations.get_mut(&id)
+                        {
+                            s.requests_in_flight -= 1;
+                        }
                     }
-                }
-                Err(e) => {
-                    println!("Got error: {:?}. Dropping registation.", e);
-                    registration_map2.borrow_mut().registrations.remove(&id);
-                }
-            }));
+                    Err(e) => {
+                        println!("Got error: {:?}. Dropping registation.", e);
+                        registration_map2.borrow_mut().registrations.remove(&id);
+                    }
+                }));
+            }
         }
     }
 
     pub fn handle_update(self: Rc<Self>, veilid_update: veilid_core::VeilidUpdate) {
+        // serialize update
+        let veilid_update = serialize_json(veilid_update);
+
         // Pass other updates to clients
         self.send_request_to_all_clients(|_id, registration| {
-            let mut request = registration.client.update_request();
-            let rpc_veilid_update = request.get().init_veilid_update();
-            convert_update(&veilid_update, rpc_veilid_update);
-            request.send()
-        });
-    }
-
-    pub fn handle_client_log(self: Rc<Self>, message: String) {
-        self.send_request_to_all_clients(|_id, registration| {
-            let mut request = registration.client.log_message_request();
-            request.get().set_message(&message);
-            request.send()
+            match veilid_update
+                .len()
+                .try_into()
+                .map_err(|e| ::capnp::Error::failed(format!("{:?}", e)))
+            {
+                Ok(len) => {
+                    let mut request = registration.client.update_request();
+                    let mut rpc_veilid_update = request.get().init_veilid_update(len);
+                    rpc_veilid_update.push_str(&veilid_update);
+                    Some(request.send())
+                }
+                Err(_) => None,
+            }
         });
     }
 

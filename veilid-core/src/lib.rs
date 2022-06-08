@@ -4,7 +4,7 @@
 #[macro_use]
 extern crate alloc;
 
-mod api_logger;
+mod api_tracing_layer;
 mod attachment_manager;
 mod callback_state_machine;
 mod core_context;
@@ -21,6 +21,7 @@ mod veilid_rng;
 #[macro_use]
 pub mod xx;
 
+pub use self::api_tracing_layer::ApiTracingLayer;
 pub use self::attachment_manager::AttachmentState;
 pub use self::core_context::{api_startup, api_startup_json, UpdateCallback};
 pub use self::veilid_api::*;

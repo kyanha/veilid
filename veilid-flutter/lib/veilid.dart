@@ -745,7 +745,7 @@ class VeilidConfigCapabilities {
 class VeilidConfig {
   String programName;
   String namespace;
-  VeilidConfigLogLevel logLevel;
+  VeilidConfigLogLevel apiLogLevel;
   VeilidConfigCapabilities capabilities;
   VeilidConfigProtectedStore protectedStore;
   VeilidConfigTableStore tableStore;
@@ -755,7 +755,7 @@ class VeilidConfig {
   VeilidConfig({
     required this.programName,
     required this.namespace,
-    required this.logLevel,
+    required this.apiLogLevel,
     required this.capabilities,
     required this.protectedStore,
     required this.tableStore,
@@ -767,7 +767,7 @@ class VeilidConfig {
     return {
       'program_name': programName,
       'namespace': namespace,
-      'log_level': logLevel.json,
+      'api_log_level': apiLogLevel.json,
       'capabilities': capabilities.json,
       'protected_store': protectedStore.json,
       'table_store': tableStore.json,
@@ -779,7 +779,7 @@ class VeilidConfig {
   VeilidConfig.fromJson(Map<String, dynamic> json)
       : programName = json['program_name'],
         namespace = json['namespace'],
-        logLevel = json['log_level'],
+        apiLogLevel = json['api_log_level'],
         capabilities = VeilidConfigCapabilities.fromJson(json['capabilities']),
         protectedStore =
             VeilidConfigProtectedStore.fromJson(json['protected_store']),
@@ -797,7 +797,7 @@ abstract class VeilidUpdate {
       case "Log":
         {
           return VeilidUpdateLog(
-              veilidLogLevelFromJson(json["log_level"]), json["message"]);
+              veilidLogLevelFromJson(json["api_log_level"]), json["message"]);
         }
       case "Attachment":
         {
@@ -1072,7 +1072,7 @@ abstract class Veilid {
 
   Stream<VeilidUpdate> startupVeilidCore(VeilidConfig config);
   Future<VeilidState> getVeilidState();
-  Future<void> changeLogLevel(VeilidConfigLogLevel logLevel);
+  Future<void> changeApiLogLevel(VeilidConfigLogLevel logLevel);
   Future<void> shutdownVeilidCore();
   Future<String> debug(String command);
   String veilidVersionString();

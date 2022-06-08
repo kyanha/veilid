@@ -1,7 +1,5 @@
-use crate::dht::*;
-use crate::intf;
 use crate::xx::*;
-
+use crate::*;
 use serde::*;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -195,14 +193,24 @@ pub enum VeilidConfigLogLevel {
 }
 
 impl VeilidConfigLogLevel {
-    pub fn to_level_filter(&self) -> LevelFilter {
+    pub fn to_veilid_log_level(&self) -> Option<VeilidLogLevel> {
         match self {
-            Self::Off => LevelFilter::Off,
-            Self::Error => LevelFilter::Error,
-            Self::Warn => LevelFilter::Warn,
-            Self::Info => LevelFilter::Info,
-            Self::Debug => LevelFilter::Debug,
-            Self::Trace => LevelFilter::Trace,
+            Self::Off => None,
+            Self::Error => Some(VeilidLogLevel::Error),
+            Self::Warn => Some(VeilidLogLevel::Warn),
+            Self::Info => Some(VeilidLogLevel::Info),
+            Self::Debug => Some(VeilidLogLevel::Debug),
+            Self::Trace => Some(VeilidLogLevel::Trace),
+        }
+    }
+    pub fn from_veilid_log_level(level: Option<VeilidLogLevel>) -> Self {
+        match level {
+            None => Self::Off,
+            Some(VeilidLogLevel::Error) => Self::Error,
+            Some(VeilidLogLevel::Warn) => Self::Warn,
+            Some(VeilidLogLevel::Info) => Self::Info,
+            Some(VeilidLogLevel::Debug) => Self::Debug,
+            Some(VeilidLogLevel::Trace) => Self::Trace,
         }
     }
 }
@@ -216,7 +224,7 @@ impl Default for VeilidConfigLogLevel {
 pub struct VeilidConfigInner {
     pub program_name: String,
     pub namespace: String,
-    pub log_level: VeilidConfigLogLevel,
+    pub api_log_level: VeilidConfigLogLevel,
     pub capabilities: VeilidConfigCapabilities,
     pub protected_store: VeilidConfigProtectedStore,
     pub table_store: VeilidConfigTableStore,
@@ -272,7 +280,7 @@ impl VeilidConfig {
             let mut inner = self.inner.write();
             get_config!(inner.program_name);
             get_config!(inner.namespace);
-            get_config!(inner.log_level);
+            get_config!(inner.api_log_level);
             get_config!(inner.capabilities.protocol_udp);
             get_config!(inner.capabilities.protocol_connect_tcp);
             get_config!(inner.capabilities.protocol_accept_tcp);
@@ -552,7 +560,7 @@ impl VeilidConfig {
         // If we have a node id from storage, check it
         if node_id.valid && node_id_secret.valid {
             // Validate node id
-            if !validate_key(&node_id, &node_id_secret) {
+            if !dht::validate_key(&node_id, &node_id_secret) {
                 return Err("node id secret and node id key don't match".to_owned());
             }
         }

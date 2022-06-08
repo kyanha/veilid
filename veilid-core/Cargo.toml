@@ -15,12 +15,14 @@ ios_tests = [ "simplelog", "backtrace" ]
 tracking = [ "backtrace" ]
 
 [dependencies]
+tracing = { version = "^0", features = ["log", "attributes"] }
+tracing-subscriber = "^0"
+tracing-error = "^0"
+color-eyre = "^0"
 capnp = { version = "^0", default_features = false }
 rust-fsm = "^0"
 static_assertions = "^1"
-log = "^0"
 cfg-if = "^1"
-anyhow = "^1"
 thiserror = "^1"
 hex = "^0"
 generic-array = "^0"

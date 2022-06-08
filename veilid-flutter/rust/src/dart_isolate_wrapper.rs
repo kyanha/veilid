@@ -1,4 +1,3 @@
-use crate::dart_serialize::*;
 pub use allo_isolate::ffi::DartCObject;
 pub use allo_isolate::IntoDart;
 use allo_isolate::Isolate;
@@ -71,7 +70,7 @@ impl DartIsolateWrapper {
     pub fn ok_json<T: Serialize>(self, value: T) -> bool {
         self.isolate.post(vec![
             MESSAGE_OK_JSON.into_dart(),
-            serialize_json(value).into_dart(),
+            veilid_core::serialize_json(value).into_dart(),
         ])
     }
 
@@ -83,7 +82,7 @@ impl DartIsolateWrapper {
     pub fn err_json<E: Serialize>(self, error: E) -> bool {
         self.isolate.post(vec![
             MESSAGE_ERR_JSON.into_dart(),
-            serialize_json(error).into_dart(),
+            veilid_core::serialize_json(error).into_dart(),
         ])
     }
 }
@@ -128,7 +127,7 @@ impl DartIsolateStream {
         if let Some(isolate) = &inner.isolate {
             isolate.post(vec![
                 MESSAGE_STREAM_ITEM_JSON.into_dart(),
-                serialize_json(value).into_dart(),
+                veilid_core::serialize_json(value).into_dart(),
             ])
         } else {
             false
@@ -149,7 +148,7 @@ impl DartIsolateStream {
         if let Some(isolate) = inner.isolate.take() {
             isolate.post(vec![
                 MESSAGE_STREAM_ABORT_JSON.into_dart(),
-                serialize_json(error).into_dart(),
+                veilid_core::serialize_json(error).into_dart(),
             ])
         } else {
             false

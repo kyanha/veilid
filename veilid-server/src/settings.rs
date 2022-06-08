@@ -1,7 +1,6 @@
 #![allow(clippy::bool_assert_comparison)]
 
 use directories::*;
-use log::*;
 use parking_lot::*;
 
 use serde_derive::*;
@@ -34,7 +33,7 @@ logging:
         path: ''
         append: true
         level: 'info'
-    client:
+    api:
         enabled: false
         level: 'info'
 testing:
@@ -226,13 +225,13 @@ impl serde::Serialize for LogLevel {
     }
 }
 
-pub fn convert_loglevel(log_level: LogLevel) -> LevelFilter {
+pub fn convert_loglevel(log_level: LogLevel) -> veilid_core::VeilidLogLevel {
     match log_level {
-        LogLevel::Error => LevelFilter::Error,
-        LogLevel::Warn => LevelFilter::Warn,
-        LogLevel::Info => LevelFilter::Info,
-        LogLevel::Debug => LevelFilter::Debug,
-        LogLevel::Trace => LevelFilter::Trace,
+        LogLevel::Error => veilid_core::VeilidLogLevel::Error,
+        LogLevel::Warn => veilid_core::VeilidLogLevel::Warn,
+        LogLevel::Info => veilid_core::VeilidLogLevel::Info,
+        LogLevel::Debug => veilid_core::VeilidLogLevel::Debug,
+        LogLevel::Trace => veilid_core::VeilidLogLevel::Trace,
     }
 }
 
@@ -419,7 +418,7 @@ pub struct System {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct Client {
+pub struct Api {
     pub enabled: bool,
     pub level: LogLevel,
 }
@@ -435,7 +434,7 @@ pub struct Logging {
     pub system: System,
     pub terminal: Terminal,
     pub file: File,
-    pub client: Client,
+    pub api: Api,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -862,7 +861,13 @@ impl Settings {
                 } else {
                     format!("subnode{}", inner.testing.subnode_index)
                 })),
-                "log_level" => Ok(Box::new(veilid_core::VeilidConfigLogLevel::Off)),
+                "api_log_level" => Ok(Box::new(if inner.logging.api.enabled {
+                    veilid_core::VeilidConfigLogLevel::from_veilid_log_level(Some(
+                        convert_loglevel(inner.logging.api.level),
+                    ))
+                } else {
+                    veilid_core::VeilidConfigLogLevel::Off
+                })),
                 "capabilities.protocol_udp" => Ok(Box::new(true)),
                 "capabilities.protocol_connect_tcp" => Ok(Box::new(true)),
                 "capabilities.protocol_accept_tcp" => Ok(Box::new(true)),
@@ -1257,8 +1262,8 @@ mod tests {
         assert_eq!(s.logging.file.path, "");
         assert_eq!(s.logging.file.append, true);
         assert_eq!(s.logging.file.level, LogLevel::Info);
-        assert_eq!(s.logging.client.enabled, false);
-        assert_eq!(s.logging.client.level, LogLevel::Info);
+        assert_eq!(s.logging.api.enabled, false);
+        assert_eq!(s.logging.api.level, LogLevel::Info);
         assert_eq!(s.testing.subnode_index, 0);
 
         assert_eq!(
