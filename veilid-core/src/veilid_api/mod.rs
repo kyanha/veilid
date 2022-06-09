@@ -1133,13 +1133,24 @@ impl DialInfo {
             }
         };
 
-        let socket_addrs = match split_url.host {
-            SplitUrlHost::Hostname(_) => split_url
-                .host_port(port)
-                .to_socket_addrs()
-                .map_err(|_| parse_error!("couldn't resolve hostname in url", url))?
-                .collect(),
-            SplitUrlHost::IpAddr(a) => vec![SocketAddr::new(a, port)],
+        let socket_addrs = {
+            // Resolve if possible, WASM doesn't support resolution and doesn't need it to connect to the dialinfo
+            // This will not be used on signed dialinfo, only for bootstrapping, so we don't need to worry about
+            // the '0.0.0.0' address being propagated across the routing table
+            cfg_if::cfg_if! {
+                if #[cfg(target_arch = "wasm32")] {
+                    vec![SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0,0,0,0)), port)]
+                } else {
+                    match split_url.host {
+                        SplitUrlHost::Hostname(_) => split_url
+                            .host_port(port)
+                            .to_socket_addrs()
+                            .map_err(|_| parse_error!("couldn't resolve hostname in url", url))?
+                            .collect(),
+                        SplitUrlHost::IpAddr(a) => vec![SocketAddr::new(a, port)],
+                    }
+                }
+            }
         };
 
         let mut out = Vec::new();

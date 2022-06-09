@@ -4,8 +4,8 @@ mod network_udp;
 mod protocol;
 mod start_protocols;
 
+use super::*;
 use crate::intf::*;
-use crate::network_manager::*;
 use crate::routing_table::*;
 use connection_manager::*;
 use network_tcp::*;

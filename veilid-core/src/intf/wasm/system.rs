@@ -99,6 +99,12 @@ pub async fn sleep(millis: u32) {
     }
 }
 
+pub fn system_boxed<'a, Out>(
+    future: impl Future<Output = Out> + 'a,
+) -> SystemPinBoxFutureLifetime<'a, Out> {
+    Box::pin(future)
+}
+
 pub fn spawn<Out>(future: impl Future<Output = Out> + 'static) -> JoinHandle<Out>
 where
     Out: Send + 'static,
@@ -203,10 +209,10 @@ pub async fn get_outbound_relay_peer() -> Option<crate::veilid_api::PeerInfo> {
 // }
 
 
-pub async fn txt_lookup<S: AsRef<str>>(host: S) -> Result<Vec<String>, String> {
+pub async fn txt_lookup<S: AsRef<str>>(_host: S) -> Result<Vec<String>, String> {
     Err("wasm does not support txt lookup".to_owned())   
 }
 
-pub async fn ptr_lookup(ip_addr: IpAddr) -> Result<String, String> {
+pub async fn ptr_lookup(_ip_addr: IpAddr) -> Result<String, String> {
     Err("wasm does not support ptr lookup".to_owned())   
 }

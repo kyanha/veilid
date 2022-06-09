@@ -224,72 +224,68 @@ impl NetworkConnection {
                 })
             };
             let timer = MutableFuture::new(new_timer());
-            unord.push(timer.clone().boxed());
+
+            unord.push(system_boxed(timer.clone()));
 
             loop {
                 // Add another message sender future if necessary
                 if need_sender {
                     need_sender = false;
-                    unord.push(
-                        receiver
-                            .recv_async()
-                            .then(|res| async {
-                                match res {
-                                    Ok(message) => {
-                                        // send the packet
-                                        if let Err(e) = Self::send_internal(
-                                            &protocol_connection,
-                                            stats.clone(),
-                                            message,
-                                        )
-                                        .await
-                                        {
-                                            // Sending the packet along can fail, if so, this connection is dead
-                                            log_net!(debug e);
-                                            RecvLoopAction::Finish
-                                        } else {
-                                            RecvLoopAction::Send
-                                        }
-                                    }
-                                    Err(e) => {
-                                        // All senders gone, shouldn't happen since we store one alongside the join handle
-                                        log_net!(warn e);
-                                        RecvLoopAction::Finish
-                                    }
+                    let sender_fut = receiver.recv_async().then(|res| async {
+                        match res {
+                            Ok(message) => {
+                                // send the packet
+                                if let Err(e) = Self::send_internal(
+                                    &protocol_connection,
+                                    stats.clone(),
+                                    message,
+                                )
+                                .await
+                                {
+                                    // Sending the packet along can fail, if so, this connection is dead
+                                    log_net!(debug e);
+                                    RecvLoopAction::Finish
+                                } else {
+                                    RecvLoopAction::Send
                                 }
-                            })
-                            .boxed(),
-                    );
+                            }
+                            Err(e) => {
+                                // All senders gone, shouldn't happen since we store one alongside the join handle
+                                log_net!(warn e);
+                                RecvLoopAction::Finish
+                            }
+                        }
+                    });
+                    unord.push(system_boxed(sender_fut));
                 }
 
                 // Add another message receiver future if necessary
                 if need_receiver {
-                    need_sender = false;
-                    unord.push(
-                        Self::recv_internal(&protocol_connection, stats.clone())
-                            .then(|res| async {
-                                match res {
-                                    Ok(message) => {
-                                        // Pass received messages up to the network manager for processing
-                                        if let Err(e) = network_manager
-                                            .on_recv_envelope(message.as_slice(), descriptor)
-                                            .await
-                                        {
-                                            log_net!(error e);
-                                            RecvLoopAction::Finish
-                                        } else {
-                                            RecvLoopAction::Recv
-                                        }
-                                    }
-                                    Err(e) => {
-                                        // Connection unable to receive, closed
-                                        log_net!(warn e);
+                    need_receiver = false;
+                    let receiver_fut = Self::recv_internal(&protocol_connection, stats.clone())
+                        .then(|res| async {
+                            match res {
+                                Ok(message) => {
+                                    // Pass received messages up to the network manager for processing
+                                    if let Err(e) = network_manager
+                                        .on_recv_envelope(message.as_slice(), descriptor)
+                                        .await
+                                    {
+                                        log_net!(error e);
                                         RecvLoopAction::Finish
+                                    } else {
+                                        RecvLoopAction::Recv
                                     }
                                 }
-                            })
-                            .boxed(),
-                    );
+                                Err(e) => {
+                                    // Connection unable to receive, closed
+                                    log_net!(warn e);
+                                    RecvLoopAction::Finish
+                                }
+                            }
+                        });
+
+                    unord.push(system_boxed(receiver_fut));
                 }
 
                 // Process futures

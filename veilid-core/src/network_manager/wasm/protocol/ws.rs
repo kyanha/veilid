@@ -1,8 +1,4 @@
-use crate::intf::*;
-use crate::network_connection::*;
-use crate::network_manager::MAX_MESSAGE_SIZE;
-use crate::*;
-use alloc::fmt;
+use super::*;
 use ws_stream_wasm::*;
 use futures_util::{StreamExt, SinkExt};
 
@@ -104,10 +100,9 @@ impl WebsocketProtocolHandler {
 
         // Make our connection descriptor
 
-        Ok(ProtocolNetworkConnection::Ws(WebsocketNetworkConnection::new(ConnectionDescriptor {
-            local: None,
-            remote: dial_info.to_peer_address(),
-        }, wsmeta, wsio)))
+        Ok(ProtocolNetworkConnection::Ws(WebsocketNetworkConnection::new(ConnectionDescriptor::new_no_local(
+            dial_info.to_peer_address(),
+        ), wsmeta, wsio)))
     }
 
     pub async fn send_unbound_message(dial_info: DialInfo, data: Vec<u8>) -> Result<(), String> {

@@ -3,7 +3,6 @@
 
 use veilid_core::tests::common::*;
 use veilid_core::xx::*;
-use veilid_core::*;
 use wasm_bindgen_test::*;
 
 wasm_bindgen_test_configure!();
@@ -16,7 +15,7 @@ static SETUP_ONCE: Once = Once::new();
 pub fn setup() -> () {
     SETUP_ONCE.call_once(|| {
         console_error_panic_hook::set_once();
-        wasm_logger::init(wasm_logger::Config::new(Level::Trace));
+        wasm_logger::init(wasm_logger::Config::new(log::Level::Trace));
     });
 }
 

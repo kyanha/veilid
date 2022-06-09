@@ -1,9 +1,8 @@
 pub mod wrtc;
 pub mod ws;
 
-use crate::network_connection::*;
+use super::*;
 use crate::xx::*;
-use crate::*;
 
 #[derive(Debug)]
 pub enum ProtocolNetworkConnection {
@@ -16,7 +15,7 @@ impl ProtocolNetworkConnection {
     pub async fn connect(
         local_address: Option<SocketAddr>,
         dial_info: DialInfo,
-    ) -> Result<NetworkConnection, String> {
+    ) -> Result<ProtocolNetworkConnection, String> {
         match dial_info.protocol_type() {
             ProtocolType::UDP => {
                 panic!("UDP dial info is not support on WASM targets");
@@ -46,6 +45,14 @@ impl ProtocolNetworkConnection {
             }
         }
     }
+
+    pub fn descriptor(&self) -> ConnectionDescriptor {
+        match self {
+            Self::Dummy(d) => d.descriptor(),
+            Self::Ws(w) => w.descriptor(),
+        }
+    }
+
     pub async fn close(&self) -> Result<(), String> {
         match self {
             Self::Dummy(d) => d.close(),

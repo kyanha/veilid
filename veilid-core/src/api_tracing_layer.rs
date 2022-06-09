@@ -78,7 +78,7 @@ impl ApiTracingLayer {
     pub fn change_api_log_level(max_level: Option<VeilidLogLevel>) {
         if let Some(api_logger) = API_LOGGER.get() {
             if let Some(inner) = &mut *api_logger.inner.lock() {
-                *inner = Self::new_inner(max_level, inner.update_callback.clone());
+                inner.max_level = max_level;
             }
         }
     }

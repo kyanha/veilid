@@ -3,7 +3,6 @@
 
 use veilid_core::tests::common::*;
 use veilid_core::xx::*;
-use veilid_core::*;
 use wasm_bindgen_test::*;
 
 wasm_bindgen_test_configure!(run_in_browser);
@@ -16,7 +15,11 @@ static SETUP_ONCE: Once = Once::new();
 pub fn setup() -> () {
     SETUP_ONCE.call_once(|| {
         console_error_panic_hook::set_once();
-        wasm_logger::init(wasm_logger::Config::new(Level::Trace));
+        let mut builder = tracing_wasm::WASMLayerConfigBuilder::new();
+        builder.set_report_logs_in_timings(false);
+        builder.set_max_level(Level::TRACE);
+        builder.set_console_config(tracing_wasm::ConsoleConfig::ReportWithConsoleColor);
+        tracing_wasm::set_as_global_default_with_config(builder.build());
     });
 }
 

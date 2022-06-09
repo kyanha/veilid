@@ -96,8 +96,8 @@ core:
         enable_local_peer_scope: false
         restricted_nat_retries: 0
         tls:
-            certificate_path: '%CERTIFICATE_DIRECTORY%/server.crt'
-            private_key_path: '%PRIVATE_KEY_DIRECTORY%/server.key'
+            certificate_path: '%CERTIFICATE_PATH%'
+            private_key_path: '%PRIVATE_KEY_PATH%'
             connection_initial_timeout_ms: 2000
         application:
             https:
@@ -151,12 +151,16 @@ core:
         &Settings::get_default_protected_store_insecure_fallback_directory().to_string_lossy(),
     )
     .replace(
-        "%CERTIFICATE_DIRECTORY%",
-        &Settings::get_default_certificate_directory().to_string_lossy(),
+        "%CERTIFICATE_PATH%",
+        &Settings::get_default_certificate_directory()
+            .join("server.crt")
+            .to_string_lossy(),
     )
     .replace(
-        "%PRIVATE_KEY_DIRECTORY%",
-        &Settings::get_default_private_key_directory().to_string_lossy(),
+        "%PRIVATE_KEY_PATH%",
+        &Settings::get_default_private_key_directory()
+            .join("server.key")
+            .to_string_lossy(),
     );
     config::Config::builder()
         .add_source(config::File::from_str(
@@ -1439,7 +1443,7 @@ mod tests {
         //
         assert_eq!(
             s.core.network.bootstrap,
-            vec!["bootstrap.veilid.net".to_owned()]
+            vec!["bootstrap-dev.veilid.net".to_owned()]
         );
         assert_eq!(s.core.network.bootstrap_nodes, vec![]);
         //
@@ -1460,25 +1464,25 @@ mod tests {
         assert_eq!(s.core.network.dht.set_value_timeout_ms, None);
         assert_eq!(s.core.network.dht.set_value_count, 20u32);
         assert_eq!(s.core.network.dht.set_value_fanout, 5u32);
-        assert_eq!(s.core.network.dht.min_peer_count, 20u32);
+        assert_eq!(s.core.network.dht.min_peer_count, 1u32);
         assert_eq!(s.core.network.dht.min_peer_refresh_time_ms, 2_000u32);
         assert_eq!(
             s.core.network.dht.validate_dial_info_receipt_time_ms,
-            5_000u32
+            2_000u32
         );
         //
         assert_eq!(s.core.network.upnp, false);
         assert_eq!(s.core.network.natpmp, false);
         assert_eq!(s.core.network.enable_local_peer_scope, false);
-        assert_eq!(s.core.network.restricted_nat_retries, 3u32);
+        assert_eq!(s.core.network.restricted_nat_retries, 0u32);
         //
         assert_eq!(
             s.core.network.tls.certificate_path,
-            std::path::PathBuf::from("/etc/veilid-server/server.crt")
+            Settings::get_default_certificate_directory().join("server.crt")
         );
         assert_eq!(
             s.core.network.tls.private_key_path,
-            std::path::PathBuf::from("/etc/veilid-server/private/server.key")
+            Settings::get_default_private_key_directory().join("server.key")
         );
         assert_eq!(s.core.network.tls.connection_initial_timeout_ms, 2_000u32);
         //

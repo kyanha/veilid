@@ -46,6 +46,12 @@ pub async fn sleep(millis: u32) {
     }
 }
 
+pub fn system_boxed<'a, Out>(
+    future: impl Future<Output = Out> + Send + 'a,
+) -> SystemPinBoxFutureLifetime<'a, Out> {
+    Box::pin(future)
+}
+
 pub fn spawn<Out>(future: impl Future<Output = Out> + Send + 'static) -> JoinHandle<Out>
 where
     Out: Send + 'static,

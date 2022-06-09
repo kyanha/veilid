@@ -1,10 +1,8 @@
 mod protocol;
 
-use crate::connection_manager::*;
-use crate::network_manager::*;
+use super::*;
 use crate::routing_table::*;
-use crate::intf::*;
-use crate::*;
+use connection_manager::*;
 use protocol::ws::WebsocketProtocolHandler;
 pub use protocol::*;
 
@@ -102,11 +100,11 @@ impl Network {
         // Try to send to the exact existing connection if one exists
         if let Some(conn) = self.connection_manager().get_connection(descriptor).await {
             // connection exists, send over it
-            conn.send(data).await.map_err(logthru_net!())?;
+            conn.send_async(data).await.map_err(logthru_net!())?;
 
             // Network accounting
             self.network_manager()
-                .stats_packet_sent(descriptor.remote.to_socket_addr().ip(), data_len as u64);
+                .stats_packet_sent(descriptor.remote().to_socket_addr().ip(), data_len as u64);
 
             // Data was consumed
             Ok(None)
@@ -136,7 +134,7 @@ impl Network {
             .get_or_create_connection(None, dial_info.clone())
             .await?;
 
-        let res = conn.send(data).await.map_err(logthru_net!(error));
+        let res = conn.send_async(data).await.map_err(logthru_net!(error));
         if res.is_ok() {
             // Network accounting
             self.network_manager()
