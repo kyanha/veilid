@@ -10,7 +10,6 @@ cfg_if! {
     if #[cfg(target_arch = "wasm32")] {
         pub type UpdateCallback = Arc<dyn Fn(VeilidUpdate)>;
     } else {
-
         pub type UpdateCallback = Arc<dyn Fn(VeilidUpdate) + Send + Sync>;
     }
 }
@@ -59,6 +58,7 @@ impl ServicesContext {
         }
     }
 
+    #[instrument(err, skip_all)]
     pub async fn startup(&mut self) -> Result<(), VeilidAPIError> {
         let api_log_level: VeilidConfigLogLevel = self.config.get().api_log_level;
         if api_log_level != VeilidConfigLogLevel::Off {
@@ -131,6 +131,7 @@ impl ServicesContext {
         Ok(())
     }
 
+    #[instrument(skip_all)]
     pub async fn shutdown(&mut self) {
         info!("Veilid API shutting down");
 
@@ -179,6 +180,7 @@ pub struct VeilidCoreContext {
 }
 
 impl VeilidCoreContext {
+    #[instrument(err, skip_all)]
     async fn new_with_config_callback(
         update_callback: UpdateCallback,
         config_callback: ConfigCallback,
@@ -193,6 +195,7 @@ impl VeilidCoreContext {
         Self::new_common(update_callback, config).await
     }
 
+    #[instrument(err, skip(update_callback))]
     async fn new_with_config_json(
         update_callback: UpdateCallback,
         config_json: String,
@@ -206,6 +209,7 @@ impl VeilidCoreContext {
         Self::new_common(update_callback, config).await
     }
 
+    #[instrument(err, skip(update_callback))]
     async fn new_common(
         update_callback: UpdateCallback,
         config: VeilidConfig,
@@ -233,6 +237,7 @@ impl VeilidCoreContext {
         })
     }
 
+    #[instrument(skip_all)]
     async fn shutdown(self) {
         let mut sc = ServicesContext::new_full(
             self.config.clone(),
@@ -251,6 +256,7 @@ impl VeilidCoreContext {
 
 static INITIALIZED: AsyncMutex<bool> = AsyncMutex::new(false);
 
+#[instrument(err, skip_all)]
 pub async fn api_startup(
     update_callback: UpdateCallback,
     config_callback: ConfigCallback,
@@ -273,6 +279,7 @@ pub async fn api_startup(
     Ok(veilid_api)
 }
 
+#[instrument(err, skip(update_callback))]
 pub async fn api_startup_json(
     update_callback: UpdateCallback,
     config_json: String,
@@ -294,6 +301,7 @@ pub async fn api_startup_json(
     Ok(veilid_api)
 }
 
+#[instrument(skip_all)]
 pub(crate) async fn api_shutdown(context: VeilidCoreContext) {
     let mut initialized_lock = INITIALIZED.lock().await;
     context.shutdown().await;

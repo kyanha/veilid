@@ -233,6 +233,7 @@ impl NetworkManager {
         self.inner.lock().relay_node.clone()
     }
 
+    #[instrument(level = "debug", skip_all, err)]
     pub async fn init(&self, update_callback: UpdateCallback) -> Result<(), String> {
         let routing_table = RoutingTable::new(self.clone());
         routing_table.init().await?;
@@ -240,6 +241,8 @@ impl NetworkManager {
         self.inner.lock().update_callback = Some(update_callback);
         Ok(())
     }
+
+    #[instrument(level = "debug", skip_all)]
     pub async fn terminate(&self) {
         let routing_table = {
             let mut inner = self.inner.lock();
@@ -251,6 +254,7 @@ impl NetworkManager {
         self.inner.lock().update_callback = None;
     }
 
+    #[instrument(level = "debug", skip_all, err)]
     pub async fn internal_startup(&self) -> Result<(), String> {
         trace!("NetworkManager::internal_startup begin");
         if self.inner.lock().components.is_some() {
@@ -281,6 +285,7 @@ impl NetworkManager {
         Ok(())
     }
 
+    #[instrument(level = "debug", skip_all, err)]
     pub async fn startup(&self) -> Result<(), String> {
         if let Err(e) = self.internal_startup().await {
             self.shutdown().await;
@@ -292,6 +297,7 @@ impl NetworkManager {
         Ok(())
     }
 
+    #[instrument(level = "debug", skip_all)]
     pub async fn shutdown(&self) {
         trace!("NetworkManager::shutdown begin");
 
@@ -339,6 +345,7 @@ impl NetworkManager {
         }
     }
 
+    #[instrument(level = "trace", skip(self), ret)]
     pub fn check_client_whitelist(&self, client: DHTKey) -> bool {
         let mut inner = self.inner.lock();
 
@@ -351,6 +358,7 @@ impl NetworkManager {
         }
     }
 
+    #[instrument(level = "trace", skip(self))]
     pub fn purge_client_whitelist(&self) {
         let timeout_ms = self.config.get().network.client_whitelist_timeout_ms;
         let mut inner = self.inner.lock();
@@ -364,6 +372,15 @@ impl NetworkManager {
         {
             inner.client_whitelist.remove_lru();
         }
+    }
+
+    #[instrument(level = "debug", skip_all, err)]
+    async fn restart_net(&self, net: Network) -> Result<(), String> {
+        net.shutdown().await;
+        self.send_network_update();
+        net.startup().await?;
+        self.send_network_update();
+        Ok(())
     }
 
     pub async fn tick(&self) -> Result<(), String> {
@@ -380,10 +397,7 @@ impl NetworkManager {
         // If the network needs to be reset, do it
         // if things can't restart, then we fail out of the attachment manager
         if net.needs_restart() {
-            net.shutdown().await;
-            self.send_network_update();
-            net.startup().await?;
-            self.send_network_update();
+            self.restart_net(net.clone()).await?;
         }
 
         // Run the rolling transfers task
@@ -448,6 +462,7 @@ impl NetworkManager {
     }
 
     // Generates a multi-shot/normal receipt
+    #[instrument(level = "trace", skip(self, extra_data, callback), err)]
     pub fn generate_receipt<D: AsRef<[u8]>>(
         &self,
         expiration_us: u64,
@@ -473,6 +488,7 @@ impl NetworkManager {
     }
 
     // Generates a single-shot/normal receipt
+    #[instrument(level = "trace", skip(self, extra_data), err)]
     pub fn generate_single_shot_receipt<D: AsRef<[u8]>>(
         &self,
         expiration_us: u64,
@@ -498,6 +514,7 @@ impl NetworkManager {
     }
 
     // Process a received out-of-band receipt
+    #[instrument(level = "trace", skip(self, receipt_data), err)]
     pub async fn handle_out_of_band_receipt<R: AsRef<[u8]>>(
         &self,
         receipt_data: R,
@@ -511,6 +528,7 @@ impl NetworkManager {
     }
 
     // Process a received in-band receipt
+    #[instrument(level = "trace", skip(self, receipt_data), err)]
     pub async fn handle_in_band_receipt<R: AsRef<[u8]>>(
         &self,
         receipt_data: R,
@@ -527,6 +545,7 @@ impl NetworkManager {
     }
 
     // Process a received signal
+    #[instrument(level = "trace", skip(self), err)]
     pub async fn handle_signal(&self, signal_info: SignalInfo) -> Result<(), String> {
         match signal_info {
             SignalInfo::ReverseConnect { receipt, peer_info } => {
@@ -588,6 +607,7 @@ impl NetworkManager {
     }
 
     // Builds an envelope for sending over the network
+    #[instrument(level = "trace", skip(self, body), err)]
     fn build_envelope<B: AsRef<[u8]>>(
         &self,
         dest_node_id: DHTKey,
@@ -614,6 +634,7 @@ impl NetworkManager {
     // node_ref is the direct destination to which the envelope will be sent
     // If 'node_id' is specified, it can be different than node_ref.node_id()
     // which will cause the envelope to be relayed
+    #[instrument(level = "trace", skip(self, body), ret, err)]
     pub async fn send_envelope<B: AsRef<[u8]>>(
         &self,
         node_ref: NodeRef,
@@ -665,6 +686,7 @@ impl NetworkManager {
     }
 
     // Called by the RPC handler when we want to issue an direct receipt
+    #[instrument(level = "trace", skip(self, rcpt_data), err)]
     pub async fn send_out_of_band_receipt(
         &self,
         dial_info: DialInfo,
@@ -683,6 +705,7 @@ impl NetworkManager {
     }
 
     // Figure out how to reach a node
+    #[instrument(level = "trace", skip(self), ret, err)]
     fn get_contact_method(&self, mut target_node_ref: NodeRef) -> Result<ContactMethod, String> {
         let routing_table = self.routing_table();
 
@@ -802,6 +825,7 @@ impl NetworkManager {
 
     // Send a reverse connection signal and wait for the return receipt over it
     // Then send the data across the new connection
+    #[instrument(level = "trace", skip(self, data), err)]
     pub async fn do_reverse_connect(
         &self,
         relay_nr: NodeRef,
@@ -872,6 +896,7 @@ impl NetworkManager {
 
     // Send a hole punch signal and do a negotiating ping and wait for the return receipt
     // Then send the data across the new connection
+    #[instrument(level = "trace", skip(self, data), err)]
     pub async fn do_hole_punch(
         &self,
         relay_nr: NodeRef,
@@ -1036,6 +1061,7 @@ impl NetworkManager {
     // Called when a packet potentially containing an RPC envelope is received by a low-level
     // network protocol handler. Processes the envelope, authenticates and decrypts the RPC message
     // and passes it to the RPC handler
+    #[instrument(level="trace", err, skip(self, data), fields(data.len = data.len()))]
     async fn on_recv_envelope(
         &self,
         data: &[u8],
@@ -1175,6 +1201,7 @@ impl NetworkManager {
     }
 
     // Keep relays assigned and accessible
+    #[instrument(level = "trace", skip(self), err)]
     async fn relay_management_task_routine(self, _last_ts: u64, cur_ts: u64) -> Result<(), String> {
         // log_net!("--- network manager relay_management task");
 
@@ -1227,6 +1254,7 @@ impl NetworkManager {
     }
 
     // Compute transfer statistics for the low level network
+    #[instrument(level = "trace", skip(self), err)]
     async fn rolling_transfers_task_routine(self, last_ts: u64, cur_ts: u64) -> Result<(), String> {
         // log_net!("--- network manager rolling_transfers task");
         {

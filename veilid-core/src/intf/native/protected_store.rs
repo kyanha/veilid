@@ -29,6 +29,7 @@ impl ProtectedStore {
         }
     }
 
+    #[instrument(level = "trace", skip(self), err)]
     pub async fn delete_all(&self) -> Result<(), String> {
         // Delete all known keys
         if self.remove_user_secret_string("node_id").await? {
@@ -43,6 +44,7 @@ impl ProtectedStore {
         Ok(())
     }
 
+    #[instrument(level = "debug", skip(self), err)]
     pub async fn init(&self) -> Result<(), String> {
         let delete = {
             let c = self.config.get();
@@ -95,6 +97,7 @@ impl ProtectedStore {
         Ok(())
     }
 
+    #[instrument(level = "debug", skip(self))]
     pub async fn terminate(&self) {
         *self.inner.lock() = Self::new_inner();
     }
@@ -108,6 +111,7 @@ impl ProtectedStore {
         }
     }
 
+    #[instrument(level = "trace", skip(self, value), ret, err)]
     pub async fn save_user_secret_string(&self, key: &str, value: &str) -> Result<bool, String> {
         let inner = self.inner.lock();
         inner
@@ -124,6 +128,7 @@ impl ProtectedStore {
             .map_err(logthru_pstore!())
     }
 
+    #[instrument(level = "trace", skip(self), err)]
     pub async fn load_user_secret_string(&self, key: &str) -> Result<Option<String>, String> {
         let inner = self.inner.lock();
         match inner
@@ -139,6 +144,7 @@ impl ProtectedStore {
         }
     }
 
+    #[instrument(level = "trace", skip(self), ret, err)]
     pub async fn remove_user_secret_string(&self, key: &str) -> Result<bool, String> {
         let inner = self.inner.lock();
         match inner
@@ -154,6 +160,7 @@ impl ProtectedStore {
         }
     }
 
+    #[instrument(level = "trace", skip(self, value), ret, err)]
     pub async fn save_user_secret(&self, key: &str, value: &[u8]) -> Result<bool, String> {
         let mut s = BASE64URL_NOPAD.encode(value);
         s.push('!');
@@ -161,6 +168,7 @@ impl ProtectedStore {
         self.save_user_secret_string(key, s.as_str()).await
     }
 
+    #[instrument(level = "trace", skip(self), err)]
     pub async fn load_user_secret(&self, key: &str) -> Result<Option<Vec<u8>>, String> {
         let mut s = match self.load_user_secret_string(key).await? {
             Some(s) => s,
@@ -191,6 +199,7 @@ impl ProtectedStore {
         }
     }
 
+    #[instrument(level = "trace", skip(self), ret, err)]
     pub async fn remove_user_secret(&self, key: &str) -> Result<bool, String> {
         self.remove_user_secret_string(key).await
     }

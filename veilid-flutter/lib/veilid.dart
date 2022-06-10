@@ -815,6 +815,7 @@ abstract class VeilidUpdate {
         }
     }
   }
+  Map<String, dynamic> get json;
 }
 
 class VeilidUpdateLog implements VeilidUpdate {
@@ -822,12 +823,29 @@ class VeilidUpdateLog implements VeilidUpdate {
   final String message;
   //
   VeilidUpdateLog(this.logLevel, this.message);
+
+  @override
+  Map<String, dynamic> get json {
+    return {
+      'kind': "Log",
+      'log_level': logLevel.json,
+      'message': message,
+    };
+  }
 }
 
 class VeilidUpdateAttachment implements VeilidUpdate {
   final AttachmentState state;
   //
   VeilidUpdateAttachment(this.state);
+
+  @override
+  Map<String, dynamic> get json {
+    return {
+      'kind': "Attachment",
+      'state': state.json,
+    };
+  }
 }
 
 class VeilidUpdateNetwork implements VeilidUpdate {
@@ -836,6 +854,16 @@ class VeilidUpdateNetwork implements VeilidUpdate {
   final int bpsUp;
   //
   VeilidUpdateNetwork(this.started, this.bpsDown, this.bpsUp);
+
+  @override
+  Map<String, dynamic> get json {
+    return {
+      'kind': "Network",
+      'started': started,
+      'bps_down': bpsDown,
+      'bps_up': bpsUp
+    };
+  }
 }
 
 //////////////////////////////////////

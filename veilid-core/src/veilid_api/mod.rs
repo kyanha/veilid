@@ -1742,6 +1742,7 @@ pub struct VeilidAPI {
 }
 
 impl VeilidAPI {
+    #[instrument(skip_all)]
     pub(crate) fn new(context: VeilidCoreContext) -> Self {
         Self {
             inner: Arc::new(Mutex::new(VeilidAPIInner {
@@ -1750,6 +1751,7 @@ impl VeilidAPI {
         }
     }
 
+    #[instrument(skip_all)]
     pub async fn shutdown(self) {
         let context = { self.inner.lock().context.take() };
         if let Some(context) = context {
@@ -1840,6 +1842,7 @@ impl VeilidAPI {
     // get network connectedness
 
     // connect to the network
+    #[instrument(level = "debug", err, skip_all)]
     pub async fn attach(&self) -> Result<(), VeilidAPIError> {
         let attachment_manager = self.attachment_manager()?;
         attachment_manager
@@ -1849,6 +1852,7 @@ impl VeilidAPI {
     }
 
     // disconnect from the network
+    #[instrument(level = "debug", err, skip_all)]
     pub async fn detach(&self) -> Result<(), VeilidAPIError> {
         let attachment_manager = self.attachment_manager()?;
         attachment_manager
@@ -1858,6 +1862,7 @@ impl VeilidAPI {
     }
 
     // Change api logging level if it is enabled
+    #[instrument(skip(self))]
     pub async fn change_api_log_level(&self, log_level: VeilidConfigLogLevel) {
         ApiTracingLayer::change_api_log_level(log_level.to_veilid_log_level());
     }
@@ -1865,6 +1870,7 @@ impl VeilidAPI {
     ////////////////////////////////////////////////////////////////
     // Direct Node Access (pretty much for testing only)
 
+    #[instrument(level = "debug", err, skip(self))]
     pub async fn status(&self, node_id: NodeId) -> Result<StatusAnswer, VeilidAPIError> {
         let rpc = self.rpc_processor()?;
         let routing_table = rpc.routing_table();
@@ -1879,6 +1885,7 @@ impl VeilidAPI {
         Ok(status_answer)
     }
 
+    #[instrument(level = "debug", err, skip(self))]
     pub async fn validate_dial_info(
         &self,
         node_id: NodeId,
@@ -1896,6 +1903,7 @@ impl VeilidAPI {
             .map_err(map_rpc_error!())
     }
 
+    #[instrument(level = "debug", err, skip(self))]
     pub async fn search_dht(&self, node_id: NodeId) -> Result<PeerInfo, VeilidAPIError> {
         let rpc_processor = self.rpc_processor()?;
         let config = self.config()?;
@@ -1923,6 +1931,7 @@ impl VeilidAPI {
         }
     }
 
+    #[instrument(level = "debug", err, skip(self))]
     pub async fn search_dht_multi(&self, node_id: NodeId) -> Result<Vec<PeerInfo>, VeilidAPIError> {
         let rpc_processor = self.rpc_processor()?;
         let config = self.config()?;
@@ -1948,6 +1957,7 @@ impl VeilidAPI {
     ////////////////////////////////////////////////////////////////
     // Safety / Private Route Handling
 
+    #[instrument(level = "debug", err, skip(self))]
     pub async fn new_safety_route_spec(
         &self,
         _hops: u8,
@@ -1955,6 +1965,7 @@ impl VeilidAPI {
         panic!("unimplemented");
     }
 
+    #[instrument(level = "debug", err, skip(self))]
     pub async fn new_private_route_spec(
         &self,
         _hops: u8,
@@ -1968,6 +1979,7 @@ impl VeilidAPI {
     // Safety route specified here is for _this_ node's anonymity as a sender, used via the 'route' operation
     // Private route specified here is for _this_ node's anonymity as a receiver, passed out via the 'respond_to' field for replies
 
+    #[instrument(skip(self))]
     pub async fn safe_private(
         &self,
         safety_route_spec: SafetyRouteSpec,
@@ -1980,6 +1992,7 @@ impl VeilidAPI {
         .await
     }
 
+    #[instrument(level = "debug", skip(self))]
     pub async fn safe_public(&self, safety_route_spec: SafetyRouteSpec) -> RoutingContext {
         self.routing_context(RoutingContextOptions {
             safety_route_spec: Some(safety_route_spec),
@@ -1988,6 +2001,7 @@ impl VeilidAPI {
         .await
     }
 
+    #[instrument(level = "debug", skip(self))]
     pub async fn unsafe_private(&self, private_route_spec: PrivateRouteSpec) -> RoutingContext {
         self.routing_context(RoutingContextOptions {
             safety_route_spec: None,
@@ -1996,6 +2010,7 @@ impl VeilidAPI {
         .await
     }
 
+    #[instrument(level = "debug", skip(self))]
     pub async fn unsafe_public(&self) -> RoutingContext {
         self.routing_context(RoutingContextOptions {
             safety_route_spec: None,
@@ -2003,6 +2018,8 @@ impl VeilidAPI {
         })
         .await
     }
+
+    #[instrument(level = "debug", skip(self))]
     pub async fn routing_context(&self, options: RoutingContextOptions) -> RoutingContext {
         RoutingContext::new(self.clone(), options)
     }
@@ -2010,6 +2027,7 @@ impl VeilidAPI {
     ////////////////////////////////////////////////////////////////
     // Tunnel Building
 
+    #[instrument(level = "debug", err, skip(self))]
     pub async fn start_tunnel(
         &self,
         _endpoint_mode: TunnelMode,
@@ -2018,6 +2036,7 @@ impl VeilidAPI {
         panic!("unimplemented");
     }
 
+    #[instrument(level = "debug", err, skip(self))]
     pub async fn complete_tunnel(
         &self,
         _endpoint_mode: TunnelMode,
@@ -2027,6 +2046,7 @@ impl VeilidAPI {
         panic!("unimplemented");
     }
 
+    #[instrument(level = "debug", err, skip(self))]
     pub async fn cancel_tunnel(&self, _tunnel_id: TunnelId) -> Result<bool, VeilidAPIError> {
         panic!("unimplemented");
     }

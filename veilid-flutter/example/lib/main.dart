@@ -36,8 +36,28 @@ LogOptions getLogOptions(LogLevel? level) {
   );
 }
 
+VeilidConfigLogLevel convertToVeilidConfigLogLevel(LogLevel? level) {
+  if (level == null) {
+    return VeilidConfigLogLevel.off;
+  }
+  switch (level) {
+    case LogLevel.error:
+      return VeilidConfigLogLevel.error;
+    case LogLevel.warning:
+      return VeilidConfigLogLevel.warn;
+    case LogLevel.info:
+      return VeilidConfigLogLevel.info;
+    case LogLevel.debug:
+      return VeilidConfigLogLevel.debug;
+    case traceLevel:
+      return VeilidConfigLogLevel.trace;
+  }
+  return VeilidConfigLogLevel.off;
+}
+
 void setRootLogLevel(LogLevel? level) {
   Loggy('').level = getLogOptions(level);
+  Veilid.instance.changeApiLogLevel(convertToVeilidConfigLogLevel(level));
 }
 
 void initLoggy() {
@@ -138,7 +158,7 @@ class _MyAppState extends State<MyApp> with UiLoggy {
         if (update is VeilidUpdateLog) {
           await processUpdateLog(update);
         } else {
-          loggy.trace("Update: " + update.toString());
+          loggy.trace("Update: " + update.json.toString());
         }
       }
     }

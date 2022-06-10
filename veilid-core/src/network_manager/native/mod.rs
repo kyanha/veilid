@@ -267,6 +267,7 @@ impl Network {
     // This creates a short-lived connection in the case of connection-oriented protocols
     // for the purpose of sending this one message.
     // This bypasses the connection table as it is not a 'node to node' connection.
+    #[instrument(level="trace", err, skip(self, data), fields(data.len = data.len()))]
     pub async fn send_data_unbound_to_dial_info(
         &self,
         dial_info: DialInfo,
@@ -300,6 +301,7 @@ impl Network {
         res
     }
 
+    #[instrument(level="trace", err, skip(self, data), fields(data.len = data.len()))]
     pub async fn send_data_to_existing_connection(
         &self,
         descriptor: ConnectionDescriptor,
@@ -357,6 +359,7 @@ impl Network {
     }
 
     // Send data directly to a dial info, possibly without knowing which node it is going to
+    #[instrument(level="trace", err, skip(self, data), fields(data.len = data.len()))]
     pub async fn send_data_to_dial_info(
         &self,
         dial_info: DialInfo,
@@ -404,9 +407,8 @@ impl Network {
         self.inner.lock().protocol_config
     }
 
+    #[instrument(level = "debug", err, skip_all)]
     pub async fn startup(&self) -> Result<(), String> {
-        trace!("startup network");
-
         // initialize interfaces
         let mut interfaces = NetworkInterfaces::new();
         interfaces.refresh().await?;
@@ -492,10 +494,12 @@ impl Network {
         self.inner.lock().network_started
     }
 
+    #[instrument(level = "debug", skip_all)]
     pub fn restart_network(&self) {
         self.inner.lock().network_needs_restart = true;
     }
 
+    #[instrument(level = "debug", skip_all)]
     pub async fn shutdown(&self) {
         info!("stopping network");
 
@@ -524,6 +528,7 @@ impl Network {
         inner.network_class
     }
 
+    #[instrument(level = "debug", skip_all)]
     pub fn reset_network_class(&self) {
         let mut inner = self.inner.lock();
         inner.network_class = None;

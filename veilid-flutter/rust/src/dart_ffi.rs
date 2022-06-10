@@ -54,6 +54,7 @@ macro_rules! check_err_json {
 /////////////////////////////////////////
 // Initializer
 #[no_mangle]
+#[instrument]
 pub extern "C" fn initialize_veilid_flutter(dart_post_c_object_ptr: ffi::DartPostCObjectFnType) {
     unsafe {
         store_dart_post_cobject(dart_post_c_object_ptr);
@@ -91,6 +92,7 @@ pub extern "C" fn initialize_veilid_flutter(dart_post_c_object_ptr: ffi::DartPos
 /// C-compatible FFI Functions
 
 #[no_mangle]
+#[instrument]
 pub extern "C" fn startup_veilid_core(port: i64, config: FfiStr) {
     let config = config.into_opt_string();
     let stream = DartIsolateStream::new(port);
@@ -141,6 +143,7 @@ pub extern "C" fn get_veilid_state(port: i64) {
 }
 
 #[no_mangle]
+#[instrument(level = "debug")]
 pub extern "C" fn change_api_log_level(port: i64, log_level: FfiStr) {
     let log_level = log_level.into_opt_string();
     DartIsolateWrapper::new(port).spawn_result_json(async move {
@@ -153,6 +156,7 @@ pub extern "C" fn change_api_log_level(port: i64, log_level: FfiStr) {
 }
 
 #[no_mangle]
+#[instrument]
 pub extern "C" fn shutdown_veilid_core(port: i64) {
     DartIsolateWrapper::new(port).spawn_result_json(async move {
         let veilid_api = take_veilid_api().await?;
@@ -184,6 +188,7 @@ pub struct VeilidVersion {
 }
 
 #[no_mangle]
+#[instrument]
 pub extern "C" fn veilid_version() -> VeilidVersion {
     let (major, minor, patch) = veilid_core::veilid_version();
     VeilidVersion {

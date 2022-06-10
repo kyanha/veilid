@@ -1,11 +1,13 @@
 #!/bin/bash
+set -e
+echo Running veilid-flutter rust MacOS build script
 
 # Setup varaiables
 SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 FLUTTER_DIR=$(dirname `which flutter`)
 HOMEBREW_DIR=$(dirname `which brew`)
 CARGO_DIR=$(dirname `which cargo`)
-CARGO_MANIFEST_PATH=$(python -c "import os; print(os.path.realpath(\"$SCRIPTDIR/Cargo.toml\"))")
+CARGO_MANIFEST_PATH=$(python3 -c "import os; print(os.path.realpath(\"$SCRIPTDIR/Cargo.toml\"))")
 TARGET_DIR=$(dirname `cargo locate-project --message-format plain`)/target
 
 # Configure outputs

@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 use tracing::*;
 use veilid_core::xx::SingleShotEventual;
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum ServerMode {
     Normal,
     ShutdownImmediate,
@@ -20,6 +20,7 @@ lazy_static! {
         Mutex::new(Some(SingleShotEventual::new(Some(()))));
 }
 
+#[instrument]
 pub fn shutdown() {
     let shutdown_switch = SHUTDOWN_SWITCH.lock().take();
     if let Some(shutdown_switch) = shutdown_switch {
@@ -28,13 +29,10 @@ pub fn shutdown() {
 }
 
 pub async fn run_veilid_server(settings: Settings, server_mode: ServerMode) -> Result<(), String> {
-    run_veilid_server_internal(settings, server_mode)
-        .await
-        .map_err(|e| {
-            error!("{}", e);
-            e
-        })
+    run_veilid_server_internal(settings, server_mode).await
 }
+
+#[instrument(err)]
 pub async fn run_veilid_server_internal(
     settings: Settings,
     server_mode: ServerMode,

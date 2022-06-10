@@ -300,7 +300,9 @@ class VeilidFFI implements Veilid {
 
   @override
   Future<void> changeApiLogLevel(VeilidConfigLogLevel logLevel) async {
-    var nativeLogLevel = logLevel.json.toNativeUtf8();
+    var nativeLogLevel =
+        jsonEncode(logLevel.json, toEncodable: veilidApiToEncodable)
+            .toNativeUtf8();
     final recvPort = ReceivePort("change_api_log_level");
     final sendPort = recvPort.sendPort;
     _changeApiLogLevel(sendPort.nativePort, nativeLogLevel);

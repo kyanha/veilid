@@ -52,6 +52,7 @@ impl ApiTracingLayer {
         }
     }
 
+    #[instrument(level = "debug", skip(update_callback))]
     pub async fn init(max_level: Option<VeilidLogLevel>, update_callback: UpdateCallback) {
         let api_logger = API_LOGGER.get_or_init(|| ApiTracingLayer {
             inner: Arc::new(Mutex::new(None)),
@@ -60,6 +61,7 @@ impl ApiTracingLayer {
         *api_logger.inner.lock() = apilogger_inner;
     }
 
+    #[instrument(level = "debug")]
     pub async fn terminate() {
         if let Some(api_logger) = API_LOGGER.get() {
             let mut inner = api_logger.inner.lock();
@@ -75,6 +77,7 @@ impl ApiTracingLayer {
             .clone()
     }
 
+    #[instrument(level = "trace")]
     pub fn change_api_log_level(max_level: Option<VeilidLogLevel>) {
         if let Some(api_logger) = API_LOGGER.get() {
             if let Some(inner) = &mut *api_logger.inner.lock() {

@@ -237,6 +237,15 @@ pub struct VeilidConfig {
     inner: Arc<RwLock<VeilidConfigInner>>,
 }
 
+impl fmt::Debug for VeilidConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let inner = self.inner.read();
+        f.debug_struct("VeilidConfig")
+            .field("inner", &*inner)
+            .finish()
+    }
+}
+
 impl Default for VeilidConfig {
     fn default() -> Self {
         Self::new()

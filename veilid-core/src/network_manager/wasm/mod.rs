@@ -51,6 +51,7 @@ impl Network {
 
     /////////////////////////////////////////////////////////////////
 
+    #[instrument(level="trace", err, skip(self, data), fields(data.len = data.len()))]
     pub async fn send_data_unbound_to_dial_info(
         &self,
         dial_info: DialInfo,
@@ -79,6 +80,7 @@ impl Network {
         res
     }
 
+    #[instrument(level="trace", err, skip(self, data), fields(data.len = data.len()))]
     pub async fn send_data_to_existing_connection(
         &self,
         descriptor: ConnectionDescriptor,
@@ -115,6 +117,7 @@ impl Network {
         }
     }
 
+    #[instrument(level="trace", err, skip(self, data), fields(data.len = data.len()))]
     pub async fn send_data_to_dial_info(
         &self,
         dial_info: DialInfo,

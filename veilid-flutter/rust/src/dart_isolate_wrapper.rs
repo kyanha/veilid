@@ -1,6 +1,7 @@
 pub use allo_isolate::ffi::DartCObject;
 pub use allo_isolate::IntoDart;
 use allo_isolate::Isolate;
+use core::fmt::Debug;
 use core::future::Future;
 use parking_lot::Mutex;
 use serde::*;
@@ -31,8 +32,8 @@ impl DartIsolateWrapper {
     pub fn spawn_result<F, T, E>(self, future: F)
     where
         F: Future<Output = Result<T, E>> + Send + 'static,
-        T: IntoDart,
-        E: Serialize,
+        T: IntoDart + Debug,
+        E: Serialize + Debug,
     {
         async_std::task::spawn(async move {
             self.result(future.await);
@@ -42,21 +43,24 @@ impl DartIsolateWrapper {
     pub fn spawn_result_json<F, T, E>(self, future: F)
     where
         F: Future<Output = Result<T, E>> + Send + 'static,
-        T: Serialize,
-        E: Serialize,
+        T: Serialize + Debug,
+        E: Serialize + Debug,
     {
         async_std::task::spawn(async move {
             self.result_json(future.await);
         });
     }
 
-    pub fn result<T: IntoDart, E: Serialize>(self, result: Result<T, E>) -> bool {
+    pub fn result<T: IntoDart + Debug, E: Serialize + Debug>(self, result: Result<T, E>) -> bool {
         match result {
             Ok(v) => self.ok(v),
             Err(e) => self.err_json(e),
         }
     }
-    pub fn result_json<T: Serialize, E: Serialize>(self, result: Result<T, E>) -> bool {
+    pub fn result_json<T: Serialize + Debug, E: Serialize + Debug>(
+        self,
+        result: Result<T, E>,
+    ) -> bool {
         match result {
             Ok(v) => self.ok_json(v),
             Err(e) => self.err_json(e),
@@ -67,19 +71,19 @@ impl DartIsolateWrapper {
             .post(vec![MESSAGE_OK.into_dart(), value.into_dart()])
     }
 
-    pub fn ok_json<T: Serialize>(self, value: T) -> bool {
+    pub fn ok_json<T: Serialize + Debug>(self, value: T) -> bool {
         self.isolate.post(vec![
             MESSAGE_OK_JSON.into_dart(),
             veilid_core::serialize_json(value).into_dart(),
         ])
     }
 
-    // pub fn err<E: IntoDart>(self, error: E) -> bool {
+    // pub fn err<E: IntoDart + Debug>(self, error: E) -> bool {
     //     self.isolate
     //         .post(vec![MESSAGE_ERR.into_dart(), error.into_dart()])
     // }
 
-    pub fn err_json<E: Serialize>(self, error: E) -> bool {
+    pub fn err_json<E: Serialize + Debug>(self, error: E) -> bool {
         self.isolate.post(vec![
             MESSAGE_ERR_JSON.into_dart(),
             veilid_core::serialize_json(error).into_dart(),
@@ -122,7 +126,7 @@ impl DartIsolateStream {
     //     }
     // }
 
-    pub fn item_json<T: Serialize>(&self, value: T) -> bool {
+    pub fn item_json<T: Serialize + Debug>(&self, value: T) -> bool {
         let inner = self.inner.lock();
         if let Some(isolate) = &inner.isolate {
             isolate.post(vec![
@@ -134,7 +138,7 @@ impl DartIsolateStream {
         }
     }
 
-    // pub fn abort<E: IntoDart>(self, error: E) -> bool {
+    // pub fn abort<E: IntoDart + Debug>(self, error: E) -> bool {
     //     let mut inner = self.inner.lock();
     //     if let Some(isolate) = inner.isolate.take() {
     //         isolate.post(vec![MESSAGE_STREAM_ABORT.into_dart(), error.into_dart()])
@@ -143,7 +147,7 @@ impl DartIsolateStream {
     //     }
     // }
 
-    pub fn abort_json<E: Serialize>(self, error: E) -> bool {
+    pub fn abort_json<E: Serialize + Debug>(self, error: E) -> bool {
         let mut inner = self.inner.lock();
         if let Some(isolate) = inner.isolate.take() {
             isolate.post(vec![
