@@ -15,8 +15,8 @@ do
     if [ "$arch" == "arm64" ]; then
         echo arm64
         CARGO_TARGET=aarch64-apple-ios
-        CARGO_TOOLCHAIN=+ios-arm64-1.57.0
-        #CARGO_TOOLCHAIN=
+        #CARGO_TOOLCHAIN=+ios-arm64-1.57.0
+        CARGO_TOOLCHAIN=
     elif [ "$arch" == "x86_64" ]; then
         echo x86_64
         CARGO_TARGET=x86_64-apple-ios

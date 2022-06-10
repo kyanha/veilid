@@ -7,7 +7,9 @@ use clap::ArgMatches;
 use signal_hook::consts::signal::*;
 use signal_hook_async_std::Signals;
 use std::io::Read;
+use tracing::*;
 
+#[instrument(skip(signals))]
 async fn handle_signals(mut signals: Signals) {
     while let Some(signal) = signals.next().await {
         match signal {
@@ -23,6 +25,7 @@ async fn handle_signals(mut signals: Signals) {
     }
 }
 
+#[instrument(err)]
 pub fn run_daemon(settings: Settings, _matches: ArgMatches) -> Result<(), String> {
     let daemon = {
         let mut daemon = daemonize::Daemonize::new();

@@ -234,6 +234,7 @@ impl ReceiptManager {
         }
     }
 
+    #[instrument(level = "trace", skip(self))]
     pub async fn timeout_task_routine(self, now: u64) {
         // Go through all receipts and build a list of expired nonces
         let mut new_next_oldest_ts: Option<u64> = None;

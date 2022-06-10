@@ -730,6 +730,7 @@ impl RoutingTable {
         best_inbound_relay.map(|(k, e)| NodeRef::new(self.clone(), *k, e, None))
     }
 
+    #[instrument(level = "trace", skip(self), ret, err)]
     pub fn register_find_node_answer(&self, fna: FindNodeAnswer) -> Result<Vec<NodeRef>, String> {
         let node_id = self.node_id();
 
@@ -755,6 +756,7 @@ impl RoutingTable {
         Ok(out)
     }
 
+    #[instrument(level = "trace", skip(self), ret, err)]
     pub async fn find_node(
         &self,
         node_ref: NodeRef,
@@ -773,26 +775,24 @@ impl RoutingTable {
             .await
             .map_err(map_to_string)
             .map_err(logthru_rtab!())?;
-        log_rtab!(
-            "find_self for at {:?} answered in {}ms",
-            &node_ref,
-            timestamp_to_secs(res.latency) * 1000.0f64
-        );
 
         // register nodes we'd found
         self.register_find_node_answer(res)
     }
 
+    #[instrument(level = "trace", skip(self), ret, err)]
     pub async fn find_self(&self, node_ref: NodeRef) -> Result<Vec<NodeRef>, String> {
         let node_id = self.node_id();
         self.find_node(node_ref, node_id).await
     }
 
+    #[instrument(level = "trace", skip(self), ret, err)]
     pub async fn find_target(&self, node_ref: NodeRef) -> Result<Vec<NodeRef>, String> {
         let node_id = node_ref.node_id();
         self.find_node(node_ref, node_id).await
     }
 
+    #[instrument(level = "trace", skip(self))]
     pub async fn reverse_find_node(&self, node_ref: NodeRef, wide: bool) {
         // Ask bootstrap node to 'find' our own node so we can get some more nodes near ourselves
         // and then contact those nodes to inform -them- that we exist
@@ -827,6 +827,7 @@ impl RoutingTable {
     }
 
     // Bootstrap lookup process
+    #[instrument(level = "trace", skip(self), ret, err)]
     async fn resolve_bootstrap(
         &self,
         bootstrap: Vec<String>,
@@ -990,6 +991,7 @@ impl RoutingTable {
         Ok(bsmap)
     }
 
+    #[instrument(level = "trace", skip(self), err)]
     async fn bootstrap_task_routine(self) -> Result<(), String> {
         let (bootstrap, bootstrap_nodes) = {
             let c = self.config.get();
@@ -1092,9 +1094,8 @@ impl RoutingTable {
 
     // Ask our remaining peers to give us more peers before we go
     // back to the bootstrap servers to keep us from bothering them too much
+    #[instrument(level = "trace", skip(self), err)]
     async fn peer_minimum_refresh_task_routine(self) -> Result<(), String> {
-        // log_rtab!("--- peer_minimum_refresh task");
-
         // get list of all peers we know about, even the unreliable ones, and ask them to find nodes close to our node too
         let noderefs = {
             let mut inner = self.inner.lock();
@@ -1125,6 +1126,7 @@ impl RoutingTable {
 
     // Ping each node in the routing table if they need to be pinged
     // to determine their reliability
+    #[instrument(level = "trace", skip(self), err)]
     async fn ping_validator_task_routine(self, _last_ts: u64, cur_ts: u64) -> Result<(), String> {
         // log_rtab!("--- ping_validator task");
 
@@ -1149,6 +1151,7 @@ impl RoutingTable {
     }
 
     // Compute transfer statistics to determine how 'fast' a node is
+    #[instrument(level = "trace", skip(self), err)]
     async fn rolling_transfers_task_routine(self, last_ts: u64, cur_ts: u64) -> Result<(), String> {
         // log_rtab!("--- rolling_transfers task");
         let inner = &mut *self.inner.lock();

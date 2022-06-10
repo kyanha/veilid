@@ -51,30 +51,30 @@ impl DiscoveryContext {
     // Pick the best network class we have seen so far
     pub fn set_detected_network_class(&self, network_class: NetworkClass) {
         let mut inner = self.inner.lock();
-        log_net!( debug
-            "=== set_detected_network_class {:?} {:?}: {:?} ===",
-            inner.protocol_type,
-            inner.address_type,
-            network_class
+        debug!(target: "net",
+            protocol_type=?inner.protocol_type,
+            address_type=?inner.address_type,
+            ?network_class,
+            "set_detected_network_class"
         );
-
         inner.detected_network_class = Some(network_class);
     }
 
     pub fn set_detected_public_dial_info(&self, dial_info: DialInfo, class: DialInfoClass) {
         let mut inner = self.inner.lock();
-        log_net!( debug
-            "=== set_detected_public_dial_info {:?} {:?}: {} {:?} ===",
-            inner.protocol_type,
-            inner.address_type,
-            dial_info,
-            class
+        debug!(target: "net",
+            protocol_type=?inner.protocol_type,
+            address_type=?inner.address_type,
+            ?dial_info,
+            ?class,
+            "set_detected_public_dial_info"
         );
         inner.detected_public_dial_info = Some(DetectedPublicDialInfo { dial_info, class });
     }
 
     // Ask for a public address check from a particular noderef
     // This is done over the normal port using RPC
+    #[instrument(level = "trace", skip(self), ret)]
     async fn request_public_address(&self, node_ref: NodeRef) -> Option<SocketAddress> {
         let rpc = self.routing_table.rpc_processor();
         rpc.rpc_call_status(node_ref.clone())
@@ -93,6 +93,7 @@ impl DiscoveryContext {
 
     // find fast peers with a particular address type, and ask them to tell us what our external address is
     // This is done over the normal port using RPC
+    #[instrument(level = "trace", skip(self), ret)]
     async fn discover_external_address(
         &self,
         protocol_type: ProtocolType,
@@ -122,6 +123,7 @@ impl DiscoveryContext {
     }
 
     // This pulls the already-detected local interface dial info from the routing table
+    #[instrument(level = "trace", skip(self), ret)]
     fn get_local_addresses(
         &self,
         protocol_type: ProtocolType,
@@ -143,6 +145,7 @@ impl DiscoveryContext {
             .collect()
     }
 
+    #[instrument(level = "trace", skip(self), ret)]
     async fn validate_dial_info(
         &self,
         node_ref: NodeRef,
@@ -165,6 +168,7 @@ impl DiscoveryContext {
             .unwrap_or(false)
     }
 
+    #[instrument(level = "trace", skip(self), ret)]
     async fn try_port_mapping(&self) -> Option<DialInfo> {
         //xxx
         None
@@ -189,6 +193,7 @@ impl DiscoveryContext {
     ///////
     // Per-protocol discovery routines
 
+    #[instrument(level = "trace", skip(self))]
     pub fn protocol_begin(&self, protocol_type: ProtocolType, address_type: AddressType) {
         // Get our interface addresses
         let intf_addrs = self.get_local_addresses(protocol_type, address_type);
@@ -203,6 +208,7 @@ impl DiscoveryContext {
     }
 
     // Get our first node's view of our external IP address via normal RPC
+    #[instrument(level = "trace", skip(self), ret)]
     pub async fn protocol_get_external_address_1(&self) -> bool {
         let (protocol_type, address_type) = {
             let inner = self.inner.lock();
@@ -234,6 +240,7 @@ impl DiscoveryContext {
     }
 
     // If we know we are not behind NAT, check our firewall status
+    #[instrument(level = "trace", skip(self), err)]
     pub async fn protocol_process_no_nat(&self) -> Result<(), String> {
         let (node_1, external_1_dial_info) = {
             let inner = self.inner.lock();
@@ -264,6 +271,7 @@ impl DiscoveryContext {
     }
 
     // If we know we are behind NAT check what kind
+    #[instrument(level = "trace", skip(self), ret, err)]
     pub async fn protocol_process_nat(&self) -> Result<bool, String> {
         let (node_1, external_1_dial_info, external_1_address, protocol_type, address_type) = {
             let inner = self.inner.lock();
@@ -353,6 +361,7 @@ impl DiscoveryContext {
 }
 
 impl Network {
+    #[instrument(level = "trace", skip(self, context), err)]
     pub async fn update_ipv4_protocol_dialinfo(
         &self,
         context: &DiscoveryContext,
@@ -414,6 +423,7 @@ impl Network {
         Ok(())
     }
 
+    #[instrument(level = "trace", skip(self, context), err)]
     pub async fn update_ipv6_protocol_dialinfo(
         &self,
         context: &DiscoveryContext,
@@ -454,9 +464,8 @@ impl Network {
         Ok(())
     }
 
+    #[instrument(level = "trace", skip(self), err)]
     pub async fn update_network_class_task_routine(self, _l: u64, _t: u64) -> Result<(), String> {
-        log_net!("--- updating network class");
-
         // Ensure we aren't trying to update this without clearing it first
         let old_network_class = self.inner.lock().network_class;
         assert_eq!(old_network_class, None);

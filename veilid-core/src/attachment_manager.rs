@@ -221,6 +221,7 @@ impl AttachmentManager {
         }
     }
 
+    #[instrument(level = "debug", skip(self))]
     async fn attachment_maintainer(self) {
         trace!("attachment starting");
         let netman = {
@@ -229,7 +230,6 @@ impl AttachmentManager {
             inner.network_manager.clone()
         };
 
-        trace!("starting network");
         let mut started = true;
         if let Err(err) = netman.startup().await {
             error!("network startup failed: {}", err);
@@ -266,6 +266,7 @@ impl AttachmentManager {
         self.inner.lock().attach_timestamp = None;
     }
 
+    #[instrument(level = "debug", skip_all, err)]
     pub async fn init(&self, update_callback: UpdateCallback) -> Result<(), String> {
         trace!("init");
         let network_manager = {
@@ -286,6 +287,8 @@ impl AttachmentManager {
 
         Ok(())
     }
+
+    #[instrument(level = "debug", skip(self))]
     pub async fn terminate(&self) {
         // Ensure we detached
         self.detach().await;
@@ -298,8 +301,8 @@ impl AttachmentManager {
         inner.update_callback = None;
     }
 
+    #[instrument(level = "trace", skip(self))]
     fn attach(&self) {
-        trace!("attach");
         // Create long-running connection maintenance routine
         let this = self.clone();
         self.inner.lock().maintain_peers = true;
@@ -307,8 +310,8 @@ impl AttachmentManager {
             Some(intf::spawn(this.attachment_maintainer()));
     }
 
+    #[instrument(level = "trace", skip(self))]
     async fn detach(&self) {
-        trace!("detach");
         let attachment_maintainer_jh = self.inner.lock().attachment_maintainer_jh.take();
         if let Some(jh) = attachment_maintainer_jh {
             // Terminate long-running connection maintenance routine
@@ -343,16 +346,18 @@ impl AttachmentManager {
         }
     }
 
+    #[instrument(level = "trace", skip(self), err)]
     pub async fn request_attach(&self) -> Result<(), String> {
         self.process_input(&AttachmentInput::AttachRequested)
             .await
             .map_err(|e| format!("Attach request failed: {}", e))
     }
 
+    #[instrument(level = "trace", skip(self), err)]
     pub async fn request_detach(&self) -> Result<(), String> {
         self.process_input(&AttachmentInput::DetachRequested)
             .await
-            .map_err(|e| format!("Attach request failed: {}", e))
+            .map_err(|e| format!("Detach request failed: {}", e))
     }
 
     pub fn get_state(&self) -> AttachmentState {

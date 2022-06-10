@@ -13,10 +13,10 @@ rustup target add aarch64-apple-darwin aarch64-apple-ios x86_64-apple-darwin x86
 cargo install wasm-bindgen-cli
 
 # install bitcode compatible ios toolchain
-echo Manual Step:
-echo   install +ios-arm64-1.57.0 toolchain for bitcode from https://github.com/getditto/rust-bitcode/releases/latest and unzip
-echo   xattr -d -r com.apple.quarantine .
-echo   ./install.sh
+# echo Manual Step:
+# echo   install +ios-arm64-1.57.0 toolchain for bitcode from https://github.com/getditto/rust-bitcode/releases/latest and unzip
+# echo   xattr -d -r com.apple.quarantine .
+# echo   ./install.sh
 
 # ensure brew is installed
 if command -v brew &> /dev/null; then 
@@ -39,8 +39,16 @@ xcode-select --install
 
 # ensure packages are installed
 if [ "$BREW_USER" == "" ]; then
-    BREW_USER=`ls -lad /opt/homebrew/. | cut -d\  -f4`
-    echo "Must sudo to homebrew user \"$BREW_USER\" to install capnp package:"
+    if [ -d /opt/homebrew ]; then
+        BREW_USER=`ls -lad /opt/homebrew/. | cut -d\  -f4`
+        echo "Must sudo to homebrew user \"$BREW_USER\" to install capnp package:"
+    elif [ -d /usr/local/Homebrew ]; then
+        BREW_USER=`ls -lad /usr/local/Homebrew/. | cut -d\  -f4`
+        echo "Must sudo to homebrew user \"$BREW_USER\" to install capnp package:"
+    else
+        echo "Homebrew is not installed in the normal place. Trying as current user"
+        BREW_USER=`whoami`
+    fi
 fi
 sudo -H -u $BREW_USER brew install capnp
 

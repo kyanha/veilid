@@ -15,6 +15,7 @@ mod windows;
 use async_std::task;
 use cfg_if::*;
 use server::*;
+use tracing::*;
 use veilid_logs::*;
 
 #[allow(clippy::all)]
@@ -22,6 +23,7 @@ pub mod veilid_client_capnp {
     include!(concat!(env!("OUT_DIR"), "/proto/veilid_client_capnp.rs"));
 }
 
+#[instrument(err)]
 fn main() -> Result<(), String> {
     #[cfg(windows)]
     let _ = ansi_term::enable_ansi_support();

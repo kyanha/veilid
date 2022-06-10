@@ -73,6 +73,7 @@ struct VeilidServerImpl {
 }
 
 impl VeilidServerImpl {
+    #[instrument(level = "trace", skip_all)]
     pub fn new(veilid_api: veilid_core::VeilidAPI) -> Self {
         Self {
             next_id: 0,
@@ -83,6 +84,7 @@ impl VeilidServerImpl {
 }
 
 impl veilid_server::Server for VeilidServerImpl {
+    #[instrument(level = "trace", skip_all)]
     fn register(
         &mut self,
         params: veilid_server::RegisterParams,
@@ -126,6 +128,7 @@ impl veilid_server::Server for VeilidServerImpl {
         })
     }
 
+    #[instrument(level = "trace", skip_all)]
     fn debug(
         &mut self,
         params: veilid_server::DebugParams,
@@ -145,6 +148,7 @@ impl veilid_server::Server for VeilidServerImpl {
         })
     }
 
+    #[instrument(level = "trace", skip_all)]
     fn attach(
         &mut self,
         _params: veilid_server::AttachParams,
@@ -160,6 +164,7 @@ impl veilid_server::Server for VeilidServerImpl {
         })
     }
 
+    #[instrument(level = "trace", skip_all)]
     fn detach(
         &mut self,
         _params: veilid_server::DetachParams,
@@ -175,6 +180,7 @@ impl veilid_server::Server for VeilidServerImpl {
         })
     }
 
+    #[instrument(level = "trace", skip_all)]
     fn shutdown(
         &mut self,
         _params: veilid_server::ShutdownParams,
@@ -194,6 +200,7 @@ impl veilid_server::Server for VeilidServerImpl {
         Promise::ok(())
     }
 
+    #[instrument(level = "trace", skip_all)]
     fn get_state(
         &mut self,
         _params: veilid_server::GetStateParams,
@@ -239,6 +246,7 @@ pub struct ClientApi {
 }
 
 impl ClientApi {
+    #[instrument(level = "trace", skip_all)]
     pub fn new(veilid_api: veilid_core::VeilidAPI) -> Rc<Self> {
         Rc::new(Self {
             inner: RefCell::new(ClientApiInner {
@@ -250,6 +258,7 @@ impl ClientApi {
         })
     }
 
+    #[instrument(level = "trace", skip(self))]
     pub async fn stop(self: Rc<Self>) {
         trace!("ClientApi::stop requested");
         let jh = {
@@ -268,6 +277,7 @@ impl ClientApi {
         trace!("ClientApi::stop: stopped");
     }
 
+    #[instrument(level = "trace", skip(self, client), err)]
     async fn handle_incoming(
         self: Rc<Self>,
         bind_addr: SocketAddr,
@@ -301,6 +311,7 @@ impl ClientApi {
         incoming_loop.await
     }
 
+    #[instrument(level = "trace", skip_all)]
     fn send_request_to_all_clients<F, T>(self: Rc<Self>, request: F)
     where
         F: Fn(u64, &mut RegistrationHandle) -> Option<::capnp::capability::RemotePromise<T>>,
@@ -338,6 +349,7 @@ impl ClientApi {
         }
     }
 
+    #[instrument(level = "trace", skip(self))]
     pub fn handle_update(self: Rc<Self>, veilid_update: veilid_core::VeilidUpdate) {
         // serialize update
         let veilid_update = serialize_json(veilid_update);
@@ -360,6 +372,7 @@ impl ClientApi {
         });
     }
 
+    #[instrument(level = "trace", skip(self))]
     pub fn run(self: Rc<Self>, bind_addrs: Vec<SocketAddr>) {
         // Create client api VeilidServer
         let veilid_server_impl = VeilidServerImpl::new(self.inner.borrow().veilid_api.clone());

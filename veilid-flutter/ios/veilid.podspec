@@ -33,8 +33,8 @@ Veilid Network Plugin
   s.script_phase = { 
     :name => 'Cargo Build', 
     :script => File.join(File.dirname(__dir__), 'rust', 'ios_build.sh'), 
-    :execution_position => :before_compile,
-    :output_files => [ File.join(cargo_target_dir, 'ios_lib', 'libveilid_flutter.a') ]
+    :execution_position => :before_compile
+    # :output_files => [ File.join(cargo_target_dir, 'ios_lib', 'libveilid_flutter.a') ]
   }
 
 end
