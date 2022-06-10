@@ -70,7 +70,7 @@ impl ServicesContext {
             for ig in crate::DEFAULT_LOG_IGNORE_LIST {
                 ApiTracingLayer::add_filter_ignore_str(ig);
             }
-            info!("Veilid logging initialized");
+            info!("Veilid API logging initialized");
         }
 
         info!("Veilid API starting up");
