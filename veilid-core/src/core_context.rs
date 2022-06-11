@@ -10,6 +10,7 @@ cfg_if! {
     if #[cfg(target_arch = "wasm32")] {
         pub type UpdateCallback = Arc<dyn Fn(VeilidUpdate)>;
     } else {
+
         pub type UpdateCallback = Arc<dyn Fn(VeilidUpdate) + Send + Sync>;
     }
 }
@@ -195,7 +196,7 @@ impl VeilidCoreContext {
         Self::new_common(update_callback, config).await
     }
 
-    #[instrument(err, skip(update_callback))]
+    #[instrument(err, skip_all)]
     async fn new_with_config_json(
         update_callback: UpdateCallback,
         config_json: String,
@@ -209,7 +210,7 @@ impl VeilidCoreContext {
         Self::new_common(update_callback, config).await
     }
 
-    #[instrument(err, skip(update_callback))]
+    #[instrument(err, skip_all)]
     async fn new_common(
         update_callback: UpdateCallback,
         config: VeilidConfig,

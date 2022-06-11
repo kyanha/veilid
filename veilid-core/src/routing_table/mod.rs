@@ -399,75 +399,73 @@ impl RoutingTable {
     }
 
     // Inform routing table entries that our dial info has changed
-    pub fn send_node_info_updates(&self) {
+    pub async fn send_node_info_updates(&self) {
         let this = self.clone();
-        // Run in background
-        intf::spawn(async move {
-            // Run in background only once
-            this.clone()
-                .unlocked_inner
-                .node_info_update_single_future
-                .single_spawn(async move {
+        // Run in background only once
+        let _ = self
+            .clone()
+            .unlocked_inner
+            .node_info_update_single_future
+            .single_spawn(async move {
+                // Only update if we actually have a valid network class
+                let netman = this.network_manager();
+                if matches!(
+                    netman.get_network_class().unwrap_or(NetworkClass::Invalid),
+                    NetworkClass::Invalid
+                ) {
+                    trace!(
+                        "not sending node info update because our network class is not yet valid"
+                    );
+                    return;
+                }
 
-                    // Only update if we actually have a valid network class
-                    let netman = this.network_manager();
-                    if matches!(
-                        netman.get_network_class().unwrap_or(NetworkClass::Invalid),
-                        NetworkClass::Invalid
-                    ) {
-                        trace!("not sending node info update because our network class is not yet valid");
-                        return;
-                    }
-
-                    // Get the list of refs to all nodes to update
-                    let node_refs = {
-                        let mut inner = this.inner.lock();
-                        let mut node_refs = Vec::<NodeRef>::with_capacity(inner.bucket_entry_count);
-                        let cur_ts = intf::get_timestamp();
-                        Self::with_entries(&mut *inner, cur_ts, BucketEntryState::Unreliable, |k, e| {
+                // Get the list of refs to all nodes to update
+                let node_refs = {
+                    let mut inner = this.inner.lock();
+                    let mut node_refs = Vec::<NodeRef>::with_capacity(inner.bucket_entry_count);
+                    let cur_ts = intf::get_timestamp();
+                    Self::with_entries(
+                        &mut *inner,
+                        cur_ts,
+                        BucketEntryState::Unreliable,
+                        |k, e| {
                             // Only update nodes that haven't seen our node info yet
                             if !e.has_seen_our_node_info() {
-                                node_refs.push(NodeRef::new(
-                                    this.clone(),
-                                    *k,
-                                    e,
-                                    None,
-                                ));
+                                node_refs.push(NodeRef::new(this.clone(), *k, e, None));
                             }
                             Option::<()>::None
-                        });
-                        node_refs
-                    };
+                        },
+                    );
+                    node_refs
+                };
 
-                    // Send the updates
-                    log_rtab!("Sending node info updates to {} nodes", node_refs.len());
-                    let mut unord = FuturesUnordered::new();
-                    for nr in node_refs {
-                        let rpc = this.rpc_processor();
-                        unord.push(async move {
-                            // Update the node
-                            if let Err(e) = rpc
-                                .rpc_call_node_info_update(Destination::Direct(nr.clone()), None)
-                                .await
-                            {
-                                // Not fatal, but we should be able to see if this is happening
-                                trace!("failed to send node info update to {:?}: {}", nr, e);
-                                return;
-                            }
+                // Send the updates
+                log_rtab!("Sending node info updates to {} nodes", node_refs.len());
+                let mut unord = FuturesUnordered::new();
+                for nr in node_refs {
+                    let rpc = this.rpc_processor();
+                    unord.push(async move {
+                        // Update the node
+                        if let Err(e) = rpc
+                            .rpc_call_node_info_update(Destination::Direct(nr.clone()), None)
+                            .await
+                        {
+                            // Not fatal, but we should be able to see if this is happening
+                            trace!("failed to send node info update to {:?}: {}", nr, e);
+                            return;
+                        }
 
-                            // Mark the node as updated
-                            nr.set_seen_our_node_info();
-                        });
-                    }
+                        // Mark the node as updated
+                        nr.set_seen_our_node_info();
+                    });
+                }
 
-                    // Wait for futures to complete
-                    while unord.next().await.is_some() {}
+                // Wait for futures to complete
+                while unord.next().await.is_some() {}
 
-                    log_rtab!("Finished sending node updates");
-                })
-                .await
-        })
-        .detach()
+                log_rtab!("Finished sending node updates");
+            })
+            .await;
     }
 
     // Attempt to empty the routing table
@@ -1134,19 +1132,27 @@ impl RoutingTable {
         let netman = self.network_manager();
         let relay_node_id = netman.relay_node().map(|nr| nr.node_id());
 
-        let mut inner = self.inner.lock();
-        Self::with_entries(&mut *inner, cur_ts, BucketEntryState::Unreliable, |k, e| {
-            if e.needs_ping(k, cur_ts, relay_node_id) {
-                let nr = NodeRef::new(self.clone(), *k, e, None);
-                log_rtab!(
-                    "    --- ping validating: {:?} ({})",
-                    nr,
-                    e.state_debug_info(cur_ts)
-                );
-                intf::spawn_local(rpc.clone().rpc_call_status(nr)).detach();
-            }
-            Option::<()>::None
-        });
+        let mut unord = FuturesUnordered::new();
+        {
+            let mut inner = self.inner.lock();
+
+            Self::with_entries(&mut *inner, cur_ts, BucketEntryState::Unreliable, |k, e| {
+                if e.needs_ping(k, cur_ts, relay_node_id) {
+                    let nr = NodeRef::new(self.clone(), *k, e, None);
+                    log_rtab!(
+                        "    --- ping validating: {:?} ({})",
+                        nr,
+                        e.state_debug_info(cur_ts)
+                    );
+                    unord.push(intf::spawn_local(rpc.clone().rpc_call_status(nr)));
+                }
+                Option::<()>::None
+            });
+        }
+
+        // Wait for futures to complete
+        while unord.next().await.is_some() {}
+
         Ok(())
     }
 

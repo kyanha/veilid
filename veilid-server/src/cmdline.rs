@@ -62,6 +62,14 @@ fn do_clap_matches(default_config_path: &OsStr) -> Result<clap::ArgMatches, clap
                 .help("Turn on trace logging on the terminal"),
         )
         .arg(
+            Arg::new("otlp")
+                .long("otlp")
+                .takes_value(true)
+                .value_name("endpoint")
+                .default_missing_value("http://localhost:4317")
+                .help("Turn on OpenTelemetry tracing"),
+        )
+        .arg(
             Arg::new("subnode-index")
                 .long("subnode-index")
                 .takes_value(true)
@@ -196,6 +204,19 @@ pub fn process_command_line() -> Result<(Settings, ArgMatches), String> {
     if matches.occurrences_of("trace") != 0 {
         settingsrw.logging.terminal.enabled = true;
         settingsrw.logging.terminal.level = LogLevel::Trace;
+    }
+    if matches.occurrences_of("otlp") != 0 {
+        settingsrw.logging.otlp.enabled = true;
+        settingsrw.logging.otlp.grpc_endpoint = Some(
+            ParsedUrl::from_str(
+                &matches
+                    .value_of("otlp")
+                    .expect("should not be null because of default missing value")
+                    .to_string(),
+            )
+            .map_err(|e| format!("failed to parse OTLP url: {}", e))?,
+        );
+        settingsrw.logging.otlp.level = LogLevel::Trace;
     }
     if matches.is_present("attach") {
         settingsrw.auto_attach = !matches!(matches.value_of("attach"), Some("true"));

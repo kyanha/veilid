@@ -1,5 +1,6 @@
 use crate::settings::*;
 use cfg_if::*;
+use opentelemetry_otlp::WithExportConfig;
 use std::path::*;
 use tracing::*;
 use tracing_appender::*;
@@ -34,6 +35,7 @@ impl VeilidLogs {
 
         let subscriber = Registry::default();
 
+        // Terminal logger
         let subscriber = subscriber.with(if settingsr.logging.terminal.enabled {
             let terminal_max_log_level: level_filters::LevelFilter =
                 convert_loglevel(settingsr.logging.terminal.level)
@@ -53,6 +55,46 @@ impl VeilidLogs {
             None
         });
 
+        // OpenTelemetry logger
+        let subscriber = subscriber.with(if settingsr.logging.otlp.enabled {
+            let otlp_max_log_level: level_filters::LevelFilter =
+                convert_loglevel(settingsr.logging.otlp.level)
+                    .to_tracing_level()
+                    .into();
+            let grpc_endpoint = match &settingsr.logging.otlp.grpc_endpoint {
+                Some(v) => &v.urlstring,
+                None => {
+                    return Err("missing OTLP GRPC endpoint url".to_owned());
+                }
+            };
+
+            // Required for GRPC dns resolution to work
+            std::env::set_var("GRPC_DNS_RESOLVER", "native");
+
+            let tracer = opentelemetry_otlp::new_pipeline()
+                .tracing()
+                .with_exporter(
+                    opentelemetry_otlp::new_exporter()
+                        .grpcio()
+                        .with_endpoint(grpc_endpoint),
+                )
+                .install_batch(opentelemetry::runtime::AsyncStd)
+                .map_err(|e| format!("failed to install OpenTelemetry tracer: {}", e))?;
+
+            let ignore_list = ignore_list.clone();
+            Some(
+                tracing_opentelemetry::layer()
+                    .with_tracer(tracer)
+                    .with_filter(otlp_max_log_level)
+                    .with_filter(filter::FilterFn::new(move |metadata| {
+                        logfilter(metadata, &ignore_list)
+                    })),
+            )
+        } else {
+            None
+        });
+
+        // File logger
         let mut guard = None;
         let subscriber = subscriber.with(if settingsr.logging.file.enabled {
             let file_max_log_level: level_filters::LevelFilter =
@@ -98,6 +140,7 @@ impl VeilidLogs {
             None
         });
 
+        // API logger
         let subscriber = subscriber.with(if settingsr.logging.api.enabled {
             // Get layer from veilid core, filtering is done by ApiTracingLayer automatically
             Some(veilid_core::ApiTracingLayer::get())
@@ -105,6 +148,7 @@ impl VeilidLogs {
             None
         });
 
+        // Systemd Journal logger
         cfg_if! {
             if #[cfg(target_os = "linux")] {
                 let subscriber = subscriber.with(if settingsr.logging.system.enabled {

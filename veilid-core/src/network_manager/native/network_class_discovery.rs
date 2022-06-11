@@ -618,7 +618,7 @@ impl Network {
             log_net!(debug "network class changed to {:?}", network_class);
 
             // Send updates to everyone
-            routing_table.send_node_info_updates();
+            routing_table.send_node_info_updates().await;
         }
 
         Ok(())

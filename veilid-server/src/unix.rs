@@ -95,16 +95,16 @@ pub fn run_daemon(settings: Settings, _matches: ArgMatches) -> Result<(), String
         daemon
     };
 
-    // Init combined console/file logger
-    let _logs = VeilidLogs::setup(settings.clone())?;
-
-    // Daemonize
-    daemon
-        .start()
-        .map_err(|e| format!("Failed to daemonize: {}", e))?;
-
     // Now, run the server
     task::block_on(async {
+        // Init combined console/file logger
+        let _logs = VeilidLogs::setup(settings.clone())?;
+
+        // Daemonize
+        daemon
+            .start()
+            .map_err(|e| format!("Failed to daemonize: {}", e))?;
+
         // Catch signals
         let signals = Signals::new(&[SIGHUP, SIGTERM, SIGINT, SIGQUIT])
             .map_err(|e| format!("failed to init signals: {}", e))?;

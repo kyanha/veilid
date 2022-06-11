@@ -36,6 +36,10 @@ logging:
     api:
         enabled: false
         level: 'info'
+    otlp:
+        enabled: false
+        level: 'trace'
+        grpc_endpoint: 'http://localhost:4317'
 testing:
     subnode_index: 0
 core:
@@ -428,6 +432,13 @@ pub struct Api {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+pub struct Otlp {
+    pub enabled: bool,
+    pub level: LogLevel,
+    pub grpc_endpoint: Option<ParsedUrl>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
 pub struct ClientApi {
     pub enabled: bool,
     pub listen_address: NamedSocketAddrs,
@@ -439,6 +450,7 @@ pub struct Logging {
     pub terminal: Terminal,
     pub file: File,
     pub api: Api,
+    pub otlp: Otlp,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -889,6 +901,9 @@ impl Settings {
         set_config_value!(inner.logging.file.level, value);
         set_config_value!(inner.logging.api.enabled, value);
         set_config_value!(inner.logging.api.level, value);
+        set_config_value!(inner.logging.otlp.enabled, value);
+        set_config_value!(inner.logging.otlp.level, value);
+        set_config_value!(inner.logging.otlp.grpc_endpoint, value);
         set_config_value!(inner.testing.subnode_index, value);
         set_config_value!(inner.core.protected_store.allow_insecure_fallback, value);
         set_config_value!(
@@ -1404,6 +1419,12 @@ mod tests {
         assert_eq!(s.logging.file.level, LogLevel::Info);
         assert_eq!(s.logging.api.enabled, false);
         assert_eq!(s.logging.api.level, LogLevel::Info);
+        assert_eq!(s.logging.otlp.enabled, false);
+        assert_eq!(s.logging.otlp.level, LogLevel::Trace);
+        assert_eq!(
+            s.logging.otlp.grpc_endpoint,
+            Some(ParsedUrl::from_str("http://127.0.0.1:4317").unwrap())
+        );
         assert_eq!(s.testing.subnode_index, 0);
 
         assert_eq!(

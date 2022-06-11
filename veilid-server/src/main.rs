@@ -58,18 +58,21 @@ fn main() -> Result<(), String> {
 
     // Handle non-normal server modes
     if !matches!(server_mode, ServerMode::Normal) {
-        // Init combined console/file logger
-        let _logs = VeilidLogs::setup(settings.clone())?;
         // run the server to set the node id and quit
-        return task::block_on(async { run_veilid_server(settings, server_mode).await })
-            .map(|v| {
-                println!("{}", success);
-                v
-            })
-            .map_err(|e| {
-                println!("{}", failure);
-                e
-            });
+        return task::block_on(async {
+            // Init combined console/file logger
+            let _logs = VeilidLogs::setup(settings.clone())?;
+
+            run_veilid_server(settings, server_mode).await
+        })
+        .map(|v| {
+            println!("{}", success);
+            v
+        })
+        .map_err(|e| {
+            println!("{}", failure);
+            e
+        });
     }
 
     // --- Daemon Mode ----
@@ -83,9 +86,6 @@ fn main() -> Result<(), String> {
         }
     }
 
-    // Init combined console/file logger
-    let _logs = VeilidLogs::setup(settings.clone())?;
-
     // --- Normal Startup ---
     ctrlc::set_handler(move || {
         shutdown();
@@ -93,5 +93,10 @@ fn main() -> Result<(), String> {
     .expect("Error setting Ctrl-C handler");
 
     // Run the server loop
-    task::block_on(async { run_veilid_server(settings, server_mode).await })
+    task::block_on(async {
+        // Init combined console/file logger
+        let _logs = VeilidLogs::setup(settings.clone())?;
+
+        run_veilid_server(settings, server_mode).await
+    })
 }

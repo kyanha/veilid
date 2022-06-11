@@ -2,7 +2,7 @@ use super::key::*;
 use crate::intf::*;
 use crate::xx::*;
 use crate::*;
-use chacha20::cipher::{NewCipher, StreamCipher};
+use chacha20::cipher::{KeyIvInit, StreamCipher};
 use chacha20::XChaCha20;
 use chacha20poly1305 as ch;
 use chacha20poly1305::aead::{AeadInPlace, NewAead};

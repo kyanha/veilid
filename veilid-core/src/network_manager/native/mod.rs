@@ -481,7 +481,7 @@ impl Network {
         self.inner.lock().network_started = true;
 
         // Inform routing table entries that our dial info has changed
-        self.routing_table().send_node_info_updates();
+        self.routing_table().send_node_info_updates().await;
 
         Ok(())
     }
