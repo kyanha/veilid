@@ -109,7 +109,7 @@ pub struct AttachmentManagerInner {
     maintain_peers: bool,
     attach_timestamp: Option<u64>,
     update_callback: Option<UpdateCallback>,
-    attachment_maintainer_jh: Option<JoinHandle<()>>,
+    attachment_maintainer_jh: Option<MustJoinHandle<()>>,
 }
 
 #[derive(Clone)]
@@ -306,8 +306,9 @@ impl AttachmentManager {
         // Create long-running connection maintenance routine
         let this = self.clone();
         self.inner.lock().maintain_peers = true;
-        self.inner.lock().attachment_maintainer_jh =
-            Some(intf::spawn(this.attachment_maintainer()));
+        self.inner.lock().attachment_maintainer_jh = Some(MustJoinHandle::new(intf::spawn(
+            this.attachment_maintainer(),
+        )));
     }
 
     #[instrument(level = "trace", skip(self))]

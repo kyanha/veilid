@@ -9,11 +9,12 @@ use network_connection::*;
 #[derive(Debug)]
 struct ConnectionManagerInner {
     connection_table: ConnectionTable,
+    stop_source: Option<StopSource>,
 }
 
 struct ConnectionManagerArc {
     network_manager: NetworkManager,
-    inner: AsyncMutex<ConnectionManagerInner>,
+    inner: AsyncMutex<Option<ConnectionManagerInner>>,
 }
 impl core::fmt::Debug for ConnectionManagerArc {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
@@ -31,14 +32,14 @@ pub struct ConnectionManager {
 impl ConnectionManager {
     fn new_inner(config: VeilidConfig) -> ConnectionManagerInner {
         ConnectionManagerInner {
+            stop_source: Some(StopSource::new()),
             connection_table: ConnectionTable::new(config),
         }
     }
     fn new_arc(network_manager: NetworkManager) -> ConnectionManagerArc {
-        let config = network_manager.config();
         ConnectionManagerArc {
             network_manager,
-            inner: AsyncMutex::new(Self::new_inner(config)),
+            inner: AsyncMutex::new(None),
         }
     }
     pub fn new(network_manager: NetworkManager) -> Self {
@@ -53,12 +54,32 @@ impl ConnectionManager {
 
     pub async fn startup(&self) {
         trace!("startup connection manager");
-        //let mut inner = self.arc.inner.lock().await;
+        let mut inner = self.arc.inner.lock().await;
+        if inner.is_some() {
+            panic!("shouldn't start connection manager twice without shutting it down first");
+        }
+
+        *inner = Some(Self::new_inner(self.network_manager().config()));
     }
 
     pub async fn shutdown(&self) {
-        // Drops connection table, which drops all connections in it
-        *self.arc.inner.lock().await = Self::new_inner(self.arc.network_manager.config());
+        // Remove the inner from the lock
+        let mut inner = {
+            let mut inner_lock = self.arc.inner.lock().await;
+            let inner = match inner_lock.take() {
+                Some(v) => v,
+                None => {
+                    panic!("not started");
+                }
+            };
+            inner
+        };
+
+        // Stop all the connections
+        drop(inner.stop_source.take());
+
+        // Wait for the connections to complete
+        inner.connection_table.join().await;
     }
 
     // Returns a network connection if one already is established
@@ -67,6 +88,12 @@ impl ConnectionManager {
         descriptor: ConnectionDescriptor,
     ) -> Option<ConnectionHandle> {
         let mut inner = self.arc.inner.lock().await;
+        let inner = match &mut *inner {
+            Some(v) => v,
+            None => {
+                panic!("not started");
+            }
+        };
         inner.connection_table.get_connection(descriptor)
     }
 
@@ -81,22 +108,16 @@ impl ConnectionManager {
         log_net!("on_new_protocol_network_connection: {:?}", conn);
 
         // Wrap with NetworkConnection object to start the connection processing loop
-        let conn = NetworkConnection::from_protocol(self.clone(), conn);
+        let stop_token = match &inner.stop_source {
+            Some(ss) => ss.token(),
+            None => return Err("not creating connection because we are stopping".to_owned()),
+        };
+
+        let conn = NetworkConnection::from_protocol(self.clone(), stop_token, conn);
         let handle = conn.get_handle();
         // Add to the connection table
         inner.connection_table.add_connection(conn)?;
         Ok(handle)
-    }
-
-    // Called by low-level network when any connection-oriented protocol connection appears
-    // either from incoming connections.
-    pub(super) async fn on_accepted_protocol_network_connection(
-        &self,
-        conn: ProtocolNetworkConnection,
-    ) -> Result<(), String> {
-        let mut inner = self.arc.inner.lock().await;
-        self.on_new_protocol_network_connection(&mut *inner, conn)
-            .map(drop)
     }
 
     // Called when we want to create a new connection or get the current one that already exists
@@ -107,6 +128,14 @@ impl ConnectionManager {
         local_addr: Option<SocketAddr>,
         dial_info: DialInfo,
     ) -> Result<ConnectionHandle, String> {
+        let mut inner = self.arc.inner.lock().await;
+        let inner = match &mut *inner {
+            Some(v) => v,
+            None => {
+                panic!("not started");
+            }
+        };
+
         log_net!(
             "== get_or_create_connection local_addr={:?} dial_info={:?}",
             local_addr.green(),
@@ -123,7 +152,6 @@ impl ConnectionManager {
 
         // If any connection to this remote exists that has the same protocol, return it
         // Any connection will do, we don't have to match the local address
-        let mut inner = self.arc.inner.lock().await;
 
         if let Some(conn) = inner
             .connection_table
@@ -197,10 +225,39 @@ impl ConnectionManager {
         self.on_new_protocol_network_connection(&mut *inner, conn)
     }
 
+    ///////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// Callbacks
+
+    // Called by low-level network when any connection-oriented protocol connection appears
+    // either from incoming connections.
+    pub(super) async fn on_accepted_protocol_network_connection(
+        &self,
+        conn: ProtocolNetworkConnection,
+    ) -> Result<(), String> {
+        let mut inner = self.arc.inner.lock().await;
+        let inner = match &mut *inner {
+            Some(v) => v,
+            None => {
+                // If we are shutting down, just drop this and return
+                return Ok(());
+            }
+        };
+        self.on_new_protocol_network_connection(inner, conn)
+            .map(drop)
+    }
+
     // Callback from network connection receive loop when it exits
     // cleans up the entry in the connection table
     pub(super) async fn report_connection_finished(&self, descriptor: ConnectionDescriptor) {
         let mut inner = self.arc.inner.lock().await;
+        let inner = match &mut *inner {
+            Some(v) => v,
+            None => {
+                // If we're shutting down, do nothing here
+                return;
+            }
+        };
+
         if let Err(e) = inner.connection_table.remove_connection(descriptor) {
             log_net!(error e);
         }

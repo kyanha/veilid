@@ -71,7 +71,7 @@ struct RoutingTableUnlockedInner {
     bootstrap_task: TickTask,
     peer_minimum_refresh_task: TickTask,
     ping_validator_task: TickTask,
-    node_info_update_single_future: SingleFuture<()>,
+    node_info_update_single_future: MustJoinSingleFuture<()>,
 }
 
 #[derive(Clone)]
@@ -103,7 +103,7 @@ impl RoutingTable {
             bootstrap_task: TickTask::new(1),
             peer_minimum_refresh_task: TickTask::new_ms(c.network.dht.min_peer_refresh_time_ms),
             ping_validator_task: TickTask::new(1),
-            node_info_update_single_future: SingleFuture::new(),
+            node_info_update_single_future: MustJoinSingleFuture::new(),
         }
     }
     pub fn new(network_manager: NetworkManager) -> Self {
@@ -118,8 +118,8 @@ impl RoutingTable {
             let this2 = this.clone();
             this.unlocked_inner
                 .rolling_transfers_task
-                .set_routine(move |l, t| {
-                    Box::pin(this2.clone().rolling_transfers_task_routine(l, t))
+                .set_routine(move |s, l, t| {
+                    Box::pin(this2.clone().rolling_transfers_task_routine(s, l, t))
                 });
         }
         // Set bootstrap tick task
@@ -127,15 +127,15 @@ impl RoutingTable {
             let this2 = this.clone();
             this.unlocked_inner
                 .bootstrap_task
-                .set_routine(move |_l, _t| Box::pin(this2.clone().bootstrap_task_routine()));
+                .set_routine(move |s, _l, _t| Box::pin(this2.clone().bootstrap_task_routine(s)));
         }
         // Set peer minimum refresh tick task
         {
             let this2 = this.clone();
             this.unlocked_inner
                 .peer_minimum_refresh_task
-                .set_routine(move |_l, _t| {
-                    Box::pin(this2.clone().peer_minimum_refresh_task_routine())
+                .set_routine(move |s, _l, _t| {
+                    Box::pin(this2.clone().peer_minimum_refresh_task_routine(s))
                 });
         }
         // Set ping validator tick task
@@ -143,7 +143,9 @@ impl RoutingTable {
             let this2 = this.clone();
             this.unlocked_inner
                 .ping_validator_task
-                .set_routine(move |l, t| Box::pin(this2.clone().ping_validator_task_routine(l, t)));
+                .set_routine(move |s, l, t| {
+                    Box::pin(this2.clone().ping_validator_task_routine(s, l, t))
+                });
         }
         this
     }
@@ -373,26 +375,26 @@ impl RoutingTable {
 
     pub async fn terminate(&self) {
         // Cancel all tasks being ticked
-        if let Err(e) = self.unlocked_inner.rolling_transfers_task.cancel().await {
-            warn!("rolling_transfers_task not cancelled: {}", e);
+        if let Err(e) = self.unlocked_inner.rolling_transfers_task.stop().await {
+            error!("rolling_transfers_task not stopped: {}", e);
         }
-        if let Err(e) = self.unlocked_inner.bootstrap_task.cancel().await {
-            warn!("bootstrap_task not cancelled: {}", e);
+        if let Err(e) = self.unlocked_inner.bootstrap_task.stop().await {
+            error!("bootstrap_task not stopped: {}", e);
         }
-        if let Err(e) = self.unlocked_inner.peer_minimum_refresh_task.cancel().await {
-            warn!("peer_minimum_refresh_task not cancelled: {}", e);
+        if let Err(e) = self.unlocked_inner.peer_minimum_refresh_task.stop().await {
+            error!("peer_minimum_refresh_task not stopped: {}", e);
         }
-        if let Err(e) = self.unlocked_inner.ping_validator_task.cancel().await {
-            warn!("ping_validator_task not cancelled: {}", e);
+        if let Err(e) = self.unlocked_inner.ping_validator_task.stop().await {
+            error!("ping_validator_task not stopped: {}", e);
         }
         if self
             .unlocked_inner
             .node_info_update_single_future
-            .cancel()
+            .join()
             .await
             .is_err()
         {
-            warn!("node_info_update_single_future not cancelled");
+            error!("node_info_update_single_future not stopped");
         }
 
         *self.inner.lock() = Self::new_inner(self.network_manager());
@@ -990,7 +992,7 @@ impl RoutingTable {
     }
 
     #[instrument(level = "trace", skip(self), err)]
-    async fn bootstrap_task_routine(self) -> Result<(), String> {
+    async fn bootstrap_task_routine(self, stop_token: StopToken) -> Result<(), String> {
         let (bootstrap, bootstrap_nodes) = {
             let c = self.config.get();
             (
@@ -1093,7 +1095,7 @@ impl RoutingTable {
     // Ask our remaining peers to give us more peers before we go
     // back to the bootstrap servers to keep us from bothering them too much
     #[instrument(level = "trace", skip(self), err)]
-    async fn peer_minimum_refresh_task_routine(self) -> Result<(), String> {
+    async fn peer_minimum_refresh_task_routine(self, stop_token: StopToken) -> Result<(), String> {
         // get list of all peers we know about, even the unreliable ones, and ask them to find nodes close to our node too
         let noderefs = {
             let mut inner = self.inner.lock();
@@ -1125,7 +1127,12 @@ impl RoutingTable {
     // Ping each node in the routing table if they need to be pinged
     // to determine their reliability
     #[instrument(level = "trace", skip(self), err)]
-    async fn ping_validator_task_routine(self, _last_ts: u64, cur_ts: u64) -> Result<(), String> {
+    async fn ping_validator_task_routine(
+        self,
+        stop_token: StopToken,
+        _last_ts: u64,
+        cur_ts: u64,
+    ) -> Result<(), String> {
         // log_rtab!("--- ping_validator task");
 
         let rpc = self.rpc_processor();
@@ -1144,7 +1151,9 @@ impl RoutingTable {
                         nr,
                         e.state_debug_info(cur_ts)
                     );
-                    unord.push(intf::spawn_local(rpc.clone().rpc_call_status(nr)));
+                    unord.push(MustJoinHandle::new(intf::spawn_local(
+                        rpc.clone().rpc_call_status(nr),
+                    )));
                 }
                 Option::<()>::None
             });
@@ -1158,7 +1167,12 @@ impl RoutingTable {
 
     // Compute transfer statistics to determine how 'fast' a node is
     #[instrument(level = "trace", skip(self), err)]
-    async fn rolling_transfers_task_routine(self, last_ts: u64, cur_ts: u64) -> Result<(), String> {
+    async fn rolling_transfers_task_routine(
+        self,
+        stop_token: StopToken,
+        last_ts: u64,
+        cur_ts: u64,
+    ) -> Result<(), String> {
         // log_rtab!("--- rolling_transfers task");
         let inner = &mut *self.inner.lock();
 

@@ -6,10 +6,10 @@ use once_cell::sync::OnceCell;
 cfg_if! {
     if #[cfg(target_arch = "wasm32")] {
         type TickTaskRoutine =
-            dyn Fn(u64, u64) -> PinBoxFuture<Result<(), String>> + 'static;
+            dyn Fn(StopToken, u64, u64) -> PinBoxFuture<Result<(), String>> + 'static;
     } else {
         type TickTaskRoutine =
-            dyn Fn(u64, u64) -> SendPinBoxFuture<Result<(), String>> + Send + Sync + 'static;
+            dyn Fn(StopToken, u64, u64) -> SendPinBoxFuture<Result<(), String>> + Send + Sync + 'static;
     }
 }
 
@@ -20,7 +20,8 @@ pub struct TickTask {
     last_timestamp_us: AtomicU64,
     tick_period_us: u64,
     routine: OnceCell<Box<TickTaskRoutine>>,
-    single_future: SingleFuture<Result<(), String>>,
+    stop_source: AsyncMutex<Option<StopSource>>,
+    single_future: MustJoinSingleFuture<Result<(), String>>,
 }
 
 impl TickTask {
@@ -29,7 +30,8 @@ impl TickTask {
             last_timestamp_us: AtomicU64::new(0),
             tick_period_us,
             routine: OnceCell::new(),
-            single_future: SingleFuture::new(),
+            stop_source: AsyncMutex::new(None),
+            single_future: MustJoinSingleFuture::new(),
         }
     }
     pub fn new_ms(tick_period_ms: u32) -> Self {
@@ -37,7 +39,8 @@ impl TickTask {
             last_timestamp_us: AtomicU64::new(0),
             tick_period_us: (tick_period_ms as u64) * 1000u64,
             routine: OnceCell::new(),
-            single_future: SingleFuture::new(),
+            stop_source: AsyncMutex::new(None),
+            single_future: MustJoinSingleFuture::new(),
         }
     }
     pub fn new(tick_period_sec: u32) -> Self {
@@ -45,7 +48,8 @@ impl TickTask {
             last_timestamp_us: AtomicU64::new(0),
             tick_period_us: (tick_period_sec as u64) * 1000000u64,
             routine: OnceCell::new(),
-            single_future: SingleFuture::new(),
+            stop_source: AsyncMutex::new(None),
+            single_future: MustJoinSingleFuture::new(),
         }
     }
 
@@ -53,22 +57,31 @@ impl TickTask {
         if #[cfg(target_arch = "wasm32")] {
             pub fn set_routine(
                 &self,
-                routine: impl Fn(u64, u64) -> PinBoxFuture<Result<(), String>> + 'static,
+                routine: impl Fn(StopToken, u64, u64) -> PinBoxFuture<Result<(), String>> + 'static,
             ) {
                 self.routine.set(Box::new(routine)).map_err(drop).unwrap();
             }
         } else {
             pub fn set_routine(
                 &self,
-                routine: impl Fn(u64, u64) -> SendPinBoxFuture<Result<(), String>> + Send + Sync + 'static,
+                routine: impl Fn(StopToken, u64, u64) -> SendPinBoxFuture<Result<(), String>> + Send + Sync + 'static,
             ) {
                 self.routine.set(Box::new(routine)).map_err(drop).unwrap();
             }
         }
     }
 
-    pub async fn cancel(&self) -> Result<(), String> {
-        match self.single_future.cancel().await {
+    pub async fn stop(&self) -> Result<(), String> {
+        // drop the stop source if we have one
+        let opt_stop_source = &mut *self.stop_source.lock().await;
+        if opt_stop_source.is_none() {
+            // already stopped, just return
+            return Ok(());
+        }
+        *opt_stop_source = None;
+
+        // wait for completion of the tick task
+        match self.single_future.join().await {
             Ok(Some(Err(err))) => Err(err),
             _ => Ok(()),
         }
@@ -80,27 +93,35 @@ impl TickTask {
 
         if last_timestamp_us == 0u64 || (now - last_timestamp_us) >= self.tick_period_us {
             // Run the singlefuture
+            let opt_stop_source = &mut *self.stop_source.lock().await;
+            let stop_source = StopSource::new();
             match self
                 .single_future
-                .single_spawn(self.routine.get().unwrap()(last_timestamp_us, now))
+                .single_spawn(self.routine.get().unwrap()(
+                    stop_source.token(),
+                    last_timestamp_us,
+                    now,
+                ))
                 .await
             {
-                Ok(Some(Err(err))) => {
-                    // If the last execution errored out then we should pass that error up
+                // Single future ran this tick
+                Ok(Some(ret)) => {
+                    // Set new timer
                     self.last_timestamp_us.store(now, Ordering::Release);
-                    return Err(err);
+                    // Save new stopper
+                    *opt_stop_source = Some(stop_source);
+                    ret
                 }
+                // Single future did not run this tick
                 Ok(None) | Err(()) => {
                     // If the execution didn't happen this time because it was already running
                     // then we should try again the next tick and not reset the timestamp so we try as soon as possible
-                }
-                _ => {
-                    // Execution happened, next execution attempt should happen only after tick period
-                    self.last_timestamp_us.store(now, Ordering::Release);
+                    Ok(())
                 }
             }
+        } else {
+            // It's not time yet
+            Ok(())
         }
-
-        Ok(())
     }
 }

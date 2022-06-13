@@ -545,6 +545,43 @@ pub async fn test_single_future() {
     assert_eq!(sf.check().await, Ok(None));
 }
 
+pub async fn test_must_join_single_future() {
+    info!("testing must join single future");
+    let sf = MustJoinSingleFuture::<u32>::new();
+    assert_eq!(sf.check().await, Ok(None));
+    assert_eq!(
+        sf.single_spawn(async {
+            intf::sleep(2000).await;
+            69
+        })
+        .await,
+        Ok(None)
+    );
+    assert_eq!(sf.check().await, Ok(None));
+    assert_eq!(sf.single_spawn(async { panic!() }).await, Ok(None));
+    assert_eq!(sf.join().await, Ok(Some(69)));
+    assert_eq!(
+        sf.single_spawn(async {
+            intf::sleep(1000).await;
+            37
+        })
+        .await,
+        Ok(None)
+    );
+    intf::sleep(2000).await;
+    assert_eq!(
+        sf.single_spawn(async {
+            intf::sleep(1000).await;
+            27
+        })
+        .await,
+        Ok(Some(37))
+    );
+    intf::sleep(2000).await;
+    assert_eq!(sf.join().await, Ok(Some(27)));
+    assert_eq!(sf.check().await, Ok(None));
+}
+
 pub async fn test_tools() {
     info!("testing retry_falloff_log");
     let mut last_us = 0u64;
@@ -568,6 +605,7 @@ pub async fn test_all() {
     #[cfg(not(target_arch = "wasm32"))]
     test_network_interfaces().await;
     test_single_future().await;
+    test_must_join_single_future().await;
     test_eventual().await;
     test_eventual_value().await;
     test_eventual_value_clone().await;

@@ -1,5 +1,6 @@
 use super::*;
 use alloc::collections::btree_map::Entry;
+use futures_util::StreamExt;
 use hashlink::LruCache;
 
 #[derive(Debug)]
@@ -39,6 +40,16 @@ impl ConnectionTable {
             descriptors_by_remote: BTreeMap::new(),
             address_filter: ConnectionLimits::new(config),
         }
+    }
+
+    pub async fn join(&mut self) {
+        let mut unord = FuturesUnordered::new();
+        for table in &mut self.conn_by_descriptor {
+            for (_, v) in table.drain() {
+                unord.push(v);
+            }
+        }
+        while unord.next().await.is_some() {}
     }
 
     pub fn add_connection(&mut self, conn: NetworkConnection) -> Result<(), String> {

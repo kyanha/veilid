@@ -42,7 +42,8 @@ struct NetworkInner {
     protocol_config: Option<ProtocolConfig>,
     static_public_dialinfo: ProtocolSet,
     network_class: Option<NetworkClass>,
-    join_handles: Vec<JoinHandle<()>>,
+    join_handles: Vec<MustJoinHandle<()>>,
+    stop_source: Option<StopSource>,
     udp_port: u16,
     tcp_port: u16,
     ws_port: u16,
@@ -82,6 +83,7 @@ impl Network {
             static_public_dialinfo: ProtocolSet::empty(),
             network_class: None,
             join_handles: Vec::new(),
+            stop_source: None,
             udp_port: 0u16,
             tcp_port: 0u16,
             ws_port: 0u16,
@@ -115,8 +117,8 @@ impl Network {
             let this2 = this.clone();
             this.unlocked_inner
                 .update_network_class_task
-                .set_routine(move |l, t| {
-                    Box::pin(this2.clone().update_network_class_task_routine(l, t))
+                .set_routine(move |s, l, t| {
+                    Box::pin(this2.clone().update_network_class_task_routine(s, l, t))
                 });
         }
 
@@ -200,7 +202,7 @@ impl Network {
         Ok(config)
     }
 
-    fn add_to_join_handles(&self, jh: JoinHandle<()>) {
+    fn add_to_join_handles(&self, jh: MustJoinHandle<()>) {
         let mut inner = self.inner.lock();
         inner.join_handles.push(jh);
     }
@@ -506,17 +508,28 @@ impl Network {
         let network_manager = self.network_manager();
         let routing_table = self.routing_table();
 
-        // Cancel all tasks
-        if let Err(e) = self.unlocked_inner.update_network_class_task.cancel().await {
-            warn!("update_network_class_task not cancelled: {}", e);
+        // Stop all tasks
+        if let Err(e) = self.unlocked_inner.update_network_class_task.stop().await {
+            error!("update_network_class_task not cancelled: {}", e);
         }
+        let mut unord = FuturesUnordered::new();
+        {
+            let mut inner = self.inner.lock();
+            // Drop the stop
+            drop(inner.stop_source.take());
+            // take the join handles out
+            for h in inner.join_handles.drain(..) {
+                unord.push(h);
+            }
+        }
+        // Wait for everything to stop
+        while unord.next().await.is_some() {}
 
         // Drop all dial info
         routing_table.clear_dial_info_details(RoutingDomain::PublicInternet);
         routing_table.clear_dial_info_details(RoutingDomain::LocalNetwork);
 
         // Reset state including network class
-        // Cancels all async background tasks by dropping join handles
         *self.inner.lock() = Self::new_inner(network_manager);
 
         info!("network stopped");

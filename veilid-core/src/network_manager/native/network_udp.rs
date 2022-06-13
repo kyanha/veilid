@@ -1,5 +1,6 @@
 use super::*;
 use sockets::*;
+use stop_token::future::FutureExt;
 
 impl Network {
     pub(super) async fn create_udp_listener_tasks(&self) -> Result<(), String> {
@@ -43,47 +44,75 @@ impl Network {
                 // Spawn a local async task for each socket
                 let mut protocol_handlers_unordered = FuturesUnordered::new();
                 let network_manager = this.network_manager();
+                let stop_token = this.inner.lock().stop_source.as_ref().unwrap().token();
 
                 for ph in protocol_handlers {
                     let network_manager = network_manager.clone();
+                    let stop_token = stop_token.clone();
                     let jh = spawn_local(async move {
                         let mut data = vec![0u8; 65536];
 
-                        while let Ok((size, descriptor)) = ph.recv_message(&mut data).await {
-                            // XXX: Limit the number of packets from the same IP address?
-                            log_net!("UDP packet: {:?}", descriptor);
-
-                            // Network accounting
-                            network_manager.stats_packet_rcvd(
-                                descriptor.remote_address().to_ip_addr(),
-                                size as u64,
-                            );
-
-                            // Pass it up for processing
-                            if let Err(e) = network_manager
-                                .on_recv_envelope(&data[..size], descriptor)
+                        loop {
+                            match ph
+                                .recv_message(&mut data)
+                                .timeout_at(stop_token.clone())
                                 .await
                             {
-                                log_net!(error "failed to process received udp envelope: {}", e);
+                                Ok(Ok((size, descriptor))) => {
+                                    // XXX: Limit the number of packets from the same IP address?
+                                    log_net!("UDP packet: {:?}", descriptor);
+
+                                    // Network accounting
+                                    network_manager.stats_packet_rcvd(
+                                        descriptor.remote_address().to_ip_addr(),
+                                        size as u64,
+                                    );
+
+                                    // Pass it up for processing
+                                    if let Err(e) = network_manager
+                                        .on_recv_envelope(&data[..size], descriptor)
+                                        .await
+                                    {
+                                        log_net!(error "failed to process received udp envelope: {}", e);
+                                    }
+                                }
+                                Ok(Err(_)) => {
+                                    return false;
+                                }
+                                Err(_) => {
+                                    return true;
+                                }
                             }
                         }
                     });
 
                     protocol_handlers_unordered.push(jh);
                 }
-                // Now we wait for any join handle to exit,
-                // which would indicate an error needing
+                // Now we wait for join handles to exit,
+                // if any error out it indicates an error needing
                 // us to completely restart the network
-                let _ = protocol_handlers_unordered.next().await;
+                loop {
+                    match protocol_handlers_unordered.next().await {
+                        Some(v) => {
+                            // true = stopped, false = errored
+                            if !v {
+                                // If any protocol handler fails, our socket died and we need to restart the network
+                                this.inner.lock().network_needs_restart = true;
+                            }
+                        }
+                        None => {
+                            // All protocol handlers exited
+                            break;
+                        }
+                    }
+                }
 
                 trace!("UDP listener task stopped");
-                // If this loop fails, our socket died and we need to restart the network
-                this.inner.lock().network_needs_restart = true;
             });
             ////////////////////////////////////////////////////////////
 
             // Add to join handle
-            self.add_to_join_handles(jh);
+            self.add_to_join_handles(MustJoinHandle::new(jh));
         }
 
         Ok(())

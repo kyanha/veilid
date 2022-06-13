@@ -465,7 +465,12 @@ impl Network {
     }
 
     #[instrument(level = "trace", skip(self), err)]
-    pub async fn update_network_class_task_routine(self, _l: u64, _t: u64) -> Result<(), String> {
+    pub async fn update_network_class_task_routine(
+        self,
+        stop_token: StopToken,
+        _l: u64,
+        _t: u64,
+    ) -> Result<(), String> {
         // Ensure we aren't trying to update this without clearing it first
         let old_network_class = self.inner.lock().network_class;
         assert_eq!(old_network_class, None);

@@ -41,6 +41,7 @@ flume = { version = "^0", features = ["async"] }
 enumset = { version= "^1", features = ["serde"] }
 backtrace = { version = "^0", optional = true }
 owo-colors = "^3"
+stop-token = "^0"
 
 ed25519-dalek = { version = "^1", default_features = false, features = ["alloc", "u64_backend"] }
 x25519-dalek = { package = "x25519-dalek-ng", version = "^1", default_features = false, features = ["u64_backend"] }

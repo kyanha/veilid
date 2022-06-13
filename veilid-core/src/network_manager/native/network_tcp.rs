@@ -2,6 +2,7 @@ use super::*;
 use crate::intf::*;
 use async_tls::TlsAcceptor;
 use sockets::*;
+use stop_token::future::FutureExt;
 
 /////////////////////////////////////////////////////////////////
 
@@ -91,6 +92,106 @@ impl Network {
         Ok(None)
     }
 
+    async fn tcp_acceptor(
+        self,
+        tcp_stream: async_std::io::Result<TcpStream>,
+        listener_state: Arc<RwLock<ListenerState>>,
+        connection_manager: ConnectionManager,
+        connection_initial_timeout: u64,
+        tls_connection_initial_timeout: u64,
+    ) {
+        let tcp_stream = match tcp_stream {
+            Ok(v) => v,
+            Err(_) => {
+                // If this happened our low-level listener socket probably died
+                // so it's time to restart the network
+                self.inner.lock().network_needs_restart = true;
+                return;
+            }
+        };
+
+        let listener_state = listener_state.clone();
+        let connection_manager = connection_manager.clone();
+
+        // Limit the number of connections from the same IP address
+        // and the number of total connections
+        let addr = match tcp_stream.peer_addr() {
+            Ok(addr) => addr,
+            Err(e) => {
+                log_net!(error "failed to get peer address: {}", e);
+                return;
+            }
+        };
+        // XXX limiting
+
+        log_net!("TCP connection from: {}", addr);
+
+        // Create a stream we can peek on
+        let ps = AsyncPeekStream::new(tcp_stream.clone());
+
+        /////////////////////////////////////////////////////////////
+        let mut first_packet = [0u8; PEEK_DETECT_LEN];
+
+        // read a chunk of the stream
+        if io::timeout(
+            Duration::from_micros(connection_initial_timeout),
+            ps.peek_exact(&mut first_packet),
+        )
+        .await
+        .is_err()
+        {
+            // If we fail to get a packet within the connection initial timeout
+            // then we punt this connection
+            log_net!(warn "connection initial timeout from: {:?}", addr);
+            return;
+        }
+
+        // Run accept handlers on accepted stream
+
+        // Check is this could be TLS
+        let ls = listener_state.read().clone();
+
+        let conn = if ls.tls_acceptor.is_some() && first_packet[0] == 0x16 {
+            self.try_tls_handlers(
+                ls.tls_acceptor.as_ref().unwrap(),
+                ps,
+                tcp_stream,
+                addr,
+                &ls.tls_protocol_handlers,
+                tls_connection_initial_timeout,
+            )
+            .await
+        } else {
+            self.try_handlers(ps, tcp_stream, addr, &ls.protocol_accept_handlers)
+                .await
+        };
+
+        let conn = match conn {
+            Ok(Some(c)) => {
+                log_net!("protocol handler found for {:?}: {:?}", addr, c);
+                c
+            }
+            Ok(None) => {
+                // No protocol handlers matched? drop it.
+                log_net!(warn "no protocol handler for connection from {:?}", addr);
+                return;
+            }
+            Err(e) => {
+                // Failed to negotiate connection? drop it.
+                log_net!(warn "failed to negotiate connection from {:?}: {}", addr, e);
+                return;
+            }
+        };
+
+        // Register the new connection in the connection manager
+        if let Err(e) = connection_manager
+            .on_accepted_protocol_network_connection(conn)
+            .await
+        {
+            log_net!(error "failed to register new connection: {}", e);
+        }
+    }
+
     async fn spawn_socket_listener(&self, addr: SocketAddr) -> Result<(), String> {
         // Get config
         let (connection_initial_timeout, tls_connection_initial_timeout) = {
@@ -123,111 +224,40 @@ impl Network {
 
         // Spawn the socket task
         let this = self.clone();
+        let stop_token = self.inner.lock().stop_source.as_ref().unwrap().token();
         let connection_manager = self.connection_manager();
 
         ////////////////////////////////////////////////////////////
         let jh = spawn(async move {
             // moves listener object in and get incoming iterator
             // when this task exists, the listener will close the socket
-            listener
+            let _ = listener
                 .incoming()
-                .for_each_concurrent(None, |tcp_stream| async {
-                    let tcp_stream = tcp_stream.unwrap();
+                .for_each_concurrent(None, |tcp_stream| {
+                    let this = this.clone();
                     let listener_state = listener_state.clone();
                     let connection_manager = connection_manager.clone();
-
-                    // Limit the number of connections from the same IP address
-                    // and the number of total connections
-                    let addr = match tcp_stream.peer_addr() {
-                        Ok(addr) => addr,
-                        Err(e) => {
-                            log_net!(error "failed to get peer address: {}", e);
-                            return;
-                        }
-                    };
-                    // XXX limiting
-
-                    log_net!("TCP connection from: {}", addr);
-
-                    // Create a stream we can peek on
-                    let ps = AsyncPeekStream::new(tcp_stream.clone());
-
-                    /////////////////////////////////////////////////////////////
-                    let mut first_packet = [0u8; PEEK_DETECT_LEN];
-
-                    // read a chunk of the stream
-                    if io::timeout(
-                        Duration::from_micros(connection_initial_timeout),
-                        ps.peek_exact(&mut first_packet),
+                    Self::tcp_acceptor(
+                        this,
+                        tcp_stream,
+                        listener_state,
+                        connection_manager,
+                        connection_initial_timeout,
+                        tls_connection_initial_timeout,
                     )
-                    .await
-                    .is_err()
-                    {
-                        // If we fail to get a packet within the connection initial timeout
-                        // then we punt this connection
-                        log_net!(warn "connection initial timeout from: {:?}", addr);
-                        return;
-                    }
-
-                    // Run accept handlers on accepted stream
-
-                    // Check is this could be TLS
-                    let ls = listener_state.read().clone();
-
-                    let conn = if ls.tls_acceptor.is_some() && first_packet[0] == 0x16 {
-                        this.try_tls_handlers(
-                            ls.tls_acceptor.as_ref().unwrap(),
-                            ps,
-                            tcp_stream,
-                            addr,
-                            &ls.tls_protocol_handlers,
-                            tls_connection_initial_timeout,
-                        )
-                        .await
-                    } else {
-                        this.try_handlers(ps, tcp_stream, addr, &ls.protocol_accept_handlers)
-                            .await
-                    };
-
-                    let conn = match conn {
-                        Ok(Some(c)) => {
-                            log_net!("protocol handler found for {:?}: {:?}", addr, c);
-                            c
-                        }
-                        Ok(None) => {
-                            // No protocol handlers matched? drop it.
-                            log_net!(warn "no protocol handler for connection from {:?}", addr);
-                            return;
-                        }
-                        Err(e) => {
-                            // Failed to negotiate connection? drop it.
-                            log_net!(warn "failed to negotiate connection from {:?}: {}", addr, e);
-                            return;
-                        }
-                    };
-
-                    // Register the new connection in the connection manager
-                    if let Err(e) = connection_manager
-                        .on_accepted_protocol_network_connection(conn)
-                        .await
-                    {
-                        log_net!(error "failed to register new connection: {}", e);
-                    }
                 })
+                .timeout_at(stop_token)
                 .await;
+
             log_net!(debug "exited incoming loop for {}", addr);
             // Remove our listener state from this address if we're stopping
             this.inner.lock().listener_states.remove(&addr);
             log_net!(debug "listener state removed for {}", addr);
-
-            // If this happened our low-level listener socket probably died
-            // so it's time to restart the network
-            this.inner.lock().network_needs_restart = true;
         });
         ////////////////////////////////////////////////////////////
 
         // Add to join handles
-        self.add_to_join_handles(jh);
+        self.add_to_join_handles(MustJoinHandle::new(jh));
 
         Ok(())
     }

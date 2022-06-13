@@ -1,5 +1,6 @@
 use super::*;
 use futures_util::{FutureExt, StreamExt};
+use stop_token::prelude::*;
 
 cfg_if::cfg_if! {
     if #[cfg(target_arch = "wasm32")] {
@@ -84,7 +85,7 @@ pub struct NetworkConnectionStats {
 #[derive(Debug)]
 pub struct NetworkConnection {
     descriptor: ConnectionDescriptor,
-    _processor: Option<JoinHandle<()>>,
+    processor: Option<MustJoinHandle<()>>,
     established_time: u64,
     stats: Arc<Mutex<NetworkConnectionStats>>,
     sender: flume::Sender<Vec<u8>>,
@@ -97,7 +98,7 @@ impl NetworkConnection {
 
         Self {
             descriptor,
-            _processor: None,
+            processor: None,
             established_time: intf::get_timestamp(),
             stats: Arc::new(Mutex::new(NetworkConnectionStats {
                 last_message_sent_time: None,
@@ -109,6 +110,7 @@ impl NetworkConnection {
 
     pub(super) fn from_protocol(
         connection_manager: ConnectionManager,
+        stop_token: StopToken,
         protocol_connection: ProtocolNetworkConnection,
     ) -> Self {
         // Get timeout
@@ -132,19 +134,20 @@ impl NetworkConnection {
         }));
 
         // Spawn connection processor and pass in protocol connection
-        let processor = intf::spawn_local(Self::process_connection(
+        let processor = MustJoinHandle::new(intf::spawn_local(Self::process_connection(
             connection_manager,
+            stop_token,
             descriptor.clone(),
             receiver,
             protocol_connection,
             inactivity_timeout,
             stats.clone(),
-        ));
+        )));
 
         // Return the connection
         Self {
             descriptor,
-            _processor: Some(processor),
+            processor: Some(processor),
             established_time: intf::get_timestamp(),
             stats,
             sender,
@@ -197,6 +200,7 @@ impl NetworkConnection {
     // Connection receiver loop
     fn process_connection(
         connection_manager: ConnectionManager,
+        stop_token: StopToken,
         descriptor: ConnectionDescriptor,
         receiver: flume::Receiver<Vec<u8>>,
         protocol_connection: ProtocolNetworkConnection,
@@ -289,25 +293,27 @@ impl NetworkConnection {
                 }
 
                 // Process futures
-                match unord.next().await {
-                    Some(RecvLoopAction::Send) => {
+                match unord.next().timeout_at(stop_token.clone()).await {
+                    Ok(Some(RecvLoopAction::Send)) => {
                         // Don't reset inactivity timer if we're only sending
-
                         need_sender = true;
                     }
-                    Some(RecvLoopAction::Recv) => {
+                    Ok(Some(RecvLoopAction::Recv)) => {
                         // Reset inactivity timer since we got something from this connection
                         timer.set(new_timer());
 
                         need_receiver = true;
                     }
-                    Some(RecvLoopAction::Finish) | Some(RecvLoopAction::Timeout) => {
+                    Ok(Some(RecvLoopAction::Finish) | Some(RecvLoopAction::Timeout)) => {
                         break;
                     }
-
-                    None => {
+                    Ok(None) => {
                         // Should not happen
                         unreachable!();
+                    }
+                    Err(_) => {
+                        // Stop token
+                        break;
                     }
                 }
             }
@@ -317,9 +323,23 @@ impl NetworkConnection {
                 descriptor.green()
             );
 
+            // Let the connection manager know the receive loop exited
             connection_manager
                 .report_connection_finished(descriptor)
-                .await
+                .await;
         })
+    }
+}
+
+// Resolves ready when the connection loop has terminated
+impl Future for NetworkConnection {
+    type Output = ();
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> task::Poll<Self::Output> {
+        if let Some(mut processor) = self.processor.as_mut() {
+            Pin::new(&mut processor).poll(cx)
+        } else {
+            task::Poll::Ready(())
+        }
     }
 }

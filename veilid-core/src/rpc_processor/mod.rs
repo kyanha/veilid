@@ -10,9 +10,11 @@ use crate::intf::*;
 use crate::xx::*;
 use capnp::message::ReaderSegments;
 use coders::*;
+use futures_util::StreamExt;
 use network_manager::*;
 use receipt_manager::*;
 use routing_table::*;
+use stop_token::future::FutureExt;
 use super::*;
 
 /////////////////////////////////////////////////////////////////////
@@ -167,7 +169,8 @@ pub struct RPCProcessorInner {
     timeout: u64,
     max_route_hop_count: usize,
     waiting_rpc_table: BTreeMap<OperationId, EventualValue<RPCMessageReader>>,
-    worker_join_handles: Vec<JoinHandle<()>>,
+    stop_source: Option<StopSource>,
+    worker_join_handles: Vec<MustJoinHandle<()>>,
 }
 
 #[derive(Clone)]
@@ -189,6 +192,7 @@ impl RPCProcessor {
             timeout: 10000000,
             max_route_hop_count: 7,
             waiting_rpc_table: BTreeMap::new(),
+            stop_source: None,
             worker_join_handles: Vec::new(),
         }
     }
@@ -1368,8 +1372,8 @@ impl RPCProcessor {
         }
     }
 
-    async fn rpc_worker(self, receiver: flume::Receiver<RPCMessage>) {
-        while let Ok(msg) = receiver.recv_async().await {
+    async fn rpc_worker(self, stop_token: StopToken, receiver: flume::Receiver<RPCMessage>) {
+        while let Ok(Ok(msg)) = receiver.recv_async().timeout_at(stop_token.clone()).await {
             let _ = self
                 .process_rpc_message(msg)
                 .await
@@ -1409,20 +1413,37 @@ impl RPCProcessor {
         inner.max_route_hop_count = max_route_hop_count;
         let channel = flume::bounded(queue_size as usize);
         inner.send_channel = Some(channel.0.clone());
+        inner.stop_source = Some(StopSource::new());
 
         // spin up N workers
         trace!("Spinning up {} RPC workers", concurrency);
         for _ in 0..concurrency {
             let this = self.clone();
             let receiver = channel.1.clone();
-            let jh = spawn(Self::rpc_worker(this, receiver));
-            inner.worker_join_handles.push(jh);
+            let jh = spawn(Self::rpc_worker(this, inner.stop_source.as_ref().unwrap().token(), receiver));
+            inner.worker_join_handles.push(MustJoinHandle::new(jh));
         }
 
         Ok(())
     }
 
     pub async fn shutdown(&self) {
+        // Stop the rpc workers
+        let mut unord = FuturesUnordered::new();
+        {
+            let mut inner = self.inner.lock();
+            // drop the stop
+            drop(inner.stop_source.take());
+            // take the join handles out
+            for h in inner.worker_join_handles.drain(..) {
+                unord.push(h);
+            }
+        }
+        
+        // Wait for them to complete
+        while unord.next().await.is_some() {}
+
+        // Release the rpc processor
         *self.inner.lock() = Self::new_inner(self.network_manager());
     }
 

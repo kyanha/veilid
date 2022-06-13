@@ -4,6 +4,7 @@ use dht::*;
 use futures_util::stream::{FuturesUnordered, StreamExt};
 use network_manager::*;
 use routing_table::*;
+use stop_token::future::FutureExt;
 use xx::*;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -170,7 +171,8 @@ pub struct ReceiptManagerInner {
     network_manager: NetworkManager,
     records_by_nonce: BTreeMap<ReceiptNonce, Arc<Mutex<ReceiptRecord>>>,
     next_oldest_ts: Option<u64>,
-    timeout_task: SingleFuture<()>,
+    stop_source: Option<StopSource>,
+    timeout_task: MustJoinSingleFuture<()>,
 }
 
 #[derive(Clone)]
@@ -184,7 +186,8 @@ impl ReceiptManager {
             network_manager,
             records_by_nonce: BTreeMap::new(),
             next_oldest_ts: None,
-            timeout_task: SingleFuture::new(),
+            stop_source: None,
+            timeout_task: MustJoinSingleFuture::new(),
         }
     }
 
@@ -201,13 +204,14 @@ impl ReceiptManager {
     pub async fn startup(&self) -> Result<(), String> {
         trace!("startup receipt manager");
         // Retrieve config
-        /*
-                {
-                    let config = self.core().config();
-                    let c = config.get();
-                    let mut inner = self.inner.lock();
-                }
-        */
+
+        {
+            // let config = self.core().config();
+            // let c = config.get();
+            let mut inner = self.inner.lock();
+            inner.stop_source = Some(StopSource::new());
+        }
+
         Ok(())
     }
 
@@ -235,7 +239,7 @@ impl ReceiptManager {
     }
 
     #[instrument(level = "trace", skip(self))]
-    pub async fn timeout_task_routine(self, now: u64) {
+    pub async fn timeout_task_routine(self, now: u64, stop_token: StopToken) {
         // Go through all receipts and build a list of expired nonces
         let mut new_next_oldest_ts: Option<u64> = None;
         let mut expired_records = Vec::new();
@@ -276,13 +280,25 @@ impl ReceiptManager {
         }
 
         // Wait on all the multi-call callbacks
-        while callbacks.next().await.is_some() {}
+        loop {
+            match callbacks.next().timeout_at(stop_token.clone()).await {
+                Ok(Some(_)) => {}
+                Ok(None) | Err(_) => break,
+            }
+        }
     }
 
     pub async fn tick(&self) -> Result<(), String> {
-        let (next_oldest_ts, timeout_task) = {
+        let (next_oldest_ts, timeout_task, stop_token) = {
             let inner = self.inner.lock();
-            (inner.next_oldest_ts, inner.timeout_task.clone())
+            let stop_token = match inner.stop_source.as_ref() {
+                Some(ss) => ss.token(),
+                None => {
+                    // Do nothing if we're shutting down
+                    return Ok(());
+                }
+            };
+            (inner.next_oldest_ts, inner.timeout_task.clone(), stop_token)
         };
         let now = intf::get_timestamp();
         // If we have at least one timestamp to expire, lets do it
@@ -290,7 +306,7 @@ impl ReceiptManager {
             if now >= next_oldest_ts {
                 // Single-spawn the timeout task routine
                 let _ = timeout_task
-                    .single_spawn(self.clone().timeout_task_routine(now))
+                    .single_spawn(self.clone().timeout_task_routine(now, stop_token))
                     .await;
             }
         }
@@ -299,6 +315,20 @@ impl ReceiptManager {
 
     pub async fn shutdown(&self) {
         let network_manager = self.network_manager();
+
+        // Stop all tasks
+        let timeout_task = {
+            let mut inner = self.inner.lock();
+            // Drop the stop
+            drop(inner.stop_source.take());
+            inner.timeout_task.clone()
+        };
+
+        // Wait for everything to stop
+        if !timeout_task.join().await.is_ok() {
+            panic!("joining timeout task failed");
+        }
+
         *self.inner.lock() = Self::new_inner(network_manager);
     }
 
@@ -410,9 +440,16 @@ impl ReceiptManager {
         );
 
         // Increment return count
-        let callback_future = {
+        let (callback_future, stop_token) = {
             // Look up the receipt record from the nonce
             let mut inner = self.inner.lock();
+            let stop_token = match inner.stop_source.as_ref() {
+                Some(ss) => ss.token(),
+                None => {
+                    // If we're stopping do nothing here
+                    return Ok(());
+                }
+            };
             let record = match inner.records_by_nonce.get(&receipt_nonce) {
                 Some(r) => r.clone(),
                 None => {
@@ -438,12 +475,12 @@ impl ReceiptManager {
 
                 Self::update_next_oldest_timestamp(&mut *inner);
             }
-            callback_future
+            (callback_future, stop_token)
         };
 
         // Issue the callback
         if let Some(callback_future) = callback_future {
-            callback_future.await;
+            let _ = callback_future.timeout_at(stop_token).await;
         }
 
         Ok(())

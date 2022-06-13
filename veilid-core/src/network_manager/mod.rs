@@ -171,8 +171,8 @@ impl NetworkManager {
             let this2 = this.clone();
             this.unlocked_inner
                 .rolling_transfers_task
-                .set_routine(move |l, t| {
-                    Box::pin(this2.clone().rolling_transfers_task_routine(l, t))
+                .set_routine(move |s, l, t| {
+                    Box::pin(this2.clone().rolling_transfers_task_routine(s, l, t))
                 });
         }
         // Set relay management tick task
@@ -180,8 +180,8 @@ impl NetworkManager {
             let this2 = this.clone();
             this.unlocked_inner
                 .relay_management_task
-                .set_routine(move |l, t| {
-                    Box::pin(this2.clone().relay_management_task_routine(l, t))
+                .set_routine(move |s, l, t| {
+                    Box::pin(this2.clone().relay_management_task_routine(s, l, t))
                 });
         }
         this
@@ -275,10 +275,10 @@ impl NetworkManager {
         });
 
         // Start network components
+        connection_manager.startup().await;
+        net.startup().await?;
         rpc_processor.startup().await?;
         receipt_manager.startup().await?;
-        net.startup().await?;
-        connection_manager.startup().await;
 
         trace!("NetworkManager::internal_startup end");
 
@@ -302,20 +302,20 @@ impl NetworkManager {
         trace!("NetworkManager::shutdown begin");
 
         // Cancel all tasks
-        if let Err(e) = self.unlocked_inner.rolling_transfers_task.cancel().await {
-            warn!("rolling_transfers_task not cancelled: {}", e);
+        if let Err(e) = self.unlocked_inner.rolling_transfers_task.stop().await {
+            warn!("rolling_transfers_task not stopped: {}", e);
         }
-        if let Err(e) = self.unlocked_inner.relay_management_task.cancel().await {
-            warn!("relay_management_task not cancelled: {}", e);
+        if let Err(e) = self.unlocked_inner.relay_management_task.stop().await {
+            warn!("relay_management_task not stopped: {}", e);
         }
 
         // Shutdown network components if they started up
         let components = self.inner.lock().components.clone();
         if let Some(components) = components {
-            components.connection_manager.shutdown().await;
-            components.net.shutdown().await;
             components.receipt_manager.shutdown().await;
             components.rpc_processor.shutdown().await;
+            components.net.shutdown().await;
+            components.connection_manager.shutdown().await;
         }
 
         // reset the state
@@ -1202,7 +1202,12 @@ impl NetworkManager {
 
     // Keep relays assigned and accessible
     #[instrument(level = "trace", skip(self), err)]
-    async fn relay_management_task_routine(self, _last_ts: u64, cur_ts: u64) -> Result<(), String> {
+    async fn relay_management_task_routine(
+        self,
+        stop_token: StopToken,
+        _last_ts: u64,
+        cur_ts: u64,
+    ) -> Result<(), String> {
         // log_net!("--- network manager relay_management task");
 
         // Get our node's current node info and network class and do the right thing
@@ -1255,7 +1260,12 @@ impl NetworkManager {
 
     // Compute transfer statistics for the low level network
     #[instrument(level = "trace", skip(self), err)]
-    async fn rolling_transfers_task_routine(self, last_ts: u64, cur_ts: u64) -> Result<(), String> {
+    async fn rolling_transfers_task_routine(
+        self,
+        stop_token: StopToken,
+        last_ts: u64,
+        cur_ts: u64,
+    ) -> Result<(), String> {
         // log_net!("--- network manager rolling_transfers task");
         {
             let inner = &mut *self.inner.lock();
