@@ -17,6 +17,7 @@ tracing-appender = "^0"
 tracing-opentelemetry = "^0"
 opentelemetry = { version = "^0", features = ["rt-async-std"] }
 opentelemetry-otlp = { version = "^0", features = ["grpc-sys"] }
+opentelemetry-semantic-conventions = "^0"
 clap = "^3"
 async-std = { version = "^1", features = ["unstable"] }
 async-tungstenite = { version = "^0", features = ["async-std-runtime", "async-tls"] }
@@ -38,6 +39,7 @@ lazy_static = "^1"
 bugsalot = "^0"
 flume = { version = "^0", features = ["async"] }
 rpassword = "^6"
+hostname = "^0"
 
 [target.'cfg(windows)'.dependencies]
 windows-service = "^0"

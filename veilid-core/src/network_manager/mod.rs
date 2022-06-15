@@ -90,6 +90,7 @@ impl Default for NetworkManagerStats {
     }
 }
 
+#[derive(Debug)]
 struct ClientWhitelistEntry {
     last_seen_ts: u64,
 }
@@ -364,7 +365,6 @@ impl NetworkManager {
         }
     }
 
-    #[instrument(level = "trace", skip(self))]
     pub fn purge_client_whitelist(&self) {
         let timeout_ms = self.config.get().network.client_whitelist_timeout_ms;
         let mut inner = self.inner.lock();
@@ -376,7 +376,8 @@ impl NetworkManager {
             .map(|v| v.1.last_seen_ts < cutoff_timestamp)
             .unwrap_or_default()
         {
-            inner.client_whitelist.remove_lru();
+            let (k, v) = inner.client_whitelist.remove_lru().unwrap();
+            trace!(key=?k, value=?v, "purge_client_whitelist: remove_lru")
         }
     }
 

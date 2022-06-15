@@ -1,5 +1,7 @@
 use crate::settings::*;
 use cfg_if::*;
+use opentelemetry::sdk::*;
+use opentelemetry::*;
 use opentelemetry_otlp::WithExportConfig;
 use std::path::*;
 use tracing::*;
@@ -61,12 +63,7 @@ impl VeilidLogs {
                 convert_loglevel(settingsr.logging.otlp.level)
                     .to_tracing_level()
                     .into();
-            let grpc_endpoint = match &settingsr.logging.otlp.grpc_endpoint {
-                Some(v) => &v.urlstring,
-                None => {
-                    return Err("missing OTLP GRPC endpoint url".to_owned());
-                }
-            };
+            let grpc_endpoint = settingsr.logging.otlp.grpc_endpoint.name.clone();
 
             // Required for GRPC dns resolution to work
             std::env::set_var("GRPC_DNS_RESOLVER", "native");
@@ -78,6 +75,17 @@ impl VeilidLogs {
                         .grpcio()
                         .with_endpoint(grpc_endpoint),
                 )
+                .with_trace_config(opentelemetry::sdk::trace::config().with_resource(
+                    Resource::new(vec![KeyValue::new(
+                        opentelemetry_semantic_conventions::resource::SERVICE_NAME,
+                        format!(
+                                "veilid_server:{}",
+                                hostname::get()
+                                    .map(|s| s.to_string_lossy().into_owned())
+                                    .unwrap_or_else(|_| "unknown".to_owned())
+                            ),
+                    )]),
+                ))
                 .install_batch(opentelemetry::runtime::AsyncStd)
                 .map_err(|e| format!("failed to install OpenTelemetry tracer: {}", e))?;
 

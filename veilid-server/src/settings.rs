@@ -39,7 +39,7 @@ logging:
     otlp:
         enabled: false
         level: 'trace'
-        grpc_endpoint: 'http://localhost:4317'
+        grpc_endpoint: 'localhost:4317'
 testing:
     subnode_index: 0
 core:
@@ -435,7 +435,7 @@ pub struct Api {
 pub struct Otlp {
     pub enabled: bool,
     pub level: LogLevel,
-    pub grpc_endpoint: Option<ParsedUrl>,
+    pub grpc_endpoint: NamedSocketAddrs,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -1423,7 +1423,7 @@ mod tests {
         assert_eq!(s.logging.otlp.level, LogLevel::Trace);
         assert_eq!(
             s.logging.otlp.grpc_endpoint,
-            Some(ParsedUrl::from_str("http://127.0.0.1:4317").unwrap())
+            NamedSocketAddrs::from_str("localhost:4317").unwrap()
         );
         assert_eq!(s.testing.subnode_index, 0);
 
