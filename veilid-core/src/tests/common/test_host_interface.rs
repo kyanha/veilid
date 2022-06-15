@@ -518,10 +518,10 @@ pub async fn test_single_future() {
             69
         })
         .await,
-        Ok(None)
+        Ok((None, true))
     );
     assert_eq!(sf.check().await, Ok(None));
-    assert_eq!(sf.single_spawn(async { panic!() }).await, Ok(None));
+    assert_eq!(sf.single_spawn(async { panic!() }).await, Ok((None, false)));
     assert_eq!(sf.join().await, Ok(Some(69)));
     assert_eq!(
         sf.single_spawn(async {
@@ -529,7 +529,7 @@ pub async fn test_single_future() {
             37
         })
         .await,
-        Ok(None)
+        Ok((None, true))
     );
     intf::sleep(2000).await;
     assert_eq!(
@@ -538,7 +538,7 @@ pub async fn test_single_future() {
             27
         })
         .await,
-        Ok(Some(37))
+        Ok((Some(37), true))
     );
     intf::sleep(2000).await;
     assert_eq!(sf.join().await, Ok(Some(27)));
@@ -555,10 +555,10 @@ pub async fn test_must_join_single_future() {
             69
         })
         .await,
-        Ok(None)
+        Ok((None, true))
     );
     assert_eq!(sf.check().await, Ok(None));
-    assert_eq!(sf.single_spawn(async { panic!() }).await, Ok(None));
+    assert_eq!(sf.single_spawn(async { panic!() }).await, Ok((None, false)));
     assert_eq!(sf.join().await, Ok(Some(69)));
     assert_eq!(
         sf.single_spawn(async {
@@ -566,7 +566,7 @@ pub async fn test_must_join_single_future() {
             37
         })
         .await,
-        Ok(None)
+        Ok((None, true))
     );
     intf::sleep(2000).await;
     assert_eq!(
@@ -575,7 +575,7 @@ pub async fn test_must_join_single_future() {
             27
         })
         .await,
-        Ok(Some(37))
+        Ok((Some(37), true))
     );
     intf::sleep(2000).await;
     assert_eq!(sf.join().await, Ok(Some(27)));

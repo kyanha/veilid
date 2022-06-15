@@ -69,7 +69,6 @@ impl Network {
             ProtocolType::WS | ProtocolType::WSS => {
                 WebsocketProtocolHandler::send_unbound_message(dial_info.clone(), data)
                     .await
-                    .map_err(logthru_net!())
             }
         };
         if res.is_ok() {
@@ -102,7 +101,7 @@ impl Network {
         // Try to send to the exact existing connection if one exists
         if let Some(conn) = self.connection_manager().get_connection(descriptor).await {
             // connection exists, send over it
-            conn.send_async(data).await.map_err(logthru_net!())?;
+            conn.send_async(data).await?;
 
             // Network accounting
             self.network_manager()

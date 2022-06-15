@@ -76,11 +76,13 @@ impl TickTask {
         let opt_stop_source = &mut *self.stop_source.lock().await;
         if opt_stop_source.is_none() {
             // already stopped, just return
+            trace!("tick task already stopped");
             return Ok(());
         }
-        *opt_stop_source = None;
+        drop(opt_stop_source.take());
 
         // wait for completion of the tick task
+        trace!("stopping single future");
         match self.single_future.join().await {
             Ok(Some(Err(err))) => Err(err),
             _ => Ok(()),
@@ -91,37 +93,61 @@ impl TickTask {
         let now = get_timestamp();
         let last_timestamp_us = self.last_timestamp_us.load(Ordering::Acquire);
 
-        if last_timestamp_us == 0u64 || (now - last_timestamp_us) >= self.tick_period_us {
-            // Run the singlefuture
-            let opt_stop_source = &mut *self.stop_source.lock().await;
-            let stop_source = StopSource::new();
-            match self
-                .single_future
-                .single_spawn(self.routine.get().unwrap()(
-                    stop_source.token(),
-                    last_timestamp_us,
-                    now,
-                ))
-                .await
-            {
-                // Single future ran this tick
-                Ok(Some(ret)) => {
-                    // Set new timer
-                    self.last_timestamp_us.store(now, Ordering::Release);
-                    // Save new stopper
-                    *opt_stop_source = Some(stop_source);
-                    ret
-                }
-                // Single future did not run this tick
-                Ok(None) | Err(()) => {
-                    // If the execution didn't happen this time because it was already running
-                    // then we should try again the next tick and not reset the timestamp so we try as soon as possible
-                    Ok(())
-                }
-            }
-        } else {
+        if last_timestamp_us != 0u64 && (now - last_timestamp_us) < self.tick_period_us {
             // It's not time yet
-            Ok(())
+            return Ok(());
+        }
+
+        // Lock the stop source, tells us if we have ever started this future
+        let opt_stop_source = &mut *self.stop_source.lock().await;
+        if opt_stop_source.is_some() {
+            // See if the previous execution finished with an error
+            match self.single_future.check().await {
+                Ok(Some(Err(e))) => {
+                    // We have an error result, which means the singlefuture ran but we need to propagate the error
+                    return Err(e);
+                }
+                Ok(Some(Ok(()))) => {
+                    // We have an ok result, which means the singlefuture ran, and we should run it again this tick
+                }
+                Ok(None) => {
+                    // No prior result to return which means things are still running
+                    // We can just return now, since the singlefuture will not run a second time
+                    return Ok(());
+                }
+                Err(()) => {
+                    // If we get this, it's because we are joining the singlefuture already
+                    // Don't bother running but this is not an error in this case
+                    return Ok(());
+                }
+            };
+        }
+
+        // Run the singlefuture
+        let stop_source = StopSource::new();
+        match self
+            .single_future
+            .single_spawn(self.routine.get().unwrap()(
+                stop_source.token(),
+                last_timestamp_us,
+                now,
+            ))
+            .await
+        {
+            // We should have already consumed the result of the last run, or there was none
+            // and we should definitely have run, because the prior 'check()' operation
+            // should have ensured the singlefuture was ready to run
+            Ok((None, true)) => {
+                // Set new timer
+                self.last_timestamp_us.store(now, Ordering::Release);
+                // Save new stopper
+                *opt_stop_source = Some(stop_source);
+                Ok(())
+            }
+            // All other conditions should not be reachable
+            _ => {
+                unreachable!();
+            }
         }
     }
 }

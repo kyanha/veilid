@@ -29,13 +29,17 @@
       "type": "lldb",
       "request": "launch",
       "name": "Launch veilid-cli",
-      "args": ["--debug"],
+      "args": [
+        "--debug"
+      ],
       "program": "${workspaceFolder}/target/debug/veilid-cli",
       "windows": {
         "program": "${workspaceFolder}/target/debug/veilid-cli.exe"
       },
       "cwd": "${workspaceFolder}/target/debug/",
-      "sourceLanguages": ["rust"],
+      "sourceLanguages": [
+        "rust"
+      ],
       "terminal": "console"
     },
     // {
@@ -48,20 +52,21 @@
     //   "args": ["--trace"],
     //   "cwd": "${workspaceFolder}/veilid-server"
     // }
-
     {
       "type": "lldb",
       "request": "launch",
       "name": "Debug veilid-server",
       "program": "${workspaceFolder}/target/debug/veilid-server",
-      "args": ["--trace", "--attach=true"],
+      "args": [
+        "--trace",
+        "--attach=true"
+      ],
       "cwd": "${workspaceFolder}/target/debug/",
       "env": {
         "RUST_BACKTRACE": "1"
       },
       "terminal": "console"
     },
-
     {
       "type": "lldb",
       "request": "launch",
@@ -78,10 +83,11 @@
           "name": "veilid-core"
         }
       },
-      "args": ["${selectedText}"],
+      "args": [
+        "${selectedText}"
+      ],
       "cwd": "${workspaceFolder}/target/debug/"
     },
-
     {
       "type": "lldb",
       "request": "launch",
@@ -98,10 +104,11 @@
           "name": "veilid-server"
         }
       },
-      "args": ["${selectedText}"],
+      "args": [
+        "${selectedText}"
+      ],
       "cwd": "${workspaceFolder}/veilid-server"
     },
-
     {
       "type": "lldb",
       "request": "launch",
@@ -118,10 +125,11 @@
           "name": "keyvaluedb-sqlite"
         }
       },
-      "args": ["${selectedText}"],
+      "args": [
+        "${selectedText}"
+      ],
       "cwd": "${workspaceFolder}/external/keyvaluedb/keyvaluedb-sqlite"
-    }, 
-
+    },
     {
       "type": "lldb",
       "request": "launch",
@@ -138,7 +146,9 @@
           "name": "keyring"
         }
       },
-      "args": ["${selectedText}"],
+      "args": [
+        "${selectedText}"
+      ],
       "cwd": "${workspaceFolder}/external/keyring-rs"
     }
   ]

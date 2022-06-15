@@ -160,13 +160,16 @@ impl ConnectionTable {
             .expect("Inconsistency in connection table");
     }
 
-    pub fn remove_connection(&mut self, descriptor: ConnectionDescriptor) -> Result<(), String> {
+    pub fn remove_connection(
+        &mut self,
+        descriptor: ConnectionDescriptor,
+    ) -> Result<NetworkConnection, String> {
         let index = protocol_to_index(descriptor.protocol_type());
-        let _ = self.conn_by_descriptor[index]
+        let conn = self.conn_by_descriptor[index]
             .remove(&descriptor)
             .ok_or_else(|| format!("Connection not in table: {:?}", descriptor))?;
 
         self.remove_connection_records(descriptor);
-        Ok(())
+        Ok(conn)
     }
 }

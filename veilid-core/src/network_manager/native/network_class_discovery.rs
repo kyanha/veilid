@@ -1,6 +1,7 @@
 use super::*;
 use futures_util::stream::FuturesUnordered;
 use futures_util::FutureExt;
+use stop_token::future::FutureExt as StopTokenFutureExt;
 
 struct DetectedPublicDialInfo {
     dial_info: DialInfo,
@@ -584,20 +585,32 @@ impl Network {
         // Wait for all discovery futures to complete and collect contexts
         let mut contexts = Vec::<DiscoveryContext>::new();
         let mut network_class = Option::<NetworkClass>::None;
-        while let Some(ctxvec) = unord.next().await {
-            if let Some(ctxvec) = ctxvec {
-                for ctx in ctxvec {
-                    if let Some(nc) = ctx.inner.lock().detected_network_class {
-                        if let Some(last_nc) = network_class {
-                            if nc < last_nc {
-                                network_class = Some(nc);
+        loop {
+            match unord.next().timeout_at(stop_token.clone()).await {
+                Ok(Some(ctxvec)) => {
+                    if let Some(ctxvec) = ctxvec {
+                        for ctx in ctxvec {
+                            if let Some(nc) = ctx.inner.lock().detected_network_class {
+                                if let Some(last_nc) = network_class {
+                                    if nc < last_nc {
+                                        network_class = Some(nc);
+                                    }
+                                } else {
+                                    network_class = Some(nc);
+                                }
                             }
-                        } else {
-                            network_class = Some(nc);
+
+                            contexts.push(ctx);
                         }
                     }
-
-                    contexts.push(ctx);
+                }
+                Ok(None) => {
+                    // Normal completion
+                    break;
+                }
+                Err(_) => {
+                    // Stop token, exit early without error propagation
+                    return Ok(());
                 }
             }
         }

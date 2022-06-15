@@ -299,26 +299,31 @@ impl NetworkManager {
 
     #[instrument(level = "debug", skip_all)]
     pub async fn shutdown(&self) {
-        trace!("NetworkManager::shutdown begin");
+        debug!("starting network manager shutdown");
 
         // Cancel all tasks
+        debug!("stopping rolling transfers task");
         if let Err(e) = self.unlocked_inner.rolling_transfers_task.stop().await {
             warn!("rolling_transfers_task not stopped: {}", e);
         }
+        debug!("stopping relay management task task");
         if let Err(e) = self.unlocked_inner.relay_management_task.stop().await {
             warn!("relay_management_task not stopped: {}", e);
         }
 
         // Shutdown network components if they started up
+        debug!("shutting down network components");
+
         let components = self.inner.lock().components.clone();
         if let Some(components) = components {
-            components.receipt_manager.shutdown().await;
-            components.rpc_processor.shutdown().await;
             components.net.shutdown().await;
             components.connection_manager.shutdown().await;
+            components.rpc_processor.shutdown().await;
+            components.receipt_manager.shutdown().await;
         }
 
         // reset the state
+        debug!("resetting network manager state");
         {
             let mut inner = self.inner.lock();
             inner.components = None;
@@ -326,9 +331,10 @@ impl NetworkManager {
         }
 
         // send update
+        debug!("sending network state update");
         self.send_network_update();
 
-        trace!("NetworkManager::shutdown end");
+        debug!("finished network manager shutdown");
     }
 
     pub fn update_client_whitelist(&self, client: DHTKey) {
@@ -883,8 +889,7 @@ impl NetworkManager {
             match self
                 .net()
                 .send_data_to_existing_connection(descriptor, data)
-                .await
-                .map_err(logthru_net!())?
+                .await?
             {
                 None => Ok(()),
                 Some(_) => Err("unable to send over reverse connection".to_owned()),
@@ -973,8 +978,7 @@ impl NetworkManager {
             match self
                 .net()
                 .send_data_to_existing_connection(descriptor, data)
-                .await
-                .map_err(logthru_net!())?
+                .await?
             {
                 None => Ok(()),
                 Some(_) => Err("unable to send over hole punch".to_owned()),
@@ -1005,8 +1009,7 @@ impl NetworkManager {
                 match this
                     .net()
                     .send_data_to_existing_connection(descriptor, data)
-                    .await
-                    .map_err(logthru_net!())?
+                    .await?
                 {
                     None => {
                         return Ok(if descriptor.matches_peer_scope(PeerScope::Local) {
@@ -1150,7 +1153,7 @@ impl NetworkManager {
                         "failed to resolve recipient node for relay, dropping outbound relayed packet...: {:?}",
                         e
                     )
-                }).map_err(logthru_net!())?
+                })?
             } else {
                 // If this is not a node in the client whitelist, only allow inbound relay
                 // which only performs a lightweight lookup before passing the packet back out

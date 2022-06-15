@@ -32,11 +32,13 @@ pub async fn run_veilid_server(settings: Settings, server_mode: ServerMode) -> R
     run_veilid_server_internal(settings, server_mode).await
 }
 
-#[instrument(err)]
+#[instrument(err, skip_all)]
 pub async fn run_veilid_server_internal(
     settings: Settings,
     server_mode: ServerMode,
 ) -> Result<(), String> {
+    trace!(?settings, ?server_mode);
+
     let settingsr = settings.read();
 
     // Create client api state change pipe

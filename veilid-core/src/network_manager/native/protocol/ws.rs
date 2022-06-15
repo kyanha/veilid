@@ -49,21 +49,17 @@ where
         self.descriptor.clone()
     }
 
+    #[instrument(level = "trace", err, skip(self))]
     pub async fn close(&self) -> Result<(), String> {
         // Make an attempt to flush the stream
-        self.stream
-            .clone()
-            .close()
-            .await
-            .map_err(map_to_string)
-            .map_err(logthru_net!())?;
+        self.stream.clone().close().await.map_err(map_to_string)?;
         // Then forcibly close the socket
         self.tcp_stream
             .shutdown(Shutdown::Both)
             .map_err(map_to_string)
-            .map_err(logthru_net!())
     }
 
+    #[instrument(level="trace", err, skip(self, message), fields(message.len = message.len()))]
     pub async fn send(&self, message: Vec<u8>) -> Result<(), String> {
         if message.len() > MAX_MESSAGE_SIZE {
             return Err("received too large WS message".to_owned());
@@ -76,6 +72,7 @@ where
             .map_err(logthru_net!(error "failed to send websocket message"))
     }
 
+    #[instrument(level="trace", err, skip(self), fields(message.len))]
     pub async fn recv(&self) -> Result<Vec<u8>, String> {
         let out = match self.stream.clone().next().await {
             Some(Ok(Message::Binary(v))) => v,
@@ -86,12 +83,13 @@ where
                 return Err(e.to_string()).map_err(logthru_net!(error));
             }
             None => {
-                return Err("WS stream closed".to_owned()).map_err(logthru_net!());
+                return Err("WS stream closed".to_owned());
             }
         };
         if out.len() > MAX_MESSAGE_SIZE {
             Err("sending too large WS message".to_owned()).map_err(logthru_net!(error))
         } else {
+            tracing::Span::current().record("message.len", &out.len());
             Ok(out)
         }
     }
@@ -137,6 +135,7 @@ impl WebsocketProtocolHandler {
         }
     }
 
+    #[instrument(level = "trace", err, skip(self, ps, tcp_stream))]
     pub async fn on_accept_async(
         self,
         ps: AsyncPeekStream,
@@ -156,9 +155,9 @@ impl WebsocketProtocolHandler {
             Ok(_) => (),
             Err(e) => {
                 if e.kind() == io::ErrorKind::TimedOut {
-                    return Err(e).map_err(map_to_string).map_err(logthru_net!());
+                    return Err(e).map_err(map_to_string);
                 }
-                return Err(e).map_err(map_to_string).map_err(logthru_net!(error));
+                return Err(e).map_err(map_to_string);
             }
         }
 
@@ -237,10 +236,7 @@ impl WebsocketProtocolHandler {
             .map_err(logthru_net!(error "local_address={:?} remote_addr={}", local_address, remote_socket_addr))?;
 
         // See what local address we ended up with
-        let actual_local_addr = tcp_stream
-            .local_addr()
-            .map_err(map_to_string)
-            .map_err(logthru_net!())?;
+        let actual_local_addr = tcp_stream.local_addr().map_err(map_to_string)?;
 
         // Make our connection descriptor
         let descriptor = ConnectionDescriptor::new(
@@ -274,6 +270,7 @@ impl WebsocketProtocolHandler {
         }
     }
 
+    #[instrument(level = "trace", err)]
     pub async fn connect(
         local_address: Option<SocketAddr>,
         dial_info: DialInfo,
@@ -281,6 +278,7 @@ impl WebsocketProtocolHandler {
         Self::connect_internal(local_address, dial_info).await
     }
 
+    #[instrument(level = "trace", err, skip(data), fields(data.len = data.len()))]
     pub async fn send_unbound_message(dial_info: DialInfo, data: Vec<u8>) -> Result<(), String> {
         if data.len() > MAX_MESSAGE_SIZE {
             return Err("sending too large unbound WS message".to_owned());

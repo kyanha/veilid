@@ -314,6 +314,7 @@ impl ReceiptManager {
     }
 
     pub async fn shutdown(&self) {
+        debug!("starting receipt manager shutdown");
         let network_manager = self.network_manager();
 
         // Stop all tasks
@@ -325,11 +326,13 @@ impl ReceiptManager {
         };
 
         // Wait for everything to stop
+        debug!("waiting for timeout task to stop");
         if !timeout_task.join().await.is_ok() {
             panic!("joining timeout task failed");
         }
 
         *self.inner.lock() = Self::new_inner(network_manager);
+        debug!("finished receipt manager shutdown");
     }
 
     pub fn record_receipt(

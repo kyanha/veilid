@@ -39,15 +39,11 @@ impl ProtocolNetworkConnection {
         match dial_info.protocol_type() {
             ProtocolType::UDP => {
                 let peer_socket_addr = dial_info.to_socket_addr();
-                udp::RawUdpProtocolHandler::send_unbound_message(peer_socket_addr, data)
-                    .await
-                    .map_err(logthru_net!())
+                udp::RawUdpProtocolHandler::send_unbound_message(peer_socket_addr, data).await
             }
             ProtocolType::TCP => {
                 let peer_socket_addr = dial_info.to_socket_addr();
-                tcp::RawTcpProtocolHandler::send_unbound_message(peer_socket_addr, data)
-                    .await
-                    .map_err(logthru_net!())
+                tcp::RawTcpProtocolHandler::send_unbound_message(peer_socket_addr, data).await
             }
             ProtocolType::WS | ProtocolType::WSS => {
                 ws::WebsocketProtocolHandler::send_unbound_message(dial_info, data).await

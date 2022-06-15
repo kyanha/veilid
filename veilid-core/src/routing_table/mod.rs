@@ -374,19 +374,26 @@ impl RoutingTable {
     }
 
     pub async fn terminate(&self) {
+        debug!("starting routing table terminate");
+
         // Cancel all tasks being ticked
+        debug!("stopping rolling transfers task");
         if let Err(e) = self.unlocked_inner.rolling_transfers_task.stop().await {
             error!("rolling_transfers_task not stopped: {}", e);
         }
+        debug!("stopping bootstrap task");
         if let Err(e) = self.unlocked_inner.bootstrap_task.stop().await {
             error!("bootstrap_task not stopped: {}", e);
         }
+        debug!("stopping peer minimum refresh task");
         if let Err(e) = self.unlocked_inner.peer_minimum_refresh_task.stop().await {
             error!("peer_minimum_refresh_task not stopped: {}", e);
         }
+        debug!("stopping ping_validator task");
         if let Err(e) = self.unlocked_inner.ping_validator_task.stop().await {
             error!("ping_validator_task not stopped: {}", e);
         }
+        debug!("stopping node info update singlefuture");
         if self
             .unlocked_inner
             .node_info_update_single_future
@@ -398,6 +405,8 @@ impl RoutingTable {
         }
 
         *self.inner.lock() = Self::new_inner(self.network_manager());
+
+        debug!("finished routing table terminate");
     }
 
     // Inform routing table entries that our dial info has changed

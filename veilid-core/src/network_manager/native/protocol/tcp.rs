@@ -31,19 +31,14 @@ impl RawTcpNetworkConnection {
         self.descriptor.clone()
     }
 
+    #[instrument(level = "trace", err, skip(self))]
     pub async fn close(&self) -> Result<(), String> {
         // Make an attempt to flush the stream
-        self.stream
-            .clone()
-            .close()
-            .await
-            .map_err(map_to_string)
-            .map_err(logthru_net!())?;
+        self.stream.clone().close().await.map_err(map_to_string)?;
         // Then forcibly close the socket
         self.tcp_stream
             .shutdown(Shutdown::Both)
             .map_err(map_to_string)
-            .map_err(logthru_net!())
     }
 
     async fn send_internal(mut stream: AsyncPeekStream, message: Vec<u8>) -> Result<(), String> {
@@ -54,23 +49,17 @@ impl RawTcpNetworkConnection {
         let len = message.len() as u16;
         let header = [b'V', b'L', len as u8, (len >> 8) as u8];
 
-        stream
-            .write_all(&header)
-            .await
-            .map_err(map_to_string)
-            .map_err(logthru_net!())?;
-        stream
-            .write_all(&message)
-            .await
-            .map_err(map_to_string)
-            .map_err(logthru_net!())
+        stream.write_all(&header).await.map_err(map_to_string)?;
+        stream.write_all(&message).await.map_err(map_to_string)
     }
 
+    #[instrument(level="trace", err, skip(self, message), fields(message.len = message.len()))]
     pub async fn send(&self, message: Vec<u8>) -> Result<(), String> {
         let stream = self.stream.clone();
         Self::send_internal(stream, message).await
     }
 
+    #[instrument(level="trace", err, skip(self), fields(message.len))]
     pub async fn recv(&self) -> Result<Vec<u8>, String> {
         let mut header = [0u8; 4];
 
@@ -90,6 +79,8 @@ impl RawTcpNetworkConnection {
 
         let mut out: Vec<u8> = vec![0u8; len];
         stream.read_exact(&mut out).await.map_err(map_to_string)?;
+
+        tracing::Span::current().record("message.len", &out.len());
         Ok(out)
     }
 }
@@ -120,6 +111,7 @@ impl RawTcpProtocolHandler {
         }
     }
 
+    #[instrument(level = "trace", err, skip(self, stream, tcp_stream))]
     async fn on_accept_async(
         self,
         stream: AsyncPeekStream,
@@ -151,6 +143,7 @@ impl RawTcpProtocolHandler {
         Ok(Some(conn))
     }
 
+    #[instrument(level = "trace", err)]
     pub async fn connect(
         local_address: Option<SocketAddr>,
         dial_info: DialInfo,
@@ -191,6 +184,7 @@ impl RawTcpProtocolHandler {
         Ok(conn)
     }
 
+    #[instrument(level = "trace", err, skip(data), fields(data.len = data.len()))]
     pub async fn send_unbound_message(
         socket_addr: SocketAddr,
         data: Vec<u8>,

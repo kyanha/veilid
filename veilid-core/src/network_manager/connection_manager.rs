@@ -2,19 +2,28 @@ use super::*;
 use crate::xx::*;
 use connection_table::*;
 use network_connection::*;
+use stop_token::future::FutureExt;
 
 ///////////////////////////////////////////////////////////
 // Connection manager
 
 #[derive(Debug)]
+enum ConnectionManagerEvent {
+    Accepted(ProtocolNetworkConnection),
+    Finished(ConnectionDescriptor),
+}
+
+#[derive(Debug)]
 struct ConnectionManagerInner {
     connection_table: ConnectionTable,
+    sender: flume::Sender<ConnectionManagerEvent>,
+    async_processor_jh: Option<MustJoinHandle<()>>,
     stop_source: Option<StopSource>,
 }
 
 struct ConnectionManagerArc {
     network_manager: NetworkManager,
-    inner: AsyncMutex<Option<ConnectionManagerInner>>,
+    inner: Mutex<Option<ConnectionManagerInner>>,
 }
 impl core::fmt::Debug for ConnectionManagerArc {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
@@ -30,16 +39,23 @@ pub struct ConnectionManager {
 }
 
 impl ConnectionManager {
-    fn new_inner(config: VeilidConfig) -> ConnectionManagerInner {
+    fn new_inner(
+        config: VeilidConfig,
+        stop_source: StopSource,
+        sender: flume::Sender<ConnectionManagerEvent>,
+        async_processor_jh: JoinHandle<()>,
+    ) -> ConnectionManagerInner {
         ConnectionManagerInner {
-            stop_source: Some(StopSource::new()),
+            stop_source: Some(stop_source),
+            sender: sender,
+            async_processor_jh: Some(MustJoinHandle::new(async_processor_jh)),
             connection_table: ConnectionTable::new(config),
         }
     }
     fn new_arc(network_manager: NetworkManager) -> ConnectionManagerArc {
         ConnectionManagerArc {
             network_manager,
-            inner: AsyncMutex::new(None),
+            inner: Mutex::new(None),
         }
     }
     pub fn new(network_manager: NetworkManager) -> Self {
@@ -54,18 +70,34 @@ impl ConnectionManager {
 
     pub async fn startup(&self) {
         trace!("startup connection manager");
-        let mut inner = self.arc.inner.lock().await;
+        let mut inner = self.arc.inner.lock();
         if inner.is_some() {
             panic!("shouldn't start connection manager twice without shutting it down first");
         }
 
-        *inner = Some(Self::new_inner(self.network_manager().config()));
+        // Create channel for async_processor to receive notifications of networking events
+        let (sender, receiver) = flume::unbounded();
+
+        // Create the stop source we'll use to stop the processor and the connection table
+        let stop_source = StopSource::new();
+
+        // Spawn the async processor
+        let async_processor = spawn(self.clone().async_processor(stop_source.token(), receiver));
+
+        // Store in the inner object
+        *inner = Some(Self::new_inner(
+            self.network_manager().config(),
+            stop_source,
+            sender,
+            async_processor,
+        ));
     }
 
     pub async fn shutdown(&self) {
+        debug!("starting connection manager shutdown");
         // Remove the inner from the lock
         let mut inner = {
-            let mut inner_lock = self.arc.inner.lock().await;
+            let mut inner_lock = self.arc.inner.lock();
             let inner = match inner_lock.take() {
                 Some(v) => v,
                 None => {
@@ -75,11 +107,17 @@ impl ConnectionManager {
             inner
         };
 
-        // Stop all the connections
+        // Stop all the connections and the async processor
+        debug!("stopping async processor task");
         drop(inner.stop_source.take());
-
+        let async_processor_jh = inner.async_processor_jh.take().unwrap();
+        // wait for the async processor to stop
+        debug!("waiting for async processor to stop");
+        async_processor_jh.await;
         // Wait for the connections to complete
+        debug!("waiting for connection handlers to complete");
         inner.connection_table.join().await;
+        debug!("finished connection manager shutdown");
     }
 
     // Returns a network connection if one already is established
@@ -87,7 +125,7 @@ impl ConnectionManager {
         &self,
         descriptor: ConnectionDescriptor,
     ) -> Option<ConnectionHandle> {
-        let mut inner = self.arc.inner.lock().await;
+        let mut inner = self.arc.inner.lock();
         let inner = match &mut *inner {
             Some(v) => v,
             None => {
@@ -128,86 +166,95 @@ impl ConnectionManager {
         local_addr: Option<SocketAddr>,
         dial_info: DialInfo,
     ) -> Result<ConnectionHandle, String> {
-        let mut inner = self.arc.inner.lock().await;
-        let inner = match &mut *inner {
-            Some(v) => v,
-            None => {
-                panic!("not started");
-            }
-        };
+        let killed = {
+            let mut inner = self.arc.inner.lock();
+            let inner = match &mut *inner {
+                Some(v) => v,
+                None => {
+                    panic!("not started");
+                }
+            };
 
-        log_net!(
-            "== get_or_create_connection local_addr={:?} dial_info={:?}",
-            local_addr.green(),
-            dial_info.green()
-        );
-
-        let peer_address = dial_info.to_peer_address();
-        let descriptor = match local_addr {
-            Some(la) => {
-                ConnectionDescriptor::new(peer_address, SocketAddress::from_socket_addr(la))
-            }
-            None => ConnectionDescriptor::new_no_local(peer_address),
-        };
-
-        // If any connection to this remote exists that has the same protocol, return it
-        // Any connection will do, we don't have to match the local address
-
-        if let Some(conn) = inner
-            .connection_table
-            .get_last_connection_by_remote(descriptor.remote())
-        {
             log_net!(
-                "== Returning existing connection local_addr={:?} peer_address={:?}",
+                "== get_or_create_connection local_addr={:?} dial_info={:?}",
                 local_addr.green(),
-                peer_address.green()
+                dial_info.green()
             );
 
-            return Ok(conn);
-        }
+            let peer_address = dial_info.to_peer_address();
+            let descriptor = match local_addr {
+                Some(la) => {
+                    ConnectionDescriptor::new(peer_address, SocketAddress::from_socket_addr(la))
+                }
+                None => ConnectionDescriptor::new_no_local(peer_address),
+            };
 
-        // Drop any other protocols connections to this remote that have the same local addr
-        // otherwise this connection won't succeed due to binding
-        let mut killed = false;
-        if let Some(local_addr) = local_addr {
-            if local_addr.port() != 0 {
-                for pt in [ProtocolType::TCP, ProtocolType::WS, ProtocolType::WSS] {
-                    let pa = PeerAddress::new(descriptor.remote_address().clone(), pt);
-                    for prior_descriptor in inner
-                        .connection_table
-                        .get_connection_descriptors_by_remote(pa)
-                    {
-                        let mut kill = false;
-                        // See if the local address would collide
-                        if let Some(prior_local) = prior_descriptor.local() {
-                            if (local_addr.ip().is_unspecified()
-                                || prior_local.to_ip_addr().is_unspecified()
-                                || (local_addr.ip() == prior_local.to_ip_addr()))
-                                && prior_local.port() == local_addr.port()
-                            {
-                                kill = true;
+            // If any connection to this remote exists that has the same protocol, return it
+            // Any connection will do, we don't have to match the local address
+
+            if let Some(conn) = inner
+                .connection_table
+                .get_last_connection_by_remote(descriptor.remote())
+            {
+                log_net!(
+                    "== Returning existing connection local_addr={:?} peer_address={:?}",
+                    local_addr.green(),
+                    peer_address.green()
+                );
+
+                return Ok(conn);
+            }
+
+            // Drop any other protocols connections to this remote that have the same local addr
+            // otherwise this connection won't succeed due to binding
+            let mut killed = Vec::<NetworkConnection>::new();
+            if let Some(local_addr) = local_addr {
+                if local_addr.port() != 0 {
+                    for pt in [ProtocolType::TCP, ProtocolType::WS, ProtocolType::WSS] {
+                        let pa = PeerAddress::new(descriptor.remote_address().clone(), pt);
+                        for prior_descriptor in inner
+                            .connection_table
+                            .get_connection_descriptors_by_remote(pa)
+                        {
+                            let mut kill = false;
+                            // See if the local address would collide
+                            if let Some(prior_local) = prior_descriptor.local() {
+                                if (local_addr.ip().is_unspecified()
+                                    || prior_local.to_ip_addr().is_unspecified()
+                                    || (local_addr.ip() == prior_local.to_ip_addr()))
+                                    && prior_local.port() == local_addr.port()
+                                {
+                                    kill = true;
+                                }
                             }
-                        }
-                        if kill {
-                            log_net!(debug
-                                ">< Terminating connection prior_descriptor={:?}",
-                                prior_descriptor
-                            );
-                            if let Err(e) =
-                                inner.connection_table.remove_connection(prior_descriptor)
-                            {
-                                log_net!(error e);
+                            if kill {
+                                log_net!(debug
+                                    ">< Terminating connection prior_descriptor={:?}",
+                                    prior_descriptor
+                                );
+                                let mut conn = inner
+                                    .connection_table
+                                    .remove_connection(prior_descriptor)
+                                    .expect("connection not in table");
+
+                                conn.close();
+
+                                killed.push(conn);
                             }
-                            killed = true;
                         }
                     }
                 }
             }
+            killed
+        };
+
+        // Wait for the killed connections to end their recv loops
+        let mut retry_count = if !killed.is_empty() { 2 } else { 0 };
+        for k in killed {
+            k.await;
         }
 
         // Attempt new connection
-        let mut retry_count = if killed { 2 } else { 0 };
-
         let conn = loop {
             match ProtocolNetworkConnection::connect(local_addr, dial_info.clone()).await {
                 Ok(v) => break Ok(v),
@@ -222,11 +269,67 @@ impl ConnectionManager {
             }
         }?;
 
-        self.on_new_protocol_network_connection(&mut *inner, conn)
+        // Add to the connection table
+        let mut inner = self.arc.inner.lock();
+        let inner = match &mut *inner {
+            Some(v) => v,
+            None => {
+                return Err("shutting down".to_owned());
+            }
+        };
+        self.on_new_protocol_network_connection(inner, conn)
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////
     /// Callbacks
+
+    #[instrument(level = "trace", skip_all)]
+    async fn async_processor(
+        self,
+        stop_token: StopToken,
+        receiver: flume::Receiver<ConnectionManagerEvent>,
+    ) {
+        // Process async commands
+        while let Ok(Ok(event)) = receiver.recv_async().timeout_at(stop_token.clone()).await {
+            match event {
+                ConnectionManagerEvent::Accepted(conn) => {
+                    let mut inner = self.arc.inner.lock();
+                    match &mut *inner {
+                        Some(inner) => {
+                            // Register the connection
+                            // We don't care if this fails, since nobody here asked for the inbound connection.
+                            // If it does, we just drop the connection
+                            let _ = self.on_new_protocol_network_connection(inner, conn);
+                        }
+                        None => {
+                            // If this somehow happens, we're shutting down
+                        }
+                    };
+                }
+                ConnectionManagerEvent::Finished(desc) => {
+                    let conn = {
+                        let mut inner_lock = self.arc.inner.lock();
+                        match &mut *inner_lock {
+                            Some(inner) => {
+                                // Remove the connection and wait for the connection loop to terminate
+                                if let Ok(conn) = inner.connection_table.remove_connection(desc) {
+                                    // Must close and wait to ensure things join
+                                    Some(conn)
+                                } else {
+                                    None
+                                }
+                            }
+                            None => None,
+                        }
+                    };
+                    if let Some(mut conn) = conn {
+                        conn.close();
+                        conn.await;
+                    }
+                }
+            }
+        }
+    }
 
     // Called by low-level network when any connection-oriented protocol connection appears
     // either from incoming connections.
@@ -234,32 +337,45 @@ impl ConnectionManager {
         &self,
         conn: ProtocolNetworkConnection,
     ) -> Result<(), String> {
-        let mut inner = self.arc.inner.lock().await;
-        let inner = match &mut *inner {
-            Some(v) => v,
-            None => {
-                // If we are shutting down, just drop this and return
-                return Ok(());
-            }
+        // Get channel sender
+        let sender = {
+            let mut inner = self.arc.inner.lock();
+            let inner = match &mut *inner {
+                Some(v) => v,
+                None => {
+                    // If we are shutting down, just drop this and return
+                    return Ok(());
+                }
+            };
+            inner.sender.clone()
         };
-        self.on_new_protocol_network_connection(inner, conn)
-            .map(drop)
+
+        // Inform the processor of the event
+        let _ = sender
+            .send_async(ConnectionManagerEvent::Accepted(conn))
+            .await;
+        Ok(())
     }
 
     // Callback from network connection receive loop when it exits
     // cleans up the entry in the connection table
     pub(super) async fn report_connection_finished(&self, descriptor: ConnectionDescriptor) {
-        let mut inner = self.arc.inner.lock().await;
-        let inner = match &mut *inner {
-            Some(v) => v,
-            None => {
-                // If we're shutting down, do nothing here
-                return;
-            }
+        // Get channel sender
+        let sender = {
+            let mut inner = self.arc.inner.lock();
+            let inner = match &mut *inner {
+                Some(v) => v,
+                None => {
+                    // If we are shutting down, just drop this and return
+                    return;
+                }
+            };
+            inner.sender.clone()
         };
 
-        if let Err(e) = inner.connection_table.remove_connection(descriptor) {
-            log_net!(error e);
-        }
+        // Inform the processor of the event
+        let _ = sender
+            .send_async(ConnectionManagerEvent::Finished(descriptor))
+            .await;
     }
 }

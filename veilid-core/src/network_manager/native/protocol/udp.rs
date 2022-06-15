@@ -10,6 +10,7 @@ impl RawUdpProtocolHandler {
         Self { socket }
     }
 
+    #[instrument(level = "trace", err, skip(self, data), fields(data.len = data.len(), ret.len, ret.from))]
     pub async fn recv_message(
         &self,
         data: &mut [u8],
@@ -35,9 +36,13 @@ impl RawUdpProtocolHandler {
             peer_addr,
             SocketAddress::from_socket_addr(local_socket_addr),
         );
+
+        tracing::Span::current().record("ret.len", &size);
+        tracing::Span::current().record("ret.from", &format!("{:?}", descriptor).as_str());
         Ok((size, descriptor))
     }
 
+    #[instrument(level = "trace", err, skip(self, data), fields(data.len = data.len(), ret.len, ret.from))]
     pub async fn send_message(&self, data: Vec<u8>, socket_addr: SocketAddr) -> Result<(), String> {
         if data.len() > MAX_MESSAGE_SIZE {
             return Err("sending too large UDP message".to_owned()).map_err(logthru_net!(error));

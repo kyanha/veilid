@@ -334,7 +334,7 @@ impl NetworkInterfaces {
         self.valid = false;
         let last_interfaces = core::mem::take(&mut self.interfaces);
 
-        let mut platform_support = PlatformSupport::new().map_err(logthru_net!())?;
+        let mut platform_support = PlatformSupport::new()?;
         platform_support
             .get_interfaces(&mut self.interfaces)
             .await?;

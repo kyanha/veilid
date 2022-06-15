@@ -131,7 +131,7 @@ where
             pub async fn single_spawn(
                 &self,
                 future: impl Future<Output = T> + 'static,
-            ) -> Result<Option<T>, ()> {
+            ) -> Result<(Option<T>,bool), ()> {
                 let mut out: Option<T> = None;
 
                 // See if we have a result we can return
@@ -164,7 +164,7 @@ where
                 }
 
                 // Return the prior result if we have one
-                Ok(out)
+                Ok((out, run))
             }
         }
     }
@@ -178,7 +178,7 @@ cfg_if! {
             pub async fn single_spawn(
                 &self,
                 future: impl Future<Output = T> + Send + 'static,
-            ) -> Result<Option<T>, ()> {
+            ) -> Result<(Option<T>, bool), ()> {
                 let mut out: Option<T> = None;
                 // See if we have a result we can return
                 let maybe_jh = match self.try_lock() {
@@ -206,7 +206,7 @@ cfg_if! {
                     self.unlock(Some(MustJoinHandle::new(spawn(future))));
                 }
                 // Return the prior result if we have one
-                Ok(out)
+                Ok((out, run))
             }
         }
     }

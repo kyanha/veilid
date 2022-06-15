@@ -89,6 +89,7 @@ pub struct NetworkConnection {
     established_time: u64,
     stats: Arc<Mutex<NetworkConnectionStats>>,
     sender: flume::Sender<Vec<u8>>,
+    stop_source: Option<StopSource>,
 }
 
 impl NetworkConnection {
@@ -105,12 +106,13 @@ impl NetworkConnection {
                 last_message_recv_time: None,
             })),
             sender,
+            stop_source: None,
         }
     }
 
     pub(super) fn from_protocol(
         connection_manager: ConnectionManager,
-        stop_token: StopToken,
+        manager_stop_token: StopToken,
         protocol_connection: ProtocolNetworkConnection,
     ) -> Self {
         // Get timeout
@@ -133,10 +135,14 @@ impl NetworkConnection {
             last_message_recv_time: None,
         }));
 
+        let stop_source = StopSource::new();
+        let local_stop_token = stop_source.token();
+
         // Spawn connection processor and pass in protocol connection
         let processor = MustJoinHandle::new(intf::spawn_local(Self::process_connection(
             connection_manager,
-            stop_token,
+            local_stop_token,
+            manager_stop_token,
             descriptor.clone(),
             receiver,
             protocol_connection,
@@ -151,6 +157,7 @@ impl NetworkConnection {
             established_time: intf::get_timestamp(),
             stats,
             sender,
+            stop_source: Some(stop_source),
         }
     }
 
@@ -160,6 +167,13 @@ impl NetworkConnection {
 
     pub fn get_handle(&self) -> ConnectionHandle {
         ConnectionHandle::new(self.descriptor.clone(), self.sender.clone())
+    }
+
+    pub fn close(&mut self) {
+        if let Some(stop_source) = self.stop_source.take() {
+            // drop the stopper
+            drop(stop_source);
+        }
     }
 
     async fn send_internal(
@@ -200,7 +214,8 @@ impl NetworkConnection {
     // Connection receiver loop
     fn process_connection(
         connection_manager: ConnectionManager,
-        stop_token: StopToken,
+        local_stop_token: StopToken,
+        manager_stop_token: StopToken,
         descriptor: ConnectionDescriptor,
         receiver: flume::Receiver<Vec<u8>>,
         protocol_connection: ProtocolNetworkConnection,
@@ -293,7 +308,13 @@ impl NetworkConnection {
                 }
 
                 // Process futures
-                match unord.next().timeout_at(stop_token.clone()).await {
+                match unord
+                    .next()
+                    .timeout_at(local_stop_token.clone())
+                    .timeout_at(manager_stop_token.clone())
+                    .await
+                    .and_then(std::convert::identity)   // flatten
+                {
                     Ok(Some(RecvLoopAction::Send)) => {
                         // Don't reset inactivity timer if we're only sending
                         need_sender = true;
@@ -312,7 +333,7 @@ impl NetworkConnection {
                         unreachable!();
                     }
                     Err(_) => {
-                        // Stop token
+                        // Either one of the stop tokens
                         break;
                     }
                 }

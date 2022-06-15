@@ -65,8 +65,7 @@ impl Network {
             ps.peek_exact(&mut first_packet),
         )
         .await
-        .map_err(map_to_string)
-        .map_err(logthru_net!())?;
+        .map_err(map_to_string)?;
 
         self.try_handlers(ps, tcp_stream, addr, protocol_handlers)
             .await
@@ -82,8 +81,7 @@ impl Network {
         for ah in protocol_accept_handlers.iter() {
             if let Some(nc) = ah
                 .on_accept(stream.clone(), tcp_stream.clone(), addr)
-                .await
-                .map_err(logthru_net!())?
+                .await?
             {
                 return Ok(Some(nc));
             }

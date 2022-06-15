@@ -82,7 +82,12 @@ pub async fn test_add_get_remove() {
     assert_eq!(table.get_connection(a1), Some(c1h.clone()));
     assert_eq!(table.get_connection(a1), Some(c1h.clone()));
     assert_eq!(table.connection_count(), 1);
-    assert_eq!(table.remove_connection(a2), Ok(()));
+    assert_eq!(
+        table
+            .remove_connection(a2)
+            .map(|c| c.connection_descriptor()),
+        Ok(a1)
+    );
     assert_eq!(table.connection_count(), 0);
     assert_err!(table.remove_connection(a2));
     assert_eq!(table.connection_count(), 0);
@@ -98,9 +103,24 @@ pub async fn test_add_get_remove() {
     table.add_connection(c3).unwrap();
     table.add_connection(c4).unwrap();
     assert_eq!(table.connection_count(), 3);
-    assert_eq!(table.remove_connection(a2), Ok(()));
-    assert_eq!(table.remove_connection(a3), Ok(()));
-    assert_eq!(table.remove_connection(a4), Ok(()));
+    assert_eq!(
+        table
+            .remove_connection(a2)
+            .map(|c| c.connection_descriptor()),
+        Ok(a2)
+    );
+    assert_eq!(
+        table
+            .remove_connection(a3)
+            .map(|c| c.connection_descriptor()),
+        Ok(a3)
+    );
+    assert_eq!(
+        table
+            .remove_connection(a4)
+            .map(|c| c.connection_descriptor()),
+        Ok(a4)
+    );
     assert_eq!(table.connection_count(), 0);
 }
 

@@ -1428,23 +1428,30 @@ impl RPCProcessor {
     }
 
     pub async fn shutdown(&self) {
+        debug!("starting rpc processor shutdown");
+        
         // Stop the rpc workers
         let mut unord = FuturesUnordered::new();
         {
             let mut inner = self.inner.lock();
-            // drop the stop
-            drop(inner.stop_source.take());
             // take the join handles out
             for h in inner.worker_join_handles.drain(..) {
                 unord.push(h);
             }
+            // drop the stop
+            drop(inner.stop_source.take());
         }
+        debug!("stopping {} rpc worker tasks", unord.len());
         
         // Wait for them to complete
         while unord.next().await.is_some() {}
-
+        
+        debug!("resetting rpc processor state");
+        
         // Release the rpc processor
         *self.inner.lock() = Self::new_inner(self.network_manager());
+
+        debug!("finished rpc processor shutdown");
     }
 
     pub fn enqueue_message(

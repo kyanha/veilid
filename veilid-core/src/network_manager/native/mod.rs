@@ -279,20 +279,14 @@ impl Network {
         let res = match dial_info.protocol_type() {
             ProtocolType::UDP => {
                 let peer_socket_addr = dial_info.to_socket_addr();
-                RawUdpProtocolHandler::send_unbound_message(peer_socket_addr, data)
-                    .await
-                    .map_err(logthru_net!())
+                RawUdpProtocolHandler::send_unbound_message(peer_socket_addr, data).await
             }
             ProtocolType::TCP => {
                 let peer_socket_addr = dial_info.to_socket_addr();
-                RawTcpProtocolHandler::send_unbound_message(peer_socket_addr, data)
-                    .await
-                    .map_err(logthru_net!())
+                RawTcpProtocolHandler::send_unbound_message(peer_socket_addr, data).await
             }
             ProtocolType::WS | ProtocolType::WSS => {
-                WebsocketProtocolHandler::send_unbound_message(dial_info.clone(), data)
-                    .await
-                    .map_err(logthru_net!())
+                WebsocketProtocolHandler::send_unbound_message(dial_info.clone(), data).await
             }
         };
         if res.is_ok() {
@@ -324,10 +318,7 @@ impl Network {
                     descriptor
                 );
 
-                ph.clone()
-                    .send_message(data, peer_socket_addr)
-                    .await
-                    .map_err(logthru_net!())?;
+                ph.clone().send_message(data, peer_socket_addr).await?;
 
                 // Network accounting
                 self.network_manager()
@@ -345,7 +336,7 @@ impl Network {
             log_net!("send_data_to_existing_connection to {:?}", descriptor);
 
             // connection exists, send over it
-            conn.send_async(data).await.map_err(logthru_net!())?;
+            conn.send_async(data).await?;
 
             // Network accounting
             self.network_manager()
@@ -372,10 +363,7 @@ impl Network {
         if dial_info.protocol_type() == ProtocolType::UDP {
             let peer_socket_addr = dial_info.to_socket_addr();
             if let Some(ph) = self.find_best_udp_protocol_handler(&peer_socket_addr, &None) {
-                let res = ph
-                    .send_message(data, peer_socket_addr)
-                    .await
-                    .map_err(logthru_net!());
+                let res = ph.send_message(data, peer_socket_addr).await;
                 if res.is_ok() {
                     // Network accounting
                     self.network_manager()
@@ -383,8 +371,7 @@ impl Network {
                 }
                 return res;
             }
-            return Err("no appropriate UDP protocol handler for dial_info".to_owned())
-                .map_err(logthru_net!(error));
+            return Err("no appropriate UDP protocol handler for dial_info".to_owned());
         }
 
         // Handle connection-oriented protocols
@@ -394,7 +381,7 @@ impl Network {
             .get_or_create_connection(Some(local_addr), dial_info.clone())
             .await?;
 
-        let res = conn.send_async(data).await.map_err(logthru_net!(error));
+        let res = conn.send_async(data).await;
         if res.is_ok() {
             // Network accounting
             self.network_manager()
@@ -414,43 +401,51 @@ impl Network {
         // initialize interfaces
         let mut interfaces = NetworkInterfaces::new();
         interfaces.refresh().await?;
-        self.inner.lock().interfaces = interfaces;
 
-        // get protocol config
         let protocol_config = {
-            let c = self.config.get();
-            let mut inbound = ProtocolSet::new();
+            let mut inner = self.inner.lock();
 
-            if c.network.protocol.udp.enabled && c.capabilities.protocol_udp {
-                inbound.insert(ProtocolType::UDP);
-            }
-            if c.network.protocol.tcp.listen && c.capabilities.protocol_accept_tcp {
-                inbound.insert(ProtocolType::TCP);
-            }
-            if c.network.protocol.ws.listen && c.capabilities.protocol_accept_ws {
-                inbound.insert(ProtocolType::WS);
-            }
-            if c.network.protocol.wss.listen && c.capabilities.protocol_accept_wss {
-                inbound.insert(ProtocolType::WSS);
-            }
+            // Create stop source
+            inner.stop_source = Some(StopSource::new());
+            inner.interfaces = interfaces;
 
-            let mut outbound = ProtocolSet::new();
-            if c.network.protocol.udp.enabled && c.capabilities.protocol_udp {
-                outbound.insert(ProtocolType::UDP);
-            }
-            if c.network.protocol.tcp.connect && c.capabilities.protocol_connect_tcp {
-                outbound.insert(ProtocolType::TCP);
-            }
-            if c.network.protocol.ws.connect && c.capabilities.protocol_connect_ws {
-                outbound.insert(ProtocolType::WS);
-            }
-            if c.network.protocol.wss.connect && c.capabilities.protocol_connect_wss {
-                outbound.insert(ProtocolType::WSS);
-            }
+            // get protocol config
+            let protocol_config = {
+                let c = self.config.get();
+                let mut inbound = ProtocolSet::new();
 
-            ProtocolConfig { inbound, outbound }
+                if c.network.protocol.udp.enabled && c.capabilities.protocol_udp {
+                    inbound.insert(ProtocolType::UDP);
+                }
+                if c.network.protocol.tcp.listen && c.capabilities.protocol_accept_tcp {
+                    inbound.insert(ProtocolType::TCP);
+                }
+                if c.network.protocol.ws.listen && c.capabilities.protocol_accept_ws {
+                    inbound.insert(ProtocolType::WS);
+                }
+                if c.network.protocol.wss.listen && c.capabilities.protocol_accept_wss {
+                    inbound.insert(ProtocolType::WSS);
+                }
+
+                let mut outbound = ProtocolSet::new();
+                if c.network.protocol.udp.enabled && c.capabilities.protocol_udp {
+                    outbound.insert(ProtocolType::UDP);
+                }
+                if c.network.protocol.tcp.connect && c.capabilities.protocol_connect_tcp {
+                    outbound.insert(ProtocolType::TCP);
+                }
+                if c.network.protocol.ws.connect && c.capabilities.protocol_connect_ws {
+                    outbound.insert(ProtocolType::WS);
+                }
+                if c.network.protocol.wss.connect && c.capabilities.protocol_connect_wss {
+                    outbound.insert(ProtocolType::WSS);
+                }
+
+                ProtocolConfig { inbound, outbound }
+            };
+            inner.protocol_config = Some(protocol_config);
+            protocol_config
         };
-        self.inner.lock().protocol_config = Some(protocol_config);
 
         // start listeners
         if protocol_config.inbound.contains(ProtocolType::UDP) {
@@ -503,28 +498,32 @@ impl Network {
 
     #[instrument(level = "debug", skip_all)]
     pub async fn shutdown(&self) {
-        info!("stopping network");
+        debug!("starting low level network shutdown");
 
         let network_manager = self.network_manager();
         let routing_table = self.routing_table();
 
         // Stop all tasks
+        debug!("stopping update network class task");
         if let Err(e) = self.unlocked_inner.update_network_class_task.stop().await {
             error!("update_network_class_task not cancelled: {}", e);
         }
+
         let mut unord = FuturesUnordered::new();
         {
             let mut inner = self.inner.lock();
-            // Drop the stop
-            drop(inner.stop_source.take());
             // take the join handles out
             for h in inner.join_handles.drain(..) {
                 unord.push(h);
             }
+            // Drop the stop
+            drop(inner.stop_source.take());
         }
+        debug!("stopping {} low level network tasks", unord.len());
         // Wait for everything to stop
         while unord.next().await.is_some() {}
 
+        debug!("clearing dial info");
         // Drop all dial info
         routing_table.clear_dial_info_details(RoutingDomain::PublicInternet);
         routing_table.clear_dial_info_details(RoutingDomain::LocalNetwork);
@@ -532,7 +531,7 @@ impl Network {
         // Reset state including network class
         *self.inner.lock() = Self::new_inner(network_manager);
 
-        info!("network stopped");
+        debug!("finished low level network shutdown");
     }
 
     //////////////////////////////////////////
