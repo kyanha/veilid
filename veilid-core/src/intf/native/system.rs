@@ -3,7 +3,7 @@
 use crate::xx::*;
 pub use async_executors::JoinHandle;
 use async_executors::{AsyncStd, LocalSpawnHandleExt, SpawnHandleExt};
-use async_std_resolver::{config, resolver, AsyncStdResolver};
+use async_std_resolver::{config, resolver, resolver_from_system_conf, AsyncStdResolver};
 use rand::prelude::*;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -133,12 +133,15 @@ async fn get_resolver() -> Result<AsyncStdResolver, String> {
     if let Some(r) = &*resolver_lock {
         Ok(r.clone())
     } else {
-        let resolver = resolver(
-            config::ResolverConfig::default(),
-            config::ResolverOpts::default(),
-        )
-        .await
-        .expect("failed to connect resolver");
+        let resolver = match resolver_from_system_conf().await {
+            Ok(v) => v,
+            Err(_) => resolver(
+                config::ResolverConfig::default(),
+                config::ResolverOpts::default(),
+            )
+            .await
+            .expect("failed to connect resolver"),
+        };
 
         *resolver_lock = Some(resolver.clone());
         Ok(resolver)
