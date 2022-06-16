@@ -125,9 +125,13 @@ pub extern "C" fn initialize_veilid_flutter(dart_post_c_object_ptr: ffi::DartPos
             } else {
                 error!("no panic payload");
             }
-            error!("  Complete stack trace:\n{:?}", backtrace::Backtrace::new());
+            error!(
+                "  Complete stack trace:\n{:?}\n",
+                backtrace::Backtrace::new()
+            );
 
             // And stop the process, no recovery is going to be possible here
+            error!("aborting!");
             std::process::abort();
         }));
     });
