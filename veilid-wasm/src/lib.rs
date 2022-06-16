@@ -6,14 +6,17 @@
 extern crate alloc;
 use alloc::string::String;
 use alloc::sync::Arc;
+use alloc::*;
 use core::any::{Any, TypeId};
 use core::cell::RefCell;
 use futures_util::FutureExt;
 use js_sys::*;
 use lazy_static::*;
-use log::*;
 use send_wrapper::*;
 use serde::*;
+use tracing::*;
+use tracing_subscriber::prelude::*;
+use tracing_subscriber::*;
 use tracing_wasm::{WASMLayerConfigBuilder, *};
 use veilid_core::xx::*;
 use veilid_core::*;
@@ -29,8 +32,19 @@ pub fn setup() -> () {
     SETUP_ONCE.call_once(|| {});
 }
 
-// API Singleton
+// Log filtering
+fn logfilter<T: AsRef<str>, V: AsRef<[T]>>(metadata: &Metadata, ignore_list: V) -> bool {
+    // Skip filtered targets
+    !match (metadata.target(), ignore_list.as_ref()) {
+        (path, ignore) if !ignore.is_empty() => {
+            // Check that the module path does not match any ignore filters
+            ignore.iter().any(|v| path.starts_with(v.as_ref()))
+        }
+        _ => false,
+    }
+}
 
+// API Singleton
 lazy_static! {
     static ref VEILID_API: SendWrapper<RefCell<Option<veilid_core::VeilidAPI>>> =
         SendWrapper::new(RefCell::new(None));
@@ -50,7 +64,6 @@ fn take_veilid_api() -> Result<veilid_core::VeilidAPI, veilid_core::VeilidAPIErr
 }
 
 // JSON Marshalling
-
 pub fn serialize_json<T: Serialize>(val: T) -> String {
     serde_json::to_string(&val).expect("failed to serialize json value")
 }
@@ -129,8 +142,7 @@ pub fn initialize_veilid_wasm() {
 
 #[wasm_bindgen()]
 pub fn configure_veilid_platform(platform_config: String) {
-    let platform_config = platform_config.into_opt_string();
-    let platform_config: VeilidWASMConfig = veilid_core::deserialize_opt_json(platform_config)
+    let platform_config: VeilidWASMConfig = veilid_core::deserialize_json(&platform_config)
         .expect("failed to deserialize plaform config json");
 
     // Set up subscriber and layers

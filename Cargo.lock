@@ -5331,6 +5331,7 @@ dependencies = [
  "send_wrapper 0.6.0",
  "serde 1.0.137",
  "serde_json",
+ "tracing",
  "tracing-subscriber",
  "tracing-wasm",
  "veilid-core",

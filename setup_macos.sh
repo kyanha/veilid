@@ -7,7 +7,7 @@ if [ ! "$(uname)" == "Darwin" ]; then
 fi
 
 # install targets
-rustup target add aarch64-apple-darwin aarch64-apple-ios x86_64-apple-darwin x86_64-apple-ios
+rustup target add aarch64-apple-darwin aarch64-apple-ios x86_64-apple-darwin x86_64-apple-ios wasm32-unknown-unknown
 
 # install cargo packages
 cargo install wasm-bindgen-cli
@@ -50,5 +50,5 @@ if [ "$BREW_USER" == "" ]; then
         BREW_USER=`whoami`
     fi
 fi
-sudo -H -u $BREW_USER brew install capnp cmake
+sudo -H -u $BREW_USER brew install capnp cmake wabt llvm
 
