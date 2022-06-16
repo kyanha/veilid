@@ -203,6 +203,16 @@ impl VeilidConfigLogLevel {
             Self::Trace => Some(VeilidLogLevel::Trace),
         }
     }
+    pub fn to_tracing_level_filter(&self) -> level_filters::LevelFilter {
+        match self {
+            Self::Off => level_filters::LevelFilter::OFF,
+            Self::Error => level_filters::LevelFilter::ERROR,
+            Self::Warn => level_filters::LevelFilter::WARN,
+            Self::Info => level_filters::LevelFilter::INFO,
+            Self::Debug => level_filters::LevelFilter::DEBUG,
+            Self::Trace => level_filters::LevelFilter::TRACE,
+        }
+    }
     pub fn from_veilid_log_level(level: Option<VeilidLogLevel>) -> Self {
         match level {
             None => Self::Off,

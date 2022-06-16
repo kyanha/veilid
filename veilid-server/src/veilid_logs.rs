@@ -29,7 +29,6 @@ impl VeilidLogs {
         let settingsr = settings.read();
 
         // Set up subscriber and layers
-
         let mut ignore_list = Vec::<String>::new();
         for ig in veilid_core::DEFAULT_LOG_IGNORE_LIST {
             ignore_list.push(ig.to_owned());
@@ -64,9 +63,6 @@ impl VeilidLogs {
                     .to_tracing_level()
                     .into();
             let grpc_endpoint = settingsr.logging.otlp.grpc_endpoint.name.clone();
-
-            // Required for GRPC dns resolution to work
-            std::env::set_var("GRPC_DNS_RESOLVER", "native");
 
             let tracer = opentelemetry_otlp::new_pipeline()
                 .tracing()

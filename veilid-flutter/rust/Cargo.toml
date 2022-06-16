@@ -23,9 +23,14 @@ async-std = { version = "^1", features = ["unstable"] }
 allo-isolate = "^0"
 ffi-support = "^0"
 lazy_static = "^1"
+tracing-opentelemetry = "^0"
+opentelemetry = { version = "^0", features = ["rt-async-std"] }
+opentelemetry-otlp = { version = "^0", features = ["grpc-sys"] }
+opentelemetry-semantic-conventions = "^0"
+hostname = "^0"
 
 # Dependencies for WASM builds only
-# [target.'cfg(target_arch = "wasm32")'.dependencies]
+[target.'cfg(target_arch = "wasm32")'.dependencies]
 
 # Dependencies for Android builds only
 [target.'cfg(target_os = "android")'.dependencies]

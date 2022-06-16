@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:typed_data';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:veilid/veilid.dart';
 import 'package:flutter_loggy/flutter_loggy.dart';
 import 'package:loggy/loggy.dart';
@@ -74,6 +76,29 @@ void main() {
   WidgetsFlutterBinding.ensureInitialized();
 
   initLoggy();
+  if (kIsWeb) {
+    var platformConfig = VeilidWASMConfig(
+        logging: VeilidWASMConfigLogging(
+            performance: VeilidWASMConfigLoggingPerformance(
+                enabled: true,
+                level: VeilidLogLevel.trace,
+                logsInTimings: true,
+                logsInConsole: false)));
+    Veilid.instance.configureVeilidPlatform(platformConfig.json);
+  } else {
+    var platformConfig = VeilidFFIConfig(
+        logging: VeilidFFIConfigLogging(
+            terminal: VeilidFFIConfigLoggingTerminal(
+              enabled: false,
+              level: VeilidLogLevel.trace,
+            ),
+            otlp: VeilidFFIConfigLoggingOtlp(
+                enabled: false,
+                level: VeilidLogLevel.trace,
+                grpcEndpoint: "localhost:4317",
+                serviceName: "VeilidExample")));
+    Veilid.instance.configureVeilidPlatform(platformConfig.json);
+  }
 
   runApp(MaterialApp(
       title: 'Veilid Plugin Demo',
@@ -100,6 +125,7 @@ class _MyAppState extends State<MyApp> with UiLoggy {
   @override
   void initState() {
     super.initState();
+    setRootLogLevel(LogLevel.info);
     initPlatformState();
   }
 

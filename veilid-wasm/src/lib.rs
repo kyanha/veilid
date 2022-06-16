@@ -14,6 +14,7 @@ use lazy_static::*;
 use log::*;
 use send_wrapper::*;
 use serde::*;
+use tracing_wasm::{WASMLayerConfigBuilder, *};
 use veilid_core::xx::*;
 use veilid_core::*;
 use wasm_bindgen_futures::*;
@@ -98,11 +99,81 @@ where
     }))
 }
 
+/////////////////////////////////////////
+// WASM-specific cofnig
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct VeilidWASMConfigLoggingPerformance {
+    pub enabled: bool,
+    pub level: veilid_core::VeilidLogLevel,
+    pub logs_in_timings: bool,
+    pub logs_in_console: bool,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct VeilidWASMConfigLogging {
+    pub performance: VeilidWASMConfigLoggingPerformance,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct VeilidWASMConfig {
+    pub logging: VeilidWASMConfigLogging,
+}
+
 // WASM Bindings
 
 #[wasm_bindgen()]
 pub fn initialize_veilid_wasm() {
     console_error_panic_hook::set_once();
+}
+
+#[wasm_bindgen()]
+pub fn configure_veilid_platform(platform_config: String) {
+    let platform_config = platform_config.into_opt_string();
+    let platform_config: VeilidWASMConfig = veilid_core::deserialize_opt_json(platform_config)
+        .expect("failed to deserialize plaform config json");
+
+    // Set up subscriber and layers
+    let mut ignore_list = Vec::<String>::new();
+    for ig in veilid_core::DEFAULT_LOG_IGNORE_LIST {
+        ignore_list.push(ig.to_owned());
+    }
+
+    let subscriber = Registry::default();
+
+    // Performance logger
+    let subscriber = subscriber.with(if platform_config.logging.performance.enabled {
+        let performance_max_log_level =
+            platform_config.logging.performance.level.to_tracing_level();
+
+        let ignore_list = ignore_list.clone();
+        Some(
+            WASMLayer::new(
+                WASMLayerConfigBuilder::new()
+                    .set_report_logs_in_timings(platform_config.logging.performance.logs_in_timings)
+                    .set_console_config(if platform_config.logging.performance.logs_in_console {
+                        ConsoleConfig::ReportWithConsoleColor
+                    } else {
+                        ConsoleConfig::NoReporting
+                    })
+                    .set_max_level(performance_max_log_level)
+                    .build(),
+            )
+            .with_filter(filter::FilterFn::new(move |metadata| {
+                logfilter(metadata, &ignore_list)
+            })),
+        )
+    } else {
+        None
+    });
+
+    // API logger (always add layer, startup will init this if it is enabled in settings)
+    let subscriber = subscriber.with(veilid_core::ApiTracingLayer::get());
+
+    subscriber
+        .try_init()
+        .map_err(|e| format!("failed to initialize logging: {}", e))
+        .expect("failed to initalize WASM platform");
 }
 
 #[wasm_bindgen()]
@@ -141,9 +212,10 @@ pub fn get_veilid_state() -> Promise {
 #[wasm_bindgen()]
 pub fn change_api_log_level(log_level: String) -> Promise {
     wrap_api_future(async move {
-        let veilid_api = get_veilid_api()?;
         let log_level: veilid_core::VeilidConfigLogLevel = deserialize_json(&log_level)?;
-        veilid_api.change_api_log_level(log_level).await;
+        //let veilid_api = get_veilid_api()?;
+        //veilid_api.change_api_log_level(log_level).await;
+        veilid_core::ApiTracingLayer::change_api_log_level(log_level.to_veilid_log_level());
         APIRESULT_UNDEFINED
     })
 }

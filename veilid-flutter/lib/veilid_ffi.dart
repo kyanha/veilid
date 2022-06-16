@@ -29,6 +29,9 @@ typedef _FreeStringDart = void Function(Pointer<Utf8>);
 // fn initialize_veilid_flutter(dart_post_c_object_ptr: ffi::DartPostCObjectFnType)
 typedef _InitializeVeilidFlutterC = Void Function(Pointer<_DartPostCObject>);
 typedef _InitializeVeilidFlutterDart = void Function(Pointer<_DartPostCObject>);
+// fn configure_veilid_platform(platform_config: FfiStr)
+typedef _ConfigureVeilidPlatformC = Void Function(Pointer<Utf8>);
+typedef _ConfigureVeilidPlatformDart = void Function(Pointer<Utf8>);
 // fn startup_veilid_core(port: i64, config: FfiStr)
 typedef _StartupVeilidCoreC = Void Function(Int64, Pointer<Utf8>);
 typedef _StartupVeilidCoreDart = void Function(int, Pointer<Utf8>);
@@ -228,9 +231,10 @@ Stream<T> processStreamJson<T>(
           }
       }
     }
-  } catch (e) {
+  } catch (e, s) {
     // Wrap all other errors in VeilidAPIExceptionInternal
-    throw VeilidAPIExceptionInternal(e.toString());
+    throw VeilidAPIExceptionInternal(
+        "${e.toString()}\nStack Trace:\n${s.toString()}");
   }
 }
 
@@ -241,6 +245,7 @@ class VeilidFFI implements Veilid {
 
   // Shared library functions
   final _FreeStringDart _freeString;
+  final _ConfigureVeilidPlatformDart _configureVeilidPlatform;
   final _StartupVeilidCoreDart _startupVeilidCore;
   final _GetVeilidStateDart _getVeilidState;
   final _ChangeApiLogLevelDart _changeApiLogLevel;
@@ -253,6 +258,9 @@ class VeilidFFI implements Veilid {
       : _dylib = dylib,
         _freeString =
             dylib.lookupFunction<_FreeStringC, _FreeStringDart>('free_string'),
+        _configureVeilidPlatform = dylib.lookupFunction<
+            _ConfigureVeilidPlatformC,
+            _ConfigureVeilidPlatformDart>('configure_veilid_platform'),
         _startupVeilidCore =
             dylib.lookupFunction<_StartupVeilidCoreC, _StartupVeilidCoreDart>(
                 'startup_veilid_core'),
@@ -276,6 +284,17 @@ class VeilidFFI implements Veilid {
         _InitializeVeilidFlutterC,
         _InitializeVeilidFlutterDart>('initialize_veilid_flutter');
     initializeVeilidFlutter(NativeApi.postCObject);
+  }
+
+  @override
+  void configureVeilidPlatform(Map<String, dynamic> platformConfigJson) {
+    var nativePlatformConfig =
+        jsonEncode(platformConfigJson, toEncodable: veilidApiToEncodable)
+            .toNativeUtf8();
+
+    _configureVeilidPlatform(nativePlatformConfig);
+
+    malloc.free(nativePlatformConfig);
   }
 
   @override

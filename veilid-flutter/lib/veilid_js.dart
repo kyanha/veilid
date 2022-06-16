@@ -20,6 +20,14 @@ Future<T> _wrapApiPromise<T>(Object p) {
 
 class VeilidJS implements Veilid {
   @override
+  void configureVeilidPlatform(Map<String, dynamic> platformConfigJson) {
+    var platformConfigJsonString =
+        jsonEncode(platformConfigJson, toEncodable: veilidApiToEncodable);
+    js_util.callMethod(
+        wasm, "configure_veilid_platform", [platformConfigJsonString]);
+  }
+
+  @override
   Stream<VeilidUpdate> startupVeilidCore(VeilidConfig config) async* {
     var streamController = StreamController<VeilidUpdate>();
     updateCallback(String update) {
