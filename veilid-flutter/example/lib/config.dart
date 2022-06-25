@@ -49,7 +49,9 @@ Future<VeilidConfig> getDefaultVeilidConfig() async {
       holePunchReceiptTimeMs: 5000,
       nodeId: "",
       nodeIdSecret: "",
-      bootstrap: ["bootstrap-dev.veilid.net"],
+      bootstrap: kIsWeb
+          ? ["ws://bootstrap-dev.veilid.net:5150/ws"]
+          : ["bootstrap-dev.veilid.net"],
       bootstrapNodes: [],
       routingTable: VeilidConfigRoutingTable(
         limitOverAttached: 64,
