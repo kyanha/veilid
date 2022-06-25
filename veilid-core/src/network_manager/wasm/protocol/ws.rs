@@ -36,10 +36,12 @@ impl WebsocketNetworkConnection {
         self.descriptor.clone()
     }
 
+    #[instrument(level = "trace", err, skip(self))]
     pub async fn close(&self) -> Result<(), String> {
         self.inner.ws_meta.close().await.map_err(map_to_string).map(drop)
     }
 
+    #[instrument(level = "trace", err, skip(self, message), fields(message.len = message.len()))]
     pub async fn send(&self, message: Vec<u8>) -> Result<(), String> {
         if message.len() > MAX_MESSAGE_SIZE {
             return Err("sending too large WS message".to_owned()).map_err(logthru_net!(error));
@@ -49,6 +51,8 @@ impl WebsocketNetworkConnection {
             .map_err(|_| "failed to send to websocket".to_owned())
             .map_err(logthru_net!(error))
     }
+
+    #[instrument(level = "trace", err, skip(self), fields(ret.len))]
     pub async fn recv(&self) -> Result<Vec<u8>, String> {
         let out = match self.inner.ws_stream.clone().next().await {
             Some(WsMessage::Binary(v)) => v,
@@ -74,6 +78,7 @@ impl WebsocketNetworkConnection {
 pub struct WebsocketProtocolHandler {}
 
 impl WebsocketProtocolHandler {
+    #[instrument(level = "trace", err)]
     pub async fn connect(
         local_address: Option<SocketAddr>,
         dial_info: DialInfo,
@@ -99,28 +104,47 @@ impl WebsocketProtocolHandler {
             .map_err(logthru_net!(error))?;
 
         // Make our connection descriptor
-
         Ok(ProtocolNetworkConnection::Ws(WebsocketNetworkConnection::new(ConnectionDescriptor::new_no_local(
             dial_info.to_peer_address(),
         ), wsmeta, wsio)))
     }
 
+    #[instrument(level = "trace", err, skip(data), fields(data.len = data.len()))]
     pub async fn send_unbound_message(dial_info: DialInfo, data: Vec<u8>) -> Result<(), String> {
         if data.len() > MAX_MESSAGE_SIZE {
             return Err("sending too large unbound WS message".to_owned());
         }
-        trace!(
-            "sending unbound websocket message of length {} to {}",
-            data.len(),
-            dial_info,
-        );
         
         // Make the real connection
         let conn = Self::connect(None, dial_info)
             .await
             .map_err(|e| format!("failed to connect websocket for unbound message: {}", e))?;
 
-        conn.send(data).await
-        
+        conn.send(data).await   
     }
+
+    #[instrument(level = "trace", err, skip(data), fields(data.len = data.len(), ret.len))]
+    pub async fn send_recv_unbound_message(
+        dial_info: DialInfo,
+        data: Vec<u8>,
+        timeout_ms: u32,
+    ) -> Result<Vec<u8>, String> {
+        if data.len() > MAX_MESSAGE_SIZE {
+            return Err("sending too large unbound WS message".to_owned());
+        }
+
+        let conn = Self::connect(None, dial_info.clone())
+            .await
+            .map_err(|e| format!("failed to connect websocket for unbound message: {}", e))?;
+
+        conn.send(data).await?;
+        let out = timeout(timeout_ms, conn.recv())
+            .await
+            .map_err(map_to_string)??;
+
+        tracing::Span::current().record("ret.len", &out.len());
+        Ok(out)
+    }
+
+
 }

@@ -18,10 +18,10 @@ impl ProtocolNetworkConnection {
     ) -> Result<ProtocolNetworkConnection, String> {
         match dial_info.protocol_type() {
             ProtocolType::UDP => {
-                panic!("UDP dial info is not support on WASM targets");
+                panic!("UDP dial info is not supported on WASM targets");
             }
             ProtocolType::TCP => {
-                panic!("TCP dial info is not support on WASM targets");
+                panic!("TCP dial info is not supported on WASM targets");
             }
             ProtocolType::WS | ProtocolType::WSS => {
                 ws::WebsocketProtocolHandler::connect(local_address, dial_info).await
@@ -35,13 +35,32 @@ impl ProtocolNetworkConnection {
     ) -> Result<(), String> {
         match dial_info.protocol_type() {
             ProtocolType::UDP => {
-                panic!("UDP dial info is not support on WASM targets");
+                panic!("UDP dial info is not supported on WASM targets");
             }
             ProtocolType::TCP => {
-                panic!("TCP dial info is not support on WASM targets");
+                panic!("TCP dial info is not supported on WASM targets");
             }
             ProtocolType::WS | ProtocolType::WSS => {
                 ws::WebsocketProtocolHandler::send_unbound_message(dial_info, data).await
+            }
+        }
+    }
+
+    pub async fn send_recv_unbound_message(
+        dial_info: DialInfo,
+        data: Vec<u8>,
+        timeout_ms: u32,
+    ) -> Result<Vec<u8>, String> {
+        match dial_info.protocol_type() {
+            ProtocolType::UDP => {
+                panic!("UDP dial info is not supported on WASM targets");
+            }
+            ProtocolType::TCP => {
+                panic!("TCP dial info is not supported on WASM targets");
+            }
+            ProtocolType::WS | ProtocolType::WSS => {
+                ws::WebsocketProtocolHandler::send_recv_unbound_message(dial_info, data, timeout_ms)
+                    .await
             }
         }
     }

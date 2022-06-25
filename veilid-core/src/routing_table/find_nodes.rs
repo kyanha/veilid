@@ -187,7 +187,7 @@ impl RoutingTable {
         }
 
         // add all nodes from buckets
-        Self::with_entries_unlocked(&*inner, cur_ts, BucketEntryState::Unreliable, |k, v| {
+        Self::with_entries(&*inner, cur_ts, BucketEntryState::Unreliable, |k, v| {
             // Apply filter
             if filter(k, Some(v.clone())) {
                 nodes.push((k, Some(v.clone())));
@@ -352,7 +352,7 @@ impl RoutingTable {
         let mut best_inbound_relay: Option<(DHTKey, Arc<BucketEntry>)> = None;
 
         // Iterate all known nodes for candidates
-        Self::with_entries_unlocked(inner, cur_ts, BucketEntryState::Unreliable, |k, v| {
+        Self::with_entries(inner, cur_ts, BucketEntryState::Unreliable, |k, v| {
             // Ensure this node is not on our local network
             if v.with(|e| {
                 e.local_node_info()

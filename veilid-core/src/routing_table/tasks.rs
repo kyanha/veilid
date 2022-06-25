@@ -3,13 +3,14 @@ use super::*;
 use crate::dht::*;
 use crate::xx::*;
 use crate::*;
+use stop_token::future::FutureExt;
 
 impl RoutingTable {
     // Compute transfer statistics to determine how 'fast' a node is
     #[instrument(level = "trace", skip(self), err)]
     pub(super) async fn rolling_transfers_task_routine(
         self,
-        stop_token: StopToken,
+        _stop_token: StopToken,
         last_ts: u64,
         cur_ts: u64,
     ) -> Result<(), String> {
@@ -196,6 +197,46 @@ impl RoutingTable {
         Ok(bsmap)
     }
 
+    // 'direct' bootstrap task routine for systems incapable of resolving TXT records, such as browser WASM
+    async fn direct_bootstrap_task_routine(
+        self,
+        stop_token: StopToken,
+        bootstrap_dialinfos: Vec<DialInfo>,
+    ) -> Result<(), String> {
+        let network_manager = self.network_manager();
+
+        let mut unord = FuturesUnordered::new();
+        for bootstrap_di in bootstrap_dialinfos {
+            let peer_info = match network_manager.boot_request(bootstrap_di).await {
+                Ok(v) => v,
+                Err(e) => {
+                    error!("BOOT request failed: {}", e);
+                    continue;
+                }
+            };
+
+            // Got peer info, let's add it to the routing table
+            for pi in peer_info {
+                let k = pi.node_id.key;
+                // Register the node
+                let nr = self
+                    .register_node_with_signed_node_info(k, pi.signed_node_info)
+                    .map_err(logthru_rtab!(error "Couldn't add bootstrap node: {}", k))?;
+
+                // Add this our futures to process in parallel
+                unord.push(
+                    // lets ask bootstrap to find ourselves now
+                    self.reverse_find_node(nr, true),
+                );
+            }
+        }
+
+        // Wait for all bootstrap operations to complete before we complete the singlefuture
+        while let Ok(Some(_)) = unord.next().timeout_at(stop_token.clone()).await {}
+
+        Ok(())
+    }
+
     #[instrument(level = "trace", skip(self), err)]
     pub(super) async fn bootstrap_task_routine(self, stop_token: StopToken) -> Result<(), String> {
         let (bootstrap, bootstrap_nodes) = {
@@ -208,8 +249,22 @@ impl RoutingTable {
 
         log_rtab!(debug "--- bootstrap_task");
 
-        // If we aren't specifying a bootstrap node list explicitly, then pull from the bootstrap server(s)
+        // See if we are specifying a direct dialinfo for bootstrap, if so use the direct mechanism
+        if !bootstrap_nodes.is_empty() {
+            let mut bootstrap_dialinfos = Vec::<DialInfo>::new();
+            for b in &bootstrap {
+                if let Ok(bootstrap_di) = DialInfo::from_str(&b) {
+                    bootstrap_dialinfos.push(bootstrap_di);
+                }
+            }
+            if bootstrap_dialinfos.len() > 0 {
+                return self
+                    .direct_bootstrap_task_routine(stop_token, bootstrap_dialinfos)
+                    .await;
+            }
+        }
 
+        // If we aren't specifying a bootstrap node list explicitly, then pull from the bootstrap server(s)
         let bsmap: BootstrapRecordMap = if !bootstrap_nodes.is_empty() {
             let mut bsmap = BootstrapRecordMap::new();
             let mut bootstrap_node_dial_infos = Vec::new();
@@ -290,7 +345,7 @@ impl RoutingTable {
         }
 
         // Wait for all bootstrap operations to complete before we complete the singlefuture
-        while unord.next().await.is_some() {}
+        while let Ok(Some(_)) = unord.next().timeout_at(stop_token.clone()).await {}
         Ok(())
     }
 
@@ -311,7 +366,7 @@ impl RoutingTable {
         {
             let inner = self.inner.read();
 
-            Self::with_entries_unlocked(&*inner, cur_ts, BucketEntryState::Unreliable, |k, v| {
+            Self::with_entries(&*inner, cur_ts, BucketEntryState::Unreliable, |k, v| {
                 if v.with(|e| e.needs_ping(&k, cur_ts, relay_node_id)) {
                     let nr = NodeRef::new(self.clone(), k, v, None);
                     unord.push(MustJoinHandle::new(intf::spawn_local(
@@ -323,7 +378,7 @@ impl RoutingTable {
         }
 
         // Wait for futures to complete
-        while unord.next().await.is_some() {}
+        while let Ok(Some(_)) = unord.next().timeout_at(stop_token.clone()).await {}
 
         Ok(())
     }
@@ -340,7 +395,7 @@ impl RoutingTable {
             let inner = self.inner.read();
             let mut noderefs = Vec::<NodeRef>::with_capacity(inner.bucket_entry_count);
             let cur_ts = intf::get_timestamp();
-            Self::with_entries_unlocked(&*inner, cur_ts, BucketEntryState::Unreliable, |k, v| {
+            Self::with_entries(&*inner, cur_ts, BucketEntryState::Unreliable, |k, v| {
                 noderefs.push(NodeRef::new(self.clone(), k, v, None));
                 Option::<()>::None
             });
@@ -353,7 +408,7 @@ impl RoutingTable {
             log_rtab!("--- peer minimum search with {:?}", nr);
             unord.push(self.reverse_find_node(nr, false));
         }
-        while unord.next().await.is_some() {}
+        while let Ok(Some(_)) = unord.next().timeout_at(stop_token.clone()).await {}
 
         Ok(())
     }

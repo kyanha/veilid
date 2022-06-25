@@ -59,7 +59,7 @@ where
             .map_err(map_to_string)
     }
 
-    #[instrument(level="trace", err, skip(self, message), fields(message.len = message.len()))]
+    #[instrument(level = "trace", err, skip(self, message), fields(message.len = message.len()))]
     pub async fn send(&self, message: Vec<u8>) -> Result<(), String> {
         if message.len() > MAX_MESSAGE_SIZE {
             return Err("received too large WS message".to_owned());
@@ -72,7 +72,7 @@ where
             .map_err(logthru_net!(error "failed to send websocket message"))
     }
 
-    #[instrument(level="trace", err, skip(self), fields(message.len))]
+    #[instrument(level = "trace", err, skip(self), fields(ret.len))]
     pub async fn recv(&self) -> Result<Vec<u8>, String> {
         let out = match self.stream.clone().next().await {
             Some(Ok(Message::Binary(v))) => v,
@@ -89,7 +89,7 @@ where
         if out.len() > MAX_MESSAGE_SIZE {
             Err("sending too large WS message".to_owned()).map_err(logthru_net!(error))
         } else {
-            tracing::Span::current().record("message.len", &out.len());
+            tracing::Span::current().record("ret.len", &out.len());
             Ok(out)
         }
     }
@@ -283,17 +283,35 @@ impl WebsocketProtocolHandler {
         if data.len() > MAX_MESSAGE_SIZE {
             return Err("sending too large unbound WS message".to_owned());
         }
-        trace!(
-            "sending unbound websocket message of length {} to {}",
-            data.len(),
-            dial_info,
-        );
 
         let protconn = Self::connect_internal(None, dial_info.clone())
             .await
             .map_err(|e| format!("failed to connect websocket for unbound message: {}", e))?;
 
         protconn.send(data).await
+    }
+
+    #[instrument(level = "trace", err, skip(data), fields(data.len = data.len(), ret.len))]
+    pub async fn send_recv_unbound_message(
+        dial_info: DialInfo,
+        data: Vec<u8>,
+        timeout_ms: u32,
+    ) -> Result<Vec<u8>, String> {
+        if data.len() > MAX_MESSAGE_SIZE {
+            return Err("sending too large unbound WS message".to_owned());
+        }
+
+        let protconn = Self::connect_internal(None, dial_info.clone())
+            .await
+            .map_err(|e| format!("failed to connect websocket for unbound message: {}", e))?;
+
+        protconn.send(data).await?;
+        let out = timeout(timeout_ms, protconn.recv())
+            .await
+            .map_err(map_to_string)??;
+
+        tracing::Span::current().record("ret.len", &out.len());
+        Ok(out)
     }
 }
 

@@ -51,6 +51,37 @@ impl ProtocolNetworkConnection {
         }
     }
 
+    pub async fn send_recv_unbound_message(
+        dial_info: DialInfo,
+        data: Vec<u8>,
+        timeout_ms: u32,
+    ) -> Result<Vec<u8>, String> {
+        match dial_info.protocol_type() {
+            ProtocolType::UDP => {
+                let peer_socket_addr = dial_info.to_socket_addr();
+                udp::RawUdpProtocolHandler::send_recv_unbound_message(
+                    peer_socket_addr,
+                    data,
+                    timeout_ms,
+                )
+                .await
+            }
+            ProtocolType::TCP => {
+                let peer_socket_addr = dial_info.to_socket_addr();
+                tcp::RawTcpProtocolHandler::send_recv_unbound_message(
+                    peer_socket_addr,
+                    data,
+                    timeout_ms,
+                )
+                .await
+            }
+            ProtocolType::WS | ProtocolType::WSS => {
+                ws::WebsocketProtocolHandler::send_recv_unbound_message(dial_info, data, timeout_ms)
+                    .await
+            }
+        }
+    }
+
     pub fn descriptor(&self) -> ConnectionDescriptor {
         match self {
             Self::Dummy(d) => d.descriptor(),

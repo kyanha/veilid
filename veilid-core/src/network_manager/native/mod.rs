@@ -297,6 +297,50 @@ impl Network {
         res
     }
 
+    // Send data to a dial info, unbound, using a new connection from a random port
+    // Waits for a specified amount of time to receive a single response
+    // This creates a short-lived connection in the case of connection-oriented protocols
+    // for the purpose of sending this one message.
+    // This bypasses the connection table as it is not a 'node to node' connection.
+    #[instrument(level="trace", err, skip(self, data), fields(data.len = data.len(), ret.len))]
+    pub async fn send_recv_data_unbound_to_dial_info(
+        &self,
+        dial_info: DialInfo,
+        data: Vec<u8>,
+        timeout_ms: u32,
+    ) -> Result<Vec<u8>, String> {
+        let data_len = data.len();
+        let out = match dial_info.protocol_type() {
+            ProtocolType::UDP => {
+                let peer_socket_addr = dial_info.to_socket_addr();
+                RawUdpProtocolHandler::send_recv_unbound_message(peer_socket_addr, data, timeout_ms)
+                    .await?
+            }
+            ProtocolType::TCP => {
+                let peer_socket_addr = dial_info.to_socket_addr();
+                RawTcpProtocolHandler::send_recv_unbound_message(peer_socket_addr, data, timeout_ms)
+                    .await?
+            }
+            ProtocolType::WS | ProtocolType::WSS => {
+                WebsocketProtocolHandler::send_recv_unbound_message(
+                    dial_info.clone(),
+                    data,
+                    timeout_ms,
+                )
+                .await?
+            }
+        };
+
+        // Network accounting
+        self.network_manager()
+            .stats_packet_sent(dial_info.to_ip_addr(), data_len as u64);
+        self.network_manager()
+            .stats_packet_rcvd(dial_info.to_ip_addr(), out.len() as u64);
+
+        tracing::Span::current().record("ret.len", &out.len());
+        Ok(out)
+    }
+
     #[instrument(level="trace", err, skip(self, data), fields(data.len = data.len()))]
     pub async fn send_data_to_existing_connection(
         &self,

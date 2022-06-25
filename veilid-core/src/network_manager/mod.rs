@@ -1091,6 +1091,26 @@ impl NetworkManager {
         }
     }
 
+    // Direct bootstrap request
+    pub async fn boot_request(&self, dial_info: DialInfo) -> Result<Vec<PeerInfo>, String> {
+        let timeout_ms = {
+            let c = self.config.get();
+            c.network.rpc.timeout_ms
+        };
+        // Send boot magic to requested peer address
+        let data = BOOT_MAGIC.to_vec();
+        let out_data: Vec<u8> = self
+            .net()
+            .send_recv_data_unbound_to_dial_info(dial_info, data, timeout_ms)
+            .await?;
+
+        let bootstrap_peerinfo: Vec<PeerInfo> =
+            deserialize_json(std::str::from_utf8(&out_data).map_err(map_to_string)?)
+                .map_err(map_to_string)?;
+
+        Ok(bootstrap_peerinfo)
+    }
+
     // Called when a packet potentially containing an RPC envelope is received by a low-level
     // network protocol handler. Processes the envelope, authenticates and decrypts the RPC message
     // and passes it to the RPC handler

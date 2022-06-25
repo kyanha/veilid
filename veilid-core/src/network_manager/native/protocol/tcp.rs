@@ -41,7 +41,7 @@ impl RawTcpNetworkConnection {
             .map_err(map_to_string)
     }
 
-    async fn send_internal(mut stream: AsyncPeekStream, message: Vec<u8>) -> Result<(), String> {
+    async fn send_internal(stream: &mut AsyncPeekStream, message: Vec<u8>) -> Result<(), String> {
         log_net!("sending TCP message of size {}", message.len());
         if message.len() > MAX_MESSAGE_SIZE {
             return Err("sending too large TCP message".to_owned());
@@ -55,15 +55,12 @@ impl RawTcpNetworkConnection {
 
     #[instrument(level="trace", err, skip(self, message), fields(message.len = message.len()))]
     pub async fn send(&self, message: Vec<u8>) -> Result<(), String> {
-        let stream = self.stream.clone();
-        Self::send_internal(stream, message).await
+        let mut stream = self.stream.clone();
+        Self::send_internal(&mut stream, message).await
     }
 
-    #[instrument(level="trace", err, skip(self), fields(message.len))]
-    pub async fn recv(&self) -> Result<Vec<u8>, String> {
+    pub async fn recv_internal(stream: &mut AsyncPeekStream) -> Result<Vec<u8>, String> {
         let mut header = [0u8; 4];
-
-        let mut stream = self.stream.clone();
 
         stream
             .read_exact(&mut header)
@@ -80,7 +77,14 @@ impl RawTcpNetworkConnection {
         let mut out: Vec<u8> = vec![0u8; len];
         stream.read_exact(&mut out).await.map_err(map_to_string)?;
 
-        tracing::Span::current().record("message.len", &out.len());
+        Ok(out)
+    }
+
+    #[instrument(level="trace", err, skip(self), fields(ret.len))]
+    pub async fn recv(&self) -> Result<Vec<u8>, String> {
+        let mut stream = self.stream.clone();
+        let out = Self::recv_internal(&mut stream).await?;
+        tracing::Span::current().record("ret.len", &out.len());
         Ok(out)
     }
 }
@@ -212,11 +216,54 @@ impl RawTcpProtocolHandler {
         //     .local_addr()
         //     .map_err(map_to_string)
         //     .map_err(logthru_net!("could not get local address from TCP stream"))?;
-        let ps = AsyncPeekStream::new(ts.clone());
+        let mut ps = AsyncPeekStream::new(ts.clone());
 
         // Send directly from the raw network connection
         // this builds the connection and tears it down immediately after the send
-        RawTcpNetworkConnection::send_internal(ps, data).await
+        RawTcpNetworkConnection::send_internal(&mut ps, data).await
+    }
+
+    #[instrument(level = "trace", err, skip(data), fields(data.len = data.len(), ret.len))]
+    pub async fn send_recv_unbound_message(
+        socket_addr: SocketAddr,
+        data: Vec<u8>,
+        timeout_ms: u32,
+    ) -> Result<Vec<u8>, String> {
+        if data.len() > MAX_MESSAGE_SIZE {
+            return Err("sending too large unbound TCP message".to_owned());
+        }
+        trace!(
+            "sending unbound message of length {} to {}",
+            data.len(),
+            socket_addr
+        );
+
+        // Make a shared socket
+        let socket = new_unbound_shared_tcp_socket(socket2::Domain::for_address(socket_addr))?;
+
+        // Non-blocking connect to remote address
+        let ts = nonblocking_connect(socket, socket_addr)
+            .await
+            .map_err(map_to_string)
+            .map_err(logthru_net!(error "remote_addr={}", socket_addr))?;
+
+        // See what local address we ended up with and turn this into a stream
+        // let actual_local_address = ts
+        //     .local_addr()
+        //     .map_err(map_to_string)
+        //     .map_err(logthru_net!("could not get local address from TCP stream"))?;
+        let mut ps = AsyncPeekStream::new(ts.clone());
+
+        // Send directly from the raw network connection
+        // this builds the connection and tears it down immediately after the send
+        RawTcpNetworkConnection::send_internal(&mut ps, data).await?;
+
+        let out = timeout(timeout_ms, RawTcpNetworkConnection::recv_internal(&mut ps))
+            .await
+            .map_err(map_to_string)??;
+
+        tracing::Span::current().record("ret.len", &out.len());
+        Ok(out)
     }
 }
 

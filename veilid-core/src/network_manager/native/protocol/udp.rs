@@ -68,6 +68,7 @@ impl RawUdpProtocolHandler {
         }
     }
 
+    #[instrument(level = "trace", err, skip(data), fields(data.len = data.len()))]
     pub async fn send_unbound_message(
         socket_addr: SocketAddr,
         data: Vec<u8>,
@@ -103,5 +104,62 @@ impl RawUdpProtocolHandler {
         } else {
             Ok(())
         }
+    }
+
+    #[instrument(level = "trace", err, skip(data), fields(data.len = data.len(), ret.len))]
+    pub async fn send_recv_unbound_message(
+        socket_addr: SocketAddr,
+        data: Vec<u8>,
+        timeout_ms: u32,
+    ) -> Result<Vec<u8>, String> {
+        if data.len() > MAX_MESSAGE_SIZE {
+            return Err("sending too large unbound UDP message".to_owned())
+                .map_err(logthru_net!(error));
+        }
+        log_net!(
+            "sending unbound message of length {} to {}",
+            data.len(),
+            socket_addr
+        );
+
+        // get local wildcard address for bind
+        let local_socket_addr = match socket_addr {
+            SocketAddr::V4(_) => SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0),
+            SocketAddr::V6(_) => {
+                SocketAddr::new(IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0)), 0)
+            }
+        };
+
+        // get unspecified bound socket
+        let socket = UdpSocket::bind(local_socket_addr)
+            .await
+            .map_err(map_to_string)
+            .map_err(logthru_net!(error "failed to bind unbound udp socket"))?;
+        let len = socket
+            .send_to(&data, socket_addr)
+            .await
+            .map_err(map_to_string)
+            .map_err(logthru_net!(error "failed unbound udp send: addr={}", socket_addr))?;
+        if len != data.len() {
+            return Err("UDP partial unbound send".to_owned()).map_err(logthru_net!(error));
+        }
+
+        // receive single response
+        let mut out = vec![0u8; MAX_MESSAGE_SIZE];
+        let (len, from_addr) = timeout(timeout_ms, socket.recv_from(&mut out))
+            .await
+            .map_err(map_to_string)?
+            .map_err(map_to_string)?;
+
+        // if the from address is not the same as the one we sent to, then drop this
+        if from_addr != socket_addr {
+            return Err(format!(
+                "Unbound response received from wrong address: addr={}",
+                from_addr,
+            ));
+        }
+        out.resize(len, 0u8);
+        tracing::Span::current().record("ret.len", &len);
+        Ok(out)
     }
 }

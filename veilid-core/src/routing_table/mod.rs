@@ -337,7 +337,7 @@ impl RoutingTable {
         // Public dial info changed, go through all nodes and reset their 'seen our node info' bit
         if matches!(domain, RoutingDomain::PublicInternet) {
             let cur_ts = intf::get_timestamp();
-            Self::with_entries_unlocked(&*inner, cur_ts, BucketEntryState::Dead, |_, v| {
+            Self::with_entries(&*inner, cur_ts, BucketEntryState::Dead, |_, v| {
                 v.with_mut(|e| e.set_seen_our_node_info(false));
                 Option::<()>::None
             });
@@ -450,18 +450,13 @@ impl RoutingTable {
                     let inner = this.inner.read();
                     let mut node_refs = Vec::<NodeRef>::with_capacity(inner.bucket_entry_count);
                     let cur_ts = intf::get_timestamp();
-                    Self::with_entries_unlocked(
-                        &*inner,
-                        cur_ts,
-                        BucketEntryState::Unreliable,
-                        |k, v| {
-                            // Only update nodes that haven't seen our node info yet
-                            if !v.with(|e| e.has_seen_our_node_info()) {
-                                node_refs.push(NodeRef::new(this.clone(), k, v, None));
-                            }
-                            Option::<()>::None
-                        },
-                    );
+                    Self::with_entries(&*inner, cur_ts, BucketEntryState::Unreliable, |k, v| {
+                        // Only update nodes that haven't seen our node info yet
+                        if !v.with(|e| e.has_seen_our_node_info()) {
+                            node_refs.push(NodeRef::new(this.clone(), k, v, None));
+                        }
+                        Option::<()>::None
+                    });
                     node_refs
                 };
 
@@ -540,14 +535,14 @@ impl RoutingTable {
     fn get_entry_count(inner: &RoutingTableInner, min_state: BucketEntryState) -> usize {
         let mut count = 0usize;
         let cur_ts = intf::get_timestamp();
-        Self::with_entries_unlocked(inner, cur_ts, min_state, |_, _| {
+        Self::with_entries(inner, cur_ts, min_state, |_, _| {
             count += 1;
             Option::<()>::None
         });
         count
     }
 
-    fn with_entries_unlocked<T, F: FnMut(DHTKey, Arc<BucketEntry>) -> Option<T>>(
+    fn with_entries<T, F: FnMut(DHTKey, Arc<BucketEntry>) -> Option<T>>(
         inner: &RoutingTableInner,
         cur_ts: u64,
         min_state: BucketEntryState,
@@ -564,54 +559,6 @@ impl RoutingTable {
         }
         None
     }
-
-    // fn with_entries<T, F: FnMut(&DHTKey, &BucketEntryInner) -> Option<T>>(
-    //     inner: &RoutingTableInner,
-    //     cur_ts: u64,
-    //     min_state: BucketEntryState,
-    //     mut f: F,
-    // ) -> Option<T> {
-    //     for bucket in &inner.buckets {
-    //         for entry in bucket.entries() {
-    //             let out = entry.1.with(|e| {
-    //                 if e.state(cur_ts) >= min_state {
-    //                     if let Some(out) = f(entry.0, e) {
-    //                         return Some(out);
-    //                     }
-    //                 }
-    //                 None
-    //             });
-    //             if out.is_some() {
-    //                 return out;
-    //             }
-    //         }
-    //     }
-    //     None
-    // }
-
-    // fn with_entries_mut<T, F: FnMut(&DHTKey, &mut BucketEntryInner) -> Option<T>>(
-    //     inner: &RoutingTableInner,
-    //     cur_ts: u64,
-    //     min_state: BucketEntryState,
-    //     mut f: F,
-    // ) -> Option<T> {
-    //     for bucket in &inner.buckets {
-    //         for entry in bucket.entries() {
-    //             let out = entry.1.with_mut(|e| {
-    //                 if e.state(cur_ts) >= min_state {
-    //                     if let Some(out) = f(entry.0, e) {
-    //                         return Some(out);
-    //                     }
-    //                 }
-    //                 None
-    //             });
-    //             if out.is_some() {
-    //                 return out;
-    //             }
-    //         }
-    //     }
-    //     None
-    // }
 
     fn queue_bucket_kick(&self, node_id: DHTKey) {
         let mut inner = self.inner.write();
