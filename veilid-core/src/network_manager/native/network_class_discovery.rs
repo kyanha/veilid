@@ -104,7 +104,15 @@ impl DiscoveryContext {
         let filter = DialInfoFilter::global()
             .with_protocol_type(protocol_type)
             .with_address_type(address_type);
-        let peers = self.routing_table.find_fast_public_nodes_filtered(&filter);
+        let node_count = {
+            let config = self.routing_table.network_manager().config();
+            let c = config.get();
+            c.network.dht.max_find_node_count as usize
+        };
+
+        let peers = self
+            .routing_table
+            .find_fast_public_nodes_filtered(node_count, &filter);
         if peers.is_empty() {
             log_net!("no peers of type '{:?}'", filter);
             return None;

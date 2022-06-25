@@ -9,6 +9,7 @@ const CONNECTIONLESS_TIMEOUT_SECS: u32 = 29;
 pub struct NodeRef {
     routing_table: RoutingTable,
     node_id: DHTKey,
+    entry: Arc<BucketEntry>,
     filter: Option<DialInfoFilter>,
     #[cfg(feature = "tracking")]
     track_id: usize,
@@ -17,15 +18,16 @@ pub struct NodeRef {
 impl NodeRef {
     pub fn new(
         routing_table: RoutingTable,
-        key: DHTKey,
-        entry: &mut BucketEntry,
+        node_id: DHTKey,
+        entry: Arc<BucketEntry>,
         filter: Option<DialInfoFilter>,
     ) -> Self {
-        entry.ref_count += 1;
+        entry.ref_count.fetch_add(1u32, Ordering::Relaxed);
 
         Self {
             routing_table,
-            node_id: key,
+            node_id,
+            entry,
             filter,
             #[cfg(feature = "tracking")]
             track_id: entry.track(),
@@ -63,9 +65,16 @@ impl NodeRef {
 
     pub fn operate<T, F>(&self, f: F) -> T
     where
-        F: FnOnce(&mut BucketEntry) -> T,
+        F: FnOnce(&BucketEntryInner) -> T,
     {
-        self.routing_table.operate_on_bucket_entry(self.node_id, f)
+        self.entry.with(f)
+    }
+
+    pub fn operate_mut<T, F>(&self, f: F) -> T
+    where
+        F: FnOnce(&mut BucketEntryInner) -> T,
+    {
+        self.entry.with_mut(f)
     }
 
     pub fn peer_info(&self) -> Option<PeerInfo> {
@@ -75,7 +84,7 @@ impl NodeRef {
         self.operate(|e| e.has_seen_our_node_info())
     }
     pub fn set_seen_our_node_info(&self) {
-        self.operate(|e| e.set_seen_our_node_info(true));
+        self.operate_mut(|e| e.set_seen_our_node_info(true));
     }
     pub fn network_class(&self) -> Option<NetworkClass> {
         self.operate(|e| e.node_info().map(|n| n.network_class))
@@ -266,17 +275,16 @@ impl NodeRef {
 
 impl Clone for NodeRef {
     fn clone(&self) -> Self {
-        self.operate(move |e| {
-            e.ref_count += 1;
+        self.entry.ref_count.fetch_add(1u32, Ordering::Relaxed);
 
-            Self {
-                routing_table: self.routing_table.clone(),
-                node_id: self.node_id,
-                filter: self.filter.clone(),
-                #[cfg(feature = "tracking")]
-                track_id: e.track(),
-            }
-        })
+        Self {
+            routing_table: self.routing_table.clone(),
+            node_id: self.node_id,
+            entry: self.entry.clone(),
+            filter: self.filter.clone(),
+            #[cfg(feature = "tracking")]
+            track_id: e.track(),
+        }
     }
 }
 
@@ -307,6 +315,11 @@ impl Drop for NodeRef {
     fn drop(&mut self) {
         #[cfg(feature = "tracking")]
         self.operate(|e| e.untrack(self.track_id));
-        self.routing_table.drop_node_ref(self.node_id);
+
+        // drop the noderef and queue a bucket kick if it was the last one
+        let new_ref_count = self.entry.ref_count.fetch_sub(1u32, Ordering::Relaxed) - 1;
+        if new_ref_count == 0 {
+            self.routing_table.queue_bucket_kick(self.node_id);
+        }
     }
 }

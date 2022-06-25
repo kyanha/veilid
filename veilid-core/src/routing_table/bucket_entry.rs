@@ -1,4 +1,5 @@
 use super::*;
+use core::sync::atomic::{AtomicU32, Ordering};
 
 // Reliable pings are done with increased spacing between pings
 // - Start secs is the number of seconds between the first two pings
@@ -34,9 +35,8 @@ pub enum BucketEntryState {
     Reliable,
 }
 
-#[derive(Debug, Clone)]
-pub struct BucketEntry {
-    pub(super) ref_count: u32,
+#[derive(Debug)]
+pub struct BucketEntryInner {
     min_max_version: Option<(u8, u8)>,
     seen_our_node_info: bool,
     last_connection: Option<(ConnectionDescriptor, u64)>,
@@ -51,32 +51,7 @@ pub struct BucketEntry {
     node_ref_tracks: HashMap<usize, backtrace::Backtrace>,
 }
 
-impl BucketEntry {
-    pub(super) fn new() -> Self {
-        let now = get_timestamp();
-        Self {
-            ref_count: 0,
-            min_max_version: None,
-            seen_our_node_info: false,
-            last_connection: None,
-            opt_signed_node_info: None,
-            opt_local_node_info: None,
-            peer_stats: PeerStats {
-                time_added: now,
-                rpc_stats: RPCStats::default(),
-                latency: None,
-                transfer: TransferStatsDownUp::default(),
-                status: None,
-            },
-            latency_stats_accounting: LatencyStatsAccounting::new(),
-            transfer_stats_accounting: TransferStatsAccounting::new(),
-            #[cfg(feature = "tracking")]
-            next_track_id: 0,
-            #[cfg(feature = "tracking")]
-            node_ref_tracks: HashMap::new(),
-        }
-    }
-
+impl BucketEntryInner {
     #[cfg(feature = "tracking")]
     pub fn track(&mut self) -> usize {
         let track_id = self.next_track_id;
@@ -363,7 +338,7 @@ impl BucketEntry {
         self.peer_stats.rpc_stats.last_seen_ts = Some(ts);
     }
 
-    pub(super) fn state_debug_info(&self, cur_ts: u64) -> String {
+    pub(super) fn _state_debug_info(&self, cur_ts: u64) -> String {
         let first_consecutive_seen_ts = if let Some(first_consecutive_seen_ts) =
             self.peer_stats.rpc_stats.first_consecutive_seen_ts
         {
@@ -384,7 +359,7 @@ impl BucketEntry {
         };
 
         format!(
-            "state: {:?}, first_consecutive_seen_ts: {},  last_seen_ts: {}",
+            "state: {:?}, first_consecutive_seen_ts: {}, last_seen_ts: {}",
             self.state(cur_ts),
             first_consecutive_seen_ts,
             last_seen_ts_str
@@ -435,9 +410,60 @@ impl BucketEntry {
     }
 }
 
+#[derive(Debug)]
+pub struct BucketEntry {
+    pub(super) ref_count: AtomicU32,
+    inner: RwLock<BucketEntryInner>,
+}
+
+impl BucketEntry {
+    pub(super) fn new() -> Self {
+        let now = get_timestamp();
+        Self {
+            ref_count: AtomicU32::new(0),
+            inner: RwLock::new(BucketEntryInner {
+                min_max_version: None,
+                seen_our_node_info: false,
+                last_connection: None,
+                opt_signed_node_info: None,
+                opt_local_node_info: None,
+                peer_stats: PeerStats {
+                    time_added: now,
+                    rpc_stats: RPCStats::default(),
+                    latency: None,
+                    transfer: TransferStatsDownUp::default(),
+                    status: None,
+                },
+                latency_stats_accounting: LatencyStatsAccounting::new(),
+                transfer_stats_accounting: TransferStatsAccounting::new(),
+                #[cfg(feature = "tracking")]
+                next_track_id: 0,
+                #[cfg(feature = "tracking")]
+                node_ref_tracks: HashMap::new(),
+            }),
+        }
+    }
+
+    pub fn with<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(&BucketEntryInner) -> R,
+    {
+        let inner = self.inner.read();
+        f(&*inner)
+    }
+
+    pub fn with_mut<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(&mut BucketEntryInner) -> R,
+    {
+        let mut inner = self.inner.write();
+        f(&mut *inner)
+    }
+}
+
 impl Drop for BucketEntry {
     fn drop(&mut self) {
-        if self.ref_count != 0 {
+        if self.ref_count.load(Ordering::Relaxed) != 0 {
             #[cfg(feature = "tracking")]
             {
                 println!("NodeRef Tracking");
@@ -449,7 +475,7 @@ impl Drop for BucketEntry {
 
             panic!(
                 "bucket entry dropped with non-zero refcount: {:#?}",
-                self.node_info()
+                self.inner.read().node_info()
             )
         }
     }

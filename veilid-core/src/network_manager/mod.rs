@@ -40,6 +40,7 @@ pub const MAX_MESSAGE_SIZE: usize = MAX_ENVELOPE_SIZE;
 pub const IPADDR_TABLE_SIZE: usize = 1024;
 pub const IPADDR_MAX_INACTIVE_DURATION_US: u64 = 300_000_000u64; // 5 minutes
 pub const GLOBAL_ADDRESS_CHANGE_DETECTION_COUNT: usize = 3;
+pub const BOOT_MAGIC: &[u8; 4] = b"BOOT";
 
 #[derive(Copy, Clone, Debug, Default)]
 pub struct ProtocolConfig {
@@ -1062,6 +1063,34 @@ impl NetworkManager {
         })
     }
 
+    // Direct bootstrap request handler (separate fallback mechanism from cheaper TXT bootstrap mechanism)
+    async fn handle_boot_request(&self, descriptor: ConnectionDescriptor) -> Result<(), String> {
+        let routing_table = self.routing_table();
+
+        // Get a bunch of nodes with the various
+        let bootstrap_nodes = routing_table.find_bootstrap_nodes_filtered(2);
+
+        // Serialize out peer info
+        let bootstrap_peerinfo: Vec<PeerInfo> = bootstrap_nodes
+            .iter()
+            .filter_map(|b| b.peer_info())
+            .collect();
+        let json_bytes = serialize_json(bootstrap_peerinfo).as_bytes().to_vec();
+
+        // Reply with a chunk of signed routing table
+        match self
+            .net()
+            .send_data_to_existing_connection(descriptor, json_bytes)
+            .await?
+        {
+            None => {
+                // Bootstrap reply was sent
+                Ok(())
+            }
+            Some(_) => Err("bootstrap reply could not be sent".to_owned()),
+        }
+    }
+
     // Called when a packet potentially containing an RPC envelope is received by a low-level
     // network protocol handler. Processes the envelope, authenticates and decrypts the RPC message
     // and passes it to the RPC handler
@@ -1083,6 +1112,12 @@ impl NetworkManager {
         // Ensure we can read the magic number
         if data.len() < 4 {
             return Err("short packet".to_owned());
+        }
+
+        // Is this a direct bootstrap request instead of an envelope?
+        if data[0..4] == *BOOT_MAGIC {
+            self.handle_boot_request(descriptor).await?;
+            return Ok(true);
         }
 
         // Is this an out-of-band receipt instead of an envelope?
@@ -1192,7 +1227,7 @@ impl NetworkManager {
         let source_noderef = routing_table
             .register_node_with_existing_connection(envelope.get_sender_id(), descriptor, ts)
             .map_err(|e| format!("node id registration failed: {}", e))?;
-        source_noderef.operate(|e| e.set_min_max_version(envelope.get_min_max_version()));
+        source_noderef.operate_mut(|e| e.set_min_max_version(envelope.get_min_max_version()));
 
         // xxx: deal with spoofing and flooding here?
 

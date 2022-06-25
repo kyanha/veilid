@@ -839,7 +839,7 @@ impl RPCProcessor {
             // update node status for the requesting node to our routing table
             if let Some(sender_nr) = rpcreader.opt_sender_nr.clone() {
                 // Update latest node status in routing table for the statusq sender
-                sender_nr.operate(|e| {
+                sender_nr.operate_mut(|e| {
                     e.update_node_status(node_status);
                 });
             }
@@ -917,7 +917,11 @@ impl RPCProcessor {
             let routing_table = self.routing_table();
             let filter = DialInfoFilter::global().with_address_type(dial_info.address_type());
             let sender_id = rpcreader.header.envelope.get_sender_id();
-            let mut peers = routing_table.find_fast_public_nodes_filtered(&filter);
+            let node_count = {
+                let c = self.config.get();
+                c.network.dht.max_find_node_count as usize
+            };
+            let mut peers = routing_table.find_fast_public_nodes_filtered(node_count, &filter);
             if peers.is_empty() {
                 return Err(rpc_error_internal(format!(
                     "no peers matching filter '{:?}'",
@@ -939,8 +943,8 @@ impl RPCProcessor {
                 // Ensure the peer's status is known and that it is capable of
                 // making outbound connections for the dial info we want to verify                  
                 // and if this peer can validate dial info
-                let can_contact_dial_info = peer.operate(|e: &mut BucketEntry| {
-                    if let Some(ni) = &e.node_info() {
+                let can_contact_dial_info = peer.operate(|e: &BucketEntryInner| {
+                    if let Some(ni) = e.node_info() {
                         ni.outbound_protocols.contains(dial_info.protocol_type()) && ni.can_validate_dial_info()
                     } else {
                         false
@@ -951,7 +955,7 @@ impl RPCProcessor {
                 }
 
                 // See if this peer will validate dial info
-                let will_validate_dial_info = peer.operate(|e: &mut BucketEntry| {
+                let will_validate_dial_info = peer.operate(|e: &BucketEntryInner| {
                     if let Some(status) = &e.peer_stats().status {
                         status.will_validate_dial_info
                     } else {
@@ -1040,11 +1044,11 @@ impl RPCProcessor {
             let closest_nodes = routing_table.find_closest_nodes(
                 target_node_id,
                 // filter
-                Some(Box::new(move |kv| {
-                    RoutingTable::filter_has_valid_signed_node_info(kv, own_peer_info_is_valid)
-                })),
+                Some(move |_k, v| {
+                    RoutingTable::filter_has_valid_signed_node_info(v, own_peer_info_is_valid)
+                }),
                 // transform
-                |e| RoutingTable::transform_to_peer_info(e, &own_peer_info),
+                move |k, v| RoutingTable::transform_to_peer_info(k, v, &own_peer_info),
             );
             log_rpc!(">>>> Returning {} closest peers", closest_nodes.len());
 
@@ -1567,7 +1571,7 @@ impl RPCProcessor {
             };
 
             // Update latest node status in routing table
-            peer.operate(|e| {
+            peer.operate_mut(|e| {
                 e.update_node_status(node_status.clone());
             });
 

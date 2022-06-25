@@ -3,7 +3,7 @@ use super::*;
 impl RoutingTable {
     pub fn debug_info_nodeinfo(&self) -> String {
         let mut out = String::new();
-        let inner = self.inner.lock();
+        let inner = self.inner.read();
         out += "Routing Table Info:\n";
 
         out += &format!("   Node Id: {}\n", inner.node_id.encode());
@@ -88,7 +88,7 @@ impl RoutingTable {
     }
 
     pub fn debug_info_entries(&self, limit: usize, min_state: BucketEntryState) -> String {
-        let inner = self.inner.lock();
+        let inner = self.inner.read();
         let cur_ts = get_timestamp();
 
         let mut out = String::new();
@@ -98,17 +98,17 @@ impl RoutingTable {
         let mut cnt = 0;
         out += &format!("Entries: {}\n", inner.bucket_entry_count);
         while b < blen {
-            let filtered_entries: Vec<(&DHTKey, &BucketEntry)> = inner.buckets[b]
+            let filtered_entries: Vec<(&DHTKey, &Arc<BucketEntry>)> = inner.buckets[b]
                 .entries()
                 .filter(|e| {
-                    let state = e.1.state(cur_ts);
+                    let state = e.1.with(|e| e.state(cur_ts));
                     state >= min_state
                 })
                 .collect();
             if !filtered_entries.is_empty() {
                 out += &format!("  Bucket #{}:\n", b);
                 for e in filtered_entries {
-                    let state = e.1.state(cur_ts);
+                    let state = e.1.with(|e| e.state(cur_ts));
                     out += &format!(
                         "    {} [{}]\n",
                         e.0.encode(),
@@ -147,7 +147,7 @@ impl RoutingTable {
     }
 
     pub fn debug_info_buckets(&self, min_state: BucketEntryState) -> String {
-        let inner = self.inner.lock();
+        let inner = self.inner.read();
         let cur_ts = get_timestamp();
 
         let mut out = String::new();
@@ -162,7 +162,7 @@ impl RoutingTable {
             while c < COLS {
                 let mut cnt = 0;
                 for e in inner.buckets[b].entries() {
-                    if e.1.state(cur_ts) >= min_state {
+                    if e.1.with(|e| e.state(cur_ts) >= min_state) {
                         cnt += 1;
                     }
                 }
