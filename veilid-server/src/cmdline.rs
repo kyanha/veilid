@@ -67,7 +67,8 @@ fn do_clap_matches(default_config_path: &OsStr) -> Result<clap::ArgMatches, clap
                 .takes_value(true)
                 .value_name("endpoint")
                 .default_missing_value("localhost:4317")
-                .help("Turn on OpenTelemetry tracing"),
+                .help("Turn on OpenTelemetry tracing")
+                .long_help("This option uses the GRPC OpenTelemetry protocol, not HTTP. The format for the endpoint is host:port, like 'localhost:4317'"),
         )
         .arg(
             Arg::new("subnode-index")
