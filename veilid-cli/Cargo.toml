@@ -10,11 +10,16 @@ license = "LGPL-2.0-or-later OR MPL-2.0 OR (MIT AND BSD-3-Clause)"
 name = "veilid-cli"
 path = "src/main.rs"
 
+[target.'cfg(unix)'.dependencies]
+cursive = { path = "../external/cursive/cursive", default-features = false, features = ["ncurses-backend", "toml"]}
+
+[target.'cfg(not(unix))'.dependencies]
+cursive = { path = "../external/cursive/cursive", default-features = false, features = ["crossterm-backend", "toml"]}
+
 [dependencies]
 async-std = { version = "^1.9", features = ["unstable", "attributes"] }
 async-tungstenite = { version = "^0.8", features = ["async-std-runtime"] }
 async_executors = { version = "^0", default-features = false, features = [ "async_std" ]}
-cursive = { path = "../external/cursive/cursive", default-features = false, features = ["crossterm-backend", "toml"]}
 cursive-flexi-logger-view = { path = "../external/cursive-flexi-logger-view" }
 cursive_buffered_backend = { path = "../external/cursive_buffered_backend" }
 # cursive-multiplex = "0.4.0"
