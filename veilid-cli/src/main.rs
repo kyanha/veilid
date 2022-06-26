@@ -49,6 +49,7 @@ fn parse_command_line(default_config_path: &OsStr) -> Result<clap::ArgMatches, S
             Arg::new("config-file")
                 .short('c')
                 .takes_value(true)
+                .allow_invalid_utf8(true)
                 .value_name("FILE")
                 .default_value_os(default_config_path)
                 .help("Specify a configuration file to use"),
