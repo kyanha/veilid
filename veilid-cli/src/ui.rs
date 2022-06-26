@@ -14,6 +14,7 @@ use log::*;
 use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 use std::rc::Rc;
+use thiserror::Error;
 use veilid_core::*;
 
 //////////////////////////////////////////////////////////////
@@ -85,6 +86,12 @@ type Handle<T> = Rc<RefCell<T>>;
 pub struct UI {
     siv: Handle<CursiveRunnable>,
     inner: Handle<UIInner>,
+}
+
+#[derive(Error, Debug)]
+pub enum DumbError {
+    // #[error("{0}")]
+    // Message(String),
 }
 
 impl UI {
@@ -642,10 +649,10 @@ impl UI {
         cursive_flexi_logger_view::resize(node_log_scrollback);
 
         // Instantiate the cursive runnable
-        /*
+
         // reduces flicker, but it costs cpu
-        let mut runnable = CursiveRunnable::new(
-            || -> Result<Box<dyn cursive_buffered_backend::Backend>, UIError> {
+        let runnable = CursiveRunnable::new(
+            || -> Result<Box<dyn cursive_buffered_backend::Backend>, Box<DumbError>> {
                 let crossterm_backend = cursive::backends::crossterm::Backend::init().unwrap();
                 let buffered_backend =
                     cursive_buffered_backend::BufferedBackend::new(crossterm_backend);
@@ -653,8 +660,8 @@ impl UI {
                 Ok(Box::new(buffered_backend))
             },
         );
-        */
-        let runnable = cursive::default();
+        //let runnable = cursive::default();
+
         // Make the callback mechanism easily reachable
         let cb_sink = runnable.cb_sink().clone();
 

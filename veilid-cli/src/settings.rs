@@ -5,7 +5,7 @@ use std::ffi::OsStr;
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::path::{Path, PathBuf};
 
-pub fn load_default_config(cfg: &mut config::Config) -> Result<(), config::ConfigError> {
+pub fn load_default_config() -> Result<config::Config, config::ConfigError> {
     let default_config = r###"---
 address: "localhost:5959"
 autoconnect: true
@@ -16,7 +16,7 @@ logging:
         enabled: false
     file:
         enabled: true
-        directory: ""
+        directory: "%LOGGING_FILE_DIRECTORY%"
         append: true
 interface:
     node_log:
@@ -44,21 +44,29 @@ interface:
             info               : "#5cd3c6"
             warn               : "#fedc50"
             error              : "#ff4a15"
-    "###;
-    cfg.merge(config::File::from_str(
-        default_config,
-        config::FileFormat::Yaml,
-    ))
-    .map(drop)
+    "###
+    .replace(
+        "%LOGGING_FILE_DIRECTORY%",
+        &Settings::get_default_log_directory().to_string_lossy(),
+    );
+
+    config::Config::builder()
+        .add_source(config::File::from_str(
+            &default_config,
+            config::FileFormat::Yaml,
+        ))
+        .build()
 }
 
 pub fn load_config(
-    cfg: &mut config::Config,
+    cfg: config::Config,
     config_file: &Path,
-) -> Result<(), config::ConfigError> {
+) -> Result<config::Config, config::ConfigError> {
     if let Some(config_file_str) = config_file.to_str() {
-        cfg.merge(config::File::new(config_file_str, config::FileFormat::Yaml))
-            .map(drop)
+        config::Config::builder()
+            .add_source(cfg)
+            .add_source(config::File::new(config_file_str, config::FileFormat::Yaml))
+            .build()
     } else {
         Err(config::ConfigError::Message(
             "config file path is not valid UTF-8".to_owned(),
@@ -226,38 +234,26 @@ impl Settings {
         default_log_directory
     }
 
-    pub fn new(
-        config_file_is_default: bool,
-        config_file: &OsStr,
-    ) -> Result<Self, config::ConfigError> {
-        // Create a config
-        let mut cfg = config::Config::default();
-
+    pub fn new(config_file: Option<&OsStr>) -> Result<Self, config::ConfigError> {
         // Load the default config
-        load_default_config(&mut cfg)?;
-
-        // Use default log directory for logs
-        cfg.set(
-            "logging.file.directory",
-            Settings::get_default_log_directory().to_str(),
-        )?;
+        let mut cfg = load_default_config()?;
 
         // Merge in the config file if we have one
-        let config_file_path = Path::new(config_file);
-        if !config_file_is_default || config_file_path.exists() {
+        if let Some(config_file) = config_file {
+            let config_file_path = Path::new(config_file);
             // If the user specifies a config file on the command line then it must exist
-            load_config(&mut cfg, config_file_path)?;
+            cfg = load_config(cfg, config_file_path)?;
         }
-        cfg.try_into()
+
+        // Generate config
+        cfg.try_deserialize()
     }
 }
 
 #[test]
 fn test_default_config() {
-    let mut cfg = config::Config::default();
-
-    load_default_config(&mut cfg).unwrap();
-    let settings = cfg.try_into::<Settings>().unwrap();
+    let cfg = load_default_config().unwrap();
+    let settings = cfg.try_deserialize::<Settings>().unwrap();
 
     println!("default settings: {:?}", settings);
 }

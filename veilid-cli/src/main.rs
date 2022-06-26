@@ -8,6 +8,7 @@ use clap::{Arg, ColorChoice, Command};
 use flexi_logger::*;
 use std::ffi::OsStr;
 use std::net::ToSocketAddrs;
+use std::path::Path;
 
 mod client_api_connection;
 mod command_processor;
@@ -49,9 +50,9 @@ fn parse_command_line(default_config_path: &OsStr) -> Result<clap::ArgMatches, S
             Arg::new("config-file")
                 .short('c')
                 .takes_value(true)
-                .allow_invalid_utf8(true)
                 .value_name("FILE")
                 .default_value_os(default_config_path)
+                .allow_invalid_utf8(true)
                 .help("Specify a configuration file to use"),
         )
         .get_matches();
@@ -70,11 +71,18 @@ async fn main() -> Result<(), String> {
     }
 
     // Attempt to load configuration
-    let mut settings = settings::Settings::new(
-        matches.occurrences_of("config-file") == 0,
-        matches.value_of_os("config-file").unwrap(),
-    )
-    .map_err(map_to_string)?;
+    let settings_path = if let Some(config_file) = matches.value_of_os("config-file") {
+        if Path::new(config_file).exists() {
+            Some(config_file)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    let mut settings = settings::Settings::new(settings_path)
+        .map_err(|e| format!("configuration is invalid: {}", e))?;
 
     // Set config from command line
     if matches.occurrences_of("debug") != 0 {
@@ -108,17 +116,17 @@ async fn main() -> Result<(), String> {
                 std::fs::create_dir_all(settings.logging.file.directory.clone())
                     .map_err(map_to_string)?;
                 logger
-                    .log_target(LogTarget::FileAndWriter(flv))
-                    .suppress_timestamp()
-                    //    .format(flexi_logger::colored_default_format)
-                    .directory(settings.logging.file.directory.clone())
+                    .log_to_file_and_writer(
+                        FileSpec::default()
+                            .directory(settings.logging.file.directory.clone())
+                            .suppress_timestamp(),
+                        flv,
+                    )
                     .start()
                     .expect("failed to initialize logger!");
             } else {
                 logger
-                    .log_target(LogTarget::Writer(flv))
-                    .suppress_timestamp()
-                    .format(flexi_logger::colored_default_format)
+                    .log_to_writer(flv)
                     .start()
                     .expect("failed to initialize logger!");
             }
@@ -126,9 +134,11 @@ async fn main() -> Result<(), String> {
             std::fs::create_dir_all(settings.logging.file.directory.clone())
                 .map_err(map_to_string)?;
             logger
-                .log_target(LogTarget::File)
-                .suppress_timestamp()
-                .directory(settings.logging.file.directory.clone())
+                .log_to_file(
+                    FileSpec::default()
+                        .directory(settings.logging.file.directory.clone())
+                        .suppress_timestamp(),
+                )
                 .start()
                 .expect("failed to initialize logger!");
         }
