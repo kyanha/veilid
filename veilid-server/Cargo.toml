@@ -10,18 +10,23 @@ license = "LGPL-2.0-or-later OR MPL-2.0 OR (MIT AND BSD-3-Clause)"
 name = "veilid-server"
 path = "src/main.rs"
 
+[features]
+default = [ "rt-async-std" ]
+rt-async-std = [ "veilid-core/rt-async-std", "async-std", "async-tungstenite/async-std-runtime", "opentelemetry/rt-async-std", "opentelemetry-otlp/grpc-sys"]
+tracking = ["veilid-core/tracking"]
+
 [dependencies]
+veilid-core = { path = "../veilid-core" }
 tracing = { version = "^0", features = ["log", "attributes"] }
 tracing-subscriber = { version = "^0", features = ["env-filter"] }
 tracing-appender = "^0"
 tracing-opentelemetry = "^0"
-opentelemetry = { version = "^0", features = ["rt-async-std"] }
-opentelemetry-otlp = { version = "^0", features = ["grpc-sys"] }
+opentelemetry = { version = "^0" }
+opentelemetry-otlp = { version = "^0" }
 opentelemetry-semantic-conventions = "^0"
 clap = "^3"
-async-std = { version = "^1", features = ["unstable"] }
-async-tungstenite = { version = "^0", features = ["async-std-runtime", "async-tls"] }
-veilid-core = { path = "../veilid-core" }
+async-std = { version = "^1", features = ["unstable"], optional = true }
+async-tungstenite = { version = "^0", features = ["async-tls"] }
 directories = "^4"
 capnp = "^0"
 parking_lot = "^0"
@@ -59,6 +64,3 @@ serial_test = "^0"
 
 [build-dependencies]
 capnpc = "^0"
-
-[features]
-tracking = ["veilid-core/tracking"]

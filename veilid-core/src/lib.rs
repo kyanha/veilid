@@ -1,5 +1,9 @@
 #![deny(clippy::all)]
 #![deny(unused_must_use)]
+#[cfg(all(feature = "rt-async-std", feature = "rt-tokio"))]
+compile_error!(
+    "feature \"rt-async-std\" and feature \"rt-tokio\" cannot be enabled at the same time"
+);
 
 #[macro_use]
 extern crate alloc;

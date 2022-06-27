@@ -10,9 +10,11 @@ license = "LGPL-2.0-or-later OR MPL-2.0 OR (MIT AND BSD-3-Clause)"
 crate-type = ["cdylib", "staticlib", "rlib"]
 
 [features]
+default = [ "rt-async-std" ]
 android_tests = []
 ios_tests = [ "simplelog", "backtrace" ]
 tracking = [ "backtrace" ]
+rt-async-std = [ "async-std", "async-tungstenite/async-std-runtime", "async-std-resolver", "async_executors/async_std", "rtnetlink?/smol_socket" ]
 
 [dependencies]
 tracing = { version = "^0", features = ["log", "attributes"] }
@@ -42,7 +44,6 @@ enumset = { version= "^1", features = ["serde"] }
 backtrace = { version = "^0", optional = true }
 owo-colors = "^3"
 stop-token = "^0"
-
 ed25519-dalek = { version = "^1", default_features = false, features = ["alloc", "u64_backend"] }
 x25519-dalek = { package = "x25519-dalek-ng", version = "^1", default_features = false, features = ["u64_backend"] }
 curve25519-dalek = { package = "curve25519-dalek-ng", version = "^4", default_features = false, features = ["alloc", "u64_backend"] }
@@ -51,14 +52,16 @@ rand = "0.7"
 # curve25519-dalek-ng is stuck on digest 0.9.0
 blake3 = { version = "1.1.0", default_features = false }
 digest = "0.9.0"
+rtnetlink = { version = "^0", default-features = false, optional = true }
+
 
 # Dependencies for native builds only
 # Linux, Windows, Mac, iOS, Android
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-async-std = { version = "^1", features = ["unstable"] }
+async-std = { version = "^1", features = ["unstable"], optional = true}
 async-io = { version = "^1" }
-async-tungstenite = { version = "^0", features = ["async-std-runtime", "async-tls"] }
-async-std-resolver = { version = "^0" }
+async-tungstenite = { version = "^0", features = ["async-tls"] }
+async-std-resolver = { version = "^0", optional = true }
 maplit = "^1"
 config = { version = "^0", features = ["yaml"] }
 keyring-manager = { path = "../external/keyring-manager" }
@@ -74,7 +77,7 @@ data-encoding = { version = "^2" }
 serde = { version = "^1", features = ["derive" ] }
 serde_cbor = { version = "^0" }
 serde_json = { version = "^1" }
-async_executors = { version = "^0", default-features = false, features = [ "async_std" ]}
+async_executors = { version = "^0", default-features = false }
 socket2 = "^0"
 bugsalot = "^0"
 chrono = "^0"
@@ -133,7 +136,7 @@ ifstructs = "^0"
 
 # Dependencies for Linux or Android
 [target.'cfg(any(target_os = "android",target_os = "linux"))'.dependencies]
-rtnetlink = { version = "^0", default-features = false, features = [ "smol_socket" ] }
+rtnetlink = { version = "^0", default-features = false }
 
 # Dependencies for Windows
 [target.'cfg(target_os = "windows")'.dependencies]
