@@ -1210,6 +1210,7 @@ name = "cursive"
 version = "0.18.0"
 dependencies = [
  "ahash",
+ "async-std",
  "cfg-if 1.0.0",
  "crossbeam-channel",
  "crossterm",

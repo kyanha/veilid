@@ -11,10 +11,10 @@ name = "veilid-cli"
 path = "src/main.rs"
 
 [target.'cfg(unix)'.dependencies]
-cursive = { path = "../external/cursive/cursive", default-features = false, features = ["ncurses-backend", "toml"]}
+cursive = { path = "../external/cursive/cursive", default-features = false, features = ["ncurses-backend", "toml", "rt-async-std"]}
 
 [target.'cfg(not(unix))'.dependencies]
-cursive = { path = "../external/cursive/cursive", default-features = false, features = ["crossterm-backend", "toml"]}
+cursive = { path = "../external/cursive/cursive", default-features = false, features = ["crossterm-backend", "toml", "rt-async-std"]}
 
 [dependencies]
 async-std = { version = "^1.9", features = ["unstable", "attributes"] }
