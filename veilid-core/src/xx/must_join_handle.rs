@@ -17,6 +17,7 @@ impl<T> MustJoinHandle<T> {
         }
     }
 
+    #[allow(unused_mut)]
     pub async fn abort(mut self) {
         if !self.completed {
             cfg_if! {
@@ -31,7 +32,13 @@ impl<T> MustJoinHandle<T> {
                         let _ = jh.await;
                         self.completed = true;
                     }
+                } else if #[cfg(target_arch = "wasm32")] {
+                    drop(self.join_handle.take());
+                    self.completed = true;
+                } else {
+                    compile_error!("needs executor implementation")
                 }
+
             }
         }
     }
@@ -58,6 +65,10 @@ impl<T: 'static> Future for MustJoinHandle<T> {
                         Poll::Ready(t)
                     } else if #[cfg(feature="rt-tokio")] {
                         Poll::Ready(t.unwrap())
+                    }else if #[cfg(target_arch = "wasm32")] {
+                        Poll::Ready(t)
+                    } else {
+                        compile_error!("needs executor implementation")
                     }
                 }
             }
