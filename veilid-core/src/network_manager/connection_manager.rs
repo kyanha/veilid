@@ -43,12 +43,12 @@ impl ConnectionManager {
         config: VeilidConfig,
         stop_source: StopSource,
         sender: flume::Sender<ConnectionManagerEvent>,
-        async_processor_jh: JoinHandle<()>,
+        async_processor_jh: MustJoinHandle<()>,
     ) -> ConnectionManagerInner {
         ConnectionManagerInner {
             stop_source: Some(stop_source),
             sender: sender,
-            async_processor_jh: Some(MustJoinHandle::new(async_processor_jh)),
+            async_processor_jh: Some(async_processor_jh),
             connection_table: ConnectionTable::new(config),
         }
     }

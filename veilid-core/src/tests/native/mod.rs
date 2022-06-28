@@ -69,53 +69,64 @@ pub fn run_all_tests() {
     info!("Finished unit tests");
 }
 
+#[cfg(feature = "rt-tokio")]
+fn block_on<F: Future<Output = T>, T>(f: F) -> T {
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let local = tokio::task::LocalSet::new();
+    local.block_on(&rt, f)
+}
+#[cfg(feature = "rt-async-std")]
+fn block_on<F: Future<Output = T>, T>(f: F) -> T {
+    async_std::task::block_on(f)
+}
+
 fn exec_test_host_interface() {
-    async_std::task::block_on(async {
+    block_on(async {
         test_host_interface::test_all().await;
     });
 }
 fn exec_test_dht_key() {
-    async_std::task::block_on(async {
+    block_on(async {
         test_dht_key::test_all().await;
     });
 }
 fn exec_test_veilid_core() {
-    async_std::task::block_on(async {
+    block_on(async {
         test_veilid_core::test_all().await;
     });
 }
 fn exec_test_veilid_config() {
-    async_std::task::block_on(async {
+    block_on(async {
         test_veilid_config::test_all().await;
     })
 }
 fn exec_test_async_peek_stream() {
-    async_std::task::block_on(async {
+    block_on(async {
         test_async_peek_stream::test_all().await;
     })
 }
 fn exec_test_connection_table() {
-    async_std::task::block_on(async {
+    block_on(async {
         test_connection_table::test_all().await;
     })
 }
 fn exec_test_table_store() {
-    async_std::task::block_on(async {
+    block_on(async {
         test_table_store::test_all().await;
     })
 }
 fn exec_test_protected_store() {
-    async_std::task::block_on(async {
+    block_on(async {
         test_protected_store::test_all().await;
     })
 }
 fn exec_test_crypto() {
-    async_std::task::block_on(async {
+    block_on(async {
         test_crypto::test_all().await;
     })
 }
 fn exec_test_envelope_receipt() {
-    async_std::task::block_on(async {
+    block_on(async {
         test_envelope_receipt::test_all().await;
     })
 }

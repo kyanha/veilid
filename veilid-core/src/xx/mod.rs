@@ -11,7 +11,7 @@ mod log_thru;
 mod must_join_handle;
 mod must_join_single_future;
 mod mutable_future;
-mod single_future;
+// mod single_future;
 mod single_shot_eventual;
 mod split_url;
 mod tick_task;
@@ -67,6 +67,7 @@ cfg_if! {
         pub use no_std_net::{ SocketAddr, SocketAddrV4, SocketAddrV6, ToSocketAddrs, IpAddr, Ipv4Addr, Ipv6Addr };
         pub type SystemPinBoxFuture<T> = PinBox<dyn Future<Output = T> + 'static>;
         pub type SystemPinBoxFutureLifetime<'a, T> = PinBox<dyn Future<Output = T> + 'a>;
+        pub use async_executors::JoinHandle as LowLevelJoinHandle;
     } else {
         pub use std::string::String;
         pub use std::vec::Vec;
@@ -91,8 +92,17 @@ cfg_if! {
         pub use std::time::Duration;
         pub use std::pin::Pin;
         pub use std::ops::{FnOnce, FnMut, Fn};
-        pub use async_std::sync::Mutex as AsyncMutex;
-        pub use async_std::sync::MutexGuard as AsyncMutexGuard;
+        cfg_if! {
+            if #[cfg(feature="rt-async-std")] {
+                pub use async_std::sync::Mutex as AsyncMutex;
+                pub use async_std::sync::MutexGuard as AsyncMutexGuard;
+                pub use async_std::task::JoinHandle as LowLevelJoinHandle;
+            } else if #[cfg(feature="rt-tokio")] {
+                pub use tokio::sync::Mutex as AsyncMutex;
+                pub use tokio::sync::MutexGuard as AsyncMutexGuard;
+                pub use tokio::task::JoinHandle as LowLevelJoinHandle;
+            }
+        }
         pub use std::net::{ SocketAddr, SocketAddrV4, SocketAddrV6, ToSocketAddrs, IpAddr, Ipv4Addr, Ipv6Addr };
         pub type SystemPinBoxFuture<T> = PinBox<dyn Future<Output = T> + Send + 'static>;
         pub type SystemPinBoxFutureLifetime<'a, T> = PinBox<dyn Future<Output = T> + Send + 'a>;
@@ -111,7 +121,7 @@ pub use ip_extra::*;
 pub use must_join_handle::*;
 pub use must_join_single_future::*;
 pub use mutable_future::*;
-pub use single_future::*;
+// pub use single_future::*;
 pub use single_shot_eventual::*;
 pub use tick_task::*;
 pub use tools::*;

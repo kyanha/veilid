@@ -1,9 +1,19 @@
 #![deny(clippy::all)]
 #![deny(unused_must_use)]
-#[cfg(all(feature = "rt-async-std", feature = "rt-tokio"))]
-compile_error!(
-    "feature \"rt-async-std\" and feature \"rt-tokio\" cannot be enabled at the same time"
-);
+
+cfg_if::cfg_if! {
+    if #[cfg(target_arch = "wasm32")] {
+        #[cfg(any(feature = "rt-async-std", feature = "rt-tokio"))]
+        compile_error!("features \"rt-async-std\" and \"rt-tokio\" can not be specified for WASM");
+    } else {
+        #[cfg(all(feature = "rt-async-std", feature = "rt-tokio"))]
+        compile_error!(
+            "feature \"rt-async-std\" and feature \"rt-tokio\" cannot be enabled at the same time"
+        );
+        #[cfg(not(any(feature = "rt-async-std", feature = "rt-tokio")))]
+        compile_error!("exactly one of feature \"rt-async-std\" or feature \"rt-tokio\" must be specified");
+    }
+}
 
 #[macro_use]
 extern crate alloc;
@@ -51,7 +61,9 @@ pub fn veilid_version() -> (u32, u32, u32) {
 #[cfg(target_os = "android")]
 pub use intf::utils::android::{veilid_core_setup_android, veilid_core_setup_android_no_log};
 
-pub static DEFAULT_LOG_IGNORE_LIST: [&str; 10] = [
+pub static DEFAULT_LOG_IGNORE_LIST: [&str; 12] = [
+    "mio",
+    "serial_test",
     "async_std",
     "async_io",
     "polling",

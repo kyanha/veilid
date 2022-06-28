@@ -11,8 +11,9 @@ name = "veilid-server"
 path = "src/main.rs"
 
 [features]
-default = [ "rt-async-std" ]
-rt-async-std = [ "veilid-core/rt-async-std", "async-std", "async-tungstenite/async-std-runtime", "opentelemetry/rt-async-std", "opentelemetry-otlp/grpc-sys"]
+default = [ "rt-tokio" ]
+rt-async-std = [ "veilid-core/rt-async-std", "async-std", "opentelemetry/rt-async-std", "opentelemetry-otlp/grpc-sys"]
+rt-tokio = [ "veilid-core/rt-tokio", "tokio", "opentelemetry/rt-tokio"]
 tracking = ["veilid-core/tracking"]
 
 [dependencies]
@@ -26,6 +27,7 @@ opentelemetry-otlp = { version = "^0" }
 opentelemetry-semantic-conventions = "^0"
 clap = "^3"
 async-std = { version = "^1", features = ["unstable"], optional = true }
+tokio = { version = "^1", features = ["full"], optional = true }
 async-tungstenite = { version = "^0", features = ["async-tls"] }
 directories = "^4"
 capnp = "^0"

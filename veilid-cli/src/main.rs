@@ -3,16 +3,17 @@
 
 use veilid_core::xx::*;
 
-use async_std::prelude::*;
 use clap::{Arg, ColorChoice, Command};
 use flexi_logger::*;
 use std::ffi::OsStr;
 use std::net::ToSocketAddrs;
 use std::path::Path;
+use tools::*;
 
 mod client_api_connection;
 mod command_processor;
 mod settings;
+mod tools;
 mod ui;
 
 #[allow(clippy::all)]
@@ -60,8 +61,7 @@ fn parse_command_line(default_config_path: &OsStr) -> Result<clap::ArgMatches, S
     Ok(matches)
 }
 
-#[async_std::main]
-async fn main() -> Result<(), String> {
+fn main() -> Result<(), String> {
     // Get command line options
     let default_config_path = settings::Settings::get_default_config_path();
     let matches = parse_command_line(default_config_path.as_os_str())?;
@@ -170,17 +170,29 @@ async fn main() -> Result<(), String> {
     comproc.set_server_address(server_addr);
     let mut comproc2 = comproc.clone();
     let connection_future = comproc.connection_manager();
-    // Start UI
-    let ui_future = async_std::task::spawn_local(async move {
-        sivui.run_async().await;
 
-        // When UI quits, close connection and command processor cleanly
-        comproc2.quit();
-        capi.disconnect().await;
+    // Start async
+    block_on(async move {
+        // Start UI
+        let ui_future = async move {
+            sivui.run_async().await;
+
+            // When UI quits, close connection and command processor cleanly
+            comproc2.quit();
+            capi.disconnect().await;
+        };
+
+        cfg_if! {
+            if #[cfg(feature="rt-async-std")] {
+                use async_std::prelude::*;
+                // Wait for ui and connection to complete
+                let _  = ui_future.join(connection_future).await;
+            } else if #[cfg(feature="rt-tokio")] {
+                // Wait for ui and connection to complete
+                let _ = tokio::join!(ui_future, connection_future);
+            }
+        }
     });
-
-    // Wait for ui and connection to complete
-    ui_future.join(connection_future).await;
 
     Ok(())
 }

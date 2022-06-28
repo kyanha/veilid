@@ -7,7 +7,6 @@ mod stats_accounting;
 mod tasks;
 
 use crate::dht::*;
-use crate::intf::*;
 use crate::network_manager::*;
 use crate::rpc_processor::*;
 use crate::xx::*;

@@ -6,7 +6,6 @@ pub use debug::*;
 pub use private_route::*;
 
 use crate::dht::*;
-use crate::intf::*;
 use crate::xx::*;
 use capnp::message::ReaderSegments;
 use coders::*;
@@ -228,7 +227,7 @@ impl RPCProcessor {
     //////////////////////////////////////////////////////////////////////
 
     fn get_next_op_id(&self) -> OperationId {
-        get_random_u64()
+        intf::get_random_u64()
     }
 
     fn filter_peer_scope(&self, node_info: &NodeInfo) -> bool {
@@ -365,12 +364,12 @@ impl RPCProcessor {
         let timeout_ms = u32::try_from(waitable_reply.timeout / 1000u64)
             .map_err(map_error_internal!("invalid timeout"))?;
         // wait for eventualvalue
-        let start_ts = get_timestamp();
-        let res = timeout(timeout_ms, waitable_reply.eventual.instance())
+        let start_ts = intf::get_timestamp();
+        let res = intf::timeout(timeout_ms, waitable_reply.eventual.instance())
             .await
             .map_err(|_| RPCError::Timeout)?;
         let rpcreader = res.take_value().unwrap();
-        let end_ts = get_timestamp();
+        let end_ts = intf::get_timestamp();
         Ok((rpcreader, end_ts - start_ts))
     }
     async fn wait_for_reply(
@@ -390,7 +389,7 @@ impl RPCProcessor {
                 waitable_reply.node_ref.set_seen_our_node_info();
 
                 // Reply received
-                let recv_ts = get_timestamp();
+                let recv_ts = intf::get_timestamp();
                 self.routing_table().stats_answer_rcvd(
                     waitable_reply.node_ref,
                     waitable_reply.send_ts,
@@ -554,7 +553,7 @@ impl RPCProcessor {
         log_rpc!(debug "==>> REQUEST({}) -> {:?}", self.get_rpc_message_debug_info(&message), dest);
 
         let bytes = out.len() as u64;
-        let send_ts = get_timestamp();
+        let send_ts = intf::get_timestamp();
         let send_data_kind = match self
             .network_manager()
             .send_envelope(node_ref.clone(), Some(out_node_id), out)
@@ -745,7 +744,7 @@ impl RPCProcessor {
             }, 
             node_ref);
         let bytes = out.len() as u64;
-        let send_ts = get_timestamp();
+        let send_ts = intf::get_timestamp();
         self.network_manager()
             .send_envelope(node_ref.clone(), Some(out_node_id), out)
             .await
@@ -1399,7 +1398,7 @@ impl RPCProcessor {
         let mut timeout = ms_to_us(c.network.rpc.timeout_ms);
         let mut max_route_hop_count = c.network.rpc.max_route_hop_count as usize;
         if concurrency == 0 {
-            concurrency = get_concurrency() / 2;
+            concurrency = intf::get_concurrency() / 2;
             if concurrency == 0 {
                 concurrency = 1;
             }
@@ -1424,8 +1423,8 @@ impl RPCProcessor {
         for _ in 0..concurrency {
             let this = self.clone();
             let receiver = channel.1.clone();
-            let jh = spawn(Self::rpc_worker(this, inner.stop_source.as_ref().unwrap().token(), receiver));
-            inner.worker_join_handles.push(MustJoinHandle::new(jh));
+            let jh = intf::spawn(Self::rpc_worker(this, inner.stop_source.as_ref().unwrap().token(), receiver));
+            inner.worker_join_handles.push(jh);
         }
 
         Ok(())
@@ -1466,7 +1465,7 @@ impl RPCProcessor {
     ) -> Result<(), String> {
         let msg = RPCMessage {
             header: RPCMessageHeader {
-                timestamp: get_timestamp(),
+                timestamp: intf::get_timestamp(),
                 envelope,
                 body_len: body.len() as u64,
                 peer_noderef,

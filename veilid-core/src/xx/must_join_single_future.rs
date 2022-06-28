@@ -1,6 +1,5 @@
 use super::*;
-use crate::intf::*;
-use cfg_if::*;
+use crate::*;
 use core::task::Poll;
 use futures_util::poll;
 
@@ -160,7 +159,7 @@ where
 
                 // Run if we should do that
                 if run {
-                    self.unlock(Some(MustJoinHandle::new(spawn_local(future))));
+                    self.unlock(Some(intf::spawn_local(future)));
                 }
 
                 // Return the prior result if we have one
@@ -203,7 +202,7 @@ cfg_if! {
                 }
                 // Run if we should do that
                 if run {
-                    self.unlock(Some(MustJoinHandle::new(spawn(future))));
+                    self.unlock(Some(intf::spawn_with_local_set(future)));
                 }
                 // Return the prior result if we have one
                 Ok((out, run))

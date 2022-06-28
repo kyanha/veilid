@@ -418,7 +418,7 @@ pub struct BucketEntry {
 
 impl BucketEntry {
     pub(super) fn new() -> Self {
-        let now = get_timestamp();
+        let now = intf::get_timestamp();
         Self {
             ref_count: AtomicU32::new(0),
             inner: RwLock::new(BucketEntryInner {

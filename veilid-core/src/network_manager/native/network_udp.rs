@@ -23,7 +23,7 @@ impl Network {
             // Run thread task to process stream of messages
             let this = self.clone();
 
-            let jh = spawn(async move {
+            let jh = spawn_with_local_set(async move {
                 trace!("UDP listener task spawned");
 
                 // Collect all our protocol handlers into a vector
@@ -49,7 +49,7 @@ impl Network {
                 for ph in protocol_handlers {
                     let network_manager = network_manager.clone();
                     let stop_token = stop_token.clone();
-                    let jh = spawn_local(async move {
+                    let jh = intf::spawn_local(async move {
                         let mut data = vec![0u8; 65536];
 
                         loop {
@@ -112,7 +112,7 @@ impl Network {
             ////////////////////////////////////////////////////////////
 
             // Add to join handle
-            self.add_to_join_handles(MustJoinHandle::new(jh));
+            self.add_to_join_handles(jh);
         }
 
         Ok(())
@@ -134,7 +134,13 @@ impl Network {
 
             // Make an async UdpSocket from the socket2 socket
             let std_udp_socket: std::net::UdpSocket = socket.into();
-            let udp_socket = UdpSocket::from(std_udp_socket);
+            cfg_if! {
+                if #[cfg(feature="rt-async-std")] {
+                    let udp_socket = UdpSocket::from(std_udp_socket);
+                } else if #[cfg(feature="rt-tokio")] {
+                    let udp_socket = UdpSocket::from_std(std_udp_socket).map_err(map_to_string)?;
+                }
+            }
             let socket_arc = Arc::new(udp_socket);
 
             // Create protocol handler
@@ -148,7 +154,13 @@ impl Network {
         if let Ok(socket) = new_bound_shared_udp_socket(socket_addr_v6) {
             // Make an async UdpSocket from the socket2 socket
             let std_udp_socket: std::net::UdpSocket = socket.into();
-            let udp_socket = UdpSocket::from(std_udp_socket);
+            cfg_if! {
+                if #[cfg(feature="rt-async-std")] {
+                    let udp_socket = UdpSocket::from(std_udp_socket);
+                } else if #[cfg(feature="rt-tokio")] {
+                    let udp_socket = UdpSocket::from_std(std_udp_socket).map_err(map_to_string)?;
+                }
+            }
             let socket_arc = Arc::new(udp_socket);
 
             // Create protocol handler
@@ -168,7 +180,13 @@ impl Network {
 
         // Make an async UdpSocket from the socket2 socket
         let std_udp_socket: std::net::UdpSocket = socket.into();
-        let udp_socket = UdpSocket::from(std_udp_socket);
+        cfg_if! {
+            if #[cfg(feature="rt-async-std")] {
+                let udp_socket = UdpSocket::from(std_udp_socket);
+            } else if #[cfg(feature="rt-tokio")] {
+                let udp_socket = UdpSocket::from_std(std_udp_socket).map_err(map_to_string)?;
+            }
+        }
         let socket_arc = Arc::new(udp_socket);
 
         // Create protocol handler

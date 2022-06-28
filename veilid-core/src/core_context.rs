@@ -1,7 +1,6 @@
 use crate::api_tracing_layer::*;
 use crate::attachment_manager::*;
 use crate::dht::Crypto;
-use crate::intf::*;
 use crate::veilid_api::*;
 use crate::veilid_config::*;
 use crate::xx::*;
@@ -10,7 +9,6 @@ cfg_if! {
     if #[cfg(target_arch = "wasm32")] {
         pub type UpdateCallback = Arc<dyn Fn(VeilidUpdate)>;
     } else {
-
         pub type UpdateCallback = Arc<dyn Fn(VeilidUpdate) + Send + Sync>;
     }
 }
@@ -255,7 +253,9 @@ impl VeilidCoreContext {
 
 /////////////////////////////////////////////////////////////////////////////
 
-static INITIALIZED: AsyncMutex<bool> = AsyncMutex::new(false);
+lazy_static::lazy_static! {
+    static ref INITIALIZED: AsyncMutex<bool> = AsyncMutex::new(false);
+}
 
 #[instrument(err, skip_all)]
 pub async fn api_startup(

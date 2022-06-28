@@ -319,7 +319,6 @@ impl Network {
             // Resolve statically configured public dialinfo
             let mut public_sockaddrs = public_address
                 .to_socket_addrs()
-                .await
                 .map_err(|e| format!("Unable to resolve address: {}\n{}", public_address, e))?;
 
             // Add all resolved addresses as public dialinfo
@@ -416,7 +415,6 @@ impl Network {
             let global_socket_addrs = split_url
                 .host_port(80)
                 .to_socket_addrs()
-                .await
                 .map_err(map_to_string)
                 .map_err(logthru_net!(error))?;
 
@@ -548,7 +546,6 @@ impl Network {
             let global_socket_addrs = split_url
                 .host_port(443)
                 .to_socket_addrs()
-                .await
                 .map_err(map_to_string)
                 .map_err(logthru_net!(error))?;
 
@@ -662,7 +659,6 @@ impl Network {
             // Resolve statically configured public dialinfo
             let mut public_sockaddrs = public_address
                 .to_socket_addrs()
-                .await
                 .map_err(|e| format!("Unable to resolve address: {}\n{}", public_address, e))?;
 
             // Add all resolved addresses as public dialinfo

@@ -465,7 +465,8 @@ cfg_if! {
             let t1 = intf::get_timestamp();
             let mut interfaces = intf::utils::network_interfaces::NetworkInterfaces::new();
             let count = 100;
-            for _ in 0..count {
+            for x in 0..count {
+                info!("loop {}", x);
                 if let Err(e) = interfaces.refresh().await {
                     error!("error refreshing interfaces: {}", e);
                 }
@@ -506,43 +507,6 @@ pub async fn test_get_random_u32() {
         "running network interface test with {} iterations took {} seconds",
         count, tdiff
     );
-}
-
-pub async fn test_single_future() {
-    info!("testing single future");
-    let sf = SingleFuture::<u32>::new();
-    assert_eq!(sf.check().await, Ok(None));
-    assert_eq!(
-        sf.single_spawn(async {
-            intf::sleep(2000).await;
-            69
-        })
-        .await,
-        Ok((None, true))
-    );
-    assert_eq!(sf.check().await, Ok(None));
-    assert_eq!(sf.single_spawn(async { panic!() }).await, Ok((None, false)));
-    assert_eq!(sf.join().await, Ok(Some(69)));
-    assert_eq!(
-        sf.single_spawn(async {
-            intf::sleep(1000).await;
-            37
-        })
-        .await,
-        Ok((None, true))
-    );
-    intf::sleep(2000).await;
-    assert_eq!(
-        sf.single_spawn(async {
-            intf::sleep(1000).await;
-            27
-        })
-        .await,
-        Ok((Some(37), true))
-    );
-    intf::sleep(2000).await;
-    assert_eq!(sf.join().await, Ok(Some(27)));
-    assert_eq!(sf.check().await, Ok(None));
 }
 
 pub async fn test_must_join_single_future() {
@@ -604,7 +568,6 @@ pub async fn test_all() {
     test_sleep().await;
     #[cfg(not(target_arch = "wasm32"))]
     test_network_interfaces().await;
-    test_single_future().await;
     test_must_join_single_future().await;
     test_eventual().await;
     test_eventual_value().await;

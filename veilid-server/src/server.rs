@@ -1,5 +1,6 @@
 use crate::client_api;
 use crate::settings::*;
+use crate::tools::*;
 use flume::{unbounded, Receiver, Sender};
 use lazy_static::*;
 use parking_lot::Mutex;
@@ -77,7 +78,7 @@ pub async fn run_veilid_server_internal(
 
     // Process all updates
     let capi2 = capi.clone();
-    let update_receiver_jh = async_std::task::spawn_local(async move {
+    let update_receiver_jh = spawn_local(async move {
         while let Ok(change) = receiver.recv_async().await {
             if let Some(capi) = &capi2 {
                 // Handle state changes on main thread for capnproto rpc
@@ -115,7 +116,7 @@ pub async fn run_veilid_server_internal(
                     break;
                 }
             }
-            async_std::task::sleep(Duration::from_millis(100)).await;
+            sleep(Duration::from_millis(100)).await;
         }
         match veilid_api.debug("txtrecord".to_string()).await {
             Ok(v) => {

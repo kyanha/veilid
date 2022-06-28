@@ -1,7 +1,17 @@
 use super::*;
-use async_std::net::{TcpListener, TcpStream};
-use async_std::prelude::FutureExt;
-use async_std::task;
+
+cfg_if! {
+    if #[cfg(feature="rt-async-std")] {
+        use async_std::net::{TcpListener, TcpStream};
+        use async_std::prelude::FutureExt;
+        use async_std::task::sleep;
+    } else if #[cfg(feature="rt-tokio")] {
+        use tokio::net::{TcpListener, TcpStream};
+        use tokio::time::sleep;
+        use tokio_util::compat::*;
+    }
+}
+
 use futures_util::{AsyncReadExt, AsyncWriteExt};
 use std::io;
 
@@ -18,23 +28,40 @@ async fn make_tcp_loopback() -> Result<(TcpStream, TcpStream), io::Error> {
         Result::<TcpStream, io::Error>::Ok(accepted_stream)
     };
     let connect_future = async {
-        task::sleep(Duration::from_secs(1)).await;
+        sleep(Duration::from_secs(1)).await;
         let connected_stream = TcpStream::connect(local_addr).await?;
         connected_stream.set_nodelay(true)?;
         Result::<TcpStream, io::Error>::Ok(connected_stream)
     };
 
-    Ok(accept_future.try_join(connect_future).await?)
+    cfg_if! {
+        if #[cfg(feature="rt-async-std")] {
+            accept_future.try_join(connect_future).await
+        } else if #[cfg(feature="rt-tokio")] {
+            tokio::try_join!(accept_future, connect_future)
+        }
+    }
 }
 
 async fn make_async_peek_stream_loopback() -> (AsyncPeekStream, AsyncPeekStream) {
     let (acc, conn) = make_tcp_loopback().await.unwrap();
+    #[cfg(feature = "rt-tokio")]
+    let acc = acc.compat();
+    #[cfg(feature = "rt-tokio")]
+    let conn = conn.compat();
+
     let aps_a = AsyncPeekStream::new(acc);
     let aps_c = AsyncPeekStream::new(conn);
 
     (aps_a, aps_c)
 }
 
+#[cfg(feature = "rt-tokio")]
+async fn make_stream_loopback() -> (Compat<TcpStream>, Compat<TcpStream>) {
+    let (a, c) = make_tcp_loopback().await.unwrap();
+    (a.compat(), c.compat())
+}
+#[cfg(feature = "rt-async-std")]
 async fn make_stream_loopback() -> (TcpStream, TcpStream) {
     make_tcp_loopback().await.unwrap()
 }

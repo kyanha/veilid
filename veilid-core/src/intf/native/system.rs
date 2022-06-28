@@ -1,14 +1,33 @@
 #![allow(dead_code)]
 
 use crate::xx::*;
-pub use async_executors::JoinHandle;
-use async_executors::{AsyncStd, LocalSpawnHandleExt, SpawnHandleExt};
-use async_std_resolver::{config, resolver, resolver_from_system_conf, AsyncStdResolver};
+cfg_if! {
+    if #[cfg(feature="rt-async-std")] {
+        use async_std_resolver::{config, resolver, resolver_from_system_conf, AsyncStdResolver as AsyncResolver};
+    } else if #[cfg(feature="rt-tokio")] {
+        use trust_dns_resolver::{config, TokioAsyncResolver as AsyncResolver, error::ResolveError};
+
+        pub async fn resolver(
+            config: config::ResolverConfig,
+            options: config::ResolverOpts,
+        ) -> Result<AsyncResolver, ResolveError> {
+            AsyncResolver::tokio(config, options)
+        }
+
+        /// Constructs a new async-std based Resolver with the system configuration.
+        ///
+        /// This will use `/etc/resolv.conf` on Unix OSes and the registry on Windows.
+        #[cfg(any(unix, target_os = "windows"))]
+        pub async fn resolver_from_system_conf() -> Result<AsyncResolver, ResolveError> {
+            AsyncResolver::tokio_from_system_conf()
+        }
+    }
+}
 use rand::prelude::*;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 lazy_static::lazy_static! {
-    static ref RESOLVER: Arc<AsyncMutex<Option<AsyncStdResolver>>> = Arc::new(AsyncMutex::new(None));
+    static ref RESOLVER: Arc<AsyncMutex<Option<AsyncResolver>>> = Arc::new(AsyncMutex::new(None));
 }
 
 pub fn get_timestamp() -> u64 {
@@ -40,9 +59,21 @@ pub fn get_random_u64() -> u64 {
 
 pub async fn sleep(millis: u32) {
     if millis == 0 {
-        async_std::task::yield_now().await;
+        cfg_if! {
+            if #[cfg(feature="rt-async-std")] {
+                async_std::task::yield_now().await;
+            } else if #[cfg(feature="rt-tokio")] {
+                tokio::task::yield_now().await;
+            }
+        }
     } else {
-        async_std::task::sleep(Duration::from_millis(u64::from(millis))).await;
+        cfg_if! {
+                if #[cfg(feature="rt-async-std")] {
+                async_std::task::sleep(Duration::from_millis(u64::from(millis))).await;
+            } else if #[cfg(feature="rt-tokio")] {
+                tokio::time::sleep(Duration::from_millis(u64::from(millis))).await;
+            }
+        }
     }
 }
 
@@ -52,22 +83,64 @@ pub fn system_boxed<'a, Out>(
     Box::pin(future)
 }
 
-pub fn spawn<Out>(future: impl Future<Output = Out> + Send + 'static) -> JoinHandle<Out>
+pub fn spawn<Out>(future: impl Future<Output = Out> + Send + 'static) -> MustJoinHandle<Out>
 where
     Out: Send + 'static,
 {
-    AsyncStd
-        .spawn_handle(future)
-        .expect("async-std spawn should never error out")
+    cfg_if! {
+        if #[cfg(feature="rt-async-std")] {
+            MustJoinHandle::new(async_std::task::spawn(future))
+        } else if #[cfg(feature="rt-tokio")] {
+            MustJoinHandle::new(tokio::task::spawn(future))
+        }
+    }
 }
 
-pub fn spawn_local<Out>(future: impl Future<Output = Out> + 'static) -> JoinHandle<Out>
+pub fn spawn_local<Out>(future: impl Future<Output = Out> + 'static) -> MustJoinHandle<Out>
 where
     Out: 'static,
 {
-    AsyncStd
-        .spawn_handle_local(future)
-        .expect("async-std spawn_local should never error out")
+    cfg_if! {
+        if #[cfg(feature="rt-async-std")] {
+            MustJoinHandle::new(async_std::task::spawn_local(future))
+        } else if #[cfg(feature="rt-tokio")] {
+            MustJoinHandle::new(tokio::task::spawn_local(future))
+        }
+    }
+}
+
+pub fn spawn_with_local_set<Out>(
+    future: impl Future<Output = Out> + Send + 'static,
+) -> MustJoinHandle<Out>
+where
+    Out: Send + 'static,
+{
+    cfg_if! {
+        if #[cfg(feature="rt-async-std")] {
+            spawn(future)
+        } else if #[cfg(feature="rt-tokio")] {
+            MustJoinHandle::new(tokio::task::spawn_blocking(move || {
+                let rt = tokio::runtime::Handle::current();
+                rt.block_on(async {
+                    let local = tokio::task::LocalSet::new();
+                    local.run_until(future).await
+                })
+            }))
+        }
+    }
+}
+
+pub fn spawn_detached<Out>(future: impl Future<Output = Out> + Send + 'static)
+where
+    Out: Send + 'static,
+{
+    cfg_if! {
+        if #[cfg(feature="rt-async-std")] {
+            drop(async_std::task::spawn(future));
+        } else if #[cfg(feature="rt-tokio")] {
+            drop(tokio::task::spawn(future));
+        }
+    }
 }
 
 pub fn interval<F, FUT>(freq_ms: u32, callback: F) -> SystemPinBoxFuture<()>
@@ -90,13 +163,25 @@ where
     })
 }
 
-pub use async_std::future::TimeoutError;
+cfg_if! {
+    if #[cfg(feature="rt-async-std")] {
+        pub use async_std::future::TimeoutError;
+    } else if #[cfg(feature="rt-tokio")] {
+        pub use tokio::time::error::Elapsed as TimeoutError;
+    }
+}
 
 pub async fn timeout<F, T>(dur_ms: u32, f: F) -> Result<T, TimeoutError>
 where
     F: Future<Output = T>,
 {
-    async_std::future::timeout(Duration::from_millis(dur_ms as u64), f).await
+    cfg_if! {
+        if #[cfg(feature="rt-async-std")] {
+            async_std::future::timeout(Duration::from_millis(dur_ms as u64), f).await
+        } else if #[cfg(feature="rt-tokio")] {
+            tokio::time::timeout(Duration::from_millis(dur_ms as u64), f).await
+        }
+    }
 }
 
 pub fn get_concurrency() -> u32 {
@@ -128,7 +213,7 @@ where
 }
 */
 
-async fn get_resolver() -> Result<AsyncStdResolver, String> {
+async fn get_resolver() -> Result<AsyncResolver, String> {
     let mut resolver_lock = RESOLVER.lock().await;
     if let Some(r) = &*resolver_lock {
         Ok(r.clone())

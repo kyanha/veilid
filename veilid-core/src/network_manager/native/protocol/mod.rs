@@ -92,15 +92,15 @@ impl ProtocolNetworkConnection {
         }
     }
 
-    pub async fn close(&self) -> Result<(), String> {
-        match self {
-            Self::Dummy(d) => d.close(),
-            Self::RawTcp(t) => t.close().await,
-            Self::WsAccepted(w) => w.close().await,
-            Self::Ws(w) => w.close().await,
-            Self::Wss(w) => w.close().await,
-        }
-    }
+    // pub async fn close(&self) -> Result<(), String> {
+    //     match self {
+    //         Self::Dummy(d) => d.close(),
+    //         Self::RawTcp(t) => t.close().await,
+    //         Self::WsAccepted(w) => w.close().await,
+    //         Self::Ws(w) => w.close().await,
+    //         Self::Wss(w) => w.close().await,
+    //     }
+    // }
 
     pub async fn send(&self, message: Vec<u8>) -> Result<(), String> {
         match self {

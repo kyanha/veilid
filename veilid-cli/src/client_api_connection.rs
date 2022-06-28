@@ -1,9 +1,8 @@
 use crate::command_processor::*;
+use crate::tools::*;
 use crate::veilid_client_capnp::*;
-use async_executors::{AsyncStd, LocalSpawnHandleExt};
 use capnp::capability::Promise;
 use capnp_rpc::{pry, rpc_twoparty_capnp, twoparty, Disconnector, RpcSystem};
-use futures::io::AsyncReadExt;
 use std::cell::RefCell;
 use std::net::SocketAddr;
 use std::rc::Rc;
@@ -140,9 +139,7 @@ impl ClientApiConnection {
                 ));
         }
 
-        let rpc_jh = AsyncStd
-            .spawn_handle_local(rpc_system)
-            .map_err(|e| format!("failed to spawn rpc system: {}", e))?;
+        let rpc_jh = spawn_local(rpc_system);
 
         // Send the request and get the state object and the registration object
         let response = request
@@ -173,23 +170,43 @@ impl ClientApiConnection {
         // object mapping from the server which we need for the update backchannel
 
         // Wait until rpc system completion or disconnect was requested
-        rpc_jh
-            .await
-            .map_err(|e| format!("client RPC system error: {}", e))
+
+        cfg_if! {
+            if #[cfg(feature="rt-async-std")] {
+                rpc_jh
+                    .await
+                    .map_err(|e| format!("client RPC system error: {}", e))
+            } else if #[cfg(feature="rt-tokio")] {
+                rpc_jh
+                    .await
+                    .map_err(|e| format!("join error: {}", e))?
+                    .map_err(|e| format!("client RPC system error: {}", e))
+            }
+        }
     }
 
     async fn handle_connection(&mut self) -> Result<(), String> {
         trace!("ClientApiConnection::handle_connection");
         let connect_addr = self.inner.borrow().connect_addr.unwrap();
         // Connect the TCP socket
-        let stream = async_std::net::TcpStream::connect(connect_addr)
+        let stream = TcpStream::connect(connect_addr)
             .await
             .map_err(map_to_string)?;
         // If it succeed, disable nagle algorithm
         stream.set_nodelay(true).map_err(map_to_string)?;
 
         // Create the VAT network
-        let (reader, writer) = stream.split();
+
+        cfg_if! {
+            if #[cfg(feature="rt-async-std")] {
+                let (reader, writer) = stream.split();
+            } else if #[cfg(feature="rt-tokio")] {
+                let (reader, writer) = stream.into_split();
+                let reader = reader.compat();
+                let writer = writer.compat_write();
+            }
+        }
+
         let rpc_network = Box::new(twoparty::VatNetwork::new(
             reader,
             writer,

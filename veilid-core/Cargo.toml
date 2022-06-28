@@ -10,11 +10,13 @@ license = "LGPL-2.0-or-later OR MPL-2.0 OR (MIT AND BSD-3-Clause)"
 crate-type = ["cdylib", "staticlib", "rlib"]
 
 [features]
-default = [ "rt-async-std" ]
+default = []
+rt-async-std = [ "async-std", "async-std-resolver", "async_executors/async_std", "rtnetlink?/smol_socket" ]
+rt-tokio = [ "tokio", "tokio-util", "tokio-stream", "trust-dns-resolver/tokio-runtime", "async_executors/tokio_tp", "async_executors/tokio_io", "async_executors/tokio_timer", "rtnetlink?/tokio_socket" ]
+
 android_tests = []
 ios_tests = [ "simplelog", "backtrace" ]
 tracking = [ "backtrace" ]
-rt-async-std = [ "async-std", "async-tungstenite/async-std-runtime", "async-std-resolver", "async_executors/async_std", "rtnetlink?/smol_socket" ]
 
 [dependencies]
 tracing = { version = "^0", features = ["log", "attributes"] }
@@ -59,9 +61,13 @@ rtnetlink = { version = "^0", default-features = false, optional = true }
 # Linux, Windows, Mac, iOS, Android
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 async-std = { version = "^1", features = ["unstable"], optional = true}
+tokio = { version = "^1", features = ["full"], optional = true}
+tokio-util = { version = "^0", features = ["compat"], optional = true}
+tokio-stream = { version = "^0", features = ["net"], optional = true}
 async-io = { version = "^1" }
 async-tungstenite = { version = "^0", features = ["async-tls"] }
 async-std-resolver = { version = "^0", optional = true }
+trust-dns-resolver = { version = "^0", optional = true }
 maplit = "^1"
 config = { version = "^0", features = ["yaml"] }
 keyring-manager = { path = "../external/keyring-manager" }
@@ -77,7 +83,6 @@ data-encoding = { version = "^2" }
 serde = { version = "^1", features = ["derive" ] }
 serde_cbor = { version = "^0" }
 serde_json = { version = "^1" }
-async_executors = { version = "^0", default-features = false }
 socket2 = "^0"
 bugsalot = "^0"
 chrono = "^0"

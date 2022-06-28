@@ -1,4 +1,5 @@
 use crate::settings::*;
+use crate::tools::*;
 use clap::ArgMatches;
 use log::*;
 use std::ffi::OsString;

@@ -1,7 +1,6 @@
 use super::*;
 
 use crate::dht::*;
-use crate::intf::*;
 use crate::xx::*;
 use crate::*;
 
@@ -219,7 +218,7 @@ impl RoutingTable {
         F: FnMut(DHTKey, Option<Arc<BucketEntry>>) -> bool,
         T: FnMut(DHTKey, Option<Arc<BucketEntry>>) -> O,
     {
-        let cur_ts = get_timestamp();
+        let cur_ts = intf::get_timestamp();
         let out = self.find_peers_with_sort_and_filter(
             node_count,
             cur_ts,
@@ -301,7 +300,7 @@ impl RoutingTable {
         T: FnMut(DHTKey, Option<Arc<BucketEntry>>) -> O,
         F: FnMut(DHTKey, Option<Arc<BucketEntry>>) -> bool,
     {
-        let cur_ts = get_timestamp();
+        let cur_ts = intf::get_timestamp();
         let node_count = {
             let c = self.config.get();
             c.network.dht.max_find_node_count as usize

@@ -1,7 +1,15 @@
 use crate::xx::*;
 use crate::*;
 use async_io::Async;
-use async_std::net::TcpStream;
+cfg_if! {
+    if #[cfg(feature="rt-async-std")] {
+        pub use async_std::net::{TcpStream, TcpListener, Shutdown, UdpSocket};
+    } else if #[cfg(feature="rt-tokio")] {
+        pub use tokio::net::{TcpStream, TcpListener, UdpSocket};
+        pub use tokio_util::compat::*;
+    }
+}
+
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 
 cfg_if! {
@@ -218,5 +226,11 @@ pub async fn nonblocking_connect(socket: Socket, addr: SocketAddr) -> std::io::R
     }?;
 
     // Convert back to inner and then return async version
-    Ok(TcpStream::from(async_stream.into_inner()?))
+    cfg_if! {
+        if #[cfg(feature="rt-async-std")] {
+            Ok(TcpStream::from(async_stream.into_inner()?))
+        } else if #[cfg(feature="rt-tokio")] {
+            Ok(TcpStream::from_std(async_stream.into_inner()?)?)
+        }
+    }
 }

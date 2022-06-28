@@ -1,28 +1,35 @@
 use super::*;
-use async_std::io;
+
 use async_tls::TlsConnector;
 use async_tungstenite::tungstenite::protocol::Message;
 use async_tungstenite::{accept_async, client_async, WebSocketStream};
-use futures_util::SinkExt;
+use futures_util::{AsyncRead, AsyncWrite, SinkExt};
 use sockets::*;
+cfg_if! {
+    if #[cfg(feature="rt-async-std")] {
+        pub type WebsocketNetworkConnectionWSS =
+            WebsocketNetworkConnection<async_tls::client::TlsStream<TcpStream>>;
+        pub type WebsocketNetworkConnectionWS = WebsocketNetworkConnection<TcpStream>;
+    } else if #[cfg(feature="rt-tokio")] {
+        pub type WebsocketNetworkConnectionWSS =
+            WebsocketNetworkConnection<async_tls::client::TlsStream<Compat<TcpStream>>>;
+        pub type WebsocketNetworkConnectionWS = WebsocketNetworkConnection<Compat<TcpStream>>;
+    }
+}
 
 pub type WebSocketNetworkConnectionAccepted = WebsocketNetworkConnection<AsyncPeekStream>;
-pub type WebsocketNetworkConnectionWSS =
-    WebsocketNetworkConnection<async_tls::client::TlsStream<TcpStream>>;
-pub type WebsocketNetworkConnectionWS = WebsocketNetworkConnection<TcpStream>;
 
 pub struct WebsocketNetworkConnection<T>
 where
-    T: io::Read + io::Write + Send + Unpin + 'static,
+    T: AsyncRead + AsyncWrite + Send + Unpin + 'static,
 {
     descriptor: ConnectionDescriptor,
     stream: CloneStream<WebSocketStream<T>>,
-    tcp_stream: TcpStream,
 }
 
 impl<T> fmt::Debug for WebsocketNetworkConnection<T>
 where
-    T: io::Read + io::Write + Send + Unpin + 'static,
+    T: AsyncRead + AsyncWrite + Send + Unpin + 'static,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", std::any::type_name::<Self>())
@@ -31,17 +38,12 @@ where
 
 impl<T> WebsocketNetworkConnection<T>
 where
-    T: io::Read + io::Write + Send + Unpin + 'static,
+    T: AsyncRead + AsyncWrite + Send + Unpin + 'static,
 {
-    pub fn new(
-        descriptor: ConnectionDescriptor,
-        stream: WebSocketStream<T>,
-        tcp_stream: TcpStream,
-    ) -> Self {
+    pub fn new(descriptor: ConnectionDescriptor, stream: WebSocketStream<T>) -> Self {
         Self {
             descriptor,
             stream: CloneStream::new(stream),
-            tcp_stream,
         }
     }
 
@@ -49,15 +51,15 @@ where
         self.descriptor.clone()
     }
 
-    #[instrument(level = "trace", err, skip(self))]
-    pub async fn close(&self) -> Result<(), String> {
-        // Make an attempt to flush the stream
-        self.stream.clone().close().await.map_err(map_to_string)?;
-        // Then forcibly close the socket
-        self.tcp_stream
-            .shutdown(Shutdown::Both)
-            .map_err(map_to_string)
-    }
+    // #[instrument(level = "trace", err, skip(self))]
+    // pub async fn close(&self) -> Result<(), String> {
+    //     // Make an attempt to flush the stream
+    //     self.stream.clone().close().await.map_err(map_to_string)?;
+    //     // Then forcibly close the socket
+    //     self.tcp_stream
+    //         .shutdown(Shutdown::Both)
+    //         .map_err(map_to_string)
+    // }
 
     #[instrument(level = "trace", err, skip(self, message), fields(message.len = message.len()))]
     pub async fn send(&self, message: Vec<u8>) -> Result<(), String> {
@@ -101,7 +103,7 @@ struct WebsocketProtocolHandlerArc {
     tls: bool,
     local_address: SocketAddr,
     request_path: Vec<u8>,
-    connection_initial_timeout: u64,
+    connection_initial_timeout_ms: u32,
 }
 
 #[derive(Clone)]
@@ -119,10 +121,10 @@ impl WebsocketProtocolHandler {
         } else {
             format!("GET /{}", c.network.protocol.wss.path.trim_end_matches('/'))
         };
-        let connection_initial_timeout = if tls {
-            ms_to_us(c.network.tls.connection_initial_timeout_ms)
+        let connection_initial_timeout_ms = if tls {
+            c.network.tls.connection_initial_timeout_ms
         } else {
-            ms_to_us(c.network.connection_initial_timeout_ms)
+            c.network.connection_initial_timeout_ms
         };
 
         Self {
@@ -130,34 +132,30 @@ impl WebsocketProtocolHandler {
                 tls,
                 local_address,
                 request_path: path.as_bytes().to_vec(),
-                connection_initial_timeout,
+                connection_initial_timeout_ms,
             }),
         }
     }
 
-    #[instrument(level = "trace", err, skip(self, ps, tcp_stream))]
+    #[instrument(level = "trace", err, skip(self, ps))]
     pub async fn on_accept_async(
         self,
         ps: AsyncPeekStream,
-        tcp_stream: TcpStream,
         socket_addr: SocketAddr,
     ) -> Result<Option<ProtocolNetworkConnection>, String> {
         log_net!("WS: on_accept_async: enter");
         let request_path_len = self.arc.request_path.len() + 2;
 
         let mut peekbuf: Vec<u8> = vec![0u8; request_path_len];
-        match io::timeout(
-            Duration::from_micros(self.arc.connection_initial_timeout),
+        match timeout(
+            self.arc.connection_initial_timeout_ms,
             ps.peek_exact(&mut peekbuf),
         )
         .await
         {
             Ok(_) => (),
             Err(e) => {
-                if e.kind() == io::ErrorKind::TimedOut {
-                    return Err(e).map_err(map_to_string);
-                }
-                return Err(e).map_err(map_to_string);
+                return Err(e.to_string());
             }
         }
 
@@ -194,7 +192,6 @@ impl WebsocketProtocolHandler {
                 SocketAddress::from_socket_addr(self.arc.local_address),
             ),
             ws_stream,
-            tcp_stream,
         ));
 
         log_net!(debug "{}: on_accept_async from: {}", if self.arc.tls { "WSS" } else { "WS" }, socket_addr);
@@ -238,6 +235,9 @@ impl WebsocketProtocolHandler {
         // See what local address we ended up with
         let actual_local_addr = tcp_stream.local_addr().map_err(map_to_string)?;
 
+        #[cfg(feature = "rt-tokio")]
+        let tcp_stream = tcp_stream.compat();
+
         // Make our connection descriptor
         let descriptor = ConnectionDescriptor::new(
             dial_info.to_peer_address(),
@@ -247,7 +247,7 @@ impl WebsocketProtocolHandler {
         if tls {
             let connector = TlsConnector::default();
             let tls_stream = connector
-                .connect(domain.to_string(), tcp_stream.clone())
+                .connect(domain.to_string(), tcp_stream)
                 .await
                 .map_err(map_to_string)
                 .map_err(logthru_net!(error))?;
@@ -257,15 +257,15 @@ impl WebsocketProtocolHandler {
                 .map_err(logthru_net!(error))?;
 
             Ok(ProtocolNetworkConnection::Wss(
-                WebsocketNetworkConnection::new(descriptor, ws_stream, tcp_stream),
+                WebsocketNetworkConnection::new(descriptor, ws_stream),
             ))
         } else {
-            let (ws_stream, _response) = client_async(request, tcp_stream.clone())
+            let (ws_stream, _response) = client_async(request, tcp_stream)
                 .await
                 .map_err(map_to_string)
                 .map_err(logthru_net!(error))?;
             Ok(ProtocolNetworkConnection::Ws(
-                WebsocketNetworkConnection::new(descriptor, ws_stream, tcp_stream),
+                WebsocketNetworkConnection::new(descriptor, ws_stream),
             ))
         }
     }
@@ -319,9 +319,8 @@ impl ProtocolAcceptHandler for WebsocketProtocolHandler {
     fn on_accept(
         &self,
         stream: AsyncPeekStream,
-        tcp_stream: TcpStream,
         peer_addr: SocketAddr,
     ) -> SystemPinBoxFuture<Result<Option<ProtocolNetworkConnection>, String>> {
-        Box::pin(self.clone().on_accept_async(stream, tcp_stream, peer_addr))
+        Box::pin(self.clone().on_accept_async(stream, peer_addr))
     }
 }

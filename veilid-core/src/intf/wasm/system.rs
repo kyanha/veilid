@@ -1,7 +1,6 @@
 use super::utils;
 use crate::xx::*;
 use crate::*;
-pub use async_executors::JoinHandle;
 use async_executors::{Bindgen, LocalSpawnHandleExt /*, SpawnHandleExt*/};
 use core::fmt;
 use futures_util::future::{select, Either};
@@ -105,23 +104,42 @@ pub fn system_boxed<'a, Out>(
     Box::pin(future)
 }
 
-pub fn spawn<Out>(future: impl Future<Output = Out> + 'static) -> JoinHandle<Out>
+pub fn spawn<Out>(future: impl Future<Output = Out> + 'static) -> MustJoinHandle<Out>
+where
+    Out: Send + 'static,
+{
+    MustJoinHandle::new(Bindgen
+        .spawn_handle_local(future)
+        .expect("wasm-bindgen-futures spawn should never error out"))
+}
+
+pub fn spawn_local<Out>(future: impl Future<Output = Out> + 'static) -> MustJoinHandle<Out>
+where
+    Out: 'static,
+{
+    MustJoinHandle::new(Bindgen
+        .spawn_handle_local(future)
+        .expect("wasm-bindgen-futures spawn_local should never error out"))
+}
+
+pub fn spawn_with_local_set<Out>(
+    future: impl Future<Output = Out> + 'static,
+) -> MustJoinHandle<Out>
+where
+    Out: Send + 'static,
+{
+    spawn(future)
+}
+
+pub fn spawn_detached<Out>(future: impl Future<Output = Out> + 'static)
 where
     Out: Send + 'static,
 {
     Bindgen
         .spawn_handle_local(future)
-        .expect("wasm-bindgen-futures spawn should never error out")
+        .expect("wasm-bindgen-futures spawn_local should never error out").detach()
 }
 
-pub fn spawn_local<Out>(future: impl Future<Output = Out> + 'static) -> JoinHandle<Out>
-where
-    Out: 'static,
-{
-    Bindgen
-        .spawn_handle_local(future)
-        .expect("wasm-bindgen-futures spawn_local should never error out")
-}
 
 pub fn interval<F, FUT>(freq_ms: u32, callback: F) -> SystemPinBoxFuture<()>
 where

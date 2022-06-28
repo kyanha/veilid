@@ -1,5 +1,4 @@
 use super::*;
-use crate::intf::*;
 use async_tls::TlsAcceptor;
 use sockets::*;
 use stop_token::future::FutureExt;
@@ -43,46 +42,41 @@ impl Network {
         &self,
         tls_acceptor: &TlsAcceptor,
         stream: AsyncPeekStream,
-        tcp_stream: TcpStream,
         addr: SocketAddr,
         protocol_handlers: &[Box<dyn ProtocolAcceptHandler>],
-        tls_connection_initial_timeout: u64,
+        tls_connection_initial_timeout_ms: u32,
     ) -> Result<Option<ProtocolNetworkConnection>, String> {
-        let ts = tls_acceptor
+        let tls_stream = tls_acceptor
             .accept(stream)
             .await
             .map_err(map_to_string)
             .map_err(logthru_net!(debug "TLS stream failed handshake"))?;
-        let ps = AsyncPeekStream::new(CloneStream::new(ts));
+        let ps = AsyncPeekStream::new(tls_stream);
         let mut first_packet = [0u8; PEEK_DETECT_LEN];
 
         // Try the handlers but first get a chunk of data for them to process
         // Don't waste more than N seconds getting it though, in case someone
         // is trying to DoS us with a bunch of connections or something
         // read a chunk of the stream
-        io::timeout(
-            Duration::from_micros(tls_connection_initial_timeout),
+        intf::timeout(
+            tls_connection_initial_timeout_ms,
             ps.peek_exact(&mut first_packet),
         )
         .await
+        .map_err(map_to_string)?
         .map_err(map_to_string)?;
 
-        self.try_handlers(ps, tcp_stream, addr, protocol_handlers)
-            .await
+        self.try_handlers(ps, addr, protocol_handlers).await
     }
 
     async fn try_handlers(
         &self,
         stream: AsyncPeekStream,
-        tcp_stream: TcpStream,
         addr: SocketAddr,
         protocol_accept_handlers: &[Box<dyn ProtocolAcceptHandler>],
     ) -> Result<Option<ProtocolNetworkConnection>, String> {
         for ah in protocol_accept_handlers.iter() {
-            if let Some(nc) = ah
-                .on_accept(stream.clone(), tcp_stream.clone(), addr)
-                .await?
-            {
+            if let Some(nc) = ah.on_accept(stream.clone(), addr).await? {
                 return Ok(Some(nc));
             }
         }
@@ -92,11 +86,11 @@ impl Network {
 
     async fn tcp_acceptor(
         self,
-        tcp_stream: async_std::io::Result<TcpStream>,
+        tcp_stream: io::Result<TcpStream>,
         listener_state: Arc<RwLock<ListenerState>>,
         connection_manager: ConnectionManager,
-        connection_initial_timeout: u64,
-        tls_connection_initial_timeout: u64,
+        connection_initial_timeout_ms: u32,
+        tls_connection_initial_timeout_ms: u32,
     ) {
         let tcp_stream = match tcp_stream {
             Ok(v) => v,
@@ -125,14 +119,16 @@ impl Network {
         log_net!("TCP connection from: {}", addr);
 
         // Create a stream we can peek on
-        let ps = AsyncPeekStream::new(tcp_stream.clone());
+        #[cfg(feature = "rt-tokio")]
+        let tcp_stream = tcp_stream.compat();
+        let ps = AsyncPeekStream::new(tcp_stream);
 
         /////////////////////////////////////////////////////////////
         let mut first_packet = [0u8; PEEK_DETECT_LEN];
 
         // read a chunk of the stream
-        if io::timeout(
-            Duration::from_micros(connection_initial_timeout),
+        if timeout(
+            connection_initial_timeout_ms,
             ps.peek_exact(&mut first_packet),
         )
         .await
@@ -153,14 +149,13 @@ impl Network {
             self.try_tls_handlers(
                 ls.tls_acceptor.as_ref().unwrap(),
                 ps,
-                tcp_stream,
                 addr,
                 &ls.tls_protocol_handlers,
-                tls_connection_initial_timeout,
+                tls_connection_initial_timeout_ms,
             )
             .await
         } else {
-            self.try_handlers(ps, tcp_stream, addr, &ls.protocol_accept_handlers)
+            self.try_handlers(ps, addr, &ls.protocol_accept_handlers)
                 .await
         };
 
@@ -192,11 +187,11 @@ impl Network {
 
     async fn spawn_socket_listener(&self, addr: SocketAddr) -> Result<(), String> {
         // Get config
-        let (connection_initial_timeout, tls_connection_initial_timeout) = {
+        let (connection_initial_timeout_ms, tls_connection_initial_timeout_ms) = {
             let c = self.config.get();
             (
-                ms_to_us(c.network.connection_initial_timeout_ms),
-                ms_to_us(c.network.tls.connection_initial_timeout_ms),
+                c.network.connection_initial_timeout_ms,
+                c.network.tls.connection_initial_timeout_ms,
             )
         };
 
@@ -209,7 +204,13 @@ impl Network {
 
         // Make an async tcplistener from the socket2 socket
         let std_listener: std::net::TcpListener = socket.into();
-        let listener = TcpListener::from(std_listener);
+        cfg_if! {
+            if #[cfg(feature="rt-async-std")] {
+                let listener = TcpListener::from(std_listener);
+            } else if #[cfg(feature="rt-tokio")] {
+                let listener = TcpListener::from_std(std_listener).map_err(map_to_string)?;
+            }
+        }
 
         debug!("spawn_socket_listener: binding successful to {}", addr);
 
@@ -229,8 +230,16 @@ impl Network {
         let jh = spawn(async move {
             // moves listener object in and get incoming iterator
             // when this task exists, the listener will close the socket
-            let _ = listener
-                .incoming()
+
+            cfg_if! {
+                if #[cfg(feature="rt-async-std")] {
+                    let incoming_stream = listener.incoming();
+                } else if #[cfg(feature="rt-tokio")] {
+                    let incoming_stream = tokio_stream::wrappers::TcpListenerStream::new(listener);
+                }
+            }
+
+            let _ = incoming_stream
                 .for_each_concurrent(None, |tcp_stream| {
                     let this = this.clone();
                     let listener_state = listener_state.clone();
@@ -240,8 +249,8 @@ impl Network {
                         tcp_stream,
                         listener_state,
                         connection_manager,
-                        connection_initial_timeout,
-                        tls_connection_initial_timeout,
+                        connection_initial_timeout_ms,
+                        tls_connection_initial_timeout_ms,
                     )
                 })
                 .timeout_at(stop_token)
@@ -255,7 +264,7 @@ impl Network {
         ////////////////////////////////////////////////////////////
 
         // Add to join handles
-        self.add_to_join_handles(MustJoinHandle::new(jh));
+        self.add_to_join_handles(jh);
 
         Ok(())
     }

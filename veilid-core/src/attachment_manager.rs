@@ -1,6 +1,5 @@
 use crate::callback_state_machine::*;
 use crate::dht::Crypto;
-use crate::intf::*;
 use crate::network_manager::*;
 use crate::routing_table::*;
 use crate::xx::*;
@@ -306,9 +305,8 @@ impl AttachmentManager {
         // Create long-running connection maintenance routine
         let this = self.clone();
         self.inner.lock().maintain_peers = true;
-        self.inner.lock().attachment_maintainer_jh = Some(MustJoinHandle::new(intf::spawn(
-            this.attachment_maintainer(),
-        )));
+        self.inner.lock().attachment_maintainer_jh =
+            Some(intf::spawn(this.attachment_maintainer()));
     }
 
     #[instrument(level = "trace", skip(self))]

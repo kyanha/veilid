@@ -5,7 +5,6 @@ use sockets::*;
 pub struct RawTcpNetworkConnection {
     descriptor: ConnectionDescriptor,
     stream: AsyncPeekStream,
-    tcp_stream: TcpStream,
 }
 
 impl fmt::Debug for RawTcpNetworkConnection {
@@ -15,31 +14,33 @@ impl fmt::Debug for RawTcpNetworkConnection {
 }
 
 impl RawTcpNetworkConnection {
-    pub fn new(
-        descriptor: ConnectionDescriptor,
-        stream: AsyncPeekStream,
-        tcp_stream: TcpStream,
-    ) -> Self {
-        Self {
-            descriptor,
-            stream,
-            tcp_stream,
-        }
+    pub fn new(descriptor: ConnectionDescriptor, stream: AsyncPeekStream) -> Self {
+        Self { descriptor, stream }
     }
 
     pub fn descriptor(&self) -> ConnectionDescriptor {
         self.descriptor.clone()
     }
 
-    #[instrument(level = "trace", err, skip(self))]
-    pub async fn close(&self) -> Result<(), String> {
-        // Make an attempt to flush the stream
-        self.stream.clone().close().await.map_err(map_to_string)?;
-        // Then forcibly close the socket
-        self.tcp_stream
-            .shutdown(Shutdown::Both)
-            .map_err(map_to_string)
-    }
+    // #[instrument(level = "trace", err, skip(self))]
+    // pub async fn close(&mut self) -> Result<(), String> {
+    //     // Make an attempt to flush the stream
+    //     self.stream.clone().close().await.map_err(map_to_string)?;
+    //     // Then shut down the write side of the socket to effect a clean close
+    //     cfg_if! {
+    //         if #[cfg(feature="rt-async-std")] {
+    //             self.tcp_stream
+    //                 .shutdown(async_std::net::Shutdown::Write)
+    //                 .map_err(map_to_string)
+    //         } else if #[cfg(feature="rt-tokio")] {
+    //             use tokio::io::AsyncWriteExt;
+    //             self.tcp_stream.get_mut()
+    //                 .shutdown()
+    //                 .await
+    //                 .map_err(map_to_string)
+    //         }
+    //     }
+    // }
 
     async fn send_internal(stream: &mut AsyncPeekStream, message: Vec<u8>) -> Result<(), String> {
         log_net!("sending TCP message of size {}", message.len());
@@ -115,11 +116,10 @@ impl RawTcpProtocolHandler {
         }
     }
 
-    #[instrument(level = "trace", err, skip(self, stream, tcp_stream))]
+    #[instrument(level = "trace", err, skip(self, stream))]
     async fn on_accept_async(
         self,
         stream: AsyncPeekStream,
-        tcp_stream: TcpStream,
         socket_addr: SocketAddr,
     ) -> Result<Option<ProtocolNetworkConnection>, String> {
         log_net!("TCP: on_accept_async: enter");
@@ -139,7 +139,6 @@ impl RawTcpProtocolHandler {
         let conn = ProtocolNetworkConnection::RawTcp(RawTcpNetworkConnection::new(
             ConnectionDescriptor::new(peer_addr, SocketAddress::from_socket_addr(local_address)),
             stream,
-            tcp_stream,
         ));
 
         log_net!(debug "TCP: on_accept_async from: {}", socket_addr);
@@ -173,7 +172,9 @@ impl RawTcpProtocolHandler {
             .local_addr()
             .map_err(map_to_string)
             .map_err(logthru_net!("could not get local address from TCP stream"))?;
-        let ps = AsyncPeekStream::new(ts.clone());
+        #[cfg(feature = "rt-tokio")]
+        let ts = ts.compat();
+        let ps = AsyncPeekStream::new(ts);
 
         // Wrap the stream in a network connection and return it
         let conn = ProtocolNetworkConnection::RawTcp(RawTcpNetworkConnection::new(
@@ -182,7 +183,6 @@ impl RawTcpProtocolHandler {
                 SocketAddress::from_socket_addr(actual_local_address),
             ),
             ps,
-            ts,
         ));
 
         Ok(conn)
@@ -216,7 +216,10 @@ impl RawTcpProtocolHandler {
         //     .local_addr()
         //     .map_err(map_to_string)
         //     .map_err(logthru_net!("could not get local address from TCP stream"))?;
-        let mut ps = AsyncPeekStream::new(ts.clone());
+
+        #[cfg(feature = "rt-tokio")]
+        let ts = ts.compat();
+        let mut ps = AsyncPeekStream::new(ts);
 
         // Send directly from the raw network connection
         // this builds the connection and tears it down immediately after the send
@@ -252,7 +255,9 @@ impl RawTcpProtocolHandler {
         //     .local_addr()
         //     .map_err(map_to_string)
         //     .map_err(logthru_net!("could not get local address from TCP stream"))?;
-        let mut ps = AsyncPeekStream::new(ts.clone());
+        #[cfg(feature = "rt-tokio")]
+        let ts = ts.compat();
+        let mut ps = AsyncPeekStream::new(ts);
 
         // Send directly from the raw network connection
         // this builds the connection and tears it down immediately after the send
@@ -271,9 +276,8 @@ impl ProtocolAcceptHandler for RawTcpProtocolHandler {
     fn on_accept(
         &self,
         stream: AsyncPeekStream,
-        tcp_stream: TcpStream,
         peer_addr: SocketAddr,
     ) -> SystemPinBoxFuture<core::result::Result<Option<ProtocolNetworkConnection>, String>> {
-        Box::pin(self.clone().on_accept_async(stream, tcp_stream, peer_addr))
+        Box::pin(self.clone().on_accept_async(stream, peer_addr))
     }
 }

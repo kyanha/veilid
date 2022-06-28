@@ -6,7 +6,6 @@ cfg_if::cfg_if! {
     if #[cfg(target_arch = "wasm32")] {
         // No accept support for WASM
     } else {
-        use async_std::net::*;
 
         ///////////////////////////////////////////////////////////
         // Accept
@@ -15,7 +14,6 @@ cfg_if::cfg_if! {
             fn on_accept(
                 &self,
                 stream: AsyncPeekStream,
-                tcp_stream: TcpStream,
                 peer_addr: SocketAddr,
             ) -> SystemPinBoxFuture<Result<Option<ProtocolNetworkConnection>, String>>;
         }
@@ -139,7 +137,7 @@ impl NetworkConnection {
         let local_stop_token = stop_source.token();
 
         // Spawn connection processor and pass in protocol connection
-        let processor = MustJoinHandle::new(intf::spawn_local(Self::process_connection(
+        let processor = intf::spawn_local(Self::process_connection(
             connection_manager,
             local_stop_token,
             manager_stop_token,
@@ -148,7 +146,7 @@ impl NetworkConnection {
             protocol_connection,
             inactivity_timeout,
             stats.clone(),
-        )));
+        ));
 
         // Return the connection
         Self {

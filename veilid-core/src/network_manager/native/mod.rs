@@ -5,7 +5,6 @@ mod protocol;
 mod start_protocols;
 
 use super::*;
-use crate::intf::*;
 use crate::routing_table::*;
 use connection_manager::*;
 use network_tcp::*;
@@ -15,10 +14,9 @@ use protocol::ws::WebsocketProtocolHandler;
 pub use protocol::*;
 use utils::network_interfaces::*;
 
-use async_std::io;
-use async_std::net::*;
 use async_tls::TlsAcceptor;
 use futures_util::StreamExt;
+use std::io;
 // xxx: rustls ^0.20
 //use rustls::{server::NoClientAuth, Certificate, PrivateKey, ServerConfig};
 use rustls::{Certificate, NoClientAuth, PrivateKey, ServerConfig};
@@ -26,7 +24,6 @@ use rustls_pemfile::{certs, pkcs8_private_keys, rsa_private_keys};
 use std::fs::File;
 use std::io::BufReader;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 
 /////////////////////////////////////////////////////////////////
 
@@ -558,12 +555,13 @@ impl Network {
             let mut inner = self.inner.lock();
             // take the join handles out
             for h in inner.join_handles.drain(..) {
+                trace!("joining: {:?}", h);
                 unord.push(h);
             }
             // Drop the stop
             drop(inner.stop_source.take());
         }
-        debug!("stopping {} low level network tasks", unord.len());
+        debug!("stopping {} low level network tasks", unord.len(),);
         // Wait for everything to stop
         while unord.next().await.is_some() {}
 

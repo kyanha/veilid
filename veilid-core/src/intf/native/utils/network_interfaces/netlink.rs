@@ -11,7 +11,13 @@ use rtnetlink::packet::{
     nlas::address::Nla, AddressMessage, AF_INET, AF_INET6, IFA_F_DADFAILED, IFA_F_DEPRECATED,
     IFA_F_OPTIMISTIC, IFA_F_PERMANENT, IFA_F_TEMPORARY, IFA_F_TENTATIVE,
 };
-use rtnetlink::{new_connection_with_socket, sys::SmolSocket, Handle, IpVersion};
+cfg_if! {
+    if #[cfg(feature="rt-async-std")] {
+        use rtnetlink::{new_connection_with_socket, sys::SmolSocket as RTNetLinkSocket, Handle, IpVersion};
+    } else if #[cfg(feature="rt-tokio")] {
+        use rtnetlink::{new_connection_with_socket, sys::TokioSocket as RTNetLinkSocket, Handle, IpVersion};
+    }
+}
 use std::convert::TryInto;
 use std::ffi::CStr;
 use std::io;
@@ -54,24 +60,16 @@ fn flags_to_address_flags(flags: u32) -> AddressFlags {
 }
 
 pub struct PlatformSupportNetlink {
-    _connection_jh: intf::JoinHandle<()>,
-    handle: Handle,
+    connection_jh: Option<MustJoinHandle<()>>,
+    handle: Option<Handle>,
     default_route_interfaces: BTreeSet<u32>,
 }
 
 impl PlatformSupportNetlink {
     pub fn new() -> Result<Self, String> {
-        // Get the netlink connection
-        let (connection, handle, _) = new_connection_with_socket::<SmolSocket>()
-            .map_err(map_to_string)
-            .map_err(logthru_net!(error))?;
-
-        // Spawn a connection handler
-        let _connection_jh = intf::spawn(connection);
-
         Ok(PlatformSupportNetlink {
-            _connection_jh,
-            handle,
+            connection_jh: None,
+            handle: None,
             default_route_interfaces: BTreeSet::new(),
         })
     }
@@ -79,7 +77,13 @@ impl PlatformSupportNetlink {
     // Figure out which interfaces have default routes
     async fn refresh_default_route_interfaces(&mut self) -> Result<(), String> {
         self.default_route_interfaces.clear();
-        let mut routesv4 = self.handle.route().get(IpVersion::V4).execute();
+        let mut routesv4 = self
+            .handle
+            .as_ref()
+            .unwrap()
+            .route()
+            .get(IpVersion::V4)
+            .execute();
         while let Some(routev4) = routesv4.try_next().await.unwrap_or_default() {
             if let Some(index) = routev4.output_interface() {
                 //println!("*** ipv4 route: {:#?}", routev4);
@@ -88,7 +92,13 @@ impl PlatformSupportNetlink {
                 }
             }
         }
-        let mut routesv6 = self.handle.route().get(IpVersion::V6).execute();
+        let mut routesv6 = self
+            .handle
+            .as_ref()
+            .unwrap()
+            .route()
+            .get(IpVersion::V6)
+            .execute();
         while let Some(routev6) = routesv6.try_next().await.unwrap_or_default() {
             if let Some(index) = routev6.output_interface() {
                 //println!("*** ipv6 route: {:#?}", routev6);
@@ -228,7 +238,7 @@ impl PlatformSupportNetlink {
         ))
     }
 
-    pub async fn get_interfaces(
+    async fn get_interfaces_internal(
         &mut self,
         interfaces: &mut BTreeMap<String, NetworkInterface>,
     ) -> Result<(), String> {
@@ -242,7 +252,7 @@ impl PlatformSupportNetlink {
 
         // Ask for all the addresses we have
         let mut names = BTreeMap::<u32, String>::new();
-        let mut addresses = self.handle.address().get().execute();
+        let mut addresses = self.handle.as_ref().unwrap().address().get().execute();
         while let Some(msg) = addresses
             .try_next()
             .await
@@ -301,5 +311,31 @@ impl PlatformSupportNetlink {
         }
 
         Ok(())
+    }
+
+    pub async fn get_interfaces(
+        &mut self,
+        interfaces: &mut BTreeMap<String, NetworkInterface>,
+    ) -> Result<(), String> {
+        // Get the netlink connection
+        let (connection, handle, _) = new_connection_with_socket::<RTNetLinkSocket>()
+            .map_err(map_to_string)
+            .map_err(logthru_net!(error))?;
+
+        // Spawn a connection handler
+        let connection_jh = intf::spawn(connection);
+
+        // Save the connection
+        self.connection_jh = Some(connection_jh);
+        self.handle = Some(handle);
+
+        // Do the work
+        let out = self.get_interfaces_internal(interfaces).await;
+
+        // Clean up connection
+        drop(self.handle.take());
+        self.connection_jh.take().unwrap().abort().await;
+
+        out
     }
 }

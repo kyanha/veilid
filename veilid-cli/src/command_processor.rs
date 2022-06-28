@@ -1,7 +1,7 @@
 use crate::client_api_connection::*;
 use crate::settings::Settings;
+use crate::tools::*;
 use crate::ui::*;
-use async_std::prelude::FutureExt;
 use log::*;
 use std::cell::*;
 use std::net::SocketAddr;
@@ -116,7 +116,7 @@ debug               - send a debugging command to the Veilid server
         trace!("CommandProcessor::cmd_shutdown");
         let mut capi = self.capi();
         let ui = self.ui();
-        async_std::task::spawn_local(async move {
+        spawn_detached_local(async move {
             if let Err(e) = capi.server_shutdown().await {
                 error!("Server command 'shutdown' failed to execute: {}", e);
             }
@@ -129,7 +129,7 @@ debug               - send a debugging command to the Veilid server
         trace!("CommandProcessor::cmd_attach");
         let mut capi = self.capi();
         let ui = self.ui();
-        async_std::task::spawn_local(async move {
+        spawn_detached_local(async move {
             if let Err(e) = capi.server_attach().await {
                 error!("Server command 'attach' failed to execute: {}", e);
             }
@@ -142,7 +142,7 @@ debug               - send a debugging command to the Veilid server
         trace!("CommandProcessor::cmd_detach");
         let mut capi = self.capi();
         let ui = self.ui();
-        async_std::task::spawn_local(async move {
+        spawn_detached_local(async move {
             if let Err(e) = capi.server_detach().await {
                 error!("Server command 'detach' failed to execute: {}", e);
             }
@@ -155,7 +155,7 @@ debug               - send a debugging command to the Veilid server
         trace!("CommandProcessor::cmd_disconnect");
         let mut capi = self.capi();
         let ui = self.ui();
-        async_std::task::spawn_local(async move {
+        spawn_detached_local(async move {
             capi.disconnect().await;
             ui.send_callback(callback);
         });
@@ -166,7 +166,7 @@ debug               - send a debugging command to the Veilid server
         trace!("CommandProcessor::cmd_debug");
         let mut capi = self.capi();
         let ui = self.ui();
-        async_std::task::spawn_local(async move {
+        spawn_detached_local(async move {
             match capi.server_debug(rest.unwrap_or_default()).await {
                 Ok(output) => ui.display_string_dialog("Debug Output", output, callback),
                 Err(e) => {
@@ -248,9 +248,7 @@ debug               - send a debugging command to the Veilid server
                 debug!("Connection lost, retrying in 2 seconds");
                 {
                     let waker = self.inner_mut().connection_waker.instance_clone(());
-                    waker
-                        .race(async_std::task::sleep(Duration::from_millis(2000)))
-                        .await;
+                    let _ = timeout(Duration::from_millis(2000), waker).await;
                 }
                 self.inner_mut().connection_waker.reset();
                 first = false;
@@ -306,7 +304,7 @@ debug               - send a debugging command to the Veilid server
     // pub fn stop_connection(&mut self) {
     //     self.inner_mut().reconnect = false;
     //     let mut capi = self.capi().clone();
-    //     async_std::task::spawn_local(async move {
+    //     spawn_detached(async move {
     //         capi.disconnect().await;
     //     });
     // }
@@ -327,7 +325,7 @@ debug               - send a debugging command to the Veilid server
         trace!("CommandProcessor::attach");
         let mut capi = self.capi();
 
-        async_std::task::spawn_local(async move {
+        spawn_detached_local(async move {
             if let Err(e) = capi.server_attach().await {
                 error!("Server command 'attach' failed to execute: {}", e);
             }
@@ -338,7 +336,7 @@ debug               - send a debugging command to the Veilid server
         trace!("CommandProcessor::detach");
         let mut capi = self.capi();
 
-        async_std::task::spawn_local(async move {
+        spawn_detached_local(async move {
             if let Err(e) = capi.server_detach().await {
                 error!("Server command 'detach' failed to execute: {}", e);
             }

@@ -366,7 +366,6 @@ version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a5c45a0dd44b7e6533ac4e7acc38ead1a3b39885f5bbb738140d30ea528abc7c"
 dependencies = [
- "async-std",
  "futures-io",
  "futures-util",
  "log",
@@ -380,7 +379,6 @@ version = "0.17.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a1b71b31561643aa8e7df3effe284fa83ab1a840e52294c5f4bd7bfd8b2becbb"
 dependencies = [
- "async-std",
  "async-tls",
  "futures-io",
  "futures-util",
@@ -402,6 +400,7 @@ dependencies = [
  "futures-util",
  "pin-project 1.0.10",
  "rustc_version",
+ "tokio",
  "wasm-bindgen-futures",
 ]
 
@@ -2763,6 +2762,7 @@ dependencies = [
  "futures",
  "libc",
  "log",
+ "tokio",
 ]
 
 [[package]]
@@ -3040,6 +3040,8 @@ dependencies = [
  "pin-project 1.0.10",
  "rand 0.8.5",
  "thiserror",
+ "tokio",
+ "tokio-stream",
 ]
 
 [[package]]
@@ -3759,6 +3761,7 @@ dependencies = [
  "netlink-proto",
  "nix 0.22.3",
  "thiserror",
+ "tokio",
 ]
 
 [[package]]
@@ -4531,6 +4534,7 @@ checksum = "36943ee01a6d67977dd3f84a5a1d2efeb4ada3a1ae771cadfaa535d9d9fc6507"
 dependencies = [
  "bytes 1.1.0",
  "futures-core",
+ "futures-io",
  "futures-sink",
  "log",
  "pin-project-lite",
@@ -4786,6 +4790,7 @@ dependencies = [
  "smallvec",
  "thiserror",
  "tinyvec",
+ "tokio",
  "url",
 ]
 
@@ -4805,6 +4810,7 @@ dependencies = [
  "resolv-conf",
  "smallvec",
  "thiserror",
+ "tokio",
  "trust-dns-proto",
 ]
 
@@ -4983,7 +4989,6 @@ version = "0.1.0"
 dependencies = [
  "async-std",
  "async-tungstenite 0.8.0",
- "async_executors",
  "bugsalot",
  "capnp",
  "capnp-rpc",
@@ -5004,6 +5009,8 @@ dependencies = [
  "serde_derive",
  "serial_test",
  "thiserror",
+ "tokio",
+ "tokio-util 0.6.10",
  "veilid-core",
 ]
 
@@ -5081,10 +5088,14 @@ dependencies = [
  "static_assertions",
  "stop-token",
  "thiserror",
+ "tokio",
+ "tokio-stream",
+ "tokio-util 0.6.10",
  "tracing",
  "tracing-error",
  "tracing-subscriber",
  "tracing-wasm",
+ "trust-dns-resolver",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "wasm-bindgen-test",
@@ -5104,7 +5115,6 @@ name = "veilid-flutter"
 version = "0.1.0"
 dependencies = [
  "allo-isolate",
- "async-std",
  "backtrace",
  "ffi-support",
  "futures",
@@ -5117,6 +5127,7 @@ dependencies = [
  "parking_lot 0.12.1",
  "serde",
  "serde_json",
+ "tokio",
  "tracing",
  "tracing-opentelemetry",
  "tracing-subscriber",
@@ -5157,6 +5168,7 @@ dependencies = [
  "serial_test",
  "signal-hook",
  "signal-hook-async-std",
+ "tokio",
  "tracing",
  "tracing-appender",
  "tracing-journald",

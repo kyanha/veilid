@@ -6,15 +6,16 @@ mod client_api;
 mod cmdline;
 mod server;
 mod settings;
+mod tools;
 #[cfg(unix)]
 mod unix;
 mod veilid_logs;
 #[cfg(windows)]
 mod windows;
 
-use async_std::task;
 use cfg_if::*;
 use server::*;
+use tools::*;
 use tracing::*;
 use veilid_logs::*;
 
@@ -59,7 +60,7 @@ fn main() -> Result<(), String> {
     // Handle non-normal server modes
     if !matches!(server_mode, ServerMode::Normal) {
         // run the server to set the node id and quit
-        return task::block_on(async {
+        return block_on(async {
             // Init combined console/file logger
             let _logs = VeilidLogs::setup(settings.clone())?;
 
@@ -93,7 +94,7 @@ fn main() -> Result<(), String> {
     .expect("Error setting Ctrl-C handler");
 
     // Run the server loop
-    task::block_on(async {
+    block_on(async {
         // Init combined console/file logger
         let _logs = VeilidLogs::setup(settings.clone())?;
 

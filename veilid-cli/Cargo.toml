@@ -10,6 +10,11 @@ license = "LGPL-2.0-or-later OR MPL-2.0 OR (MIT AND BSD-3-Clause)"
 name = "veilid-cli"
 path = "src/main.rs"
 
+[features]
+default = [ "rt-tokio" ]
+rt-async-std = [ "async-std", "veilid-core/rt-async-std" ]
+rt-tokio = [ "tokio", "tokio-util", "veilid-core/rt-tokio" ]
+
 [target.'cfg(unix)'.dependencies]
 cursive = { path = "../external/cursive/cursive", default-features = false, features = ["ncurses-backend", "toml", "rt-async-std"]}
 
@@ -17,9 +22,10 @@ cursive = { path = "../external/cursive/cursive", default-features = false, feat
 cursive = { path = "../external/cursive/cursive", default-features = false, features = ["crossterm-backend", "toml", "rt-async-std"]}
 
 [dependencies]
-async-std = { version = "^1.9", features = ["unstable", "attributes"] }
-async-tungstenite = { version = "^0.8", features = ["async-std-runtime"] }
-async_executors = { version = "^0", default-features = false, features = [ "async_std" ]}
+async-std = { version = "^1.9", features = ["unstable", "attributes"], optional = true }
+tokio = { version = "^1", features = ["full"], optional = true }
+tokio-util = { version = "^0", features = ["compat"], optional = true}
+async-tungstenite = { version = "^0.8" }
 cursive-flexi-logger-view = { path = "../external/cursive-flexi-logger-view" }
 cursive_buffered_backend = { path = "../external/cursive_buffered_backend" }
 # cursive-multiplex = "0.4.0"
@@ -41,7 +47,7 @@ bugsalot = "^0"
 flexi_logger = { version = "^0", features = ["use_chrono_for_offset"] }
 thiserror = "^1"
 crossbeam-channel = "^0"
-veilid-core = { path = "../veilid-core" }
+veilid-core = { path = "../veilid-core", default_features = false}
 
 [dev-dependencies]
 serial_test = "^0"

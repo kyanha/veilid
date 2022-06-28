@@ -7,7 +7,6 @@ edition = "2021"
 crate-type = ["cdylib", "staticlib", "rlib"]
 
 [dependencies]
-veilid-core = { path="../../veilid-core" }
 tracing = { version = "^0", features = ["log", "attributes"] }
 tracing-subscriber = "^0"
 parking_lot = "^0"
@@ -19,18 +18,20 @@ futures = "^0"
 # Dependencies for native builds only
 # Linux, Windows, Mac, iOS, Android
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-async-std = { version = "^1", features = ["unstable"] }
+veilid-core = { path="../../veilid-core", features = [ "rt-tokio" ] }
+tokio = { version = "^1", features = ["full"] }
 allo-isolate = "^0"
 ffi-support = "^0"
 lazy_static = "^1"
 tracing-opentelemetry = "^0"
-opentelemetry = { version = "^0", features = ["rt-async-std"] }
-opentelemetry-otlp = { version = "^0", features = ["grpc-sys"] }
+opentelemetry = { version = "^0", features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "^0" }
 opentelemetry-semantic-conventions = "^0"
 hostname = "^0"
 
 # Dependencies for WASM builds only
 [target.'cfg(target_arch = "wasm32")'.dependencies]
+veilid-core = { path="../../veilid-core" }
 
 # Dependencies for Android builds only
 [target.'cfg(target_os = "android")'.dependencies]

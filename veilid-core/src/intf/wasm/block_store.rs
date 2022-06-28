@@ -1,5 +1,4 @@
 
-use crate::intf::*;
 use crate::*;
 
 struct BlockStoreInner {

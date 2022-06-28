@@ -5,17 +5,8 @@ use task::{Context, Poll};
 
 ////////
 ///
-trait SendStream: AsyncRead + AsyncWrite + Send + Unpin {
-    fn clone_stream(&self) -> Box<dyn SendStream>;
-}
-impl<S> SendStream for S
-where
-    S: AsyncRead + AsyncWrite + Send + Clone + Unpin + 'static,
-{
-    fn clone_stream(&self) -> Box<dyn SendStream> {
-        Box::new(self.clone())
-    }
-}
+trait SendStream: AsyncRead + AsyncWrite + Send + Unpin {}
+impl<S> SendStream for S where S: AsyncRead + AsyncWrite + Send + Unpin + 'static {}
 
 ////////
 ///
@@ -126,7 +117,7 @@ where
 impl AsyncPeekStream {
     pub fn new<S>(stream: S) -> Self
     where
-        S: AsyncRead + AsyncWrite + Send + Clone + Unpin + 'static,
+        S: AsyncRead + AsyncWrite + Send + Unpin + 'static,
     {
         Self {
             inner: Arc::new(Mutex::new(AsyncPeekStreamInner {

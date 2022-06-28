@@ -369,9 +369,7 @@ impl RoutingTable {
             Self::with_entries(&*inner, cur_ts, BucketEntryState::Unreliable, |k, v| {
                 if v.with(|e| e.needs_ping(&k, cur_ts, relay_node_id)) {
                     let nr = NodeRef::new(self.clone(), k, v, None);
-                    unord.push(MustJoinHandle::new(intf::spawn_local(
-                        rpc.clone().rpc_call_status(nr),
-                    )));
+                    unord.push(intf::spawn_local(rpc.clone().rpc_call_status(nr)));
                 }
                 Option::<()>::None
             });

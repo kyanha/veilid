@@ -1,6 +1,5 @@
+use crate::tools::*;
 use crate::veilid_client_capnp::*;
-use async_std::net::TcpListener;
-use async_std::prelude::FutureExt;
 use capnp::capability::Promise;
 use capnp_rpc::{pry, rpc_twoparty_capnp, twoparty, RpcSystem};
 use failure::*;
@@ -232,7 +231,7 @@ impl veilid_server::Server for VeilidServerImpl {
 // --- Client API Server-Side ---------------------------------
 
 type ClientApiAllFuturesJoinHandle =
-    async_std::task::JoinHandle<Result<Vec<()>, Box<(dyn std::error::Error + 'static)>>>;
+    JoinHandle<Result<Vec<()>, Box<(dyn std::error::Error + 'static)>>>;
 
 struct ClientApiInner {
     veilid_api: veilid_core::VeilidAPI,
@@ -286,13 +285,15 @@ impl ClientApi {
         let listener = TcpListener::bind(bind_addr).await?;
         debug!("Client API listening on: {:?}", bind_addr);
 
-        // Get the
+        // Process the incoming accept stream
+        // xxx switch to stoptoken and use stream wrapper for tokio
         let mut incoming = listener.incoming();
         let stop = self.inner.borrow().stop.clone();
         let incoming_loop = async move {
             while let Some(stream_result) = stop.instance_none().race(incoming.next()).await {
                 let stream = stream_result?;
                 stream.set_nodelay(true)?;
+                // xxx use tokio split code too
                 let (reader, writer) = stream.split();
                 let network = twoparty::VatNetwork::new(
                     reader,
@@ -303,7 +304,7 @@ impl ClientApi {
 
                 let rpc_system = RpcSystem::new(Box::new(network), Some(client.clone().client));
 
-                async_std::task::spawn_local(rpc_system.map(drop));
+                spawn_local(rpc_system.map(drop));
             }
             Ok::<(), Box<dyn std::error::Error>>(())
         };
@@ -332,7 +333,7 @@ impl ClientApi {
 
             if let Some(request_promise) = request(id, registration) {
                 let registration_map2 = registration_map1.clone();
-                async_std::task::spawn_local(request_promise.promise.map(move |r| match r {
+                spawn_local(request_promise.promise.map(move |r| match r {
                     Ok(_) => {
                         if let Some(ref mut s) =
                             registration_map2.borrow_mut().registrations.get_mut(&id)
@@ -385,6 +386,6 @@ impl ClientApi {
             .iter()
             .map(|addr| self.clone().handle_incoming(*addr, client.clone()));
         let bind_futures_join = futures::future::try_join_all(bind_futures);
-        self.inner.borrow_mut().join_handle = Some(async_std::task::spawn_local(bind_futures_join));
+        self.inner.borrow_mut().join_handle = Some(spawn_local(bind_futures_join));
     }
 }

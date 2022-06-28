@@ -1731,7 +1731,7 @@ impl fmt::Debug for VeilidAPIInner {
 impl Drop for VeilidAPIInner {
     fn drop(&mut self) {
         if let Some(context) = self.context.take() {
-            intf::spawn_local(api_shutdown(context)).detach();
+            intf::spawn_detached(api_shutdown(context));
         }
     }
 }

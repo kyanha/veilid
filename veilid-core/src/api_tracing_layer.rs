@@ -97,24 +97,6 @@ impl ApiTracingLayer {
     }
 }
 
-fn display_current_thread_id() -> String {
-    cfg_if! {
-        if #[cfg(target_arch = "wasm32")] {
-            "".to_owned()
-        } else {
-            format!("({}:{:?})",
-                if let Some(n) = async_std::task::current().name() {
-                    n.to_string()
-                }
-                else {
-                    async_std::task::current().id().to_string()
-                },
-                std::thread::current().id()
-            )
-        }
-    }
-}
-
 impl<S: Subscriber + for<'a> registry::LookupSpan<'a>> Layer<S> for ApiTracingLayer {
     fn enabled(&self, metadata: &tracing::Metadata<'_>, _: layer::Context<'_, S>) -> bool {
         if let Some(inner) = &mut *self.inner.lock() {
@@ -188,7 +170,7 @@ impl<S: Subscriber + for<'a> registry::LookupSpan<'a>> Layer<S> for ApiTracingLa
                         .and_then(|file| meta.line().map(|ln| format!("{}:{}", file, ln)))
                         .unwrap_or_default();
 
-                    let message = format!("{}{} {}", origin, display_current_thread_id(), recorder);
+                    let message = format!("{} {}", origin, recorder);
 
                     (inner.update_callback)(VeilidUpdate::Log(VeilidStateLog {
                         log_level,

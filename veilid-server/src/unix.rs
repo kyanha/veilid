@@ -1,9 +1,9 @@
 use crate::server::*;
 use crate::settings::Settings;
+use crate::tools::*;
 use crate::veilid_logs::*;
-use async_std::stream::StreamExt;
-use async_std::task;
 use clap::ArgMatches;
+use futures::StreamExt;
 use signal_hook::consts::signal::*;
 use signal_hook_async_std::Signals;
 use std::io::Read;
@@ -96,7 +96,7 @@ pub fn run_daemon(settings: Settings, _matches: ArgMatches) -> Result<(), String
     };
 
     // Now, run the server
-    task::block_on(async {
+    block_on(async {
         // Init combined console/file logger
         let _logs = VeilidLogs::setup(settings.clone())?;
 
@@ -110,7 +110,7 @@ pub fn run_daemon(settings: Settings, _matches: ArgMatches) -> Result<(), String
             .map_err(|e| format!("failed to init signals: {}", e))?;
         let handle = signals.handle();
 
-        let signals_task = async_std::task::spawn(handle_signals(signals));
+        let signals_task = spawn(handle_signals(signals));
 
         let res = run_veilid_server(settings, ServerMode::Normal).await;
 
