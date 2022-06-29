@@ -561,7 +561,7 @@ impl Network {
             // Drop the stop
             drop(inner.stop_source.take());
         }
-        debug!("stopping {} low level network tasks", unord.len(),);
+        debug!("stopping {} low level network tasks", unord.len());
         // Wait for everything to stop
         while unord.next().await.is_some() {}
 

@@ -13,9 +13,9 @@ cfg_if! {
         pub fn spawn_local<F: Future<Output = T> + 'static, T: 'static>(f: F) -> JoinHandle<T> {
             async_std::task::spawn_local(f)
         }
-        pub fn spawn_detached_local<F: Future<Output = T> + 'static, T: 'static>(f: F) {
-            let _ = async_std::task::spawn_local(f);
-        }
+        // pub fn spawn_detached_local<F: Future<Output = T> + 'static, T: 'static>(f: F) {
+        //     let _ = async_std::task::spawn_local(f);
+        // }
         pub use async_std::task::sleep;
         pub use async_std::future::timeout;
         pub fn block_on<F: Future<Output = T>, T>(f: F) -> T {
@@ -33,9 +33,9 @@ cfg_if! {
         pub fn spawn_local<F: Future<Output = T> + 'static, T: 'static>(f: F) -> JoinHandle<T> {
             tokio::task::spawn_local(f)
         }
-        pub fn spawn_detached_local<F: Future<Output = T> + 'static, T: 'static>(f: F) {
-            let _ = tokio::task::spawn_local(f);
-        }
+        // pub fn spawn_detached_local<F: Future<Output = T> + 'static, T: 'static>(f: F) {
+        //     let _ = tokio::task::spawn_local(f);
+        // }
         pub use tokio::time::sleep;
         pub use tokio::time::timeout;
         pub fn block_on<F: Future<Output = T>, T>(f: F) -> T {

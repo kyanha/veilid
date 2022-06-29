@@ -23,7 +23,7 @@ impl Network {
             // Run thread task to process stream of messages
             let this = self.clone();
 
-            let jh = spawn_with_local_set(async move {
+            let jh = spawn(async move {
                 trace!("UDP listener task spawned");
 
                 // Collect all our protocol handlers into a vector
@@ -49,7 +49,7 @@ impl Network {
                 for ph in protocol_handlers {
                     let network_manager = network_manager.clone();
                     let stop_token = stop_token.clone();
-                    let jh = intf::spawn_local(async move {
+                    let ph_future = async move {
                         let mut data = vec![0u8; 65536];
 
                         loop {
@@ -84,26 +84,18 @@ impl Network {
                                 }
                             }
                         }
-                    });
+                    };
 
-                    protocol_handlers_unordered.push(jh);
+                    protocol_handlers_unordered.push(ph_future);
                 }
                 // Now we wait for join handles to exit,
                 // if any error out it indicates an error needing
                 // us to completely restart the network
-                loop {
-                    match protocol_handlers_unordered.next().await {
-                        Some(v) => {
-                            // true = stopped, false = errored
-                            if !v {
-                                // If any protocol handler fails, our socket died and we need to restart the network
-                                this.inner.lock().network_needs_restart = true;
-                            }
-                        }
-                        None => {
-                            // All protocol handlers exited
-                            break;
-                        }
+                while let Some(v) = protocol_handlers_unordered.next().await {
+                    // true = stopped, false = errored
+                    if !v {
+                        // If any protocol handler fails, our socket died and we need to restart the network
+                        this.inner.lock().network_needs_restart = true;
                     }
                 }
 
@@ -138,6 +130,7 @@ impl Network {
                 if #[cfg(feature="rt-async-std")] {
                     let udp_socket = UdpSocket::from(std_udp_socket);
                 } else if #[cfg(feature="rt-tokio")] {
+                    std_udp_socket.set_nonblocking(true).expect("failed to set nonblocking");
                     let udp_socket = UdpSocket::from_std(std_udp_socket).map_err(map_to_string)?;
                 }
             }
@@ -158,6 +151,7 @@ impl Network {
                 if #[cfg(feature="rt-async-std")] {
                     let udp_socket = UdpSocket::from(std_udp_socket);
                 } else if #[cfg(feature="rt-tokio")] {
+                    std_udp_socket.set_nonblocking(true).expect("failed to set nonblocking");
                     let udp_socket = UdpSocket::from_std(std_udp_socket).map_err(map_to_string)?;
                 }
             }
@@ -184,6 +178,7 @@ impl Network {
             if #[cfg(feature="rt-async-std")] {
                 let udp_socket = UdpSocket::from(std_udp_socket);
             } else if #[cfg(feature="rt-tokio")] {
+                std_udp_socket.set_nonblocking(true).expect("failed to set nonblocking");
                 let udp_socket = UdpSocket::from_std(std_udp_socket).map_err(map_to_string)?;
             }
         }

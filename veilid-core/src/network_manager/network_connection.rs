@@ -137,7 +137,7 @@ impl NetworkConnection {
         let local_stop_token = stop_source.token();
 
         // Spawn connection processor and pass in protocol connection
-        let processor = intf::spawn_local(Self::process_connection(
+        let processor = intf::spawn(Self::process_connection(
             connection_manager,
             local_stop_token,
             manager_stop_token,
@@ -355,8 +355,20 @@ impl Future for NetworkConnection {
     type Output = ();
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> task::Poll<Self::Output> {
+        let mut pending = 0usize;
+
+        // Process all sub-futures, nulling them out when they return ready
         if let Some(mut processor) = self.processor.as_mut() {
-            Pin::new(&mut processor).poll(cx)
+            if Pin::new(&mut processor).poll(cx).is_ready() {
+                self.processor = None;
+            } else {
+                pending += 1
+            }
+        }
+
+        // Any sub-futures pending?
+        if pending > 0 {
+            task::Poll::Pending
         } else {
             task::Poll::Ready(())
         }

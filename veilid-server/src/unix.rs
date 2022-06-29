@@ -116,7 +116,7 @@ pub fn run_daemon(settings: Settings, _matches: ArgMatches) -> Result<(), String
 
         // Terminate the signal stream.
         handle.close();
-        signals_task.await;
+        let _ = signals_task.await;
 
         res
     })

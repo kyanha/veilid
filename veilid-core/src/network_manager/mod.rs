@@ -319,9 +319,9 @@ impl NetworkManager {
         let components = self.inner.lock().components.clone();
         if let Some(components) = components {
             components.net.shutdown().await;
-            components.connection_manager.shutdown().await;
             components.rpc_processor.shutdown().await;
             components.receipt_manager.shutdown().await;
+            components.connection_manager.shutdown().await;
         }
 
         // reset the state

@@ -208,6 +208,7 @@ impl Network {
             if #[cfg(feature="rt-async-std")] {
                 let listener = TcpListener::from(std_listener);
             } else if #[cfg(feature="rt-tokio")] {
+                std_listener.set_nonblocking(true).expect("failed to set nonblocking");
                 let listener = TcpListener::from_std(std_listener).map_err(map_to_string)?;
             }
         }

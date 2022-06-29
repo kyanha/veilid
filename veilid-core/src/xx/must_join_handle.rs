@@ -59,12 +59,25 @@ impl<T: 'static> Future for MustJoinHandle<T> {
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         match Pin::new(self.join_handle.as_mut().unwrap()).poll(cx) {
             Poll::Ready(t) => {
+                if self.completed {
+                    panic!("should not poll completed join handle");
+                }
                 self.completed = true;
                 cfg_if! {
                     if #[cfg(feature="rt-async-std")] {
                         Poll::Ready(t)
                     } else if #[cfg(feature="rt-tokio")] {
-                        Poll::Ready(t.unwrap())
+                        match t {
+                            Ok(t) => Poll::Ready(t),
+                            Err(e) => {
+                                if e.is_panic() {
+                                    // Resume the panic on the main task
+                                    std::panic::resume_unwind(e.into_panic());
+                                } else {
+                                    panic!("join error was not a panic, should not poll after abort");
+                                }
+                            }
+                        }
                     }else if #[cfg(target_arch = "wasm32")] {
                         Poll::Ready(t)
                     } else {

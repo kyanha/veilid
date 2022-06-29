@@ -68,7 +68,7 @@ pub async fn sleep(millis: u32) {
         }
     } else {
         cfg_if! {
-                if #[cfg(feature="rt-async-std")] {
+            if #[cfg(feature="rt-async-std")] {
                 async_std::task::sleep(Duration::from_millis(u64::from(millis))).await;
             } else if #[cfg(feature="rt-tokio")] {
                 tokio::time::sleep(Duration::from_millis(u64::from(millis))).await;

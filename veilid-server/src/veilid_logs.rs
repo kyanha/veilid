@@ -64,13 +64,23 @@ impl VeilidLogs {
                     .into();
             let grpc_endpoint = settingsr.logging.otlp.grpc_endpoint.name.clone();
 
+            cfg_if! {
+                if #[cfg(feature="rt-async-std")] {
+                    let exporter = opentelemetry_otlp::new_exporter()
+                        .grpcio()
+                        .with_endpoint(grpc_endpoint);
+                    let batch = opentelemetry::runtime::AsyncStd;
+                } else if #[cfg(feature="rt-tokio")] {
+                    let exporter = opentelemetry_otlp::new_exporter()
+                        .tonic()
+                        .with_endpoint(format!("http://{}", grpc_endpoint));
+                    let batch = opentelemetry::runtime::Tokio;
+                }
+            }
+
             let tracer = opentelemetry_otlp::new_pipeline()
                 .tracing()
-                .with_exporter(
-                    opentelemetry_otlp::new_exporter()
-                        .grpcio()
-                        .with_endpoint(grpc_endpoint),
-                )
+                .with_exporter(exporter)
                 .with_trace_config(opentelemetry::sdk::trace::config().with_resource(
                     Resource::new(vec![KeyValue::new(
                         opentelemetry_semantic_conventions::resource::SERVICE_NAME,
@@ -82,7 +92,7 @@ impl VeilidLogs {
                             ),
                     )]),
                 ))
-                .install_batch(opentelemetry::runtime::AsyncStd)
+                .install_batch(batch)
                 .map_err(|e| format!("failed to install OpenTelemetry tracer: {}", e))?;
 
             let ignore_list = ignore_list.clone();

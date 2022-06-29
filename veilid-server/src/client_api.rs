@@ -2,16 +2,17 @@ use crate::tools::*;
 use crate::veilid_client_capnp::*;
 use capnp::capability::Promise;
 use capnp_rpc::{pry, rpc_twoparty_capnp, twoparty, RpcSystem};
+use cfg_if::*;
 use failure::*;
-use futures::io::AsyncReadExt;
 use futures::FutureExt as FuturesFutureExt;
 use futures::StreamExt;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::rc::Rc;
+use stop_token::future::FutureExt;
+use stop_token::*;
 use tracing::*;
-use veilid_core::xx::Eventual;
 use veilid_core::*;
 
 #[derive(Fail, Debug)]
@@ -236,7 +237,7 @@ type ClientApiAllFuturesJoinHandle =
 struct ClientApiInner {
     veilid_api: veilid_core::VeilidAPI,
     registration_map: Rc<RefCell<RegistrationMap>>,
-    stop: Eventual,
+    stop: Option<StopSource>,
     join_handle: Option<ClientApiAllFuturesJoinHandle>,
 }
 
@@ -251,7 +252,7 @@ impl ClientApi {
             inner: RefCell::new(ClientApiInner {
                 veilid_api,
                 registration_map: Rc::new(RefCell::new(RegistrationMap::new())),
-                stop: Eventual::new(),
+                stop: Some(StopSource::new()),
                 join_handle: None,
             }),
         })
@@ -266,7 +267,7 @@ impl ClientApi {
                 trace!("ClientApi stop ignored");
                 return;
             }
-            inner.stop.resolve();
+            drop(inner.stop.take());
             inner.join_handle.take().unwrap()
         };
         trace!("ClientApi::stop: waiting for stop");
@@ -286,15 +287,32 @@ impl ClientApi {
         debug!("Client API listening on: {:?}", bind_addr);
 
         // Process the incoming accept stream
-        // xxx switch to stoptoken and use stream wrapper for tokio
-        let mut incoming = listener.incoming();
-        let stop = self.inner.borrow().stop.clone();
+        cfg_if! {
+            if #[cfg(feature="rt-async-std")] {
+                let mut incoming_stream = listener.incoming();
+            } else if #[cfg(feature="rt-tokio")] {
+                let mut incoming_stream = tokio_stream::wrappers::TcpListenerStream::new(listener);
+            }
+        }
+
+        let stop_token = self.inner.borrow().stop.as_ref().unwrap().token();
         let incoming_loop = async move {
-            while let Some(stream_result) = stop.instance_none().race(incoming.next()).await {
+            while let Ok(Some(stream_result)) =
+                incoming_stream.next().timeout_at(stop_token.clone()).await
+            {
                 let stream = stream_result?;
                 stream.set_nodelay(true)?;
-                // xxx use tokio split code too
-                let (reader, writer) = stream.split();
+                cfg_if! {
+                    if #[cfg(feature="rt-async-std")] {
+                        use futures::AsyncReadExt;
+                        let (reader, writer) = stream.split();
+                    } else if #[cfg(feature="rt-tokio")] {
+                        use tokio_util::compat::*;
+                        let (reader, writer) = stream.into_split();
+                        let reader = reader.compat();
+                        let writer = writer.compat_write();
+                    }
+                }
                 let network = twoparty::VatNetwork::new(
                     reader,
                     writer,

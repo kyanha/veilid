@@ -46,6 +46,7 @@ impl ConnectionTable {
         let mut unord = FuturesUnordered::new();
         for table in &mut self.conn_by_descriptor {
             for (_, v) in table.drain() {
+                trace!("connection table join: {:?}", v);
                 unord.push(v);
             }
         }

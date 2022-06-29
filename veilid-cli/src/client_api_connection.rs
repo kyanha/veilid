@@ -196,7 +196,6 @@ impl ClientApiConnection {
         stream.set_nodelay(true).map_err(map_to_string)?;
 
         // Create the VAT network
-
         cfg_if! {
             if #[cfg(feature="rt-async-std")] {
                 let (reader, writer) = stream.split();

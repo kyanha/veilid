@@ -154,7 +154,7 @@ pub async fn run_veilid_server_internal(
     veilid_api.shutdown().await;
 
     // Wait for update receiver to exit
-    update_receiver_jh.await;
+    let _ = update_receiver_jh.await;
 
     out
 }

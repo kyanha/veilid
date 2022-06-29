@@ -202,7 +202,7 @@ cfg_if! {
                 }
                 // Run if we should do that
                 if run {
-                    self.unlock(Some(intf::spawn_with_local_set(future)));
+                    self.unlock(Some(intf::spawn(future)));
                 }
                 // Return the prior result if we have one
                 Ok((out, run))
