@@ -5153,7 +5153,7 @@ dependencies = [
  "directories",
  "failure",
  "flume",
- "futures",
+ "futures-util",
  "hostname",
  "lazy_static",
  "nix 0.24.1",

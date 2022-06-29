@@ -41,7 +41,7 @@ cfg-if = "^1"
 serde = "^1"
 serde_derive = "^1"
 serde_yaml = "^0"
-futures = "^0"
+futures-util = { version = "^0", default_features = false, features = ["alloc"] }
 url = "^2"
 ctrlc = "^3"
 lazy_static = "^1"

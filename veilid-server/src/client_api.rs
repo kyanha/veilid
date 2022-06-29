@@ -4,8 +4,7 @@ use capnp::capability::Promise;
 use capnp_rpc::{pry, rpc_twoparty_capnp, twoparty, RpcSystem};
 use cfg_if::*;
 use failure::*;
-use futures::FutureExt as FuturesFutureExt;
-use futures::StreamExt;
+use futures_util::{future::try_join_all, FutureExt as FuturesFutureExt, StreamExt};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -304,7 +303,7 @@ impl ClientApi {
                 stream.set_nodelay(true)?;
                 cfg_if! {
                     if #[cfg(feature="rt-async-std")] {
-                        use futures::AsyncReadExt;
+                        use futures_util::AsyncReadExt;
                         let (reader, writer) = stream.split();
                     } else if #[cfg(feature="rt-tokio")] {
                         use tokio_util::compat::*;
@@ -403,7 +402,7 @@ impl ClientApi {
         let bind_futures = bind_addrs
             .iter()
             .map(|addr| self.clone().handle_incoming(*addr, client.clone()));
-        let bind_futures_join = futures::future::try_join_all(bind_futures);
+        let bind_futures_join = try_join_all(bind_futures);
         self.inner.borrow_mut().join_handle = Some(spawn_local(bind_futures_join));
     }
 }

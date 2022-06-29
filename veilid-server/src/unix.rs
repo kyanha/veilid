@@ -3,7 +3,7 @@ use crate::settings::Settings;
 use crate::tools::*;
 use crate::veilid_logs::*;
 use clap::ArgMatches;
-use futures::StreamExt;
+use futures_util::StreamExt;
 use signal_hook::consts::signal::*;
 use signal_hook_async_std::Signals;
 use std::io::Read;

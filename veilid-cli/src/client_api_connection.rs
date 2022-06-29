@@ -198,8 +198,10 @@ impl ClientApiConnection {
         // Create the VAT network
         cfg_if! {
             if #[cfg(feature="rt-async-std")] {
+                use futures::AsyncReadExt;
                 let (reader, writer) = stream.split();
             } else if #[cfg(feature="rt-tokio")] {
+                pub use tokio_util::compat::*;
                 let (reader, writer) = stream.into_split();
                 let reader = reader.compat();
                 let writer = writer.compat_write();
