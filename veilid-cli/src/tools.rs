@@ -20,7 +20,6 @@ cfg_if! {
     } else if #[cfg(feature="rt-tokio")] {
         pub use tokio::task::JoinHandle;
         pub use tokio::net::TcpStream;
-        pub use tokio_util::compat::*;
         pub use tokio::time::error::Elapsed as TimeoutError;
         pub fn spawn_local<F: Future<Output = T> + 'static, T: 'static>(f: F) -> JoinHandle<T> {
             tokio::task::spawn_local(f)

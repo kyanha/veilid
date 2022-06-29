@@ -25,12 +25,12 @@ tracing-opentelemetry = "^0"
 opentelemetry = { version = "^0" }
 opentelemetry-otlp = { version = "^0" }
 opentelemetry-semantic-conventions = "^0"
-clap = "^3"
 async-std = { version = "^1", features = ["unstable"], optional = true }
 tokio = { version = "^1", features = ["full"], optional = true }
 tokio-stream = { version = "^0", features = ["net"], optional = true }
 tokio-util = { version = "^0", features = ["compat"], optional = true}
 async-tungstenite = { version = "^0", features = ["async-tls"] }
+clap = "^3"
 directories = "^4"
 capnp = "^0"
 parking_lot = "^0"
