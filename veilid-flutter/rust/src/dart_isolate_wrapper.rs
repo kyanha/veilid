@@ -1,3 +1,4 @@
+use crate::tools::*;
 pub use allo_isolate::ffi::DartCObject;
 pub use allo_isolate::IntoDart;
 use allo_isolate::Isolate;
@@ -35,7 +36,7 @@ impl DartIsolateWrapper {
         T: IntoDart + Debug,
         E: Serialize + Debug,
     {
-        async_std::task::spawn(async move {
+        spawn(async move {
             self.result(future.await);
         });
     }
@@ -46,7 +47,7 @@ impl DartIsolateWrapper {
         T: Serialize + Debug,
         E: Serialize + Debug,
     {
-        async_std::task::spawn(async move {
+        spawn(async move {
             self.result_json(future.await);
         });
     }

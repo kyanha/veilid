@@ -1,5 +1,6 @@
 mod dart_ffi;
 mod dart_isolate_wrapper;
+mod tools;
 
 #[cfg(target_os = "android")]
 use jni::{objects::JClass, objects::JObject, JNIEnv};

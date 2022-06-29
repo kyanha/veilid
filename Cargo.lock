@@ -5115,9 +5115,11 @@ name = "veilid-flutter"
 version = "0.1.0"
 dependencies = [
  "allo-isolate",
+ "async-std",
  "backtrace",
+ "cfg-if 1.0.0",
  "ffi-support",
- "futures",
+ "futures-util",
  "hostname",
  "jni",
  "lazy_static",
@@ -5128,6 +5130,8 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "tokio-stream",
+ "tokio-util 0.6.10",
  "tracing",
  "tracing-opentelemetry",
  "tracing-subscriber",

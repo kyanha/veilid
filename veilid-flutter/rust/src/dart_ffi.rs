@@ -1,6 +1,7 @@
 use crate::dart_isolate_wrapper::*;
+use crate::tools::*;
 use allo_isolate::*;
-use async_std::sync::Mutex as AsyncMutex;
+use cfg_if::*;
 use ffi_support::*;
 use lazy_static::*;
 use opentelemetry::sdk::*;
@@ -184,29 +185,38 @@ pub extern "C" fn configure_veilid_platform(platform_config: FfiStr) {
             platform_config.logging.otlp.level.to_tracing_level().into();
         let grpc_endpoint = platform_config.logging.otlp.grpc_endpoint.clone();
 
+        cfg_if! {
+            if #[cfg(feature="rt-async-std")] {
+                let exporter = opentelemetry_otlp::new_exporter()
+                    .grpcio()
+                    .with_endpoint(grpc_endpoint);
+                let batch = opentelemetry::runtime::AsyncStd;
+            } else if #[cfg(feature="rt-tokio")] {
+                let exporter = opentelemetry_otlp::new_exporter()
+                    .tonic()
+                    .with_endpoint(format!("http://{}", grpc_endpoint));
+                let batch = opentelemetry::runtime::Tokio;
+            }
+        }
+
         let tracer =
             opentelemetry_otlp::new_pipeline()
                 .tracing()
-                .with_exporter(
-                    opentelemetry_otlp::new_exporter()
-                        .grpcio()
-                        .with_endpoint(grpc_endpoint),
-                )
+                .with_exporter(exporter)
                 .with_trace_config(opentelemetry::sdk::trace::config().with_resource(
                     Resource::new(vec![KeyValue::new(
                         opentelemetry_semantic_conventions::resource::SERVICE_NAME,
                         format!(
-                         "{}:{}",
-                         platform_config.logging.otlp.service_name,
-                         hostname::get()
-                             .map(|s| s.to_string_lossy().into_owned())
-                             .unwrap_or_else(|_| "unknown".to_owned())
-                     ),
+                        "{}:{}",
+                        platform_config.logging.otlp.service_name,
+                        hostname::get()
+                            .map(|s| s.to_string_lossy().into_owned())
+                            .unwrap_or_else(|_| "unknown".to_owned())),
                     )]),
                 ))
-                .install_batch(opentelemetry::runtime::AsyncStd)
+                .install_batch(batch)
                 .map_err(|e| format!("failed to install OpenTelemetry tracer: {}", e))
-                .expect("failed to initalize ffi platform");
+                .unwrap();
 
         let ignore_list = ignore_list.clone();
         Some(
@@ -235,7 +245,7 @@ pub extern "C" fn configure_veilid_platform(platform_config: FfiStr) {
 pub extern "C" fn startup_veilid_core(port: i64, config: FfiStr) {
     let config = config.into_opt_string();
     let stream = DartIsolateStream::new(port);
-    async_std::task::spawn(async move {
+    spawn(async move {
         let config_json = match config {
             Some(v) => v,
             None => {
