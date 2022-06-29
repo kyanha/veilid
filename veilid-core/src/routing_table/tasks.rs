@@ -250,11 +250,13 @@ impl RoutingTable {
         log_rtab!(debug "--- bootstrap_task");
 
         // See if we are specifying a direct dialinfo for bootstrap, if so use the direct mechanism
-        if !bootstrap_nodes.is_empty() {
+        if !bootstrap.is_empty() && bootstrap_nodes.is_empty() {
             let mut bootstrap_dialinfos = Vec::<DialInfo>::new();
             for b in &bootstrap {
-                if let Ok(bootstrap_di) = DialInfo::from_str(&b) {
-                    bootstrap_dialinfos.push(bootstrap_di);
+                if let Ok(bootstrap_di_vec) = DialInfo::try_vec_from_url(&b) {
+                    for bootstrap_di in bootstrap_di_vec {
+                        bootstrap_dialinfos.push(bootstrap_di);
+                    }
                 }
             }
             if bootstrap_dialinfos.len() > 0 {
