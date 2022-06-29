@@ -78,8 +78,8 @@ where
     pub async fn recv(&self) -> Result<Vec<u8>, String> {
         let out = match self.stream.clone().next().await {
             Some(Ok(Message::Binary(v))) => v,
-            Some(Ok(_)) => {
-                return Err("Unexpected WS message type".to_owned()).map_err(logthru_net!(error));
+            Some(Ok(x)) => {
+                return Err(format!("Unexpected WS message type: {:?}", x));
             }
             Some(Err(e)) => {
                 return Err(e.to_string()).map_err(logthru_net!(error));

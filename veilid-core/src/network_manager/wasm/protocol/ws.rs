@@ -56,9 +56,8 @@ impl WebsocketNetworkConnection {
     pub async fn recv(&self) -> Result<Vec<u8>, String> {
         let out = match self.inner.ws_stream.clone().next().await {
             Some(WsMessage::Binary(v)) => v,
-            Some(_) => {
-                return Err("Unexpected WS message type".to_owned())
-                    .map_err(logthru_net!(error));
+            Some(x) => {
+                return Err(format!("Unexpected WS message type: {:?}", x));
             }
             None => {
                 return Err("WS stream closed".to_owned()).map_err(logthru_net!(error));
