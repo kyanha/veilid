@@ -23,7 +23,7 @@ if [[ "$1" == "debug" ]]; then
     mkdir -p $OUTPUTDIR
     wasm-bindgen --out-dir $OUTPUTDIR --target web --no-typescript --keep-debug --debug $INPUTDIR/veilid_wasm.wasm
     ./wasm-sourcemap.py $OUTPUTDIR/veilid_wasm_bg.wasm -o $OUTPUTDIR/veilid_wasm_bg.wasm.map --dwarfdump $DWARFDUMP
-    wasm-strip $OUTPUTDIR/veilid_wasm_bg.wasm
+    # wasm-strip $OUTPUTDIR/veilid_wasm_bg.wasm
 else
     OUTPUTDIR=../target/wasm32-unknown-unknown/release/pkg
     INPUTDIR=../target/wasm32-unknown-unknown/release

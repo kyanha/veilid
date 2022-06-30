@@ -283,9 +283,20 @@ impl Crypto {
         cipher.apply_keystream(body);
     }
 
+    pub fn crypt_b2b_no_auth(
+        in_buf: &[u8],
+        nonce: &Nonce,
+        shared_secret: &SharedSecret,
+    ) -> Vec<u8> {
+        let mut cipher = XChaCha20::new(shared_secret.into(), nonce.into());
+        // Allocate uninitialized memory, aligned to 8 byte boundary because capnp is faster this way
+        // and the Vec returned here will be used to hold decrypted rpc messages
+        let mut out_buf = unsafe { aligned_8_u8_vec_uninit(in_buf.len()) };
+        cipher.apply_keystream_b2b(in_buf, &mut out_buf).unwrap();
+        out_buf
+    }
+
     pub fn crypt_no_auth(body: &[u8], nonce: &Nonce, shared_secret: &SharedSecret) -> Vec<u8> {
-        let mut out = body.to_vec();
-        Self::crypt_in_place_no_auth(&mut out, nonce, shared_secret);
-        out
+        Self::crypt_b2b_no_auth(body, nonce, shared_secret)
     }
 }

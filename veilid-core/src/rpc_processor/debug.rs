@@ -24,6 +24,7 @@ pub fn rpc_error_protocol<T: AsRef<str>>(x: T) -> RPCError {
 }
 pub fn rpc_error_capnp_error(e: capnp::Error) -> RPCError {
     error!("RPCError Protocol: capnp error: {}", &e.description);
+    panic!("wtf");
     RPCError::Protocol(e.description)
 }
 pub fn rpc_error_capnp_notinschema(e: capnp::NotInSchema) -> RPCError {

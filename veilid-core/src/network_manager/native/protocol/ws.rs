@@ -78,6 +78,9 @@ where
     pub async fn recv(&self) -> Result<Vec<u8>, String> {
         let out = match self.stream.clone().next().await {
             Some(Ok(Message::Binary(v))) => v,
+            Some(Ok(Message::Close(e))) => {
+                return Err(format!("WS connection closed: {:?}", e));
+            }
             Some(Ok(x)) => {
                 return Err(format!("Unexpected WS message type: {:?}", x));
             }

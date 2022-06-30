@@ -83,9 +83,9 @@ struct RPCMessageHeader {
     peer_noderef: NodeRef, // ensures node doesn't get evicted from routing table until we're done with it
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct RPCMessageData {
-    contents: Vec<u8>, // rpc messages must be a canonicalized single segment
+    contents: Vec<u8>,  // rpc messages must be a canonicalized single segment
 }
 
 impl ReaderSegments for RPCMessageData {

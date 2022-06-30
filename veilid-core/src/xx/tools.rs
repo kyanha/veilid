@@ -235,3 +235,20 @@ cfg_if::cfg_if! {
         }
     }
 }
+
+#[repr(C, align(8))]
+struct AlignToEight([u8; 8]);
+
+pub unsafe fn aligned_8_u8_vec_uninit(n_bytes: usize) -> Vec<u8> {
+    let n_units = (n_bytes + mem::size_of::<AlignToEight>() - 1) / mem::size_of::<AlignToEight>();
+    let mut aligned: Vec<AlignToEight> = Vec::with_capacity(n_units);
+    let ptr = aligned.as_mut_ptr();
+    let cap_units = aligned.capacity();
+    mem::forget(aligned);
+
+    Vec::from_raw_parts(
+        ptr as *mut u8,
+        n_bytes,
+        cap_units * mem::size_of::<AlignToEight>(),
+    )
+}
