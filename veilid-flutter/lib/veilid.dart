@@ -13,7 +13,7 @@ import 'veilid_stub.dart'
 
 class VeilidFFIConfigLoggingTerminal {
   bool enabled;
-  VeilidLogLevel level;
+  VeilidConfigLogLevel level;
 
   VeilidFFIConfigLoggingTerminal({
     required this.enabled,
@@ -29,12 +29,12 @@ class VeilidFFIConfigLoggingTerminal {
 
   VeilidFFIConfigLoggingTerminal.fromJson(Map<String, dynamic> json)
       : enabled = json['enabled'],
-        level = veilidLogLevelFromJson(json['level']);
+        level = veilidConfigLogLevelFromJson(json['level']);
 }
 
 class VeilidFFIConfigLoggingOtlp {
   bool enabled;
-  VeilidLogLevel level;
+  VeilidConfigLogLevel level;
   String grpcEndpoint;
   String serviceName;
 
@@ -56,27 +56,52 @@ class VeilidFFIConfigLoggingOtlp {
 
   VeilidFFIConfigLoggingOtlp.fromJson(Map<String, dynamic> json)
       : enabled = json['enabled'],
-        level = veilidLogLevelFromJson(json['level']),
+        level = veilidConfigLogLevelFromJson(json['level']),
         grpcEndpoint = json['grpc_endpoint'],
         serviceName = json['service_name'];
+}
+
+class VeilidFFIConfigLoggingApi {
+  bool enabled;
+  VeilidConfigLogLevel level;
+
+  VeilidFFIConfigLoggingApi({
+    required this.enabled,
+    required this.level,
+  });
+
+  Map<String, dynamic> get json {
+    return {
+      'enabled': enabled,
+      'level': level.json,
+    };
+  }
+
+  VeilidFFIConfigLoggingApi.fromJson(Map<String, dynamic> json)
+      : enabled = json['enabled'],
+        level = veilidConfigLogLevelFromJson(json['level']);
 }
 
 class VeilidFFIConfigLogging {
   VeilidFFIConfigLoggingTerminal terminal;
   VeilidFFIConfigLoggingOtlp otlp;
+  VeilidFFIConfigLoggingApi api;
 
-  VeilidFFIConfigLogging({required this.terminal, required this.otlp});
+  VeilidFFIConfigLogging(
+      {required this.terminal, required this.otlp, required this.api});
 
   Map<String, dynamic> get json {
     return {
       'terminal': terminal.json,
       'otlp': otlp.json,
+      'api': api.json,
     };
   }
 
   VeilidFFIConfigLogging.fromJson(Map<String, dynamic> json)
       : terminal = VeilidFFIConfigLoggingTerminal.fromJson(json['terminal']),
-        otlp = VeilidFFIConfigLoggingOtlp.fromJson(json['otlp']);
+        otlp = VeilidFFIConfigLoggingOtlp.fromJson(json['otlp']),
+        api = VeilidFFIConfigLoggingApi.fromJson(json['api']);
 }
 
 class VeilidFFIConfig {
@@ -101,7 +126,7 @@ class VeilidFFIConfig {
 
 class VeilidWASMConfigLoggingPerformance {
   bool enabled;
-  VeilidLogLevel level;
+  VeilidConfigLogLevel level;
   bool logsInTimings;
   bool logsInConsole;
 
@@ -123,25 +148,49 @@ class VeilidWASMConfigLoggingPerformance {
 
   VeilidWASMConfigLoggingPerformance.fromJson(Map<String, dynamic> json)
       : enabled = json['enabled'],
-        level = veilidLogLevelFromJson(json['level']),
+        level = veilidConfigLogLevelFromJson(json['level']),
         logsInTimings = json['logs_in_timings'],
         logsInConsole = json['logs_in_console'];
 }
 
+class VeilidWASMConfigLoggingApi {
+  bool enabled;
+  VeilidConfigLogLevel level;
+
+  VeilidWASMConfigLoggingApi({
+    required this.enabled,
+    required this.level,
+  });
+
+  Map<String, dynamic> get json {
+    return {
+      'enabled': enabled,
+      'level': level.json,
+    };
+  }
+
+  VeilidWASMConfigLoggingApi.fromJson(Map<String, dynamic> json)
+      : enabled = json['enabled'],
+        level = veilidConfigLogLevelFromJson(json['level']);
+}
+
 class VeilidWASMConfigLogging {
   VeilidWASMConfigLoggingPerformance performance;
+  VeilidWASMConfigLoggingApi api;
 
-  VeilidWASMConfigLogging({required this.performance});
+  VeilidWASMConfigLogging({required this.performance, required this.api});
 
   Map<String, dynamic> get json {
     return {
       'performance': performance.json,
+      'api': api.json,
     };
   }
 
   VeilidWASMConfigLogging.fromJson(Map<String, dynamic> json)
       : performance =
-            VeilidWASMConfigLoggingPerformance.fromJson(json['performance']);
+            VeilidWASMConfigLoggingPerformance.fromJson(json['performance']),
+        api = VeilidWASMConfigLoggingApi.fromJson(json['api']);
 }
 
 class VeilidWASMConfig {
@@ -899,7 +948,6 @@ class VeilidConfigCapabilities {
 class VeilidConfig {
   String programName;
   String namespace;
-  VeilidConfigLogLevel apiLogLevel;
   VeilidConfigCapabilities capabilities;
   VeilidConfigProtectedStore protectedStore;
   VeilidConfigTableStore tableStore;
@@ -909,7 +957,6 @@ class VeilidConfig {
   VeilidConfig({
     required this.programName,
     required this.namespace,
-    required this.apiLogLevel,
     required this.capabilities,
     required this.protectedStore,
     required this.tableStore,
@@ -921,7 +968,6 @@ class VeilidConfig {
     return {
       'program_name': programName,
       'namespace': namespace,
-      'api_log_level': apiLogLevel.json,
       'capabilities': capabilities.json,
       'protected_store': protectedStore.json,
       'table_store': tableStore.json,
@@ -933,7 +979,6 @@ class VeilidConfig {
   VeilidConfig.fromJson(Map<String, dynamic> json)
       : programName = json['program_name'],
         namespace = json['namespace'],
-        apiLogLevel = json['api_log_level'],
         capabilities = VeilidConfigCapabilities.fromJson(json['capabilities']),
         protectedStore =
             VeilidConfigProtectedStore.fromJson(json['protected_store']),
@@ -1253,9 +1298,9 @@ abstract class Veilid {
   static late Veilid instance = getVeilid();
 
   void configureVeilidPlatform(Map<String, dynamic> platformConfigJson);
+  void changeLogLevel(String layer, VeilidConfigLogLevel logLevel);
   Stream<VeilidUpdate> startupVeilidCore(VeilidConfig config);
   Future<VeilidState> getVeilidState();
-  Future<void> changeApiLogLevel(VeilidConfigLogLevel logLevel);
   Future<void> shutdownVeilidCore();
   Future<String> debug(String command);
   String veilidVersionString();

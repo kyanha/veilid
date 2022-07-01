@@ -1,6 +1,7 @@
 use crate::client_api;
 use crate::settings::*;
 use crate::tools::*;
+use crate::veilid_logs::*;
 use flume::{unbounded, Receiver, Sender};
 use lazy_static::*;
 use parking_lot::Mutex;
@@ -29,14 +30,19 @@ pub fn shutdown() {
     }
 }
 
-pub async fn run_veilid_server(settings: Settings, server_mode: ServerMode) -> Result<(), String> {
-    run_veilid_server_internal(settings, server_mode).await
+pub async fn run_veilid_server(
+    settings: Settings,
+    server_mode: ServerMode,
+    veilid_logs: VeilidLogs,
+) -> Result<(), String> {
+    run_veilid_server_internal(settings, server_mode, veilid_logs).await
 }
 
 #[instrument(err, skip_all)]
 pub async fn run_veilid_server_internal(
     settings: Settings,
     server_mode: ServerMode,
+    veilid_logs: VeilidLogs,
 ) -> Result<(), String> {
     trace!(?settings, ?server_mode);
 
@@ -63,7 +69,7 @@ pub async fn run_veilid_server_internal(
 
     // Start client api if one is requested
     let mut capi = if settingsr.client_api.enabled && matches!(server_mode, ServerMode::Normal) {
-        let some_capi = client_api::ClientApi::new(veilid_api.clone());
+        let some_capi = client_api::ClientApi::new(veilid_api.clone(), veilid_logs.clone());
         some_capi
             .clone()
             .run(settingsr.client_api.listen_address.addrs.clone());
@@ -155,6 +161,10 @@ pub async fn run_veilid_server_internal(
 
     // Wait for update receiver to exit
     let _ = update_receiver_jh.await;
+
+    // Finally, drop logs
+    // this is explicit to ensure we don't accidentally drop them too soon via a move
+    drop(veilid_logs);
 
     out
 }

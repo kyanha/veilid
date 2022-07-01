@@ -32,15 +32,15 @@ typedef _InitializeVeilidFlutterDart = void Function(Pointer<_DartPostCObject>);
 // fn configure_veilid_platform(platform_config: FfiStr)
 typedef _ConfigureVeilidPlatformC = Void Function(Pointer<Utf8>);
 typedef _ConfigureVeilidPlatformDart = void Function(Pointer<Utf8>);
+// fn change_log_level(layer: FfiStr, log_level: FfiStr)
+typedef _ChangeLogLevelC = Void Function(Pointer<Utf8>, Pointer<Utf8>);
+typedef _ChangeLogLevelDart = void Function(Pointer<Utf8>, Pointer<Utf8>);
 // fn startup_veilid_core(port: i64, config: FfiStr)
 typedef _StartupVeilidCoreC = Void Function(Int64, Pointer<Utf8>);
 typedef _StartupVeilidCoreDart = void Function(int, Pointer<Utf8>);
 // fn get_veilid_state(port: i64)
 typedef _GetVeilidStateC = Void Function(Int64);
 typedef _GetVeilidStateDart = void Function(int);
-// fn change_api_log_level(port: i64, log_level: FfiStr)
-typedef _ChangeApiLogLevelC = Void Function(Int64, Pointer<Utf8>);
-typedef _ChangeApiLogLevelDart = void Function(int, Pointer<Utf8>);
 // fn debug(port: i64, log_level: FfiStr)
 typedef _DebugC = Void Function(Int64, Pointer<Utf8>);
 typedef _DebugDart = void Function(int, Pointer<Utf8>);
@@ -246,9 +246,9 @@ class VeilidFFI implements Veilid {
   // Shared library functions
   final _FreeStringDart _freeString;
   final _ConfigureVeilidPlatformDart _configureVeilidPlatform;
+  final _ChangeLogLevelDart _changeLogLevel;
   final _StartupVeilidCoreDart _startupVeilidCore;
   final _GetVeilidStateDart _getVeilidState;
-  final _ChangeApiLogLevelDart _changeApiLogLevel;
   final _ShutdownVeilidCoreDart _shutdownVeilidCore;
   final _DebugDart _debug;
   final _VeilidVersionStringDart _veilidVersionString;
@@ -261,15 +261,15 @@ class VeilidFFI implements Veilid {
         _configureVeilidPlatform = dylib.lookupFunction<
             _ConfigureVeilidPlatformC,
             _ConfigureVeilidPlatformDart>('configure_veilid_platform'),
+        _changeLogLevel =
+            dylib.lookupFunction<_ChangeLogLevelC, _ChangeLogLevelDart>(
+                'change_log_level'),
         _startupVeilidCore =
             dylib.lookupFunction<_StartupVeilidCoreC, _StartupVeilidCoreDart>(
                 'startup_veilid_core'),
         _getVeilidState =
             dylib.lookupFunction<_GetVeilidStateC, _GetVeilidStateDart>(
                 'get_veilid_state'),
-        _changeApiLogLevel =
-            dylib.lookupFunction<_ChangeApiLogLevelC, _ChangeApiLogLevelDart>(
-                'change_api_log_level'),
         _shutdownVeilidCore =
             dylib.lookupFunction<_ShutdownVeilidCoreC, _ShutdownVeilidCoreDart>(
                 'shutdown_veilid_core'),
@@ -298,6 +298,17 @@ class VeilidFFI implements Veilid {
   }
 
   @override
+  void changeLogLevel(String layer, VeilidConfigLogLevel logLevel) {
+    var nativeLogLevel =
+        jsonEncode(logLevel.json, toEncodable: veilidApiToEncodable)
+            .toNativeUtf8();
+    var nativeLayer = layer.toNativeUtf8();
+    _changeLogLevel(nativeLayer, nativeLogLevel);
+    malloc.free(nativeLayer);
+    malloc.free(nativeLogLevel);
+  }
+
+  @override
   Stream<VeilidUpdate> startupVeilidCore(VeilidConfig config) {
     var nativeConfig =
         jsonEncode(config.json, toEncodable: veilidApiToEncodable)
@@ -315,18 +326,6 @@ class VeilidFFI implements Veilid {
     final sendPort = recvPort.sendPort;
     _getVeilidState(sendPort.nativePort);
     return processFutureJson(VeilidState.fromJson, recvPort.first);
-  }
-
-  @override
-  Future<void> changeApiLogLevel(VeilidConfigLogLevel logLevel) async {
-    var nativeLogLevel =
-        jsonEncode(logLevel.json, toEncodable: veilidApiToEncodable)
-            .toNativeUtf8();
-    final recvPort = ReceivePort("change_api_log_level");
-    final sendPort = recvPort.sendPort;
-    _changeApiLogLevel(sendPort.nativePort, nativeLogLevel);
-    malloc.free(nativeLogLevel);
-    return processFutureVoid(recvPort.first);
   }
 
   @override

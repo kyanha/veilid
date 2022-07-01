@@ -30,6 +30,7 @@ mod routing_table;
 mod rpc_processor;
 mod veilid_api;
 mod veilid_config;
+mod veilid_layer_filter;
 mod veilid_rng;
 
 #[macro_use]
@@ -40,6 +41,7 @@ pub use self::attachment_manager::AttachmentState;
 pub use self::core_context::{api_startup, api_startup_json, UpdateCallback};
 pub use self::veilid_api::*;
 pub use self::veilid_config::*;
+pub use self::veilid_layer_filter::*;
 
 pub mod veilid_capnp {
     include!(concat!(env!("OUT_DIR"), "/proto/veilid_capnp.rs"));

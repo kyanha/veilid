@@ -1861,12 +1861,6 @@ impl VeilidAPI {
             .map_err(|e| VeilidAPIError::Internal { message: e })
     }
 
-    // Change api logging level if it is enabled
-    #[instrument(skip(self))]
-    pub async fn change_api_log_level(&self, log_level: VeilidConfigLogLevel) {
-        ApiTracingLayer::change_api_log_level(log_level.to_veilid_log_level());
-    }
-
     ////////////////////////////////////////////////////////////////
     // Direct Node Access (pretty much for testing only)
 

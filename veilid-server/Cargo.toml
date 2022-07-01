@@ -36,7 +36,6 @@ capnp = "^0"
 parking_lot = "^0"
 capnp-rpc = "^0"
 config = { version = "^0", features = ["yaml"] }
-failure = "^0"
 cfg-if = "^1"
 serde = "^1"
 serde_derive = "^1"

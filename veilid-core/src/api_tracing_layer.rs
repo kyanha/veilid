@@ -10,14 +10,10 @@ cfg_if! {
         use send_wrapper::*;
 
         struct ApiLoggerInner {
-            max_level: Option<VeilidLogLevel>,
-            filter_ignore: Cow<'static, [Cow<'static, str>]>,
             update_callback: SendWrapper<UpdateCallback>,
         }
     } else {
         struct ApiLoggerInner {
-            max_level: Option<VeilidLogLevel>,
-            filter_ignore: Cow<'static, [Cow<'static, str>]>,
             update_callback: UpdateCallback,
         }
     }
@@ -31,21 +27,14 @@ pub struct ApiTracingLayer {
 static API_LOGGER: OnceCell<ApiTracingLayer> = OnceCell::new();
 
 impl ApiTracingLayer {
-    fn new_inner(
-        max_level: Option<VeilidLogLevel>,
-        update_callback: UpdateCallback,
-    ) -> ApiLoggerInner {
+    fn new_inner(update_callback: UpdateCallback) -> ApiLoggerInner {
         cfg_if! {
             if #[cfg(target_arch = "wasm32")] {
                 ApiLoggerInner {
-                    max_level,
-                    filter_ignore: Default::default(),
                     update_callback: SendWrapper::new(update_callback),
                 }
             } else {
                 ApiLoggerInner {
-                    max_level,
-                    filter_ignore: Default::default(),
                     update_callback,
                 }
             }
@@ -53,11 +42,11 @@ impl ApiTracingLayer {
     }
 
     #[instrument(level = "debug", skip(update_callback))]
-    pub async fn init(max_level: Option<VeilidLogLevel>, update_callback: UpdateCallback) {
+    pub async fn init(update_callback: UpdateCallback) {
         let api_logger = API_LOGGER.get_or_init(|| ApiTracingLayer {
             inner: Arc::new(Mutex::new(None)),
         });
-        let apilogger_inner = Some(Self::new_inner(max_level, update_callback));
+        let apilogger_inner = Some(Self::new_inner(update_callback));
         *api_logger.inner.lock() = apilogger_inner;
     }
 
@@ -76,52 +65,9 @@ impl ApiTracingLayer {
             })
             .clone()
     }
-
-    #[instrument(level = "trace")]
-    pub fn change_api_log_level(max_level: Option<VeilidLogLevel>) {
-        if let Some(api_logger) = API_LOGGER.get() {
-            if let Some(inner) = &mut *api_logger.inner.lock() {
-                inner.max_level = max_level;
-            }
-        }
-    }
-
-    pub fn add_filter_ignore_str(filter_ignore: &'static str) {
-        if let Some(api_logger) = API_LOGGER.get() {
-            if let Some(inner) = &mut *api_logger.inner.lock() {
-                let mut list = Vec::from(&*inner.filter_ignore);
-                list.push(Cow::Borrowed(filter_ignore));
-                inner.filter_ignore = Cow::Owned(list);
-            }
-        }
-    }
 }
 
 impl<S: Subscriber + for<'a> registry::LookupSpan<'a>> Layer<S> for ApiTracingLayer {
-    fn enabled(&self, metadata: &tracing::Metadata<'_>, _: layer::Context<'_, S>) -> bool {
-        if let Some(inner) = &mut *self.inner.lock() {
-            // Skip things that are out of our level
-            if let Some(max_level) = inner.max_level {
-                if VeilidLogLevel::from_tracing_level(*metadata.level()) > max_level {
-                    return false;
-                }
-            } else {
-                return false;
-            }
-            // Skip filtered targets
-            let skip = match (metadata.target(), &*inner.filter_ignore) {
-                (path, ignore) if !ignore.is_empty() => {
-                    // Check that the module path does not match any ignore filters
-                    ignore.iter().any(|v| path.starts_with(&**v))
-                }
-                _ => false,
-            };
-            !skip
-        } else {
-            false
-        }
-    }
-
     fn on_new_span(
         &self,
         attrs: &tracing::span::Attributes<'_>,
@@ -161,23 +107,16 @@ impl<S: Subscriber + for<'a> registry::LookupSpan<'a>> Layer<S> for ApiTracingLa
             event.record(&mut recorder);
             let meta = event.metadata();
             let level = meta.level();
-            if let Some(max_level) = inner.max_level {
-                if VeilidLogLevel::from_tracing_level(*level) <= max_level {
-                    let log_level = VeilidLogLevel::from_tracing_level(*level);
+            let log_level = VeilidLogLevel::from_tracing_level(*level);
 
-                    let origin = meta
-                        .file()
-                        .and_then(|file| meta.line().map(|ln| format!("{}:{}", file, ln)))
-                        .unwrap_or_default();
+            let origin = meta
+                .file()
+                .and_then(|file| meta.line().map(|ln| format!("{}:{}", file, ln)))
+                .unwrap_or_default();
 
-                    let message = format!("{} {}", origin, recorder);
+            let message = format!("{} {}", origin, recorder);
 
-                    (inner.update_callback)(VeilidUpdate::Log(VeilidStateLog {
-                        log_level,
-                        message,
-                    }))
-                }
-            }
+            (inner.update_callback)(VeilidUpdate::Log(VeilidStateLog { log_level, message }))
         }
     }
 }
@@ -230,66 +169,5 @@ impl core::fmt::Display for StringRecorder {
 impl core::default::Default for StringRecorder {
     fn default() -> Self {
         StringRecorder::new()
-    }
-}
-
-impl log::Log for ApiTracingLayer {
-    fn enabled(&self, metadata: &log::Metadata<'_>) -> bool {
-        if let Some(inner) = &mut *self.inner.lock() {
-            if let Some(max_level) = inner.max_level {
-                return VeilidLogLevel::from_log_level(metadata.level()) <= max_level;
-            }
-        }
-        false
-    }
-
-    fn log(&self, record: &log::Record<'_>) {
-        if let Some(inner) = &mut *self.inner.lock() {
-            // Skip filtered targets
-            let skip = match (record.target(), &*inner.filter_ignore) {
-                (path, ignore) if !ignore.is_empty() => {
-                    // Check that the module path does not match any ignore filters
-                    ignore.iter().any(|v| path.starts_with(&**v))
-                }
-                _ => false,
-            };
-            if skip {
-                return;
-            }
-
-            let metadata = record.metadata();
-            let level = metadata.level();
-            let log_level = VeilidLogLevel::from_log_level(level);
-            if let Some(max_level) = inner.max_level {
-                if log_level <= max_level {
-                    let file = record.file().unwrap_or("<unknown>");
-                    let loc = if level >= log::Level::Debug {
-                        if let Some(line) = record.line() {
-                            format!("[{}:{}] ", file, line)
-                        } else {
-                            format!("[{}:<unknown>] ", file)
-                        }
-                    } else {
-                        "".to_owned()
-                    };
-                    let tgt = if record.target().is_empty() {
-                        "".to_owned()
-                    } else {
-                        format!("{}: ", record.target())
-                    };
-
-                    let message = format!("{}{}{}", tgt, loc, record.args());
-
-                    (inner.update_callback)(VeilidUpdate::Log(VeilidStateLog {
-                        log_level,
-                        message,
-                    }))
-                }
-            }
-        }
-    }
-
-    fn flush(&self) {
-        // always flushes
     }
 }

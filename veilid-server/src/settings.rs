@@ -192,6 +192,7 @@ pub fn load_config(
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum LogLevel {
+    Off,
     Error,
     Warn,
     Info,
@@ -205,6 +206,7 @@ impl<'de> serde::Deserialize<'de> for LogLevel {
     {
         let s = String::deserialize(deserializer)?;
         match s.to_ascii_lowercase().as_str() {
+            "off" => Ok(LogLevel::Off),
             "error" => Ok(LogLevel::Error),
             "warn" => Ok(LogLevel::Warn),
             "info" => Ok(LogLevel::Info),
@@ -223,6 +225,7 @@ impl serde::Serialize for LogLevel {
         S: serde::Serializer,
     {
         let s = match self {
+            LogLevel::Off => "off",
             LogLevel::Error => "error",
             LogLevel::Warn => "warn",
             LogLevel::Info => "info",
@@ -233,13 +236,14 @@ impl serde::Serialize for LogLevel {
     }
 }
 
-pub fn convert_loglevel(log_level: LogLevel) -> veilid_core::VeilidLogLevel {
+pub fn convert_loglevel(log_level: LogLevel) -> veilid_core::VeilidConfigLogLevel {
     match log_level {
-        LogLevel::Error => veilid_core::VeilidLogLevel::Error,
-        LogLevel::Warn => veilid_core::VeilidLogLevel::Warn,
-        LogLevel::Info => veilid_core::VeilidLogLevel::Info,
-        LogLevel::Debug => veilid_core::VeilidLogLevel::Debug,
-        LogLevel::Trace => veilid_core::VeilidLogLevel::Trace,
+        LogLevel::Off => veilid_core::VeilidConfigLogLevel::Off,
+        LogLevel::Error => veilid_core::VeilidConfigLogLevel::Error,
+        LogLevel::Warn => veilid_core::VeilidConfigLogLevel::Warn,
+        LogLevel::Info => veilid_core::VeilidConfigLogLevel::Info,
+        LogLevel::Debug => veilid_core::VeilidConfigLogLevel::Debug,
+        LogLevel::Trace => veilid_core::VeilidConfigLogLevel::Trace,
     }
 }
 
@@ -1015,13 +1019,6 @@ impl Settings {
                     "".to_owned()
                 } else {
                     format!("subnode{}", inner.testing.subnode_index)
-                })),
-                "api_log_level" => Ok(Box::new(if inner.logging.api.enabled {
-                    veilid_core::VeilidConfigLogLevel::from_veilid_log_level(Some(
-                        convert_loglevel(inner.logging.api.level),
-                    ))
-                } else {
-                    veilid_core::VeilidConfigLogLevel::Off
                 })),
                 "capabilities.protocol_udp" => Ok(Box::new(true)),
                 "capabilities.protocol_connect_tcp" => Ok(Box::new(true)),

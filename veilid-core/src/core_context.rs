@@ -59,20 +59,10 @@ impl ServicesContext {
 
     #[instrument(err, skip_all)]
     pub async fn startup(&mut self) -> Result<(), VeilidAPIError> {
-        let api_log_level: VeilidConfigLogLevel = self.config.get().api_log_level;
-        if api_log_level != VeilidConfigLogLevel::Off {
-            ApiTracingLayer::init(
-                api_log_level.to_veilid_log_level(),
-                self.update_callback.clone(),
-            )
-            .await;
-            for ig in crate::DEFAULT_LOG_IGNORE_LIST {
-                ApiTracingLayer::add_filter_ignore_str(ig);
-            }
-            info!("Veilid API logging initialized");
-        }
-
         info!("Veilid API starting up");
+
+        info!("init api tracing");
+        ApiTracingLayer::init(self.update_callback.clone()).await;
 
         // Set up protected store
         trace!("init protected store");

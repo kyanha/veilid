@@ -7,7 +7,6 @@ Future<VeilidConfig> getDefaultVeilidConfig() async {
   return VeilidConfig(
     programName: "Veilid Plugin Test",
     namespace: "",
-    apiLogLevel: VeilidConfigLogLevel.info,
     capabilities: VeilidConfigCapabilities(
       protocolUDP: !kIsWeb,
       protocolConnectTCP: !kIsWeb,

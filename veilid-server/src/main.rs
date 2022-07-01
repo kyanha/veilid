@@ -62,9 +62,9 @@ fn main() -> Result<(), String> {
         // run the server to set the node id and quit
         return block_on(async {
             // Init combined console/file logger
-            let _logs = VeilidLogs::setup(settings.clone())?;
+            let veilid_logs = VeilidLogs::setup(settings.clone())?;
 
-            run_veilid_server(settings, server_mode).await
+            run_veilid_server(settings, server_mode, veilid_logs).await
         })
         .map(|v| {
             println!("{}", success);
@@ -96,8 +96,8 @@ fn main() -> Result<(), String> {
     // Run the server loop
     block_on(async {
         // Init combined console/file logger
-        let _logs = VeilidLogs::setup(settings.clone())?;
+        let veilid_logs = VeilidLogs::setup(settings.clone())?;
 
-        run_veilid_server(settings, server_mode).await
+        run_veilid_server(settings, server_mode, veilid_logs).await
     })
 }

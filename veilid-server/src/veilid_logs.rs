@@ -3,25 +3,22 @@ use cfg_if::*;
 use opentelemetry::sdk::*;
 use opentelemetry::*;
 use opentelemetry_otlp::WithExportConfig;
+use parking_lot::*;
+use std::collections::BTreeMap;
 use std::path::*;
-use tracing::*;
+use std::sync::Arc;
 use tracing_appender::*;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::*;
 
-pub struct VeilidLogs {
-    pub guard: Option<non_blocking::WorkerGuard>,
+struct VeilidLogsInner {
+    _guard: Option<non_blocking::WorkerGuard>,
+    filters: BTreeMap<&'static str, veilid_core::VeilidLayerFilter>,
 }
 
-fn logfilter<T: AsRef<str>, V: AsRef<[T]>>(metadata: &Metadata, ignore_list: V) -> bool {
-    // Skip filtered targets
-    !match (metadata.target(), ignore_list.as_ref()) {
-        (path, ignore) if !ignore.is_empty() => {
-            // Check that the module path does not match any ignore filters
-            ignore.iter().any(|v| path.starts_with(v.as_ref()))
-        }
-        _ => false,
-    }
+#[derive(Clone)]
+pub struct VeilidLogs {
+    inner: Arc<Mutex<VeilidLogsInner>>,
 }
 
 impl VeilidLogs {
@@ -29,39 +26,26 @@ impl VeilidLogs {
         let settingsr = settings.read();
 
         // Set up subscriber and layers
-        let mut ignore_list = Vec::<String>::new();
-        for ig in veilid_core::DEFAULT_LOG_IGNORE_LIST {
-            ignore_list.push(ig.to_owned());
-        }
-
         let subscriber = Registry::default();
+        let mut layers = Vec::new();
+        let mut filters = BTreeMap::new();
 
         // Terminal logger
-        let subscriber = subscriber.with(if settingsr.logging.terminal.enabled {
-            let terminal_max_log_level: level_filters::LevelFilter =
-                convert_loglevel(settingsr.logging.terminal.level)
-                    .to_tracing_level()
-                    .into();
-            let ignore_list = ignore_list.clone();
-            Some(
-                fmt::Layer::new()
-                    .compact()
-                    .with_writer(std::io::stdout)
-                    .with_filter(terminal_max_log_level)
-                    .with_filter(filter::FilterFn::new(move |metadata| {
-                        logfilter(metadata, &ignore_list)
-                    })),
-            )
-        } else {
-            None
-        });
+        if settingsr.logging.terminal.enabled {
+            let filter = veilid_core::VeilidLayerFilter::new(
+                convert_loglevel(settingsr.logging.terminal.level),
+                None,
+            );
+            let layer = fmt::Layer::new()
+                .compact()
+                .with_writer(std::io::stdout)
+                .with_filter(filter.clone());
+            filters.insert("terminal", filter);
+            layers.push(layer.boxed());
+        }
 
         // OpenTelemetry logger
-        let subscriber = subscriber.with(if settingsr.logging.otlp.enabled {
-            let otlp_max_log_level: level_filters::LevelFilter =
-                convert_loglevel(settingsr.logging.otlp.level)
-                    .to_tracing_level()
-                    .into();
+        if settingsr.logging.otlp.enabled {
             let grpc_endpoint = settingsr.logging.otlp.grpc_endpoint.name.clone();
 
             cfg_if! {
@@ -95,27 +79,20 @@ impl VeilidLogs {
                 .install_batch(batch)
                 .map_err(|e| format!("failed to install OpenTelemetry tracer: {}", e))?;
 
-            let ignore_list = ignore_list.clone();
-            Some(
-                tracing_opentelemetry::layer()
-                    .with_tracer(tracer)
-                    .with_filter(otlp_max_log_level)
-                    .with_filter(filter::FilterFn::new(move |metadata| {
-                        logfilter(metadata, &ignore_list)
-                    })),
-            )
-        } else {
-            None
-        });
+            let filter = veilid_core::VeilidLayerFilter::new(
+                convert_loglevel(settingsr.logging.otlp.level),
+                None,
+            );
+            let layer = tracing_opentelemetry::layer()
+                .with_tracer(tracer)
+                .with_filter(filter.clone());
+            filters.insert("otlp", filter);
+            layers.push(layer.boxed());
+        }
 
         // File logger
         let mut guard = None;
-        let subscriber = subscriber.with(if settingsr.logging.file.enabled {
-            let file_max_log_level: level_filters::LevelFilter =
-                convert_loglevel(settingsr.logging.file.level)
-                    .to_tracing_level()
-                    .into();
-
+        if settingsr.logging.file.enabled {
             let log_path = Path::new(&settingsr.logging.file.path);
             let full_path = std::env::current_dir()
                 .unwrap_or(PathBuf::from(MAIN_SEPARATOR.to_string()))
@@ -140,50 +117,88 @@ impl VeilidLogs {
                 tracing_appender::non_blocking(appender);
             guard = Some(non_blocking_guard);
 
-            let ignore_list = ignore_list.clone();
-            Some(
-                fmt::Layer::new()
-                    .compact()
-                    .with_writer(non_blocking_appender)
-                    .with_filter(file_max_log_level)
-                    .with_filter(filter::FilterFn::new(move |metadata| {
-                        logfilter(metadata, &ignore_list)
-                    })),
-            )
-        } else {
-            None
-        });
+            let filter = veilid_core::VeilidLayerFilter::new(
+                convert_loglevel(settingsr.logging.file.level),
+                None,
+            );
+            let layer = fmt::Layer::new()
+                .compact()
+                .with_writer(non_blocking_appender)
+                .with_filter(filter.clone());
+
+            filters.insert("file", filter);
+            layers.push(layer.boxed());
+        }
 
         // API logger
-        let subscriber = subscriber.with(if settingsr.logging.api.enabled {
-            // Get layer from veilid core, filtering is done by ApiTracingLayer automatically
-            Some(veilid_core::ApiTracingLayer::get())
-        } else {
-            None
-        });
+        if settingsr.logging.api.enabled {
+            let filter = veilid_core::VeilidLayerFilter::new(
+                convert_loglevel(settingsr.logging.api.level),
+                None,
+            );
+            let layer = veilid_core::ApiTracingLayer::get().with_filter(filter.clone());
+            filters.insert("api", filter);
+            layers.push(layer.boxed());
+        }
 
         // Systemd Journal logger
         cfg_if! {
             if #[cfg(target_os = "linux")] {
-                let subscriber = subscriber.with(if settingsr.logging.system.enabled {
-                    let ignore_list = ignore_list.clone();
-                    let system_max_log_level: level_filters::LevelFilter = convert_loglevel(settingsr.logging.system.level).to_tracing_level().into();
-                    Some(tracing_journald::layer().map_err(|e| format!("failed to set up journald logging: {}", e))?
-                        .with_filter(system_max_log_level)
-                        .with_filter(filter::FilterFn::new(move |metadata| {
-                            logfilter(metadata, &ignore_list)
-                        }))
-                    )
-                } else {
-                    None
-                });
+                if settingsr.logging.system.enabled {
+                    let filter = veilid_core::VeilidLayerFilter::new(
+                        convert_loglevel(settingsr.logging.system.level),
+                        None,
+                    );
+                    let layer =tracing_journald::layer().map_err(|e| format!("failed to set up journald logging: {}", e))?
+                        .with_filter(filter.clone());
+                    filters.insert("system", filter);
+                    layers.push(layer.boxed());
+                }
             }
         }
 
+        let subscriber = subscriber.with(layers);
         subscriber
             .try_init()
             .map_err(|e| format!("failed to initialize logging: {}", e))?;
 
-        Ok(VeilidLogs { guard })
+        Ok(VeilidLogs {
+            inner: Arc::new(Mutex::new(VeilidLogsInner {
+                _guard: guard,
+                filters,
+            })),
+        })
+    }
+
+    pub fn change_log_level(
+        &self,
+        layer: String,
+        log_level: veilid_core::VeilidConfigLogLevel,
+    ) -> Result<(), veilid_core::VeilidAPIError> {
+        // get layer to change level on
+        let layer = if layer == "all" { "".to_owned() } else { layer };
+
+        // change log level on appropriate layer
+        let inner = self.inner.lock();
+        if layer.is_empty() {
+            // Change all layers
+            for f in inner.filters.values() {
+                f.set_max_level(log_level);
+            }
+        } else {
+            // Change a specific layer
+            let f = match inner.filters.get(layer.as_str()) {
+                Some(f) => f,
+                None => {
+                    return Err(veilid_core::VeilidAPIError::InvalidArgument {
+                        context: "change_log_level".to_owned(),
+                        argument: "layer".to_owned(),
+                        value: layer,
+                    });
+                }
+            };
+            f.set_max_level(log_level);
+        }
+        Ok(())
     }
 }

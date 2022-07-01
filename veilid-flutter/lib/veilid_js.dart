@@ -28,6 +28,13 @@ class VeilidJS implements Veilid {
   }
 
   @override
+  void changeLogLevel(String layer, VeilidConfigLogLevel logLevel) {
+    var logLevelJsonString =
+        jsonEncode(logLevel.json, toEncodable: veilidApiToEncodable);
+    js_util.callMethod(wasm, "change_log_level", [layer, logLevelJsonString]);
+  }
+
+  @override
   Stream<VeilidUpdate> startupVeilidCore(VeilidConfig config) async* {
     var streamController = StreamController<VeilidUpdate>();
     updateCallback(String update) {
@@ -51,12 +58,6 @@ class VeilidJS implements Veilid {
   Future<VeilidState> getVeilidState() async {
     return VeilidState.fromJson(jsonDecode(await _wrapApiPromise(
         js_util.callMethod(wasm, "get_veilid_state", []))));
-  }
-
-  @override
-  Future<void> changeApiLogLevel(VeilidConfigLogLevel logLevel) {
-    return _wrapApiPromise(js_util.callMethod(wasm, "change_api_log_level",
-        [jsonEncode(logLevel.json, toEncodable: veilidApiToEncodable)]));
   }
 
   @override

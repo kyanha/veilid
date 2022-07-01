@@ -5155,7 +5155,6 @@ dependencies = [
  "ctrlc",
  "daemonize",
  "directories",
- "failure",
  "flume",
  "futures-util",
  "hostname",

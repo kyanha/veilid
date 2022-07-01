@@ -1,12 +1,14 @@
 use crate::tools::*;
 use crate::veilid_client_capnp::*;
+use crate::veilid_logs::VeilidLogs;
 use capnp::capability::Promise;
 use capnp_rpc::{pry, rpc_twoparty_capnp, twoparty, RpcSystem};
 use cfg_if::*;
-use failure::*;
 use futures_util::{future::try_join_all, FutureExt as FuturesFutureExt, StreamExt};
+use serde::*;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::fmt;
 use std::net::SocketAddr;
 use std::rc::Rc;
 use stop_token::future::FutureExt;
@@ -14,9 +16,20 @@ use stop_token::*;
 use tracing::*;
 use veilid_core::*;
 
-#[derive(Fail, Debug)]
-#[fail(display = "Client API error: {}", _0)]
-pub struct ClientAPIError(String);
+// Encoding for ApiResult
+fn encode_api_result<T: Serialize + fmt::Debug>(
+    result: &Result<T, VeilidAPIError>,
+    builder: &mut api_result::Builder,
+) {
+    match result {
+        Ok(v) => {
+            builder.set_ok(&serialize_json(v));
+        }
+        Err(e) => {
+            builder.set_err(&serialize_json(e));
+        }
+    }
+}
 
 // --- interface Registration ---------------------------------
 
@@ -67,17 +80,19 @@ impl registration::Server for RegistrationImpl {}
 
 struct VeilidServerImpl {
     veilid_api: veilid_core::VeilidAPI,
+    veilid_logs: VeilidLogs,
     next_id: u64,
     pub registration_map: Rc<RefCell<RegistrationMap>>,
 }
 
 impl VeilidServerImpl {
     #[instrument(level = "trace", skip_all)]
-    pub fn new(veilid_api: veilid_core::VeilidAPI) -> Self {
+    pub fn new(veilid_api: veilid_core::VeilidAPI, veilid_logs: VeilidLogs) -> Self {
         Self {
             next_id: 0,
             registration_map: Rc::new(RefCell::new(RegistrationMap::new())),
             veilid_api,
+            veilid_logs,
         }
     }
 }
@@ -115,13 +130,7 @@ impl veilid_server::Server for VeilidServerImpl {
 
             let mut res = results.get();
             res.set_registration(registration);
-            let mut rpc_state = res.init_state(
-                state
-                    .len()
-                    .try_into()
-                    .map_err(|e| ::capnp::Error::failed(format!("{:?}", e)))?,
-            );
-            rpc_state.push_str(&state);
+            res.set_state(&state);
 
             Ok(())
         })
@@ -135,14 +144,11 @@ impl veilid_server::Server for VeilidServerImpl {
     ) -> Promise<(), ::capnp::Error> {
         trace!("VeilidServerImpl::debug");
         let veilid_api = self.veilid_api.clone();
-        let what = pry!(pry!(params.get()).get_what()).to_owned();
+        let command = pry!(pry!(params.get()).get_command()).to_owned();
 
         Promise::from_future(async move {
-            let output = veilid_api
-                .debug(what)
-                .await
-                .map_err(|e| ::capnp::Error::failed(format!("{:?}", e)))?;
-            results.get().set_output(output.as_str());
+            let result = veilid_api.debug(command).await;
+            encode_api_result(&result, &mut results.get().init_result());
             Ok(())
         })
     }
@@ -151,15 +157,14 @@ impl veilid_server::Server for VeilidServerImpl {
     fn attach(
         &mut self,
         _params: veilid_server::AttachParams,
-        mut _results: veilid_server::AttachResults,
+        mut results: veilid_server::AttachResults,
     ) -> Promise<(), ::capnp::Error> {
         trace!("VeilidServerImpl::attach");
         let veilid_api = self.veilid_api.clone();
         Promise::from_future(async move {
-            veilid_api
-                .attach()
-                .await
-                .map_err(|e| ::capnp::Error::failed(format!("{:?}", e)))
+            let result = veilid_api.attach().await;
+            encode_api_result(&result, &mut results.get().init_result());
+            Ok(())
         })
     }
 
@@ -167,15 +172,14 @@ impl veilid_server::Server for VeilidServerImpl {
     fn detach(
         &mut self,
         _params: veilid_server::DetachParams,
-        mut _results: veilid_server::DetachResults,
+        mut results: veilid_server::DetachResults,
     ) -> Promise<(), ::capnp::Error> {
         trace!("VeilidServerImpl::detach");
         let veilid_api = self.veilid_api.clone();
         Promise::from_future(async move {
-            veilid_api
-                .detach()
-                .await
-                .map_err(|e| ::capnp::Error::failed(format!("{:?}", e)))
+            let result = veilid_api.detach().await;
+            encode_api_result(&result, &mut results.get().init_result());
+            Ok(())
         })
     }
 
@@ -208,23 +212,29 @@ impl veilid_server::Server for VeilidServerImpl {
         trace!("VeilidServerImpl::get_state");
         let veilid_api = self.veilid_api.clone();
         Promise::from_future(async move {
-            let state = veilid_api
-                .get_state()
-                .await
-                .map_err(|e| ::capnp::Error::failed(format!("{:?}", e)))?;
-            let state = serialize_json(state);
-
-            let res = results.get();
-            let mut rpc_state = res.init_state(
-                state
-                    .len()
-                    .try_into()
-                    .map_err(|e| ::capnp::Error::failed(format!("{:?}", e)))?,
-            );
-            rpc_state.push_str(&state);
-
+            let result = veilid_api.get_state().await;
+            encode_api_result(&result, &mut results.get().init_result());
             Ok(())
         })
+    }
+
+    #[instrument(level = "trace", skip_all)]
+    fn change_log_level(
+        &mut self,
+        params: veilid_server::ChangeLogLevelParams,
+        mut results: veilid_server::ChangeLogLevelResults,
+    ) -> Promise<(), ::capnp::Error> {
+        trace!("VeilidServerImpl::change_log_level");
+
+        let layer = pry!(pry!(params.get()).get_layer()).to_owned();
+        let log_level_json = pry!(pry!(params.get()).get_log_level()).to_owned();
+        let log_level: veilid_core::VeilidConfigLogLevel =
+            pry!(veilid_core::deserialize_json(&log_level_json)
+                .map_err(|e| ::capnp::Error::failed(format!("{:?}", e))));
+
+        let result = self.veilid_logs.change_log_level(layer, log_level);
+        encode_api_result(&result, &mut results.get().init_result());
+        Promise::ok(())
     }
 }
 
@@ -235,6 +245,7 @@ type ClientApiAllFuturesJoinHandle =
 
 struct ClientApiInner {
     veilid_api: veilid_core::VeilidAPI,
+    veilid_logs: VeilidLogs,
     registration_map: Rc<RefCell<RegistrationMap>>,
     stop: Option<StopSource>,
     join_handle: Option<ClientApiAllFuturesJoinHandle>,
@@ -246,10 +257,11 @@ pub struct ClientApi {
 
 impl ClientApi {
     #[instrument(level = "trace", skip_all)]
-    pub fn new(veilid_api: veilid_core::VeilidAPI) -> Rc<Self> {
+    pub fn new(veilid_api: veilid_core::VeilidAPI, veilid_logs: VeilidLogs) -> Rc<Self> {
         Rc::new(Self {
             inner: RefCell::new(ClientApiInner {
                 veilid_api,
+                veilid_logs,
                 registration_map: Rc::new(RefCell::new(RegistrationMap::new())),
                 stop: Some(StopSource::new()),
                 join_handle: None,
@@ -393,7 +405,10 @@ impl ClientApi {
     #[instrument(level = "trace", skip(self))]
     pub fn run(self: Rc<Self>, bind_addrs: Vec<SocketAddr>) {
         // Create client api VeilidServer
-        let veilid_server_impl = VeilidServerImpl::new(self.inner.borrow().veilid_api.clone());
+        let veilid_server_impl = VeilidServerImpl::new(
+            self.inner.borrow().veilid_api.clone(),
+            self.inner.borrow().veilid_logs.clone(),
+        );
         self.inner.borrow_mut().registration_map = veilid_server_impl.registration_map.clone();
 
         // Make a client object for the server to send to each rpc client

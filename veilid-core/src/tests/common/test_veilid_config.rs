@@ -169,7 +169,6 @@ fn config_callback(key: String) -> ConfigCallbackReturn {
     match key.as_str() {
         "program_name" => Ok(Box::new(String::from("Veilid"))),
         "namespace" => Ok(Box::new(String::from(""))),
-        "api_log_level" => Ok(Box::new(VeilidConfigLogLevel::Off)),
         "capabilities.protocol_udp" => Ok(Box::new(true)),
         "capabilities.protocol_connect_tcp" => Ok(Box::new(true)),
         "capabilities.protocol_accept_tcp" => Ok(Box::new(true)),

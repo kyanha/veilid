@@ -8,6 +8,19 @@ use std::net::SocketAddr;
 use std::rc::Rc;
 use std::time::{Duration, SystemTime};
 use veilid_core::xx::{Eventual, EventualCommon};
+use veilid_core::VeilidConfigLogLevel;
+
+pub fn convert_loglevel(s: &str) -> Result<VeilidConfigLogLevel, String> {
+    match s.to_ascii_lowercase().as_str() {
+        "off" => Ok(VeilidConfigLogLevel::Off),
+        "error" => Ok(VeilidConfigLogLevel::Error),
+        "warn" => Ok(VeilidConfigLogLevel::Warn),
+        "info" => Ok(VeilidConfigLogLevel::Info),
+        "debug" => Ok(VeilidConfigLogLevel::Debug),
+        "trace" => Ok(VeilidConfigLogLevel::Trace),
+        _ => Err(format!("Invalid log level: {}", s)),
+    }
+}
 
 #[derive(PartialEq, Clone)]
 pub enum ConnectionState {
@@ -97,6 +110,7 @@ shutdown            - shut the server down
 attach              - attach the server to the Veilid network
 detach              - detach the server from the Veilid network
 debug               - send a debugging command to the Veilid server
+change_log_level    - change the log level for a tracing layer
 "#,
         );
         let ui = self.ui();
@@ -131,7 +145,7 @@ debug               - send a debugging command to the Veilid server
         let ui = self.ui();
         spawn_detached_local(async move {
             if let Err(e) = capi.server_attach().await {
-                error!("Server command 'attach' failed to execute: {}", e);
+                error!("Server command 'attach' failed: {}", e);
             }
             ui.send_callback(callback);
         });
@@ -144,7 +158,7 @@ debug               - send a debugging command to the Veilid server
         let ui = self.ui();
         spawn_detached_local(async move {
             if let Err(e) = capi.server_detach().await {
-                error!("Server command 'detach' failed to execute: {}", e);
+                error!("Server command 'detach' failed: {}", e);
             }
             ui.send_callback(callback);
         });
@@ -170,7 +184,40 @@ debug               - send a debugging command to the Veilid server
             match capi.server_debug(rest.unwrap_or_default()).await {
                 Ok(output) => ui.display_string_dialog("Debug Output", output, callback),
                 Err(e) => {
-                    error!("Server command 'debug' failed to execute: {}", e);
+                    error!("Server command 'debug' failed: {}", e);
+                    ui.send_callback(callback);
+                }
+            }
+        });
+        Ok(())
+    }
+
+    pub fn cmd_change_log_level(
+        &self,
+        rest: Option<String>,
+        callback: UICallback,
+    ) -> Result<(), String> {
+        trace!("CommandProcessor::cmd_change_log_level");
+        let mut capi = self.capi();
+        let ui = self.ui();
+        spawn_detached_local(async move {
+            let (layer, rest) = Self::word_split(&rest.unwrap_or_default());
+            let log_level = match convert_loglevel(&rest.unwrap_or_default()) {
+                Ok(v) => v,
+                Err(e) => {
+                    error!("failed to change log level: {}", e);
+                    ui.send_callback(callback);
+                    return;
+                }
+            };
+
+            match capi.server_change_log_level(layer, log_level).await {
+                Ok(()) => {
+                    info!("Log level changed");
+                    ui.send_callback(callback);
+                }
+                Err(e) => {
+                    error!("Server command 'change_log_level' failed: {}", e);
                     ui.send_callback(callback);
                 }
             }
@@ -190,6 +237,7 @@ debug               - send a debugging command to the Veilid server
             "attach" => self.cmd_attach(callback),
             "detach" => self.cmd_detach(callback),
             "debug" => self.cmd_debug(rest, callback),
+            "change_log_level" => self.cmd_change_log_level(rest, callback),
             _ => {
                 let ui = self.ui();
                 ui.send_callback(callback);

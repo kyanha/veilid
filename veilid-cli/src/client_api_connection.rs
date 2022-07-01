@@ -3,6 +3,7 @@ use crate::tools::*;
 use crate::veilid_client_capnp::*;
 use capnp::capability::Promise;
 use capnp_rpc::{pry, rpc_twoparty_capnp, twoparty, Disconnector, RpcSystem};
+use serde::de::DeserializeOwned;
 use std::cell::RefCell;
 use std::net::SocketAddr;
 use std::rc::Rc;
@@ -26,6 +27,30 @@ macro_rules! pry_result {
             }
         }
     };
+}
+
+fn map_to_internal_error<T: ToString>(e: T) -> VeilidAPIError {
+    VeilidAPIError::Internal {
+        message: e.to_string(),
+    }
+}
+
+fn decode_api_result<T: DeserializeOwned + fmt::Debug>(
+    reader: &api_result::Reader,
+) -> Result<T, VeilidAPIError> {
+    match reader.which().map_err(map_to_internal_error)? {
+        api_result::Which::Ok(v) => {
+            let ok_val = v.map_err(map_to_internal_error)?;
+            let res: T = veilid_core::deserialize_json(ok_val).map_err(map_to_internal_error)?;
+            Ok(res)
+        }
+        api_result::Which::Err(e) => {
+            let err_val = e.map_err(map_to_internal_error)?;
+            let res: VeilidAPIError =
+                veilid_core::deserialize_json(err_val).map_err(map_to_internal_error)?;
+            Err(res)
+        }
+    }
 }
 
 struct VeilidClientImpl {
@@ -254,7 +279,13 @@ impl ClientApiConnection {
         };
         let request = server.borrow().attach_request();
         let response = request.send().promise.await.map_err(map_to_string)?;
-        response.get().map(drop).map_err(map_to_string)
+        let reader = response
+            .get()
+            .map_err(map_to_string)?
+            .get_result()
+            .map_err(map_to_string)?;
+        let res: Result<(), VeilidAPIError> = decode_api_result(&reader);
+        res.map_err(map_to_string)
     }
 
     pub async fn server_detach(&mut self) -> Result<(), String> {
@@ -269,7 +300,13 @@ impl ClientApiConnection {
         };
         let request = server.borrow().detach_request();
         let response = request.send().promise.await.map_err(map_to_string)?;
-        response.get().map(drop).map_err(map_to_string)
+        let reader = response
+            .get()
+            .map_err(map_to_string)?
+            .get_result()
+            .map_err(map_to_string)?;
+        let res: Result<(), VeilidAPIError> = decode_api_result(&reader);
+        res.map_err(map_to_string)
     }
 
     pub async fn server_shutdown(&mut self) -> Result<(), String> {
@@ -294,18 +331,47 @@ impl ClientApiConnection {
             inner
                 .server
                 .as_ref()
-                .ok_or_else(|| "Not connected, ignoring attach request".to_owned())?
+                .ok_or_else(|| "Not connected, ignoring debug request".to_owned())?
                 .clone()
         };
         let mut request = server.borrow().debug_request();
-        request.get().set_what(&what);
+        request.get().set_command(&what);
         let response = request.send().promise.await.map_err(map_to_string)?;
-        response
+        let reader = response
             .get()
             .map_err(map_to_string)?
-            .get_output()
-            .map(|o| o.to_owned())
-            .map_err(map_to_string)
+            .get_result()
+            .map_err(map_to_string)?;
+        let res: Result<String, VeilidAPIError> = decode_api_result(&reader);
+        res.map_err(map_to_string)
+    }
+
+    pub async fn server_change_log_level(
+        &mut self,
+        layer: String,
+        log_level: VeilidConfigLogLevel,
+    ) -> Result<(), String> {
+        trace!("ClientApiConnection::change_log_level");
+        let server = {
+            let inner = self.inner.borrow();
+            inner
+                .server
+                .as_ref()
+                .ok_or_else(|| "Not connected, ignoring change_log_level request".to_owned())?
+                .clone()
+        };
+        let mut request = server.borrow().change_log_level_request();
+        request.get().set_layer(&layer);
+        let log_level_json = veilid_core::serialize_json(&log_level);
+        request.get().set_log_level(&log_level_json);
+        let response = request.send().promise.await.map_err(map_to_string)?;
+        let reader = response
+            .get()
+            .map_err(map_to_string)?
+            .get_result()
+            .map_err(map_to_string)?;
+        let res: Result<(), VeilidAPIError> = decode_api_result(&reader);
+        res.map_err(map_to_string)
     }
 
     // Start Client API connection

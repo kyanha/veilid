@@ -98,7 +98,7 @@ pub fn run_daemon(settings: Settings, _matches: ArgMatches) -> Result<(), String
     // Now, run the server
     block_on(async {
         // Init combined console/file logger
-        let _logs = VeilidLogs::setup(settings.clone())?;
+        let veilid_logs = VeilidLogs::setup(settings.clone())?;
 
         // Daemonize
         daemon
@@ -112,7 +112,7 @@ pub fn run_daemon(settings: Settings, _matches: ArgMatches) -> Result<(), String
 
         let signals_task = spawn(handle_signals(signals));
 
-        let res = run_veilid_server(settings, ServerMode::Normal).await;
+        let res = run_veilid_server(settings, ServerMode::Normal, veilid_logs).await;
 
         // Terminate the signal stream.
         handle.close();

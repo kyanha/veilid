@@ -7,7 +7,9 @@ use lazy_static::*;
 use opentelemetry::sdk::*;
 use opentelemetry::*;
 use opentelemetry_otlp::WithExportConfig;
+use parking_lot::Mutex;
 use serde::*;
+use std::collections::BTreeMap;
 use std::os::raw::c_char;
 use std::sync::Arc;
 use tracing::*;
@@ -15,9 +17,10 @@ use tracing_subscriber::prelude::*;
 use tracing_subscriber::*;
 
 // Globals
-
 lazy_static! {
     static ref VEILID_API: AsyncMutex<Option<veilid_core::VeilidAPI>> = AsyncMutex::new(None);
+    static ref FILTERS: Mutex<BTreeMap<&'static str, veilid_core::VeilidLayerFilter>> =
+        Mutex::new(BTreeMap::new());
 }
 
 async fn get_veilid_api() -> Result<veilid_core::VeilidAPI, veilid_core::VeilidAPIError> {
@@ -33,17 +36,6 @@ async fn take_veilid_api() -> Result<veilid_core::VeilidAPI, veilid_core::Veilid
     api_lock
         .take()
         .ok_or(veilid_core::VeilidAPIError::NotInitialized)
-}
-
-fn logfilter<T: AsRef<str>, V: AsRef<[T]>>(metadata: &Metadata, ignore_list: V) -> bool {
-    // Skip filtered targets
-    !match (metadata.target(), ignore_list.as_ref()) {
-        (path, ignore) if !ignore.is_empty() => {
-            // Check that the module path does not match any ignore filters
-            ignore.iter().any(|v| path.starts_with(v.as_ref()))
-        }
-        _ => false,
-    }
 }
 
 /////////////////////////////////////////
@@ -75,21 +67,28 @@ macro_rules! check_err_json {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct VeilidFFIConfigLoggingTerminal {
     pub enabled: bool,
-    pub level: veilid_core::VeilidLogLevel,
+    pub level: veilid_core::VeilidConfigLogLevel,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct VeilidFFIConfigLoggingOtlp {
     pub enabled: bool,
-    pub level: veilid_core::VeilidLogLevel,
+    pub level: veilid_core::VeilidConfigLogLevel,
     pub grpc_endpoint: String,
     pub service_name: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct VeilidFFIConfigLoggingApi {
+    pub enabled: bool,
+    pub level: veilid_core::VeilidConfigLogLevel,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct VeilidFFIConfigLogging {
     pub terminal: VeilidFFIConfigLoggingTerminal,
     pub otlp: VeilidFFIConfigLoggingOtlp,
+    pub api: VeilidFFIConfigLoggingApi,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -149,40 +148,24 @@ pub extern "C" fn configure_veilid_platform(platform_config: FfiStr) {
         .expect("failed to deserialize plaform config json");
 
     // Set up subscriber and layers
-    let mut ignore_list = Vec::<String>::new();
-    for ig in veilid_core::DEFAULT_LOG_IGNORE_LIST {
-        ignore_list.push(ig.to_owned());
-    }
-
     let subscriber = Registry::default();
+    let mut layers = Vec::new();
+    let mut filters = (*FILTERS).lock();
 
     // Terminal logger
-    let subscriber = subscriber.with(if platform_config.logging.terminal.enabled {
-        let terminal_max_log_level: level_filters::LevelFilter = platform_config
-            .logging
-            .terminal
-            .level
-            .to_tracing_level()
-            .into();
-
-        let ignore_list = ignore_list.clone();
-        Some(
-            fmt::Layer::new()
-                .compact()
-                .with_writer(std::io::stdout)
-                .with_filter(terminal_max_log_level)
-                .with_filter(filter::FilterFn::new(move |metadata| {
-                    logfilter(metadata, &ignore_list)
-                })),
-        )
-    } else {
-        None
-    });
+    if platform_config.logging.terminal.enabled {
+        let filter =
+            veilid_core::VeilidLayerFilter::new(platform_config.logging.terminal.level, None);
+        let layer = fmt::Layer::new()
+            .compact()
+            .with_writer(std::io::stdout)
+            .with_filter(filter.clone());
+        filters.insert("terminal", filter);
+        layers.push(layer.boxed());
+    };
 
     // OpenTelemetry logger
-    let subscriber = subscriber.with(if platform_config.logging.otlp.enabled {
-        let otlp_max_log_level: level_filters::LevelFilter =
-            platform_config.logging.otlp.level.to_tracing_level().into();
+    if platform_config.logging.otlp.enabled {
         let grpc_endpoint = platform_config.logging.otlp.grpc_endpoint.clone();
 
         cfg_if! {
@@ -218,26 +201,54 @@ pub extern "C" fn configure_veilid_platform(platform_config: FfiStr) {
                 .map_err(|e| format!("failed to install OpenTelemetry tracer: {}", e))
                 .unwrap();
 
-        let ignore_list = ignore_list.clone();
-        Some(
-            tracing_opentelemetry::layer()
-                .with_tracer(tracer)
-                .with_filter(otlp_max_log_level)
-                .with_filter(filter::FilterFn::new(move |metadata| {
-                    logfilter(metadata, &ignore_list)
-                })),
-        )
-    } else {
-        None
-    });
+        let filter = veilid_core::VeilidLayerFilter::new(platform_config.logging.otlp.level, None);
+        let layer = tracing_opentelemetry::layer()
+            .with_tracer(tracer)
+            .with_filter(filter.clone());
+        filters.insert("otlp", filter);
+        layers.push(layer.boxed());
+    }
 
-    // API logger (always add layer, startup will init this if it is enabled in settings)
-    let subscriber = subscriber.with(veilid_core::ApiTracingLayer::get());
+    // API logger
+    if platform_config.logging.api.enabled {
+        let filter = veilid_core::VeilidLayerFilter::new(platform_config.logging.api.level, None);
+        let layer = veilid_core::ApiTracingLayer::get().with_filter(filter.clone());
+        filters.insert("api", filter);
+        layers.push(layer.boxed());
+    }
+
+    let subscriber = subscriber.with(layers);
 
     subscriber
         .try_init()
         .map_err(|e| format!("failed to initialize logging: {}", e))
         .expect("failed to initalize ffi platform");
+}
+
+#[no_mangle]
+#[instrument(level = "debug")]
+pub extern "C" fn change_log_level(layer: FfiStr, log_level: FfiStr) {
+    // get layer to change level on
+    let layer = layer.into_opt_string().unwrap_or("all".to_owned());
+    let layer = if layer == "all" { "".to_owned() } else { layer };
+
+    // get log level to change layer to
+    let log_level = log_level.into_opt_string();
+    let log_level: veilid_core::VeilidConfigLogLevel =
+        veilid_core::deserialize_opt_json(log_level).unwrap();
+
+    // change log level on appropriate layer
+    let filters = (*FILTERS).lock();
+    if layer.is_empty() {
+        // Change all layers
+        for f in filters.values() {
+            f.set_max_level(log_level);
+        }
+    } else {
+        // Change a specific layer
+        let f = filters.get(layer.as_str()).unwrap();
+        f.set_max_level(log_level);
+    }
 }
 
 #[no_mangle]
@@ -288,20 +299,6 @@ pub extern "C" fn get_veilid_state(port: i64) {
         let veilid_api = get_veilid_api().await?;
         let core_state = veilid_api.get_state().await?;
         APIResult::Ok(core_state)
-    });
-}
-
-#[no_mangle]
-#[instrument(level = "debug")]
-pub extern "C" fn change_api_log_level(port: i64, log_level: FfiStr) {
-    let log_level = log_level.into_opt_string();
-    DartIsolateWrapper::new(port).spawn_result_json(async move {
-        let log_level: veilid_core::VeilidConfigLogLevel =
-            veilid_core::deserialize_opt_json(log_level)?;
-        //let veilid_api = get_veilid_api().await?;
-        //veilid_api.change_api_log_level(log_level).await;
-        veilid_core::ApiTracingLayer::change_api_log_level(log_level.to_veilid_log_level());
-        APIRESULT_VOID
     });
 }
 

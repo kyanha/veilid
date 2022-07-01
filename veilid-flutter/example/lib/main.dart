@@ -59,7 +59,7 @@ VeilidConfigLogLevel convertToVeilidConfigLogLevel(LogLevel? level) {
 
 void setRootLogLevel(LogLevel? level) {
   Loggy('').level = getLogOptions(level);
-  Veilid.instance.changeApiLogLevel(convertToVeilidConfigLogLevel(level));
+  Veilid.instance.changeLogLevel("all", convertToVeilidConfigLogLevel(level));
 }
 
 void initLoggy() {
@@ -81,22 +81,26 @@ void main() {
         logging: VeilidWASMConfigLogging(
             performance: VeilidWASMConfigLoggingPerformance(
                 enabled: true,
-                level: VeilidLogLevel.trace,
+                level: VeilidConfigLogLevel.debug,
                 logsInTimings: true,
-                logsInConsole: false)));
+                logsInConsole: true),
+            api: VeilidWASMConfigLoggingApi(
+                enabled: true, level: VeilidConfigLogLevel.info)));
     Veilid.instance.configureVeilidPlatform(platformConfig.json);
   } else {
     var platformConfig = VeilidFFIConfig(
         logging: VeilidFFIConfigLogging(
             terminal: VeilidFFIConfigLoggingTerminal(
               enabled: false,
-              level: VeilidLogLevel.trace,
+              level: VeilidConfigLogLevel.debug,
             ),
             otlp: VeilidFFIConfigLoggingOtlp(
                 enabled: false,
-                level: VeilidLogLevel.trace,
+                level: VeilidConfigLogLevel.trace,
                 grpcEndpoint: "localhost:4317",
-                serviceName: "VeilidExample")));
+                serviceName: "VeilidExample"),
+            api: VeilidFFIConfigLoggingApi(
+                enabled: true, level: VeilidConfigLogLevel.info)));
     Veilid.instance.configureVeilidPlatform(platformConfig.json);
   }
 
