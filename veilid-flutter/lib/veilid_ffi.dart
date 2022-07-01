@@ -29,9 +29,9 @@ typedef _FreeStringDart = void Function(Pointer<Utf8>);
 // fn initialize_veilid_flutter(dart_post_c_object_ptr: ffi::DartPostCObjectFnType)
 typedef _InitializeVeilidFlutterC = Void Function(Pointer<_DartPostCObject>);
 typedef _InitializeVeilidFlutterDart = void Function(Pointer<_DartPostCObject>);
-// fn configure_veilid_platform(platform_config: FfiStr)
-typedef _ConfigureVeilidPlatformC = Void Function(Pointer<Utf8>);
-typedef _ConfigureVeilidPlatformDart = void Function(Pointer<Utf8>);
+// fn initialize_veilid_core(platform_config: FfiStr)
+typedef _InitializeVeilidCoreC = Void Function(Pointer<Utf8>);
+typedef _InitializeVeilidCoreDart = void Function(Pointer<Utf8>);
 // fn change_log_level(layer: FfiStr, log_level: FfiStr)
 typedef _ChangeLogLevelC = Void Function(Pointer<Utf8>, Pointer<Utf8>);
 typedef _ChangeLogLevelDart = void Function(Pointer<Utf8>, Pointer<Utf8>);
@@ -245,7 +245,7 @@ class VeilidFFI implements Veilid {
 
   // Shared library functions
   final _FreeStringDart _freeString;
-  final _ConfigureVeilidPlatformDart _configureVeilidPlatform;
+  final _InitializeVeilidCoreDart _initializeVeilidCore;
   final _ChangeLogLevelDart _changeLogLevel;
   final _StartupVeilidCoreDart _startupVeilidCore;
   final _GetVeilidStateDart _getVeilidState;
@@ -258,9 +258,8 @@ class VeilidFFI implements Veilid {
       : _dylib = dylib,
         _freeString =
             dylib.lookupFunction<_FreeStringC, _FreeStringDart>('free_string'),
-        _configureVeilidPlatform = dylib.lookupFunction<
-            _ConfigureVeilidPlatformC,
-            _ConfigureVeilidPlatformDart>('configure_veilid_platform'),
+        _initializeVeilidCore = dylib.lookupFunction<_InitializeVeilidCoreC,
+            _InitializeVeilidCoreDart>('initialize_veilid_core'),
         _changeLogLevel =
             dylib.lookupFunction<_ChangeLogLevelC, _ChangeLogLevelDart>(
                 'change_log_level'),
@@ -287,12 +286,12 @@ class VeilidFFI implements Veilid {
   }
 
   @override
-  void configureVeilidPlatform(Map<String, dynamic> platformConfigJson) {
+  void initializeVeilidCore(Map<String, dynamic> platformConfigJson) {
     var nativePlatformConfig =
         jsonEncode(platformConfigJson, toEncodable: veilidApiToEncodable)
             .toNativeUtf8();
 
-    _configureVeilidPlatform(nativePlatformConfig);
+    _initializeVeilidCore(nativePlatformConfig);
 
     malloc.free(nativePlatformConfig);
   }

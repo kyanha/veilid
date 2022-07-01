@@ -34,7 +34,7 @@ logging:
         append: true
         level: 'info'
     api:
-        enabled: false
+        enabled: true
         level: 'info'
     otlp:
         enabled: false

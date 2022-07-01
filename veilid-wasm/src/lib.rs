@@ -108,7 +108,7 @@ where
 #[derive(Debug, Deserialize, Serialize)]
 pub struct VeilidWASMConfigLoggingPerformance {
     pub enabled: bool,
-    pub level: veilid_core::VeilidLogLevel,
+    pub level: veilid_core::VeilidConfigLogLevel,
     pub logs_in_timings: bool,
     pub logs_in_console: bool,
 }
@@ -116,7 +116,7 @@ pub struct VeilidWASMConfigLoggingPerformance {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct VeilidWASMConfigLoggingAPI {
     pub enabled: bool,
-    pub level: veilid_core::VeilidLogLevel,
+    pub level: veilid_core::VeilidConfigLogLevel,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -138,14 +138,14 @@ pub fn initialize_veilid_wasm() {
 }
 
 #[wasm_bindgen()]
-pub fn configure_veilid_platform(platform_config: String) {
+pub fn initialize_veilid_core(platform_config: String) {
     let platform_config: VeilidWASMConfig = veilid_core::deserialize_json(&platform_config)
-        .expect("failed to deserialize plaform config json");
+        .expect("failed to deserialize platform config json");
 
     // Set up subscriber and layers
     let subscriber = Registry::default();
     let mut layers = Vec::new();
-    let handles = (*FILTER_RELOAD_HANDLES).borrow_mut();
+    let mut filters = (*FILTERS).borrow_mut();
 
     // Performance logger
     if platform_config.logging.performance.enabled {
@@ -162,7 +162,7 @@ pub fn configure_veilid_platform(platform_config: String) {
                 .build(),
         )
         .with_filter(filter.clone());
-        handles.insert("performance", filter);
+        filters.insert("performance", filter);
         layers.push(layer.boxed());
     };
 
@@ -170,7 +170,7 @@ pub fn configure_veilid_platform(platform_config: String) {
     if platform_config.logging.api.enabled {
         let filter = veilid_core::VeilidLayerFilter::new(platform_config.logging.api.level, None);
         let layer = veilid_core::ApiTracingLayer::get().with_filter(filter.clone());
-        handles.insert("api", filter);
+        filters.insert("api", filter);
         layers.push(layer.boxed());
     }
 

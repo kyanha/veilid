@@ -1,7 +1,9 @@
 use super::*;
 use core::fmt::Debug;
 
-#[instrument(level = "trace", ret, err)]
+// XXX: Don't trace these functions as they are used in the transfer of API logs, which will recurse!
+
+// #[instrument(level = "trace", ret, err)]
 pub fn deserialize_json<'a, T: de::Deserialize<'a> + Debug>(
     arg: &'a str,
 ) -> Result<T, VeilidAPIError> {
@@ -15,7 +17,7 @@ pub fn deserialize_json<'a, T: de::Deserialize<'a> + Debug>(
     })
 }
 
-#[instrument(level = "trace", ret, err)]
+// #[instrument(level = "trace", ret, err)]
 pub fn deserialize_opt_json<T: de::DeserializeOwned + Debug>(
     arg: Option<String>,
 ) -> Result<T, VeilidAPIError> {
@@ -29,7 +31,7 @@ pub fn deserialize_opt_json<T: de::DeserializeOwned + Debug>(
     deserialize_json(arg)
 }
 
-#[instrument(level = "trace", ret)]
+// #[instrument(level = "trace", ret)]
 pub fn serialize_json<T: Serialize + Debug>(val: T) -> String {
     match serde_json::to_string(&val) {
         Ok(v) => v,

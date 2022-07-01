@@ -1297,7 +1297,7 @@ class VeilidVersion {
 abstract class Veilid {
   static late Veilid instance = getVeilid();
 
-  void configureVeilidPlatform(Map<String, dynamic> platformConfigJson);
+  void initializeVeilidCore(Map<String, dynamic> platformConfigJson);
   void changeLogLevel(String layer, VeilidConfigLogLevel logLevel);
   Stream<VeilidUpdate> startupVeilidCore(VeilidConfig config);
   Future<VeilidState> getVeilidState();

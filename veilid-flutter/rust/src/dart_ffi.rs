@@ -142,7 +142,7 @@ pub extern "C" fn initialize_veilid_flutter(dart_post_c_object_ptr: ffi::DartPos
 
 #[no_mangle]
 #[instrument]
-pub extern "C" fn configure_veilid_platform(platform_config: FfiStr) {
+pub extern "C" fn initialize_veilid_core(platform_config: FfiStr) {
     let platform_config = platform_config.into_opt_string();
     let platform_config: VeilidFFIConfig = veilid_core::deserialize_opt_json(platform_config)
         .expect("failed to deserialize plaform config json");

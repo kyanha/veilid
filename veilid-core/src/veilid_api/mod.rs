@@ -23,7 +23,6 @@ pub use network_manager::NetworkManager;
 pub use routing_table::RoutingTable;
 pub use rpc_processor::StatusAnswer;
 
-use api_tracing_layer::*;
 use core::fmt;
 use core_context::{api_shutdown, VeilidCoreContext};
 use enumset::*;

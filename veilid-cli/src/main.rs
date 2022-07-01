@@ -101,6 +101,7 @@ fn main() -> Result<(), String> {
     {
         let mut specbuilder = LogSpecBuilder::new();
         specbuilder.default(settings::convert_loglevel(settings.logging.level));
+        specbuilder.module("cursive", LevelFilter::Off);
         specbuilder.module("cursive_core", LevelFilter::Off);
         specbuilder.module("cursive_buffered_backend", LevelFilter::Off);
         specbuilder.module("mio", LevelFilter::Off);

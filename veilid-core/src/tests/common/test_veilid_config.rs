@@ -290,7 +290,6 @@ pub async fn test_config() {
     let inner = vc.get();
     assert_eq!(inner.program_name, String::from("Veilid"));
     assert_eq!(inner.namespace, String::from(""));
-    assert_eq!(inner.api_log_level, VeilidConfigLogLevel::Off);
     assert_eq!(inner.capabilities.protocol_udp, true);
     assert_eq!(inner.capabilities.protocol_connect_tcp, true);
     assert_eq!(inner.capabilities.protocol_accept_tcp, true);

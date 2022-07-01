@@ -1,7 +1,7 @@
 use super::*;
 use crate::xx::*;
 use tracing::level_filters::LevelFilter;
-use tracing::subscriber;
+use tracing::subscriber::Interest;
 use tracing_subscriber::layer;
 
 struct VeilidLayerFilterInner {
@@ -54,33 +54,35 @@ impl VeilidLayerFilter {
         }
         callsite::rebuild_interest_cache();
     }
-}
 
-impl<S: tracing::Subscriber> layer::Filter<S> for VeilidLayerFilter {
-    fn enabled(&self, metadata: &tracing::Metadata<'_>, _: &layer::Context<'_, S>) -> bool {
+    fn interesting(&self, metadata: &tracing::Metadata<'_>) -> bool {
         let inner = self.inner.read();
+
         if *metadata.level() > inner.max_level {
-            false
-        } else {
-            true
+            return false;
         }
-    }
-
-    fn callsite_enabled(
-        &self,
-        metadata: &'static tracing::Metadata<'static>,
-    ) -> subscriber::Interest {
-        let inner = self.inner.read();
         let skip = inner
             .ignore_list
             .iter()
             .any(|v| metadata.target().starts_with(&**v));
         if skip {
-            subscriber::Interest::never()
-        } else if *metadata.level() > inner.max_level {
-            subscriber::Interest::never()
+            return false;
+        }
+
+        true
+    }
+}
+
+impl<S: tracing::Subscriber> layer::Filter<S> for VeilidLayerFilter {
+    fn enabled(&self, metadata: &tracing::Metadata<'_>, _: &layer::Context<'_, S>) -> bool {
+        self.interesting(metadata)
+    }
+
+    fn callsite_enabled(&self, metadata: &'static tracing::Metadata<'static>) -> Interest {
+        if self.interesting(metadata) {
+            Interest::always()
         } else {
-            subscriber::Interest::always()
+            Interest::never()
         }
     }
 

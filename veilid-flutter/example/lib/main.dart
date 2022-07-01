@@ -86,7 +86,7 @@ void main() {
                 logsInConsole: true),
             api: VeilidWASMConfigLoggingApi(
                 enabled: true, level: VeilidConfigLogLevel.info)));
-    Veilid.instance.configureVeilidPlatform(platformConfig.json);
+    Veilid.instance.initializeVeilidCore(platformConfig.json);
   } else {
     var platformConfig = VeilidFFIConfig(
         logging: VeilidFFIConfigLogging(
@@ -101,7 +101,7 @@ void main() {
                 serviceName: "VeilidExample"),
             api: VeilidFFIConfigLoggingApi(
                 enabled: true, level: VeilidConfigLogLevel.info)));
-    Veilid.instance.configureVeilidPlatform(platformConfig.json);
+    Veilid.instance.initializeVeilidCore(platformConfig.json);
   }
 
   runApp(MaterialApp(
