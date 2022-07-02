@@ -1,9 +1,8 @@
 use crate::settings::*;
-use crate::tools::*;
 use clap::ArgMatches;
-use log::*;
 use std::ffi::OsString;
 use std::time::Duration;
+use tracing::*;
 use windows_service::service::{
     ServiceControl, ServiceControlAccept, ServiceExitCode, ServiceState, ServiceStatus, ServiceType,
 };

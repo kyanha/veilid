@@ -104,6 +104,7 @@ fn main() -> Result<(), String> {
         specbuilder.module("cursive", LevelFilter::Off);
         specbuilder.module("cursive_core", LevelFilter::Off);
         specbuilder.module("cursive_buffered_backend", LevelFilter::Off);
+        specbuilder.module("tokio_util", LevelFilter::Off);
         specbuilder.module("mio", LevelFilter::Off);
         specbuilder.module("async_std", LevelFilter::Off);
         specbuilder.module("async_io", LevelFilter::Off);

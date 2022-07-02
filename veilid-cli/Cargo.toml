@@ -12,16 +12,11 @@ path = "src/main.rs"
 
 [features]
 default = [ "rt-tokio" ]
-rt-async-std = [ "async-std", "veilid-core/rt-async-std" ]
-rt-tokio = [ "tokio", "tokio-util", "veilid-core/rt-tokio" ]
-
-[target.'cfg(unix)'.dependencies]
-cursive = { path = "../external/cursive/cursive", default-features = false, features = ["ncurses-backend", "toml", "rt-async-std"]}
-
-[target.'cfg(not(unix))'.dependencies]
-cursive = { path = "../external/cursive/cursive", default-features = false, features = ["crossterm-backend", "toml", "rt-async-std"]}
+rt-async-std = [ "async-std", "veilid-core/rt-async-std", "cursive/rt-async-std" ]
+rt-tokio = [ "tokio", "tokio-util", "veilid-core/rt-tokio", "cursive/rt-tokio" ]
 
 [dependencies]
+cursive = { path = "../external/cursive/cursive", default-features = false, features = [ "crossterm", "toml"]}
 async-std = { version = "^1.9", features = ["unstable", "attributes"], optional = true }
 tokio = { version = "^1", features = ["full"], optional = true }
 tokio-util = { version = "^0", features = ["compat"], optional = true}

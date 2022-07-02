@@ -649,31 +649,13 @@ impl UI {
         cursive_flexi_logger_view::resize(node_log_scrollback);
 
         // Instantiate the cursive runnable
-        let runnable;
-        cfg_if::cfg_if! {
-            if #[cfg(unix)] {
-                runnable = CursiveRunnable::new(
-                    || -> Result<Box<dyn cursive_buffered_backend::Backend>, Box<DumbError>> {
-                        let ncurses_backend = cursive::backends::curses::n::Backend::init().unwrap();
-                        let buffered_backend =
-                            cursive_buffered_backend::BufferedBackend::new(ncurses_backend);
-
-                        Ok(Box::new(buffered_backend))
-                    },
-                );
-            } else {
-                runnable = CursiveRunnable::new(
-                    || -> Result<Box<dyn cursive_buffered_backend::Backend>, Box<DumbError>> {
-                        let crossterm_backend = cursive::backends::crossterm::Backend::init().unwrap();
-                        let buffered_backend =
-                            cursive_buffered_backend::BufferedBackend::new(crossterm_backend);
-
-                        Ok(Box::new(buffered_backend))
-                    },
-                );
-            }
-        }
-        //let runnable = cursive::default();
+        let runnable = CursiveRunnable::new(
+            || -> Result<Box<dyn cursive_buffered_backend::Backend>, Box<DumbError>> {
+                let backend = cursive::backends::crossterm::Backend::init().unwrap();
+                let buffered_backend = cursive_buffered_backend::BufferedBackend::new(backend);
+                Ok(Box::new(buffered_backend))
+            },
+        );
 
         // Make the callback mechanism easily reachable
         let cb_sink = runnable.cb_sink().clone();

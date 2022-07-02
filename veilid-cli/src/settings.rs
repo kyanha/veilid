@@ -16,7 +16,7 @@ logging:
         enabled: false
     file:
         enabled: true
-        directory: "%LOGGING_FILE_DIRECTORY%"
+        directory: '%LOGGING_FILE_DIRECTORY%'
         append: true
 interface:
     node_log:
