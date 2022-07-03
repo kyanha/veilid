@@ -1,4 +1,5 @@
 mod address;
+mod block_id;
 mod dial_info;
 mod dial_info_class;
 mod dial_info_detail;
@@ -21,6 +22,7 @@ mod value_data;
 mod value_key;
 
 pub use address::*;
+pub use block_id::*;
 pub use dial_info::*;
 pub use dial_info_class::*;
 pub use dial_info_detail::*;

@@ -1,0 +1,71 @@
+use crate::*;
+use rpc_processor::*;
+
+#[derive(Debug, Clone)]
+pub struct RPCOperationWatchValueQ {
+    key: ValueKey,
+}
+
+impl RPCOperationWatchValueQ {
+    pub fn decode(
+        reader: &veilid_capnp::operation_watch_value_q::Reader,
+    ) -> Result<RPCOperationWatchValueQ, RPCError> {
+        let k_reader = reader.get_key().map_err(map_error_capnp_error!())?;
+        let key = decode_value_key(&k_reader)?;
+        Ok(RPCOperationWatchValueQ { key })
+    }
+    pub fn encode(
+        &self,
+        builder: &mut veilid_capnp::operation_watch_value_q::Builder,
+    ) -> Result<(), RPCError> {
+        let k_builder = builder.init_key();
+        encode_value_key(&self.key, &mut k_builder)?;
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct RPCOperationWatchValueA {
+    expiration: u64,
+    peers: Vec<PeerInfo>,
+}
+
+impl RPCOperationWatchValueA {
+    pub fn decode(
+        reader: &veilid_capnp::operation_watch_value_a::Reader,
+    ) -> Result<RPCOperationWatchValueA, RPCError> {
+        let expiration = reader.get_expiration();
+        let peers_reader = reader.get_peers().map_err(map_error_capnp_error!())?;
+        let mut peers = Vec::<PeerInfo>::with_capacity(
+            peers_reader
+                .len()
+                .try_into()
+                .map_err(map_error_internal!("too many peers"))?,
+        );
+        for p in peers_reader.iter() {
+            let peer_info = decode_peer_info(&p, true)?;
+            peers.push(peer_info);
+        }
+
+        Ok(RPCOperationWatchValueA { expiration, peers })
+    }
+    pub fn encode(
+        &self,
+        builder: &mut veilid_capnp::operation_watch_value_a::Builder,
+    ) -> Result<(), RPCError> {
+        builder.set_expiration(self.expiration);
+
+        let mut peers_builder = builder.init_peers(
+            self.peers
+                .len()
+                .try_into()
+                .map_err(map_error_internal!("invalid peers list length"))?,
+        );
+        for (i, peer) in self.peers.iter().enumerate() {
+            let mut pi_builder = peers_builder.reborrow().get(i as u32);
+            encode_peer_info(peer, &mut pi_builder)?;
+        }
+
+        Ok(())
+    }
+}

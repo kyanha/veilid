@@ -2,44 +2,45 @@ use crate::*;
 use rpc_processor::*;
 
 #[derive(Debug, Clone)]
-pub struct RPCOperationGetValueQ {
-    key: ValueKey,
+pub struct RPCOperationSupplyBlockQ {
+    block_id: DHTKey,
 }
 
-impl RPCOperationGetValueQ {
+impl RPCOperationSupplyBlockQ {
     pub fn decode(
-        reader: &veilid_capnp::operation_get_value_q::Reader,
-    ) -> Result<RPCOperationGetValueQ, RPCError> {
-        let k_reader = reader.get_key().map_err(map_error_capnp_error!())?;
-        let key = decode_value_key(&k_reader)?;
-        Ok(RPCOperationGetValueQ { key })
+        reader: &veilid_capnp::operation_supply_block_q::Reader,
+    ) -> Result<RPCOperationSupplyBlockQ, RPCError> {
+        let bi_reader = reader.get_block_id().map_err(map_error_capnp_error!())?;
+        let block_id = decode_block_id(&bi_reader);
+
+        Ok(RPCOperationSupplyBlockQ { block_id })
     }
     pub fn encode(
         &self,
-        builder: &mut veilid_capnp::operation_get_value_q::Builder,
+        builder: &mut veilid_capnp::operation_supply_block_q::Builder,
     ) -> Result<(), RPCError> {
-        let k_builder = builder.init_key();
-        encode_value_key(&self.key, &mut k_builder)?;
+        let bi_builder = builder.init_block_id();
+        encode_block_id(&self.block_id, &mut bi_builder)?;
+
         Ok(())
     }
 }
 
 #[derive(Debug, Clone)]
-pub enum RPCOperationGetValueA {
-    Data(ValueData),
+pub enum RPCOperationSupplyBlockA {
+    Expiration(u64),
     Peers(Vec<PeerInfo>),
 }
 
-impl RPCOperationGetValueA {
+impl RPCOperationSupplyBlockA {
     pub fn decode(
-        reader: &veilid_capnp::operation_get_value_a::Reader,
-    ) -> Result<RPCOperationGetValueA, RPCError> {
+        reader: &veilid_capnp::operation_supply_block_a::Reader,
+    ) -> Result<RPCOperationSupplyBlockA, RPCError> {
         match reader.which().map_err(map_error_capnp_notinschema!())? {
-            veilid_capnp::operation_get_value_a::Which::Data(r) => {
-                let data = decode_value_data(&r.map_err(map_error_capnp_error!())?)?;
-                Ok(RPCOperationGetValueA::Data(data))
+            veilid_capnp::operation_supply_block_a::Which::Expiration(r) => {
+                Ok(RPCOperationSupplyBlockA::Expiration(r))
             }
-            veilid_capnp::operation_get_value_a::Which::Peers(r) => {
+            veilid_capnp::operation_supply_block_a::Which::Peers(r) => {
                 let peers_reader = r.map_err(map_error_capnp_error!())?;
                 let mut peers = Vec::<PeerInfo>::with_capacity(
                     peers_reader
@@ -52,20 +53,19 @@ impl RPCOperationGetValueA {
                     peers.push(peer_info);
                 }
 
-                Ok(RPCOperationGetValueA::Peers(peers))
+                Ok(RPCOperationSupplyBlockA::Peers(peers))
             }
         }
     }
     pub fn encode(
         &self,
-        builder: &mut veilid_capnp::operation_get_value_a::Builder,
+        builder: &mut veilid_capnp::operation_supply_block_a::Builder,
     ) -> Result<(), RPCError> {
         match self {
-            RPCOperationGetValueA::Data(data) => {
-                let d_builder = builder.init_data();
-                encode_value_data(&data, &mut d_builder)?;
+            RPCOperationSupplyBlockA::Expiration(e) => {
+                builder.set_expiration(*e);
             }
-            RPCOperationGetValueA::Peers(peers) => {
+            RPCOperationSupplyBlockA::Peers(peers) => {
                 let mut peers_builder = builder.init_peers(
                     peers
                         .len()

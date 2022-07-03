@@ -325,7 +325,7 @@ struct OperationSupplyBlockA {
 }
 
 struct OperationFindBlockQ {
-    blockId                 @0  :BlockID;               # hash of the block we can supply
+    blockId                 @0  :BlockID;               # hash of the block to locate
 }
 
 struct OperationFindBlockA {
