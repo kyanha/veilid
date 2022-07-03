@@ -282,6 +282,24 @@ impl ValueKey {
 }
 
 #[derive(Clone, Debug, Default, PartialOrd, PartialEq, Eq, Ord, Serialize, Deserialize)]
+pub struct ValueData {
+    pub data: Vec<u8>,
+    pub seq: u32,
+}
+impl ValueData {
+    pub fn new(data: Vec<u8>) -> Self {
+        Self { data, seq: 0 }
+    }
+    pub fn new_with_seq(data: Vec<u8>, seq: u32) -> Self {
+        Self { data, seq }
+    }
+    pub fn change(&mut self, data: Vec<u8>) {
+        self.data = data;
+        self.seq += 1;
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialOrd, PartialEq, Eq, Ord, Serialize, Deserialize)]
 pub struct BlockId {
     pub key: DHTKey,
 }

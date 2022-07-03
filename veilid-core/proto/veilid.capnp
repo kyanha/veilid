@@ -162,10 +162,10 @@ struct ValueKey {
     subkey                  @1  :Text;                  # the name of the subkey (or empty if the whole key)
 }
 
-struct ValueKeySeq {
-    key                     @0  :ValueKey;              # the location of the value
-    seq                     @1  :ValueSeqNum;           # the sequence number of the value subkey
-}
+# struct ValueKeySeq {
+#    key                     @0  :ValueKey;              # the location of the value
+#    seq                     @1  :ValueSeqNum;           # the sequence number of the value subkey
+# }
 
 struct ValueData {
     data                    @0  :Data;                  # value or subvalue contents in CBOR format

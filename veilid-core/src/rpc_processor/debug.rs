@@ -108,12 +108,17 @@ impl RPCProcessor {
         format!(
             "#{} {}",
             op_id,
-            self.get_rpc_operation_detail_debug_info(&detail)
+            Self::get_rpc_operation_detail_debug_info(&detail)
         )
     }
 
-    pub(super) fn get_rpc_operation_detail_debug_info(
-        &self,
+    struct RpcOperationDetailInfo {
+        name: &'static str,
+        index: u32,
+        is_q: bool,
+    }
+
+    pub(super) fn get_rpc_operation_detail_info(
         detail: &veilid_capnp::operation::detail::WhichReader,
     ) -> String {
         match detail {
@@ -145,4 +150,35 @@ impl RPCProcessor {
             veilid_capnp::operation::detail::CancelTunnelA(_) => "CancelTunnelA".to_owned(),
         }
     }
+
+    pub(super) fn get_rpc_operation_detail_d(
+    let (which, is_q) = match which_reader
+    {
+        veilid_capnp::operation::detail::StatusQ(_) => (0u32, true),
+        veilid_capnp::operation::detail::StatusA(_) => (1u32, false),
+        veilid_capnp::operation::detail::ValidateDialInfo(_) => (2u32, true),
+        veilid_capnp::operation::detail::FindNodeQ(_) => (3u32, true),
+        veilid_capnp::operation::detail::FindNodeA(_) => (4u32, false),
+        veilid_capnp::operation::detail::Route(_) => (5u32, true),
+        veilid_capnp::operation::detail::NodeInfoUpdate(_) => (6u32, true),
+        veilid_capnp::operation::detail::GetValueQ(_) => (7u32, true),
+        veilid_capnp::operation::detail::GetValueA(_) => (8u32, false),
+        veilid_capnp::operation::detail::SetValueQ(_) => (9u32, true),
+        veilid_capnp::operation::detail::SetValueA(_) => (10u32, false),
+        veilid_capnp::operation::detail::WatchValueQ(_) => (11u32, true),
+        veilid_capnp::operation::detail::WatchValueA(_) => (12u32, false),
+        veilid_capnp::operation::detail::ValueChanged(_) => (13u32, true),
+        veilid_capnp::operation::detail::SupplyBlockQ(_) => (14u32, true),
+        veilid_capnp::operation::detail::SupplyBlockA(_) => (15u32, false),
+        veilid_capnp::operation::detail::FindBlockQ(_) => (16u32, true),
+        veilid_capnp::operation::detail::FindBlockA(_) => (17u32, false),
+        veilid_capnp::operation::detail::Signal(_) => (18u32, true),
+        veilid_capnp::operation::detail::ReturnReceipt(_) => (19u32, true),
+        veilid_capnp::operation::detail::StartTunnelQ(_) => (20u32, true),
+        veilid_capnp::operation::detail::StartTunnelA(_) => (21u32, false),
+        veilid_capnp::operation::detail::CompleteTunnelQ(_) => (22u32, true),
+        veilid_capnp::operation::detail::CompleteTunnelA(_) => (23u32, false),
+        veilid_capnp::operation::detail::CancelTunnelQ(_) => (24u32, true),
+        veilid_capnp::operation::detail::CancelTunnelA(_) => (25u32, false),
+    };
 }
