@@ -12,7 +12,7 @@ crate-type = ["cdylib", "staticlib", "rlib"]
 [features]
 default = []
 rt-async-std = [ "async-std", "async-std-resolver", "async_executors/async_std", "rtnetlink?/smol_socket" ]
-rt-tokio = [ "tokio", "tokio-util", "tokio-stream", "trust-dns-resolver/tokio-runtime", "async_executors/tokio_tp", "async_executors/tokio_io", "async_executors/tokio_timer", "rtnetlink?/tokio_socket" ]
+rt-tokio = [ "tokio", "tokio-util", "tokio-stream", "trust-dns-resolver?/tokio-runtime", "async_executors/tokio_tp", "async_executors/tokio_io", "async_executors/tokio_timer", "rtnetlink?/tokio_socket" ]
 
 android_tests = []
 ios_tests = [ "simplelog", "backtrace" ]
@@ -66,8 +66,6 @@ tokio-util = { version = "^0", features = ["compat"], optional = true}
 tokio-stream = { version = "^0", features = ["net"], optional = true}
 async-io = { version = "^1" }
 async-tungstenite = { version = "^0", features = ["async-tls"] }
-async-std-resolver = { version = "^0", optional = true }
-trust-dns-resolver = { version = "^0", optional = true }
 maplit = "^1"
 config = { version = "^0", features = ["yaml"] }
 keyring-manager = { path = "../external/keyring-manager" }
@@ -138,6 +136,8 @@ backtrace = { version = "^0" }
 # Dependenices for all Unix (Linux, Android, MacOS, iOS)
 [target.'cfg(unix)'.dependencies]
 ifstructs = "^0"
+async-std-resolver = { version = "^0", optional = true }
+trust-dns-resolver = { version = "^0", optional = true }
 
 # Dependencies for Linux or Android
 [target.'cfg(any(target_os = "android",target_os = "linux"))'.dependencies]
