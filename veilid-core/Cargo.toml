@@ -146,6 +146,7 @@ rtnetlink = { version = "^0", default-features = false }
 # Dependencies for Windows
 [target.'cfg(target_os = "windows")'.dependencies]
 winapi = { version = "^0", features = [ "iptypes", "iphlpapi" ] }
+windows = { version = "^0", features = [ "Win32_NetworkManagement_Dns", "Win32_Foundation", "alloc" ]}
 windows-permissions = "^0"
 
 # Dependencies for iOS
