@@ -3,7 +3,7 @@ use rpc_processor::*;
 
 #[derive(Debug, Clone)]
 pub struct RPCOperationSignal {
-    signal_info: SignalInfo,
+    pub signal_info: SignalInfo,
 }
 
 impl RPCOperationSignal {

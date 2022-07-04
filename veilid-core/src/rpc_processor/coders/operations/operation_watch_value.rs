@@ -3,7 +3,7 @@ use rpc_processor::*;
 
 #[derive(Debug, Clone)]
 pub struct RPCOperationWatchValueQ {
-    key: ValueKey,
+    pub key: ValueKey,
 }
 
 impl RPCOperationWatchValueQ {
@@ -26,8 +26,8 @@ impl RPCOperationWatchValueQ {
 
 #[derive(Debug, Clone)]
 pub struct RPCOperationWatchValueA {
-    expiration: u64,
-    peers: Vec<PeerInfo>,
+    pub expiration: u64,
+    pub peers: Vec<PeerInfo>,
 }
 
 impl RPCOperationWatchValueA {

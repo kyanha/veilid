@@ -3,9 +3,9 @@ use rpc_processor::*;
 
 #[derive(Debug, Clone)]
 pub struct RPCOperationValidateDialInfo {
-    dial_info: DialInfo,
-    receipt: Vec<u8>,
-    redirect: bool,
+    pub dial_info: DialInfo,
+    pub receipt: Vec<u8>,
+    pub redirect: bool,
 }
 
 impl RPCOperationValidateDialInfo {

@@ -14,6 +14,9 @@ impl RPCStatement {
     pub fn detail(&self) -> &RPCStatementDetail {
         &self.detail
     }
+    pub fn into_detail(self) -> RPCQuestionDetail {
+        self.detail
+    }
     pub fn desc(&self) -> &'static str {
         self.detail.desc()
     }

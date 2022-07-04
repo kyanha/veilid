@@ -3,7 +3,7 @@ use rpc_processor::*;
 
 #[derive(Debug, Clone)]
 pub struct RPCOperationStatusQ {
-    node_status: NodeStatus,
+    pub node_status: NodeStatus,
 }
 
 impl RPCOperationStatusQ {
@@ -26,8 +26,8 @@ impl RPCOperationStatusQ {
 
 #[derive(Debug, Clone)]
 pub struct RPCOperationStatusA {
-    node_status: NodeStatus,
-    sender_info: SenderInfo,
+    pub node_status: NodeStatus,
+    pub sender_info: SenderInfo,
 }
 
 impl RPCOperationStatusA {

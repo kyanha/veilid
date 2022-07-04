@@ -93,6 +93,10 @@ impl RPCOperation {
         &self.kind
     }
 
+    pub fn into_kind(&self) -> RPCOperationKind {
+        self.kind
+    }
+
     pub fn decode(
         operation_reader: &veilid_capnp::operation::Reader,
         sender_node_id: &DHTKey,

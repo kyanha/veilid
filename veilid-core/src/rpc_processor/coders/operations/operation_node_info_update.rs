@@ -3,7 +3,7 @@ use rpc_processor::*;
 
 #[derive(Debug, Clone)]
 pub struct RPCOperationNodeInfoUpdate {
-    signed_node_info: SignedNodeInfo,
+    pub signed_node_info: SignedNodeInfo,
 }
 
 impl RPCOperationNodeInfoUpdate {

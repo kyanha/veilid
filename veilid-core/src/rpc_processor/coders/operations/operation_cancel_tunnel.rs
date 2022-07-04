@@ -3,7 +3,7 @@ use rpc_processor::*;
 
 #[derive(Debug, Clone)]
 pub struct RPCOperationCancelTunnelQ {
-    id: TunnelId,
+    pub id: TunnelId,
 }
 
 impl RPCOperationCancelTunnelQ {

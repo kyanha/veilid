@@ -1887,89 +1887,56 @@ impl VeilidAPI {
     ////////////////////////////////////////////////////////////////
     // Direct Node Access (pretty much for testing only)
 
-    #[instrument(level = "debug", err, skip(self))]
-    pub async fn status(&self, node_id: NodeId) -> Result<StatusAnswer, VeilidAPIError> {
-        let rpc = self.rpc_processor()?;
-        let routing_table = rpc.routing_table();
-        let node_ref = match routing_table.lookup_node_ref(node_id.key) {
-            None => return Err(VeilidAPIError::NodeNotFound { node_id }),
-            Some(nr) => nr,
-        };
-        let status_answer = rpc
-            .rpc_call_status(node_ref)
-            .await
-            .map_err(map_rpc_error!())?;
-        Ok(status_answer)
-    }
+    // #[instrument(level = "debug", err, skip(self))]
+    // pub async fn search_dht(&self, node_id: NodeId) -> Result<PeerInfo, VeilidAPIError> {
+    //     let rpc_processor = self.rpc_processor()?;
+    //     let config = self.config()?;
+    //     let (count, fanout, timeout) = {
+    //         let c = config.get();
+    //         (
+    //             c.network.dht.resolve_node_count,
+    //             c.network.dht.resolve_node_fanout,
+    //             c.network.dht.resolve_node_timeout_ms.map(ms_to_us),
+    //         )
+    //     };
 
-    #[instrument(level = "debug", err, skip(self))]
-    pub async fn validate_dial_info(
-        &self,
-        node_id: NodeId,
-        dial_info: DialInfo,
-        redirect: bool,
-    ) -> Result<bool, VeilidAPIError> {
-        let rpc = self.rpc_processor()?;
-        let routing_table = rpc.routing_table();
-        let node_ref = match routing_table.lookup_node_ref(node_id.key) {
-            None => return Err(VeilidAPIError::NodeNotFound { node_id }),
-            Some(nr) => nr,
-        };
-        rpc.rpc_call_validate_dial_info(node_ref.clone(), dial_info, redirect)
-            .await
-            .map_err(map_rpc_error!())
-    }
+    //     let node_ref = rpc_processor
+    //         .search_dht_single_key(node_id.key, count, fanout, timeout)
+    //         .await
+    //         .map_err(map_rpc_error!())?;
 
-    #[instrument(level = "debug", err, skip(self))]
-    pub async fn search_dht(&self, node_id: NodeId) -> Result<PeerInfo, VeilidAPIError> {
-        let rpc_processor = self.rpc_processor()?;
-        let config = self.config()?;
-        let (count, fanout, timeout) = {
-            let c = config.get();
-            (
-                c.network.dht.resolve_node_count,
-                c.network.dht.resolve_node_fanout,
-                c.network.dht.resolve_node_timeout_ms.map(ms_to_us),
-            )
-        };
+    //     let answer = node_ref.peer_info();
+    //     if let Some(answer) = answer {
+    //         Ok(answer)
+    //     } else {
+    //         Err(VeilidAPIError::NoPeerInfo {
+    //             node_id: NodeId::new(node_ref.node_id()),
+    //         })
+    //     }
+    // }
 
-        let node_ref = rpc_processor
-            .search_dht_single_key(node_id.key, count, fanout, timeout)
-            .await
-            .map_err(map_rpc_error!())?;
+    // #[instrument(level = "debug", err, skip(self))]
+    // pub async fn search_dht_multi(&self, node_id: NodeId) -> Result<Vec<PeerInfo>, VeilidAPIError> {
+    //     let rpc_processor = self.rpc_processor()?;
+    //     let config = self.config()?;
+    //     let (count, fanout, timeout) = {
+    //         let c = config.get();
+    //         (
+    //             c.network.dht.resolve_node_count,
+    //             c.network.dht.resolve_node_fanout,
+    //             c.network.dht.resolve_node_timeout_ms.map(ms_to_us),
+    //         )
+    //     };
 
-        let answer = node_ref.peer_info();
-        if let Some(answer) = answer {
-            Ok(answer)
-        } else {
-            Err(VeilidAPIError::NoPeerInfo {
-                node_id: NodeId::new(node_ref.node_id()),
-            })
-        }
-    }
+    //     let node_refs = rpc_processor
+    //         .search_dht_multi_key(node_id.key, count, fanout, timeout)
+    //         .await
+    //         .map_err(map_rpc_error!())?;
 
-    #[instrument(level = "debug", err, skip(self))]
-    pub async fn search_dht_multi(&self, node_id: NodeId) -> Result<Vec<PeerInfo>, VeilidAPIError> {
-        let rpc_processor = self.rpc_processor()?;
-        let config = self.config()?;
-        let (count, fanout, timeout) = {
-            let c = config.get();
-            (
-                c.network.dht.resolve_node_count,
-                c.network.dht.resolve_node_fanout,
-                c.network.dht.resolve_node_timeout_ms.map(ms_to_us),
-            )
-        };
+    //     let answer = node_refs.iter().filter_map(|x| x.peer_info()).collect();
 
-        let node_refs = rpc_processor
-            .search_dht_multi_key(node_id.key, count, fanout, timeout)
-            .await
-            .map_err(map_rpc_error!())?;
-
-        let answer = node_refs.iter().filter_map(|x| x.peer_info()).collect();
-
-        Ok(answer)
-    }
+    //     Ok(answer)
+    // }
 
     ////////////////////////////////////////////////////////////////
     // Safety / Private Route Handling

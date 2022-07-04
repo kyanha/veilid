@@ -3,7 +3,7 @@ use rpc_processor::*;
 
 #[derive(Debug, Clone)]
 pub struct RPCOperationFindNodeQ {
-    node_id: DHTKey,
+    pub node_id: DHTKey,
 }
 
 impl RPCOperationFindNodeQ {
@@ -26,7 +26,7 @@ impl RPCOperationFindNodeQ {
 
 #[derive(Debug, Clone)]
 pub struct RPCOperationFindNodeA {
-    peers: Vec<PeerInfo>,
+    pub peers: Vec<PeerInfo>,
 }
 
 impl RPCOperationFindNodeA {

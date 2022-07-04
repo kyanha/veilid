@@ -3,10 +3,10 @@ use rpc_processor::*;
 
 #[derive(Debug, Clone)]
 pub struct RPCOperationCompleteTunnelQ {
-    id: TunnelId,
-    local_mode: TunnelMode,
-    depth: u8,
-    endpoint: TunnelEndpoint,
+    pub id: TunnelId,
+    pub local_mode: TunnelMode,
+    pub depth: u8,
+    pub endpoint: TunnelEndpoint,
 }
 
 impl RPCOperationCompleteTunnelQ {

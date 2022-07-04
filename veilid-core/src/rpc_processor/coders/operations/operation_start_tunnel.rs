@@ -3,9 +3,9 @@ use rpc_processor::*;
 
 #[derive(Debug, Clone)]
 pub struct RPCOperationStartTunnelQ {
-    id: TunnelId,
-    local_mode: TunnelMode,
-    depth: u8,
+    pub id: TunnelId,
+    pub local_mode: TunnelMode,
+    pub depth: u8,
 }
 
 impl RPCOperationStartTunnelQ {

@@ -3,7 +3,7 @@ use rpc_processor::*;
 
 #[derive(Debug, Clone)]
 pub struct RPCOperationGetValueQ {
-    key: ValueKey,
+    pub key: ValueKey,
 }
 
 impl RPCOperationGetValueQ {

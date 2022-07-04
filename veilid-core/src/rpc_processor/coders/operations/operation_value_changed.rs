@@ -3,8 +3,8 @@ use rpc_processor::*;
 
 #[derive(Debug, Clone)]
 pub struct RPCOperationValueChanged {
-    key: ValueKey,
-    value: ValueData,
+    pub key: ValueKey,
+    pub value: ValueData,
 }
 
 impl RPCOperationValueChanged {

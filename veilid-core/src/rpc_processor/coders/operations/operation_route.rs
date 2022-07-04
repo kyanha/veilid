@@ -3,9 +3,9 @@ use rpc_processor::*;
 
 #[derive(Debug, Clone)]
 struct RoutedOperation {
-    signatures: Vec<DHTSignature>,
-    nonce: Nonce,
-    data: Vec<u8>,
+    pub signatures: Vec<DHTSignature>,
+    pub nonce: Nonce,
+    pub data: Vec<u8>,
 }
 
 impl RoutedOperation {
@@ -62,8 +62,8 @@ impl RoutedOperation {
 
 #[derive(Debug, Clone)]
 pub struct RPCOperationRoute {
-    safety_route: SafetyRoute,
-    operation: RoutedOperation,
+    pub safety_route: SafetyRoute,
+    pub operation: RoutedOperation,
 }
 
 impl RPCOperationRoute {

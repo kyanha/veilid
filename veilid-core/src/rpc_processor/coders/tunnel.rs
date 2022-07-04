@@ -47,7 +47,10 @@ pub fn decode_tunnel_endpoint(
     reader: &veilid_capnp::tunnel_endpoint::Reader,
 ) -> Result<TunnelEndpoint, RPCError> {
     let mode = decode_tunnel_mode(reader.get_mode().map_err(map_error_capnp_notinschema!())?);
-    let description = reader.get_description();
+    let description = reader
+        .get_description()
+        .map_err(map_error_capnp_error!())?
+        .to_owned();
 
     Ok(TunnelEndpoint { mode, description })
 }

@@ -14,6 +14,9 @@ impl RPCAnswer {
     pub fn detail(&self) -> &RPCAnswerDetail {
         &self.detail
     }
+    pub fn into_detail(self) -> RPCAnswerDetail {
+        self.detail
+    }
     pub fn desc(&self) -> &'static str {
         self.detail.desc()
     }

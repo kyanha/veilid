@@ -18,6 +18,12 @@ impl RPCQuestion {
     pub fn detail(&self) -> &RPCQuestionDetail {
         &self.detail
     }
+    pub fn into_detail(self) -> RPCQuestionDetail {
+        self.detail
+    }
+    pub fn into_respond_to_detail(self) -> (RespondTo, RPCQuestionDetail) {
+        (self.respond_to, self.detail)
+    }
     pub fn desc(&self) -> &'static str {
         self.detail.desc()
     }

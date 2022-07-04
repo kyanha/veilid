@@ -3,7 +3,7 @@ use rpc_processor::*;
 
 #[derive(Debug, Clone)]
 pub struct RPCOperationSupplyBlockQ {
-    block_id: DHTKey,
+    pub block_id: DHTKey,
 }
 
 impl RPCOperationSupplyBlockQ {

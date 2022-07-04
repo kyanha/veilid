@@ -3,7 +3,7 @@ use rpc_processor::*;
 
 #[derive(Debug, Clone)]
 pub struct RPCOperationReturnReceipt {
-    receipt: Vec<u8>,
+    pub receipt: Vec<u8>,
 }
 
 impl RPCOperationReturnReceipt {
