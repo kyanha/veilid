@@ -390,12 +390,12 @@ impl RoutingTable {
     }
 
     #[instrument(level = "trace", skip(self), ret, err)]
-    pub fn register_find_node_answer(&self, fna: FindNodeAnswer) -> Result<Vec<NodeRef>, String> {
+    pub fn register_find_node_answer(&self, peers: Vec<PeerInfo>) -> Result<Vec<NodeRef>, String> {
         let node_id = self.node_id();
 
         // register nodes we'd found
-        let mut out = Vec::<NodeRef>::with_capacity(fna.peers.len());
-        for p in fna.peers {
+        let mut out = Vec::<NodeRef>::with_capacity(peers.len());
+        for p in peers {
             // if our own node if is in the list then ignore it, as we don't add ourselves to our own routing table
             if p.node_id.key == node_id {
                 continue;
@@ -436,7 +436,7 @@ impl RoutingTable {
             .map_err(logthru_rtab!())?;
 
         // register nodes we'd found
-        self.register_find_node_answer(res)
+        self.register_find_node_answer(res.answer)
     }
 
     #[instrument(level = "trace", skip(self), ret, err)]

@@ -74,9 +74,9 @@ pub fn decode_full_tunnel(
     let id = reader.get_id();
     let timeout = reader.get_timeout();
     let l_reader = reader.get_local().map_err(map_error_capnp_error!())?;
-    let local = decode_tunnel_endpoint(&l_reader).map_err(map_error_capnp_error!())?;
+    let local = decode_tunnel_endpoint(&l_reader)?;
     let r_reader = reader.get_remote().map_err(map_error_capnp_error!())?;
-    let remote = decode_tunnel_endpoint(&r_reader).map_err(map_error_capnp_error!())?;
+    let remote = decode_tunnel_endpoint(&r_reader)?;
 
     Ok(FullTunnel {
         id,
@@ -103,7 +103,7 @@ pub fn decode_partial_tunnel(
     let id = reader.get_id();
     let timeout = reader.get_timeout();
     let l_reader = reader.get_local().map_err(map_error_capnp_error!())?;
-    let local = decode_tunnel_endpoint(&l_reader).map_err(map_error_capnp_error!())?;
+    let local = decode_tunnel_endpoint(&l_reader)?;
 
     Ok(PartialTunnel { id, timeout, local })
 }

@@ -21,12 +21,11 @@ pub use intf::ProtectedStore;
 pub use intf::TableStore;
 pub use network_manager::NetworkManager;
 pub use routing_table::RoutingTable;
-pub use rpc_processor::StatusAnswer;
+//pub use rpc_processor::RPCProcessor;
 
 use core::fmt;
 use core_context::{api_shutdown, VeilidCoreContext};
 use enumset::*;
-use rpc_processor::{RPCError, RPCProcessor};
 use serde::*;
 use xx::*;
 
@@ -116,26 +115,26 @@ impl fmt::Display for VeilidAPIError {
     }
 }
 
-fn convert_rpc_error(x: RPCError) -> VeilidAPIError {
-    match x {
-        RPCError::Timeout => VeilidAPIError::Timeout,
-        RPCError::Unreachable(n) => VeilidAPIError::NodeNotFound {
-            node_id: NodeId::new(n),
-        },
-        RPCError::Unimplemented(s) => VeilidAPIError::Unimplemented { message: s },
-        RPCError::Internal(s) => VeilidAPIError::Internal { message: s },
-        RPCError::Protocol(s) => VeilidAPIError::Internal { message: s },
-        RPCError::InvalidFormat(s) => VeilidAPIError::Internal {
-            message: format!("Invalid RPC format: {}", s),
-        },
-    }
-}
+// fn convert_rpc_error(x: RPCError) -> VeilidAPIError {
+//     match x {
+//         RPCError::Timeout => VeilidAPIError::Timeout,
+//         RPCError::Unreachable(n) => VeilidAPIError::NodeNotFound {
+//             node_id: NodeId::new(n),
+//         },
+//         RPCError::Unimplemented(s) => VeilidAPIError::Unimplemented { message: s },
+//         RPCError::Internal(s) => VeilidAPIError::Internal { message: s },
+//         RPCError::Protocol(s) => VeilidAPIError::Internal { message: s },
+//         RPCError::InvalidFormat(s) => VeilidAPIError::Internal {
+//             message: format!("Invalid RPC format: {}", s),
+//         },
+//     }
+// }
 
-macro_rules! map_rpc_error {
-    () => {
-        |x| convert_rpc_error(x)
-    };
-}
+// macro_rules! map_rpc_error {
+//     () => {
+//         |x| convert_rpc_error(x)
+//     };
+// }
 
 macro_rules! parse_error {
     ($msg:expr, $val:expr) => {
@@ -1643,6 +1642,17 @@ pub struct PrivateRouteSpec {
     pub hops: Vec<RouteHopSpec>,
 }
 
+impl PrivateRouteSpec {
+    pub fn new() -> Self {
+        let (pk, sk) = generate_secret();
+        PrivateRouteSpec {
+            public_key: pk,
+            secret_key: sk,
+            hops: Vec::new(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct SafetyRouteSpec {
     pub public_key: DHTKey,
@@ -1837,13 +1847,14 @@ impl VeilidAPI {
         }
         Err(VeilidAPIError::NotInitialized)
     }
-    pub fn rpc_processor(&self) -> Result<RPCProcessor, VeilidAPIError> {
-        let inner = self.inner.lock();
-        if let Some(context) = &inner.context {
-            return Ok(context.attachment_manager.network_manager().rpc_processor());
-        }
-        Err(VeilidAPIError::NotInitialized)
-    }
+
+    // pub fn rpc_processor(&self) -> Result<RPCProcessor, VeilidAPIError> {
+    //     let inner = self.inner.lock();
+    //     if let Some(context) = &inner.context {
+    //         return Ok(context.attachment_manager.network_manager().rpc_processor());
+    //     }
+    //     Err(VeilidAPIError::NotInitialized)
+    // }
 
     ////////////////////////////////////////////////////////////////
     // Attach/Detach

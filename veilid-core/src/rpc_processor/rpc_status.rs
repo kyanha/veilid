@@ -3,10 +3,7 @@ use super::*;
 impl RPCProcessor {
     // Send StatusQ RPC request, receive StatusA answer
     // Can be sent via relays, but not via routes
-    pub async fn rpc_call_status(
-        self,
-        peer: NodeRef,
-    ) -> Result<Answer<RPCOperationStatusA>, RPCError> {
+    pub async fn rpc_call_status(self, peer: NodeRef) -> Result<Answer<SenderInfo>, RPCError> {
         let node_status = self.network_manager().generate_node_status();
         let status_q = RPCOperationStatusQ { node_status };
         let respond_to = self.make_respond_to_sender(peer.clone());
@@ -56,7 +53,7 @@ impl RPCProcessor {
             }
         }
 
-        Ok(Answer::new(latency, status_a))
+        Ok(Answer::new(latency, status_a.sender_info))
     }
 
     pub(crate) async fn process_status_q(&self, msg: RPCMessage) -> Result<(), RPCError> {

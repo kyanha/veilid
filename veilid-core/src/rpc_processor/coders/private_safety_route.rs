@@ -21,6 +21,16 @@ pub struct PrivateRoute {
     pub hops: Option<RouteHop>,
 }
 
+impl PrivateRoute {
+    pub fn new_stub(public_key: DHTKey) -> Self {
+        Self {
+            public_key,
+            hop_count: 0,
+            hops: None,
+        }
+    }
+}
+
 impl fmt::Display for PrivateRoute {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(

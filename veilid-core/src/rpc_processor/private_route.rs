@@ -2,32 +2,14 @@ use super::*;
 
 impl RPCProcessor {
     //////////////////////////////////////////////////////////////////////
-    pub(super) fn new_stub_private_route<'a, T>(
+    fn compile_safety_route(
         &self,
-        dest_node_id: DHTKey,
-        builder: &'a mut ::capnp::message::Builder<T>,
-    ) -> Result<veilid_capnp::private_route::Reader<'a>, RPCError>
-    where
-        T: capnp::message::Allocator + 'a,
-    {
-        let mut pr = builder.init_root::<veilid_capnp::private_route::Builder>();
-
-        let mut pr_pk = pr.reborrow().init_public_key();
-        encode_public_key(&dest_node_id, &mut pr_pk)?;
-        pr.set_hop_count(0u8);
-        // leave firstHop as null
-        Ok(pr.into_reader())
-    }
-
-    fn encode_safety_route<'a>(
-        &self,
-        safety_route: &SafetyRouteSpec,
-        private_route: veilid_capnp::private_route::Reader<'a>,
-        builder: &'a mut veilid_capnp::safety_route::Builder<'a>,
-    ) -> Result<(), RPCError> {
+        safety_route_spec: &SafetyRouteSpec,
+        private_route: PrivateRoute,
+    ) -> Result<SafetyRoute, RPCError> {
         // Ensure the total hop count isn't too long for our config
-        let pr_hopcount = private_route.get_hop_count() as usize;
-        let sr_hopcount = safety_route.hops.len();
+        let pr_hopcount = private_route.hop_count as usize;
+        let sr_hopcount = safety_route_spec.hops.len();
         let hopcount = 1 + sr_hopcount + pr_hopcount;
         if hopcount > self.inner.lock().max_route_hop_count {
             return Err(rpc_error_internal("hop count too long for route"));
@@ -35,7 +17,7 @@ impl RPCProcessor {
 
         // Build the safety route
         let mut sr_pk = builder.reborrow().init_public_key();
-        encode_public_key(&safety_route.public_key, &mut sr_pk)?;
+        encode_public_key(&safety_route_spec.public_key, &mut sr_pk)?;
 
         builder.set_hop_count(
             u8::try_from(sr_hopcount)
@@ -78,7 +60,7 @@ impl RPCProcessor {
                     let mut rh_message = ::capnp::message::Builder::new_default();
                     let mut rh_builder = rh_message.init_root::<veilid_capnp::route_hop::Builder>();
                     let mut di_builder = rh_builder.reborrow().init_dial_info();
-                    encode_node_dial_info(&safety_route.hops[h].dial_info, &mut di_builder)?;
+                    encode_node_dial_info(&safety_route_spec.hops[h].dial_info, &mut di_builder)?;
                     // RouteHopData
                     let mut rhd_builder = rh_builder.init_next_hop();
                     // Add the nonce
@@ -88,8 +70,8 @@ impl RPCProcessor {
                     let dh_secret = self
                         .crypto
                         .cached_dh(
-                            &safety_route.hops[h].dial_info.node_id.key,
-                            &safety_route.secret_key,
+                            &safety_route_spec.hops[h].dial_info.node_id.key,
+                            &safety_route_spec.secret_key,
                         )
                         .map_err(map_error_internal!("dh failed"))?;
                     let enc_msg_data =
@@ -114,8 +96,8 @@ impl RPCProcessor {
             let dh_secret = self
                 .crypto
                 .cached_dh(
-                    &safety_route.hops[0].dial_info.node_id.key,
-                    &safety_route.secret_key,
+                    &safety_route_spec.hops[0].dial_info.node_id.key,
+                    &safety_route_spec.secret_key,
                 )
                 .map_err(map_error_internal!("dh failed"))?;
             let enc_msg_data = Crypto::encrypt_aead(blob_data.as_slice(), &nonce, &dh_secret, None)
@@ -128,14 +110,21 @@ impl RPCProcessor {
     }
 
     // Wrap an operation inside a route
-    pub(super) fn wrap_with_route<'a>(
+    pub(super) fn wrap_with_route(
         &self,
         safety_route: Option<&SafetyRouteSpec>,
-        private_route: veilid_capnp::private_route::Reader<'a>,
+        private_route: PrivateRoute,
         message_data: Vec<u8>,
     ) -> Result<Vec<u8>, RPCError> {
+        // Encode the private route
+        let mut pr_msg_builder = ::capnp::message::Builder::new_default();
+        let mut pr_builder = pr_msg_builder.init_root::<veilid_capnp::private_route::Builder>();
+        encode_private_route(&private_route, &mut pr_builder)?;
+        let pr_reader = pr_builder.into_reader();
+
         // Get stuff before we lock inner
-        let op_id = self.get_next_op_id();
+        let op_id = intf::get_random_u64();
+
         // Encrypt routed operation
         let nonce = Crypto::get_random_nonce();
         let pr_pk_reader = private_route
@@ -152,6 +141,12 @@ impl RPCProcessor {
             .map_err(map_error_internal!("encryption failed"))?;
 
         // Prepare route operation
+
+        let route = RPCOperationRoute {
+            safety_route: todo!(),
+            operation: todo!(),
+        };
+
         let route_msg = {
             let mut route_msg = ::capnp::message::Builder::new_default();
             let mut route_operation = route_msg.init_root::<veilid_capnp::operation::Builder>();

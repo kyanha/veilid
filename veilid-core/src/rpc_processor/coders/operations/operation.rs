@@ -26,17 +26,17 @@ impl RPCOperationKind {
             .map_err(map_error_capnp_notinschema!())?;
         let out = match which_reader {
             veilid_capnp::operation::kind::Which::Question(r) => {
-                let q_reader = r.map_err(map_error_capnp_notinschema!())?;
+                let q_reader = r.map_err(map_error_capnp_error!())?;
                 let out = RPCQuestion::decode(&q_reader, sender_node_id)?;
                 RPCOperationKind::Question(out)
             }
             veilid_capnp::operation::kind::Which::Statement(r) => {
-                let q_reader = r.map_err(map_error_capnp_notinschema!())?;
+                let q_reader = r.map_err(map_error_capnp_error!())?;
                 let out = RPCStatement::decode(&q_reader, sender_node_id)?;
                 RPCOperationKind::Statement(out)
             }
             veilid_capnp::operation::kind::Which::Answer(r) => {
-                let q_reader = r.map_err(map_error_capnp_notinschema!())?;
+                let q_reader = r.map_err(map_error_capnp_error!())?;
                 let out = RPCAnswer::decode(&q_reader)?;
                 RPCOperationKind::Answer(out)
             }

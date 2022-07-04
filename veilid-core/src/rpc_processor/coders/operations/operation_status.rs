@@ -37,9 +37,7 @@ impl RPCOperationStatusA {
         let ns_reader = reader.get_node_status().map_err(map_error_capnp_error!())?;
         let node_status = decode_node_status(&ns_reader)?;
 
-        let si_reader = reader
-            .get_sender_info()
-            .map_err(map_error_capnp_notinschema!())?;
+        let si_reader = reader.get_sender_info().map_err(map_error_capnp_error!())?;
         let sender_info = decode_sender_info(&si_reader)?;
 
         Ok(RPCOperationStatusA {
