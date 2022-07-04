@@ -1588,21 +1588,27 @@ pub enum TunnelMode {
     Turn,
 }
 
-type TunnelId = u64;
+#[derive(Clone, Debug, PartialOrd, PartialEq, Eq, Ord, Serialize, Deserialize)]
+pub enum TunnelError {
+    BadId,        // Tunnel ID was rejected
+    NoEndpoint,   // Endpoint was unreachable
+    RejectedMode, // Endpoint couldn't provide mode
+    NoCapacity,   // Endpoint is full
+}
+
+pub type TunnelId = u64;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TunnelEndpoint {
-    pub node_id: NodeId,          // the node id of the tunnel endpoint
-    pub dial_info: Vec<DialInfo>, // multiple ways of how to get to the node
     pub mode: TunnelMode,
+    pub description: String, // XXX: TODO
 }
 
 impl Default for TunnelEndpoint {
     fn default() -> Self {
         Self {
-            node_id: NodeId::default(),
-            dial_info: Vec::new(),
             mode: TunnelMode::Raw,
+            description: "".to_string(),
         }
     }
 }

@@ -356,7 +356,7 @@ enum TunnelError {
 
 struct TunnelEndpoint {
     mode                    @0  :TunnelEndpointMode;    # what kind of endpoint this is
-    peerInfo                @1  :PeerInfo;                # node id and dialinfo
+    description             @1  :Text;                  # endpoint description (TODO)
 }
 
 struct FullTunnel {
@@ -400,7 +400,7 @@ struct OperationCompleteTunnelA {
 }
 
 struct OperationCancelTunnelQ {
-    tunnel                  @0  :TunnelID;              # the tunnel id to cancel
+    id                      @0  :TunnelID;              # the tunnel id to cancel
 }
 
 struct OperationCancelTunnelA {
@@ -410,49 +410,74 @@ struct OperationCancelTunnelA {
     }
 }
 
+# Things that want an answer
+struct Question {
+    respondTo :union {
+        sender              @0  :Void;                  # sender without node info
+        senderWithInfo      @1  :SignedNodeInfo;        # some envelope-sender signed node info to be used for reply
+        privateRoute        @2  :PrivateRoute;          # embedded private route to be used for reply
+    }
+    detail :union {
+        # Direct operations
+        statusQ             @3  :OperationStatusQ;
+        findNodeQ           @4  :OperationFindNodeQ;
+        
+        # Routable operations
+        getValueQ           @5  :OperationGetValueQ;
+        setValueQ           @6  :OperationSetValueQ;
+        watchValueQ         @7  :OperationWatchValueQ;
+        supplyBlockQ        @8  :OperationSupplyBlockQ;
+        findBlockQ          @9  :OperationFindBlockQ;
+        
+        # Tunnel operations
+        startTunnelQ        @10 :OperationStartTunnelQ;
+        completeTunnelQ     @11 :OperationCompleteTunnelQ;
+        cancelTunnelQ       @12 :OperationCancelTunnelQ; 
+    }
+}
+
+# Things that don't want an answer
+struct Statement {
+    detail :union {
+        # Direct operations
+        validateDialInfo    @0  :OperationValidateDialInfo;
+        route               @1  :OperationRoute;
+        nodeInfoUpdate      @2  :OperationNodeInfoUpdate;
+        
+        # Routable operations
+        valueChanged        @3  :OperationValueChanged;
+        signal              @4  :OperationSignal;
+        returnReceipt       @5  :OperationReturnReceipt;
+    }
+}
+
+# Things that are answers
+struct Answer {
+    detail :union {
+        # Direct operations
+        statusA             @0  :OperationStatusA;
+        findNodeA           @1  :OperationFindNodeA;
+        
+        # Routable operations
+        getValueA           @2  :OperationGetValueA;
+        setValueA           @3  :OperationSetValueA;
+        watchValueA         @4  :OperationWatchValueA;    
+        supplyBlockA        @5  :OperationSupplyBlockA; 
+        findBlockA          @6  :OperationFindBlockA; 
+    
+        # Tunnel operations
+        startTunnelA        @7  :OperationStartTunnelA;
+        completeTunnelA     @8  :OperationCompleteTunnelA;
+        cancelTunnelA       @9  :OperationCancelTunnelA;
+    }
+}
+
 struct Operation {
     opId                    @0  :UInt64;                # Random RPC ID. Must be random to foil reply forgery attacks. 
 
-    respondTo :union {
-        none                @1  :Void;                  # no response is desired
-        sender              @2  :Void;                  # sender without node info
-        senderWithInfo      @3  :SignedNodeInfo;        # some envelope-sender signed node info to be used for reply
-        privateRoute        @4  :PrivateRoute;          # embedded private route to be used for reply
-    }                              
-
-    detail :union {
-        # Direct operations
-        statusQ             @5  :OperationStatusQ;
-        statusA             @6  :OperationStatusA;
-        validateDialInfo    @7  :OperationValidateDialInfo;
-        findNodeQ           @8  :OperationFindNodeQ;
-        findNodeA           @9  :OperationFindNodeA;
-        route               @10 :OperationRoute;
-        nodeInfoUpdate      @11 :OperationNodeInfoUpdate;
-        
-        # Routable operations
-        getValueQ           @12 :OperationGetValueQ;
-        getValueA           @13 :OperationGetValueA;
-        setValueQ           @14 :OperationSetValueQ;
-        setValueA           @15 :OperationSetValueA;
-        watchValueQ         @16 :OperationWatchValueQ;
-        watchValueA         @17 :OperationWatchValueA;
-        valueChanged        @18 :OperationValueChanged;
-        
-        supplyBlockQ        @19 :OperationSupplyBlockQ;
-        supplyBlockA        @20 :OperationSupplyBlockA; 
-        findBlockQ          @21 :OperationFindBlockQ;
-        findBlockA          @22 :OperationFindBlockA; 
-    
-        signal              @23 :OperationSignal;
-        returnReceipt       @24 :OperationReturnReceipt;
-        
-        # Tunnel operations
-        startTunnelQ        @25 :OperationStartTunnelQ;
-        startTunnelA        @26 :OperationStartTunnelA;
-        completeTunnelQ     @27 :OperationCompleteTunnelQ;
-        completeTunnelA     @28 :OperationCompleteTunnelA;
-        cancelTunnelQ       @29 :OperationCancelTunnelQ; 
-        cancelTunnelA       @30 :OperationCancelTunnelA;
+    kind :union {
+        question            @1  :Question;
+        statement           @2  :Statement;
+        answer              @3  :Answer;
     }
 }

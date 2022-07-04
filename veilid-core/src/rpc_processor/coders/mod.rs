@@ -18,6 +18,7 @@ mod signal_info;
 mod signature;
 mod signed_node_info;
 mod socket_address;
+mod tunnel;
 mod value_data;
 mod value_key;
 
@@ -41,6 +42,7 @@ pub use signal_info::*;
 pub use signature::*;
 pub use signed_node_info::*;
 pub use socket_address::*;
+pub use tunnel::*;
 pub use value_data::*;
 pub use value_key::*;
 
