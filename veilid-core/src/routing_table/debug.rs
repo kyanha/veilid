@@ -84,6 +84,10 @@ impl RoutingTable {
         for (n, gdi) in gdis.iter().enumerate() {
             out += &format!("  {:>2}: {:?}\n", n, gdi);
         }
+
+        out += "Own PeerInfo:\n";
+        out += &format!("  {:#?}\n", self.get_own_peer_info());
+
         out
     }
 

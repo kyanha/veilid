@@ -22,7 +22,7 @@ const UNRELIABLE_PING_INTERVAL_SECS: u32 = 5;
 
 // Keepalive pings are done occasionally to ensure holepunched public dialinfo
 // remains valid, as well as to make sure we remain in any relay node's routing table
-const KEEPALIVE_PING_INTERVAL_SECS: u32 = 20;
+const KEEPALIVE_PING_INTERVAL_SECS: u32 = 10;
 
 // How many times do we try to ping a never-reached node before we call it dead
 const NEVER_REACHED_PING_COUNT: u32 = 3;

@@ -1267,29 +1267,43 @@ impl NetworkManager {
         _last_ts: u64,
         cur_ts: u64,
     ) -> Result<(), String> {
-        // log_net!("--- network manager relay_management task");
-
         // Get our node's current node info and network class and do the right thing
         let routing_table = self.routing_table();
         let node_info = routing_table.get_own_node_info();
         let network_class = self.get_network_class();
+        let mut node_info_changed = false;
 
         // Do we know our network class yet?
         if let Some(network_class) = network_class {
             // If we already have a relay, see if it is dead, or if we don't need it any more
-            {
+            let has_relay = {
                 let mut inner = self.inner.lock();
                 if let Some(relay_node) = inner.relay_node.clone() {
                     let state = relay_node.operate(|e| e.state(cur_ts));
-                    if matches!(state, BucketEntryState::Dead) || !node_info.requires_relay() {
-                        // Relay node is dead or no longer needed
+                    // Relay node is dead or no longer needed
+                    if matches!(state, BucketEntryState::Dead) {
+                        info!("Relay node died, dropping relay {}", relay_node);
                         inner.relay_node = None;
+                        node_info_changed = true;
+                        false
+                    } else if !node_info.requires_relay() {
+                        info!(
+                            "Relay node no longer required, dropping relay {}",
+                            relay_node
+                        );
+                        inner.relay_node = None;
+                        node_info_changed = true;
+                        false
+                    } else {
+                        true
                     }
+                } else {
+                    false
                 }
-            }
+            };
 
             // Do we need a relay?
-            if node_info.requires_relay() {
+            if !has_relay && node_info.requires_relay() {
                 // Do we need an outbound relay?
                 if network_class.outbound_wants_relay() {
                     // The outbound relay is the host of the PWA
@@ -1301,17 +1315,26 @@ impl NetworkManager {
                             outbound_relay_peerinfo.node_id.key,
                             outbound_relay_peerinfo.signed_node_info,
                         )?;
+                        info!("Outbound relay node selected: {}", nr);
                         inner.relay_node = Some(nr);
+                        node_info_changed = true;
                     }
                 // Otherwise we must need an inbound relay
                 } else {
                     // Find a node in our routing table that is an acceptable inbound relay
                     if let Some(nr) = routing_table.find_inbound_relay(cur_ts) {
                         let mut inner = self.inner.lock();
+                        info!("Inbound relay node selected: {}", nr);
                         inner.relay_node = Some(nr);
+                        node_info_changed = true;
                     }
                 }
             }
+        }
+
+        // Re-send our node info if we selected a relay
+        if node_info_changed {
+            self.routing_table().send_node_info_updates().await;
         }
 
         Ok(())

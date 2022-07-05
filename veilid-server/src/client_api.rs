@@ -352,7 +352,7 @@ impl ClientApi {
         let registration_map1 = registration_map.clone();
         let regs = &mut registration_map.borrow_mut().registrations;
         for (&id, mut registration) in regs.iter_mut() {
-            if registration.requests_in_flight > 5 {
+            if registration.requests_in_flight >= 256 {
                 println!(
                     "too many requests in flight: {}",
                     registration.requests_in_flight
