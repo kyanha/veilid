@@ -18,12 +18,12 @@ impl RPCQuestion {
     pub fn detail(&self) -> &RPCQuestionDetail {
         &self.detail
     }
-    pub fn into_detail(self) -> RPCQuestionDetail {
-        self.detail
-    }
-    pub fn into_respond_to_detail(self) -> (RespondTo, RPCQuestionDetail) {
-        (self.respond_to, self.detail)
-    }
+    // pub fn into_detail(self) -> RPCQuestionDetail {
+    //     self.detail
+    // }
+    // pub fn into_respond_to_detail(self) -> (RespondTo, RPCQuestionDetail) {
+    //     (self.respond_to, self.detail)
+    // }
     pub fn desc(&self) -> &'static str {
         self.detail.desc()
     }
@@ -38,8 +38,9 @@ impl RPCQuestion {
         Ok(RPCQuestion { respond_to, detail })
     }
     pub fn encode(&self, builder: &mut veilid_capnp::question::Builder) -> Result<(), RPCError> {
-        self.respond_to.encode(&mut builder.init_respond_to())?;
-        self.detail.encode(&mut builder.init_detail())?;
+        self.respond_to
+            .encode(&mut builder.reborrow().init_respond_to())?;
+        self.detail.encode(&mut builder.reborrow().init_detail())?;
         Ok(())
     }
 }
@@ -137,18 +138,28 @@ impl RPCQuestionDetail {
         builder: &mut veilid_capnp::question::detail::Builder,
     ) -> Result<(), RPCError> {
         match self {
-            RPCQuestionDetail::StatusQ(d) => d.encode(&mut builder.init_status_q()),
-            RPCQuestionDetail::FindNodeQ(d) => d.encode(&mut builder.init_find_node_q()),
-            RPCQuestionDetail::GetValueQ(d) => d.encode(&mut builder.init_get_value_q()),
-            RPCQuestionDetail::SetValueQ(d) => d.encode(&mut builder.init_set_value_q()),
-            RPCQuestionDetail::WatchValueQ(d) => d.encode(&mut builder.init_watch_value_q()),
-            RPCQuestionDetail::SupplyBlockQ(d) => d.encode(&mut builder.init_supply_block_q()),
-            RPCQuestionDetail::FindBlockQ(d) => d.encode(&mut builder.init_find_block_q()),
-            RPCQuestionDetail::StartTunnelQ(d) => d.encode(&mut builder.init_start_tunnel_q()),
-            RPCQuestionDetail::CompleteTunnelQ(d) => {
-                d.encode(&mut builder.init_complete_tunnel_q())
+            RPCQuestionDetail::StatusQ(d) => d.encode(&mut builder.reborrow().init_status_q()),
+            RPCQuestionDetail::FindNodeQ(d) => d.encode(&mut builder.reborrow().init_find_node_q()),
+            RPCQuestionDetail::GetValueQ(d) => d.encode(&mut builder.reborrow().init_get_value_q()),
+            RPCQuestionDetail::SetValueQ(d) => d.encode(&mut builder.reborrow().init_set_value_q()),
+            RPCQuestionDetail::WatchValueQ(d) => {
+                d.encode(&mut builder.reborrow().init_watch_value_q())
             }
-            RPCQuestionDetail::CancelTunnelQ(d) => d.encode(&mut builder.init_cancel_tunnel_q()),
+            RPCQuestionDetail::SupplyBlockQ(d) => {
+                d.encode(&mut builder.reborrow().init_supply_block_q())
+            }
+            RPCQuestionDetail::FindBlockQ(d) => {
+                d.encode(&mut builder.reborrow().init_find_block_q())
+            }
+            RPCQuestionDetail::StartTunnelQ(d) => {
+                d.encode(&mut builder.reborrow().init_start_tunnel_q())
+            }
+            RPCQuestionDetail::CompleteTunnelQ(d) => {
+                d.encode(&mut builder.reborrow().init_complete_tunnel_q())
+            }
+            RPCQuestionDetail::CancelTunnelQ(d) => {
+                d.encode(&mut builder.reborrow().init_cancel_tunnel_q())
+            }
         }
     }
 }

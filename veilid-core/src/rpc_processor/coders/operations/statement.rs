@@ -29,7 +29,7 @@ impl RPCStatement {
         Ok(RPCStatement { detail })
     }
     pub fn encode(&self, builder: &mut veilid_capnp::statement::Builder) -> Result<(), RPCError> {
-        self.detail.encode(&mut builder.init_detail())?;
+        self.detail.encode(&mut builder.reborrow().init_detail())?;
         Ok(())
     }
 }
@@ -100,13 +100,19 @@ impl RPCStatementDetail {
     ) -> Result<(), RPCError> {
         match self {
             RPCStatementDetail::ValidateDialInfo(d) => {
-                d.encode(&mut builder.init_validate_dial_info())
+                d.encode(&mut builder.reborrow().init_validate_dial_info())
             }
-            RPCStatementDetail::Route(d) => d.encode(&mut builder.init_route()),
-            RPCStatementDetail::NodeInfoUpdate(d) => d.encode(&mut builder.init_node_info_update()),
-            RPCStatementDetail::ValueChanged(d) => d.encode(&mut builder.init_value_changed()),
-            RPCStatementDetail::Signal(d) => d.encode(&mut builder.init_signal()),
-            RPCStatementDetail::ReturnReceipt(d) => d.encode(&mut builder.init_return_receipt()),
+            RPCStatementDetail::Route(d) => d.encode(&mut builder.reborrow().init_route()),
+            RPCStatementDetail::NodeInfoUpdate(d) => {
+                d.encode(&mut builder.reborrow().init_node_info_update())
+            }
+            RPCStatementDetail::ValueChanged(d) => {
+                d.encode(&mut builder.reborrow().init_value_changed())
+            }
+            RPCStatementDetail::Signal(d) => d.encode(&mut builder.reborrow().init_signal()),
+            RPCStatementDetail::ReturnReceipt(d) => {
+                d.encode(&mut builder.reborrow().init_return_receipt())
+            }
         }
     }
 }

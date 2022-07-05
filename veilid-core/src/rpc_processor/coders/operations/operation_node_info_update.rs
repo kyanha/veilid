@@ -22,7 +22,7 @@ impl RPCOperationNodeInfoUpdate {
         &self,
         builder: &mut veilid_capnp::operation_node_info_update::Builder,
     ) -> Result<(), RPCError> {
-        let sni_builder = builder.init_signed_node_info();
+        let mut sni_builder = builder.reborrow().init_signed_node_info();
         encode_signed_node_info(&self.signed_node_info, &mut sni_builder)?;
         Ok(())
     }

@@ -88,7 +88,7 @@ struct RPCMessageEncoded {
     data: RPCMessageData,
 }
 
-struct RPCMessage {
+pub(crate) struct RPCMessage {
     header: RPCMessageHeader,
     operation: RPCOperation,
     opt_sender_nr: Option<NodeRef>,
@@ -426,7 +426,7 @@ impl RPCProcessor {
 
         // To where are we sending the request
         match dest {
-            Destination::Direct(node_ref) | Destination::Relay(node_ref, _) => {
+            Destination::Direct(ref node_ref) | Destination::Relay(ref node_ref, _) => {
                 // Send to a node without a private route
                 // --------------------------------------
 
@@ -453,7 +453,6 @@ impl RPCProcessor {
                     Some(sr) => {
                         // No private route was specified for the request
                         // but we are using a safety route, so we must create an empty private route
-                        let mut pr_builder = ::capnp::message::Builder::new_default();
                         let private_route = PrivateRoute::new_stub(node_id);
 
                         // first
@@ -614,7 +613,7 @@ impl RPCProcessor {
             message,
             node_id,
             node_ref,
-            hop_count,
+            hop_count: _,
         } = self.render_operation(dest, &operation, safety_route_spec)?;
 
         // If we need to resolve the first hop, do it
@@ -631,14 +630,10 @@ impl RPCProcessor {
             }
         };
 
-        // Calculate answer timeout
-        // Timeout is number of hops times the timeout per hop
-        let timeout = self.inner.lock().timeout * (hop_count as u64);
-
         // Send statement
         let bytes = message.len() as u64;
         let send_ts = intf::get_timestamp();
-        let send_data_kind = match self
+        let _send_data_kind = match self
             .network_manager()
             .send_envelope(node_ref.clone(), Some(node_id), message)
             .await
@@ -713,7 +708,7 @@ impl RPCProcessor {
             message,
             node_id,
             node_ref,
-            hop_count,
+            hop_count: _,
         } = self.render_operation(dest, &operation, safety_route_spec)?;
 
         // If we need to resolve the first hop, do it
@@ -863,7 +858,7 @@ impl RPCProcessor {
                 RPCStatementDetail::Signal(_) => self.process_signal(msg).await,
                 RPCStatementDetail::ReturnReceipt(_) => self.process_return_receipt(msg).await,
             },
-            RPCOperationKind::Answer(a) => self.complete_op_id_waiter(msg).await,
+            RPCOperationKind::Answer(_) => self.complete_op_id_waiter(msg).await,
         }
     }
 

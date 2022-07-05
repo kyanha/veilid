@@ -50,11 +50,10 @@ impl RPCOperationKind {
         builder: &mut veilid_capnp::operation::kind::Builder,
     ) -> Result<(), RPCError> {
         match self {
-            RPCOperationKind::Question(k) => k.encode(&mut builder.init_question()),
-            RPCOperationKind::Statement(k) => k.encode(&mut builder.init_statement()),
-            RPCOperationKind::Answer(k) => k.encode(&mut builder.init_answer()),
-        };
-        Ok(())
+            RPCOperationKind::Question(k) => k.encode(&mut builder.reborrow().init_question()),
+            RPCOperationKind::Statement(k) => k.encode(&mut builder.reborrow().init_statement()),
+            RPCOperationKind::Answer(k) => k.encode(&mut builder.reborrow().init_answer()),
+        }
     }
 }
 
@@ -93,7 +92,7 @@ impl RPCOperation {
         &self.kind
     }
 
-    pub fn into_kind(&self) -> RPCOperationKind {
+    pub fn into_kind(self) -> RPCOperationKind {
         self.kind
     }
 
@@ -111,7 +110,7 @@ impl RPCOperation {
 
     pub fn encode(&self, builder: &mut veilid_capnp::operation::Builder) -> Result<(), RPCError> {
         builder.set_op_id(self.op_id);
-        let k_builder = builder.init_kind();
+        let mut k_builder = builder.reborrow().init_kind();
         self.kind.encode(&mut k_builder)?;
         Ok(())
     }

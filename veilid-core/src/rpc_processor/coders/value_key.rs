@@ -5,10 +5,10 @@ pub fn encode_value_key(
     value_key: &ValueKey,
     builder: &mut veilid_capnp::value_key::Builder,
 ) -> Result<(), RPCError> {
-    let pk_builder = builder.init_public_key();
+    let mut pk_builder = builder.reborrow().init_public_key();
     encode_public_key(&value_key.key, &mut pk_builder)?;
-    if let Some(subkey) = value_key.subkey {
-        builder.set_subkey(&subkey);
+    if let Some(subkey) = &value_key.subkey {
+        builder.set_subkey(subkey);
     }
     Ok(())
 }

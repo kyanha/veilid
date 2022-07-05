@@ -42,7 +42,7 @@ impl RPCOperationCompleteTunnelQ {
             TunnelMode::Turn => veilid_capnp::TunnelEndpointMode::Turn,
         });
         builder.set_depth(self.depth);
-        let te_builder = builder.init_endpoint();
+        let mut te_builder = builder.reborrow().init_endpoint();
         encode_tunnel_endpoint(&self.endpoint, &mut te_builder)?;
 
         Ok(())
@@ -77,7 +77,7 @@ impl RPCOperationCompleteTunnelA {
     ) -> Result<(), RPCError> {
         match self {
             RPCOperationCompleteTunnelA::Tunnel(p) => {
-                encode_full_tunnel(p, &mut builder.init_tunnel())?;
+                encode_full_tunnel(p, &mut builder.reborrow().init_tunnel())?;
             }
             RPCOperationCompleteTunnelA::Error(e) => {
                 builder.set_error(encode_tunnel_error(*e));

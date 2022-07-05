@@ -18,7 +18,7 @@ impl RPCOperationStatusQ {
         &self,
         builder: &mut veilid_capnp::operation_status_q::Builder,
     ) -> Result<(), RPCError> {
-        let ns_builder = builder.init_node_status();
+        let mut ns_builder = builder.reborrow().init_node_status();
         encode_node_status(&self.node_status, &mut ns_builder)?;
         Ok(())
     }
@@ -49,9 +49,9 @@ impl RPCOperationStatusA {
         &self,
         builder: &mut veilid_capnp::operation_status_a::Builder,
     ) -> Result<(), RPCError> {
-        let ns_builder = builder.init_node_status();
+        let mut ns_builder = builder.reborrow().init_node_status();
         encode_node_status(&self.node_status, &mut ns_builder)?;
-        let si_builder = builder.init_sender_info();
+        let mut si_builder = builder.reborrow().init_sender_info();
         encode_sender_info(&self.sender_info, &mut si_builder)?;
         Ok(())
     }

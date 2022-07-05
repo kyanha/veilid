@@ -28,7 +28,7 @@ impl RPCOperationValidateDialInfo {
         &self,
         builder: &mut veilid_capnp::operation_validate_dial_info::Builder,
     ) -> Result<(), RPCError> {
-        let di_builder = builder.init_dial_info();
+        let mut di_builder = builder.reborrow().init_dial_info();
         encode_dial_info(&self.dial_info, &mut di_builder)?;
         builder.set_receipt(&self.receipt);
         builder.set_redirect(self.redirect);

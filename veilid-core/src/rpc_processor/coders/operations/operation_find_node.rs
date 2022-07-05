@@ -18,7 +18,7 @@ impl RPCOperationFindNodeQ {
         &self,
         builder: &mut veilid_capnp::operation_find_node_q::Builder,
     ) -> Result<(), RPCError> {
-        let ni_builder = builder.init_node_id();
+        let mut ni_builder = builder.reborrow().init_node_id();
         encode_public_key(&self.node_id, &mut ni_builder)?;
         Ok(())
     }
@@ -51,7 +51,7 @@ impl RPCOperationFindNodeA {
         &self,
         builder: &mut veilid_capnp::operation_find_node_a::Builder,
     ) -> Result<(), RPCError> {
-        let mut peers_builder = builder.init_peers(
+        let mut peers_builder = builder.reborrow().init_peers(
             self.peers
                 .len()
                 .try_into()

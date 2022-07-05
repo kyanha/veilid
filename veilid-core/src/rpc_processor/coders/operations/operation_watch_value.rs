@@ -18,7 +18,7 @@ impl RPCOperationWatchValueQ {
         &self,
         builder: &mut veilid_capnp::operation_watch_value_q::Builder,
     ) -> Result<(), RPCError> {
-        let k_builder = builder.init_key();
+        let mut k_builder = builder.reborrow().init_key();
         encode_value_key(&self.key, &mut k_builder)?;
         Ok(())
     }
@@ -55,7 +55,7 @@ impl RPCOperationWatchValueA {
     ) -> Result<(), RPCError> {
         builder.set_expiration(self.expiration);
 
-        let mut peers_builder = builder.init_peers(
+        let mut peers_builder = builder.reborrow().init_peers(
             self.peers
                 .len()
                 .try_into()

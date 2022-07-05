@@ -19,7 +19,7 @@ impl RPCOperationSupplyBlockQ {
         &self,
         builder: &mut veilid_capnp::operation_supply_block_q::Builder,
     ) -> Result<(), RPCError> {
-        let bi_builder = builder.init_block_id();
+        let mut bi_builder = builder.reborrow().init_block_id();
         encode_block_id(&self.block_id, &mut bi_builder)?;
 
         Ok(())
@@ -66,7 +66,7 @@ impl RPCOperationSupplyBlockA {
                 builder.set_expiration(*e);
             }
             RPCOperationSupplyBlockA::Peers(peers) => {
-                let mut peers_builder = builder.init_peers(
+                let mut peers_builder = builder.reborrow().init_peers(
                     peers
                         .len()
                         .try_into()

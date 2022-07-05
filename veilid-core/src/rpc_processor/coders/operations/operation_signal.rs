@@ -17,7 +17,7 @@ impl RPCOperationSignal {
         &self,
         builder: &mut veilid_capnp::operation_signal::Builder,
     ) -> Result<(), RPCError> {
-        encode_signal_info(&self.signal_info, &mut builder)?;
+        encode_signal_info(&self.signal_info, builder)?;
         Ok(())
     }
 }

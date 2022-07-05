@@ -21,9 +21,9 @@ impl RPCOperationValueChanged {
         &self,
         builder: &mut veilid_capnp::operation_value_changed::Builder,
     ) -> Result<(), RPCError> {
-        let k_builder = builder.init_key();
+        let mut k_builder = builder.reborrow().init_key();
         encode_value_key(&self.key, &mut k_builder)?;
-        let v_builder = builder.init_value();
+        let mut v_builder = builder.reborrow().init_value();
         encode_value_data(&self.value, &mut v_builder)?;
         Ok(())
     }

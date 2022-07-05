@@ -21,9 +21,9 @@ impl RPCOperationSetValueQ {
         &self,
         builder: &mut veilid_capnp::operation_set_value_q::Builder,
     ) -> Result<(), RPCError> {
-        let k_builder = builder.init_key();
+        let mut k_builder = builder.reborrow().init_key();
         encode_value_key(&self.key, &mut k_builder)?;
-        let v_builder = builder.init_value();
+        let mut v_builder = builder.reborrow().init_value();
         encode_value_data(&self.value, &mut v_builder)?;
         Ok(())
     }
@@ -67,11 +67,11 @@ impl RPCOperationSetValueA {
     ) -> Result<(), RPCError> {
         match self {
             RPCOperationSetValueA::Data(data) => {
-                let d_builder = builder.init_data();
+                let mut d_builder = builder.reborrow().init_data();
                 encode_value_data(&data, &mut d_builder)?;
             }
             RPCOperationSetValueA::Peers(peers) => {
-                let mut peers_builder = builder.init_peers(
+                let mut peers_builder = builder.reborrow().init_peers(
                     peers
                         .len()
                         .try_into()

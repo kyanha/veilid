@@ -50,7 +50,7 @@ impl RoutedOperation {
         &self,
         builder: &mut veilid_capnp::routed_operation::Builder,
     ) -> Result<(), RPCError> {
-        let mut sigs_builder = builder.init_signatures(
+        let mut sigs_builder = builder.reborrow().init_signatures(
             self.signatures
                 .len()
                 .try_into()
@@ -60,7 +60,7 @@ impl RoutedOperation {
             let mut sig_builder = sigs_builder.reborrow().get(i as u32);
             encode_signature(sig, &mut sig_builder);
         }
-        let n_builder = builder.init_nonce();
+        let mut n_builder = builder.reborrow().init_nonce();
         encode_nonce(&self.nonce, &mut n_builder);
         builder.set_data(&self.data);
 
@@ -95,9 +95,9 @@ impl RPCOperationRoute {
         &self,
         builder: &mut veilid_capnp::operation_route::Builder,
     ) -> Result<(), RPCError> {
-        let sr_builder = builder.init_safety_route();
+        let mut sr_builder = builder.reborrow().init_safety_route();
         encode_safety_route(&self.safety_route, &mut sr_builder)?;
-        let o_builder = builder.init_operation();
+        let mut o_builder = builder.reborrow().init_operation();
         self.operation.encode(&mut o_builder)?;
         Ok(())
     }

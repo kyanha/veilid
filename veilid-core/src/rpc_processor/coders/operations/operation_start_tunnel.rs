@@ -71,7 +71,7 @@ impl RPCOperationStartTunnelA {
     ) -> Result<(), RPCError> {
         match self {
             RPCOperationStartTunnelA::Partial(p) => {
-                encode_partial_tunnel(p, &mut builder.init_partial())?;
+                encode_partial_tunnel(p, &mut builder.reborrow().init_partial())?;
             }
             RPCOperationStartTunnelA::Error(e) => {
                 builder.set_error(encode_tunnel_error(*e));

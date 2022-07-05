@@ -19,7 +19,7 @@ impl RPCOperationFindBlockQ {
         &self,
         builder: &mut veilid_capnp::operation_find_block_q::Builder,
     ) -> Result<(), RPCError> {
-        let bi_builder = builder.init_block_id();
+        let mut bi_builder = builder.reborrow().init_block_id();
         encode_block_id(&self.block_id, &mut bi_builder)?;
 
         Ok(())
@@ -79,7 +79,7 @@ impl RPCOperationFindBlockA {
     ) -> Result<(), RPCError> {
         builder.set_data(&self.data);
 
-        let mut suppliers_builder = builder.init_suppliers(
+        let mut suppliers_builder = builder.reborrow().init_suppliers(
             self.suppliers
                 .len()
                 .try_into()
@@ -90,7 +90,7 @@ impl RPCOperationFindBlockA {
             encode_peer_info(peer, &mut pi_builder)?;
         }
 
-        let mut peers_builder = builder.init_peers(
+        let mut peers_builder = builder.reborrow().init_peers(
             self.peers
                 .len()
                 .try_into()

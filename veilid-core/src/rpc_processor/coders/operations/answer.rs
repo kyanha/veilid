@@ -11,9 +11,9 @@ impl RPCAnswer {
     pub fn new(detail: RPCAnswerDetail) -> Self {
         Self { detail }
     }
-    pub fn detail(&self) -> &RPCAnswerDetail {
-        &self.detail
-    }
+    // pub fn detail(&self) -> &RPCAnswerDetail {
+    //     &self.detail
+    // }
     pub fn into_detail(self) -> RPCAnswerDetail {
         self.detail
     }
@@ -26,7 +26,7 @@ impl RPCAnswer {
         Ok(RPCAnswer { detail })
     }
     pub fn encode(&self, builder: &mut veilid_capnp::answer::Builder) -> Result<(), RPCError> {
-        self.detail.encode(&mut builder.init_detail())?;
+        self.detail.encode(&mut builder.reborrow().init_detail())?;
         Ok(())
     }
 }
@@ -124,16 +124,26 @@ impl RPCAnswerDetail {
         builder: &mut veilid_capnp::answer::detail::Builder,
     ) -> Result<(), RPCError> {
         match self {
-            RPCAnswerDetail::StatusA(d) => d.encode(&mut builder.init_status_a()),
-            RPCAnswerDetail::FindNodeA(d) => d.encode(&mut builder.init_find_node_a()),
-            RPCAnswerDetail::GetValueA(d) => d.encode(&mut builder.init_get_value_a()),
-            RPCAnswerDetail::SetValueA(d) => d.encode(&mut builder.init_set_value_a()),
-            RPCAnswerDetail::WatchValueA(d) => d.encode(&mut builder.init_watch_value_a()),
-            RPCAnswerDetail::SupplyBlockA(d) => d.encode(&mut builder.init_supply_block_a()),
-            RPCAnswerDetail::FindBlockA(d) => d.encode(&mut builder.init_find_block_a()),
-            RPCAnswerDetail::StartTunnelA(d) => d.encode(&mut builder.init_start_tunnel_a()),
-            RPCAnswerDetail::CompleteTunnelA(d) => d.encode(&mut builder.init_complete_tunnel_a()),
-            RPCAnswerDetail::CancelTunnelA(d) => d.encode(&mut builder.init_cancel_tunnel_a()),
+            RPCAnswerDetail::StatusA(d) => d.encode(&mut builder.reborrow().init_status_a()),
+            RPCAnswerDetail::FindNodeA(d) => d.encode(&mut builder.reborrow().init_find_node_a()),
+            RPCAnswerDetail::GetValueA(d) => d.encode(&mut builder.reborrow().init_get_value_a()),
+            RPCAnswerDetail::SetValueA(d) => d.encode(&mut builder.reborrow().init_set_value_a()),
+            RPCAnswerDetail::WatchValueA(d) => {
+                d.encode(&mut builder.reborrow().init_watch_value_a())
+            }
+            RPCAnswerDetail::SupplyBlockA(d) => {
+                d.encode(&mut builder.reborrow().init_supply_block_a())
+            }
+            RPCAnswerDetail::FindBlockA(d) => d.encode(&mut builder.reborrow().init_find_block_a()),
+            RPCAnswerDetail::StartTunnelA(d) => {
+                d.encode(&mut builder.reborrow().init_start_tunnel_a())
+            }
+            RPCAnswerDetail::CompleteTunnelA(d) => {
+                d.encode(&mut builder.reborrow().init_complete_tunnel_a())
+            }
+            RPCAnswerDetail::CancelTunnelA(d) => {
+                d.encode(&mut builder.reborrow().init_cancel_tunnel_a())
+            }
         }
     }
 }
