@@ -2,13 +2,21 @@ use crate::*;
 use rpc_processor::*;
 
 #[derive(Debug, Clone)]
-struct RoutedOperation {
+pub struct RoutedOperation {
     pub signatures: Vec<DHTSignature>,
     pub nonce: Nonce,
     pub data: Vec<u8>,
 }
 
 impl RoutedOperation {
+    pub fn new(nonce: Nonce, data: Vec<u8>) -> Self {
+        Self {
+            signatures: Vec::new(),
+            nonce,
+            data,
+        }
+    }
+
     pub fn decode(
         reader: &veilid_capnp::routed_operation::Reader,
     ) -> Result<RoutedOperation, RPCError> {

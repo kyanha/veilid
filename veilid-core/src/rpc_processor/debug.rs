@@ -86,29 +86,3 @@ macro_rules! map_error_panic {
         |_| panic!("oops")
     };
 }
-
-impl RPCProcessor {
-    pub(super) fn get_rpc_message_debug_info<T: capnp::message::ReaderSegments>(
-        &self,
-        message: &capnp::message::Reader<T>,
-    ) -> String {
-        let operation = match message.get_root::<veilid_capnp::operation::Reader>() {
-            Ok(v) => v,
-            Err(e) => {
-                return format!("invalid operation: {}", e);
-            }
-        };
-        let op_id = operation.get_op_id();
-        let detail = match operation.get_detail().which() {
-            Ok(v) => v,
-            Err(e) => {
-                return format!("(operation detail not in schema: {})", e);
-            }
-        };
-        format!(
-            "#{} {}",
-            op_id,
-            Self::get_rpc_operation_detail_debug_info(&detail)
-        )
-    }
-}

@@ -61,9 +61,9 @@ pub fn encode_full_tunnel(
 ) -> Result<(), RPCError> {
     builder.set_id(full_tunnel.id);
     builder.set_timeout(full_tunnel.timeout);
-    let l_builder = builder.init_local();
+    let mut l_builder = builder.reborrow().init_local();
     encode_tunnel_endpoint(&full_tunnel.local, &mut l_builder)?;
-    let r_builder = builder.init_remote();
+    let mut r_builder = builder.reborrow().init_remote();
     encode_tunnel_endpoint(&full_tunnel.remote, &mut r_builder)?;
     Ok(())
 }
@@ -92,7 +92,7 @@ pub fn encode_partial_tunnel(
 ) -> Result<(), RPCError> {
     builder.set_id(partial_tunnel.id);
     builder.set_timeout(partial_tunnel.timeout);
-    let l_builder = builder.init_local();
+    let mut l_builder = builder.reborrow().init_local();
     encode_tunnel_endpoint(&partial_tunnel.local, &mut l_builder)?;
     Ok(())
 }

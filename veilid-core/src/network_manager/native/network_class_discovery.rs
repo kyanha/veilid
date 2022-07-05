@@ -85,7 +85,7 @@ impl DiscoveryContext {
                 node_ref
             ))
             .map(|sa| {
-                let ret = sa.sender_info.socket_address;
+                let ret = sa.answer.socket_address;
                 log_net!("request_public_address: {:?}", ret);
                 ret
             })

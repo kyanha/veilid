@@ -1581,13 +1581,13 @@ pub enum SignalInfo {
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
-#[derive(Clone, Debug, PartialOrd, PartialEq, Eq, Ord, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, PartialOrd, PartialEq, Eq, Ord, Serialize, Deserialize)]
 pub enum TunnelMode {
     Raw,
     Turn,
 }
 
-#[derive(Clone, Debug, PartialOrd, PartialEq, Eq, Ord, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, PartialOrd, PartialEq, Eq, Ord, Serialize, Deserialize)]
 pub enum TunnelError {
     BadId,        // Tunnel ID was rejected
     NoEndpoint,   // Endpoint was unreachable
