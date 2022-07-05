@@ -471,16 +471,12 @@ impl RoutingTable {
         // Ask each node near us to find us as well
         if wide {
             for closest_nr in closest_nodes {
-                match self.find_self(closest_nr.clone()).await {
-                    Err(e) => {
-                        log_rtab!(error
-                            "reverse_find_node: closest node find_self failed for {:?}: {}",
-                            &closest_nr, e
-                        );
-                        return;
-                    }
-                    Ok(v) => v,
-                };
+                if let Err(e) = self.find_self(closest_nr.clone()).await {
+                    log_rtab!(error
+                        "reverse_find_node: closest node find_self failed for {:?}: {}",
+                        &closest_nr, e
+                    );
+                }
             }
         }
     }
