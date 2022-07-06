@@ -32,8 +32,6 @@ pub const PEEK_DETECT_LEN: usize = 64;
 /////////////////////////////////////////////////////////////////
 
 struct NetworkInner {
-    routing_table: RoutingTable,
-    network_manager: NetworkManager,
     network_started: bool,
     network_needs_restart: bool,
     protocol_config: Option<ProtocolConfig>,
@@ -58,6 +56,10 @@ struct NetworkInner {
 }
 
 struct NetworkUnlockedInner {
+    // Accessors
+    routing_table: RoutingTable,
+    network_manager: NetworkManager,
+    connection_manager: ConnectionManager,
     // Background processes
     update_network_class_task: TickTask,
 }
@@ -70,10 +72,8 @@ pub struct Network {
 }
 
 impl Network {
-    fn new_inner(network_manager: NetworkManager) -> NetworkInner {
+    fn new_inner() -> NetworkInner {
         NetworkInner {
-            routing_table: network_manager.routing_table(),
-            network_manager,
             network_started: false,
             network_needs_restart: false,
             protocol_config: None,
@@ -96,17 +96,32 @@ impl Network {
         }
     }
 
-    fn new_unlocked_inner() -> NetworkUnlockedInner {
+    fn new_unlocked_inner(
+        network_manager: NetworkManager,
+        routing_table: RoutingTable,
+        connection_manager: ConnectionManager,
+    ) -> NetworkUnlockedInner {
         NetworkUnlockedInner {
+            network_manager,
+            routing_table,
+            connection_manager,
             update_network_class_task: TickTask::new(1),
         }
     }
 
-    pub fn new(network_manager: NetworkManager) -> Self {
+    pub fn new(
+        network_manager: NetworkManager,
+        routing_table: RoutingTable,
+        connection_manager: ConnectionManager,
+    ) -> Self {
         let this = Self {
             config: network_manager.config(),
-            inner: Arc::new(Mutex::new(Self::new_inner(network_manager))),
-            unlocked_inner: Arc::new(Self::new_unlocked_inner()),
+            inner: Arc::new(Mutex::new(Self::new_inner())),
+            unlocked_inner: Arc::new(Self::new_unlocked_inner(
+                network_manager,
+                routing_table,
+                connection_manager,
+            )),
         };
 
         // Set update network class tick task
@@ -123,15 +138,15 @@ impl Network {
     }
 
     fn network_manager(&self) -> NetworkManager {
-        self.inner.lock().network_manager.clone()
+        self.unlocked_inner.network_manager.clone()
     }
 
     fn routing_table(&self) -> RoutingTable {
-        self.inner.lock().routing_table.clone()
+        self.unlocked_inner.routing_table.clone()
     }
 
     fn connection_manager(&self) -> ConnectionManager {
-        self.inner.lock().network_manager.connection_manager()
+        self.unlocked_inner.connection_manager.clone()
     }
 
     fn load_certs(path: &Path) -> io::Result<Vec<Certificate>> {
@@ -541,7 +556,6 @@ impl Network {
     pub async fn shutdown(&self) {
         debug!("starting low level network shutdown");
 
-        let network_manager = self.network_manager();
         let routing_table = self.routing_table();
 
         // Stop all tasks
@@ -571,7 +585,7 @@ impl Network {
         routing_table.clear_dial_info_details(RoutingDomain::LocalNetwork);
 
         // Reset state including network class
-        *self.inner.lock() = Self::new_inner(network_manager);
+        *self.inner.lock() = Self::new_inner();
 
         debug!("finished low level network shutdown");
     }
