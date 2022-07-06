@@ -717,7 +717,8 @@ impl NetworkManager {
     fn get_contact_method(&self, mut target_node_ref: NodeRef) -> Result<ContactMethod, String> {
         let routing_table = self.routing_table();
 
-        // Get our network class and protocol config
+        // Get our network class and protocol config and node id
+        let our_node_id = routing_table.node_id();
         let our_network_class = self.get_network_class().unwrap_or(NetworkClass::Invalid);
         let our_protocol_config = self.get_protocol_config().unwrap();
 
@@ -744,6 +745,7 @@ impl NetworkManager {
             }
 
             // Get the target's inbound relay, it must have one or it is not reachable
+            // Note that .relay() never returns our own node. We can't relay to ourselves.
             if let Some(inbound_relay_nr) = target_node_ref.relay() {
                 // Can we reach the inbound relay?
                 if inbound_relay_nr
@@ -1334,7 +1336,7 @@ impl NetworkManager {
 
         // Re-send our node info if we selected a relay
         if node_info_changed {
-            self.routing_table().send_node_info_updates().await;
+            self.routing_table().send_node_info_updates(true).await;
         }
 
         Ok(())

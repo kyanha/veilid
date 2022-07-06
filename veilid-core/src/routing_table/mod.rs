@@ -335,14 +335,18 @@ impl RoutingTable {
 
         // Public dial info changed, go through all nodes and reset their 'seen our node info' bit
         if matches!(domain, RoutingDomain::PublicInternet) {
-            let cur_ts = intf::get_timestamp();
-            Self::with_entries(&*inner, cur_ts, BucketEntryState::Dead, |_, v| {
-                v.with_mut(|e| e.set_seen_our_node_info(false));
-                Option::<()>::None
-            });
+            Self::reset_all_seen_our_node_info(&*inner);
         }
 
         Ok(())
+    }
+
+    fn reset_all_seen_our_node_info(inner: &RoutingTableInner) {
+        let cur_ts = intf::get_timestamp();
+        Self::with_entries(&*inner, cur_ts, BucketEntryState::Dead, |_, v| {
+            v.with_mut(|e| e.set_seen_our_node_info(false));
+            Option::<()>::None
+        });
     }
 
     pub fn clear_dial_info_details(&self, domain: RoutingDomain) {
@@ -351,7 +355,12 @@ impl RoutingTable {
         let mut inner = self.inner.write();
         Self::with_routing_domain_mut(&mut *inner, domain, |rd| {
             rd.dial_info_details.clear();
-        })
+        });
+
+        // Public dial info changed, go through all nodes and reset their 'seen our node info' bit
+        if matches!(domain, RoutingDomain::PublicInternet) {
+            Self::reset_all_seen_our_node_info(&*inner);
+        }
     }
 
     fn bucket_depth(index: usize) -> usize {
@@ -424,8 +433,9 @@ impl RoutingTable {
     }
 
     // Inform routing table entries that our dial info has changed
-    pub async fn send_node_info_updates(&self) {
+    pub async fn send_node_info_updates(&self, all: bool) {
         let this = self.clone();
+
         // Run in background only once
         let _ = self
             .clone()
@@ -451,7 +461,7 @@ impl RoutingTable {
                     let cur_ts = intf::get_timestamp();
                     Self::with_entries(&*inner, cur_ts, BucketEntryState::Unreliable, |k, v| {
                         // Only update nodes that haven't seen our node info yet
-                        if !v.with(|e| e.has_seen_our_node_info()) {
+                        if all || !v.with(|e| e.has_seen_our_node_info()) {
                             node_refs.push(NodeRef::new(this.clone(), k, v, None));
                         }
                         Option::<()>::None
@@ -460,7 +470,7 @@ impl RoutingTable {
                 };
 
                 // Send the updates
-                log_rtab!("Sending node info updates to {} nodes", node_refs.len());
+                log_rtab!(debug "Sending node info updates to {} nodes", node_refs.len());
                 let mut unord = FuturesUnordered::new();
                 for nr in node_refs {
                     let rpc = this.rpc_processor();
@@ -483,7 +493,7 @@ impl RoutingTable {
                 // Wait for futures to complete
                 while unord.next().await.is_some() {}
 
-                log_rtab!("Finished sending node updates");
+                log_rtab!(debug "Finished sending node updates");
             })
             .await;
     }
@@ -594,7 +604,6 @@ impl RoutingTable {
                 // Make new entry
                 inner.bucket_entry_count += 1;
                 let cnt = inner.bucket_entry_count;
-                log_rtab!(debug "Routing table now has {} nodes, {} live", cnt, Self::get_entry_count(&mut *inner, BucketEntryState::Unreliable));
                 let bucket = &mut inner.buckets[idx];
                 let nr = bucket.add_entry(node_id);
 
@@ -603,8 +612,8 @@ impl RoutingTable {
                 entry.with_mut(update_func);
 
                 // Kick the bucket
-                // It is important to do this in the same inner lock as the add_entry
                 inner.kick_queue.insert(idx);
+                log_rtab!(debug "Routing table now has {} nodes, {} live", cnt, Self::get_entry_count(&mut *inner, BucketEntryState::Unreliable));
 
                 nr
             }
