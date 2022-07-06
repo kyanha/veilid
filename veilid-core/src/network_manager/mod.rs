@@ -265,8 +265,12 @@ impl NetworkManager {
         }
 
         // Create network components
-        let net = Network::new(self.clone());
         let connection_manager = ConnectionManager::new(self.clone());
+        let net = Network::new(
+            self.clone(),
+            self.routing_table(),
+            connection_manager.clone(),
+        );
         let rpc_processor = RPCProcessor::new(self.clone());
         let receipt_manager = ReceiptManager::new(self.clone());
         self.inner.lock().components = Some(NetworkComponents {
