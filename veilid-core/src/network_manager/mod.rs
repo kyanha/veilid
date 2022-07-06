@@ -718,7 +718,6 @@ impl NetworkManager {
         let routing_table = self.routing_table();
 
         // Get our network class and protocol config and node id
-        let our_node_id = routing_table.node_id();
         let our_network_class = self.get_network_class().unwrap_or(NetworkClass::Invalid);
         let our_protocol_config = self.get_protocol_config().unwrap();
 
@@ -913,18 +912,13 @@ impl NetworkManager {
         data: Vec<u8>,
     ) -> Result<(), String> {
         // Ensure we are filtered down to UDP (the only hole punch protocol supported today)
-        assert!(relay_nr
-            .filter_ref()
-            .map(|dif| dif.protocol_set == ProtocolSet::only(ProtocolType::UDP))
-            .unwrap_or_default());
         assert!(target_nr
             .filter_ref()
             .map(|dif| dif.protocol_set == ProtocolSet::only(ProtocolType::UDP))
             .unwrap_or_default());
 
         // Build a return receipt for the signal
-        let receipt_timeout =
-            ms_to_us(self.config.get().network.reverse_connection_receipt_time_ms);
+        let receipt_timeout = ms_to_us(self.config.get().network.hole_punch_receipt_time_ms);
         let (receipt, eventual_value) = self
             .generate_single_shot_receipt(receipt_timeout, [])
             .map_err(map_to_string)?;
@@ -1130,6 +1124,13 @@ impl NetworkManager {
 
         // Network accounting
         self.stats_packet_rcvd(descriptor.remote_address().to_ip_addr(), data.len() as u64);
+
+        // If this is a zero length packet, just drop it, because these are used for hole punching
+        // and possibly other low-level network connectivity tasks and will never require
+        // more processing or forwarding
+        if data.len() == 0 {
+            return Ok(true);
+        }
 
         // Ensure we can read the magic number
         if data.len() < 4 {
