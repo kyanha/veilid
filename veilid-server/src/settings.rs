@@ -92,7 +92,7 @@ core:
             set_value_timeout:
             set_value_count: 20
             set_value_fanout: 5
-            min_peer_count: 1 # 20
+            min_peer_count: 20
             min_peer_refresh_time_ms: 2000
             validate_dial_info_receipt_time_ms: 2000
         upnp: false
@@ -1482,7 +1482,7 @@ mod tests {
         assert_eq!(s.core.network.dht.set_value_timeout_ms, None);
         assert_eq!(s.core.network.dht.set_value_count, 20u32);
         assert_eq!(s.core.network.dht.set_value_fanout, 5u32);
-        assert_eq!(s.core.network.dht.min_peer_count, 1u32);
+        assert_eq!(s.core.network.dht.min_peer_count, 20u32);
         assert_eq!(s.core.network.dht.min_peer_refresh_time_ms, 2_000u32);
         assert_eq!(
             s.core.network.dht.validate_dial_info_receipt_time_ms,

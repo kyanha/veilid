@@ -78,7 +78,7 @@ Future<VeilidConfig> getDefaultVeilidConfig() async {
         setValueTimeoutMs: null,
         setValueCount: 20,
         setValueFanout: 5,
-        minPeerCount: 1, //20,
+        minPeerCount: 20,
         minPeerRefreshTimeMs: 2000,
         validateDialInfoReceiptTimeMs: 2000,
       ),
