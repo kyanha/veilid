@@ -135,18 +135,14 @@ impl VeilidAPI {
         let config = self.config()?;
         let args = args.trim_start();
         if args.is_empty() {
-            return config
-                .get_key_json("")
-                .map_err(|e| VeilidAPIError::Internal { message: e });
+            return config.get_key_json("");
         }
         let (arg, rest) = args.split_once(' ').unwrap_or((args, ""));
         let rest = rest.trim_start().to_owned();
 
         // One argument is 'config get'
         if rest.is_empty() {
-            return config
-                .get_key_json(arg)
-                .map_err(|e| VeilidAPIError::Internal { message: e });
+            return config.get_key_json(arg);
         }
 
         // More than one argument is 'config set'
@@ -156,15 +152,11 @@ impl VeilidAPI {
             self.get_state().await?.attachment.state,
             AttachmentState::Detached
         ) {
-            return Err(VeilidAPIError::Internal {
-                message: "Must be detached to change config".to_owned(),
-            });
+            apibail_internal!("Must be detached to change config");
         }
 
         // Change the config key
-        config
-            .set_key_json(arg, &rest)
-            .map_err(|e| VeilidAPIError::Internal { message: e })?;
+        config.set_key_json(arg, &rest)?;
         Ok("Config value set".to_owned())
     }
 
@@ -177,9 +169,7 @@ impl VeilidAPI {
                     self.get_state().await?.attachment.state,
                     AttachmentState::Detached | AttachmentState::Detaching
                 ) {
-                    return Err(VeilidAPIError::Internal {
-                        message: "Must be detached to purge".to_owned(),
-                    });
+                    apibail_internal!("Must be detached to purge");
                 }
                 self.network_manager()?.routing_table().purge();
                 Ok("Buckets purged".to_owned())
@@ -203,10 +193,8 @@ impl VeilidAPI {
             self.get_state().await?.attachment.state,
             AttachmentState::Detached
         ) {
-            return Err(VeilidAPIError::Internal {
-                message: "Not detached".to_owned(),
-            });
-        };
+            apibail_internal!("Not detached");
+        }
 
         self.attach().await?;
 
@@ -218,9 +206,7 @@ impl VeilidAPI {
             self.get_state().await?.attachment.state,
             AttachmentState::Detaching
         ) {
-            return Err(VeilidAPIError::Internal {
-                message: "Not attached".to_owned(),
-            });
+            apibail_internal!("Not attached");
         };
 
         self.detach().await?;

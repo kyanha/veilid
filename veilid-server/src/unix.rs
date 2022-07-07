@@ -2,6 +2,7 @@ use crate::server::*;
 use crate::settings::Settings;
 use crate::tools::*;
 use crate::veilid_logs::*;
+use crate::*;
 use clap::ArgMatches;
 use futures_util::StreamExt;
 use signal_hook::consts::signal::*;
@@ -26,7 +27,7 @@ async fn handle_signals(mut signals: Signals) {
 }
 
 #[instrument(err)]
-pub fn run_daemon(settings: Settings, _matches: ArgMatches) -> Result<(), String> {
+pub fn run_daemon(settings: Settings, _matches: ArgMatches) -> EyreResult<()> {
     let daemon = {
         let mut daemon = daemonize::Daemonize::new();
         let s = settings.read();
@@ -64,10 +65,7 @@ pub fn run_daemon(settings: Settings, _matches: ArgMatches) -> Result<(), String
         }
 
         let stdout_file = if let Some(stdout_file) = &s.daemon.stdout_file {
-            Some(
-                std::fs::File::create(stdout_file)
-                    .map_err(|e| format!("Failed to create stdio file: {}", e))?,
-            )
+            Some(std::fs::File::create(stdout_file).wrap_err("Failed to create stdio file")?)
         } else {
             None
         };
@@ -79,12 +77,11 @@ pub fn run_daemon(settings: Settings, _matches: ArgMatches) -> Result<(), String
                         .as_ref()
                         .unwrap()
                         .try_clone()
-                        .map_err(|e| format!("Failed to clone stdout file: {}", e))?,
+                        .wrap_err("Failed to clone stdout file")?,
                 );
             } else {
                 daemon = daemon.stderr(
-                    std::fs::File::create(stderr_file)
-                        .map_err(|e| format!("Failed to create stderr file: {}", e))?,
+                    std::fs::File::create(stderr_file).wrap_err("Failed to create stderr file")?,
                 );
             }
         }
@@ -101,13 +98,11 @@ pub fn run_daemon(settings: Settings, _matches: ArgMatches) -> Result<(), String
         let veilid_logs = VeilidLogs::setup(settings.clone())?;
 
         // Daemonize
-        daemon
-            .start()
-            .map_err(|e| format!("Failed to daemonize: {}", e))?;
+        daemon.start().wrap_err("Failed to daemonize")?;
 
         // Catch signals
-        let signals = Signals::new(&[SIGHUP, SIGTERM, SIGINT, SIGQUIT])
-            .map_err(|e| format!("failed to init signals: {}", e))?;
+        let signals =
+            Signals::new(&[SIGHUP, SIGTERM, SIGINT, SIGQUIT]).wrap_err("failed to init signals")?;
         let handle = signals.handle();
 
         let signals_task = spawn(handle_signals(signals));

@@ -1,17 +1,18 @@
+use crate::veilid_rng::*;
 use crate::xx::*;
+use crate::*;
+
 use core::cmp::{Eq, Ord, Ordering, PartialEq, PartialOrd};
 use core::convert::{TryFrom, TryInto};
 use core::fmt;
 use core::hash::{Hash, Hasher};
 
-use crate::veilid_rng::*;
-use ed25519_dalek::{Keypair, PublicKey, Signature};
-use serde::{Deserialize, Serialize};
-
 use data_encoding::BASE64URL_NOPAD;
 use digest::generic_array::typenum::U64;
 use digest::{Digest, Output};
+use ed25519_dalek::{Keypair, PublicKey, Signature};
 use generic_array::GenericArray;
+use serde::{Deserialize, Serialize};
 
 //////////////////////////////////////////////////////////////////////
 
@@ -71,14 +72,14 @@ macro_rules! byte_array_type {
                 Self { bytes, valid: true }
             }
 
-            pub fn try_from_vec(v: Vec<u8>) -> Result<Self, String> {
+            pub fn try_from_vec(v: Vec<u8>) -> Result<Self, VeilidAPIError> {
                 let mut this = Self {
                     bytes: [0u8; $size],
                     valid: true,
                 };
 
                 if v.len() != $size {
-                    return Err(format!(
+                    apibail_generic!(format!(
                         "Expected a Vec of length {} but it was {}",
                         $size,
                         v.len()
@@ -139,25 +140,25 @@ macro_rules! byte_array_type {
                 BASE64URL_NOPAD.encode(&self.bytes)
             }
 
-            pub fn try_decode(input: &str) -> Result<Self, String> {
+            pub fn try_decode(input: &str) -> Result<Self, VeilidAPIError> {
                 let mut bytes = [0u8; $size];
 
                 let res = BASE64URL_NOPAD.decode_len(input.len());
                 match res {
                     Ok(v) => {
                         if v != $size {
-                            return Err("Incorrect length in decode".to_owned());
+                            apibail_generic!("Incorrect length in decode");
                         }
                     }
                     Err(_) => {
-                        return Err("Failed to decode".to_owned());
+                        apibail_generic!("Failed to decode");
                     }
                 }
 
                 let res = BASE64URL_NOPAD.decode_mut(input.as_bytes(), &mut bytes);
                 match res {
                     Ok(_) => Ok(Self::new(bytes)),
-                    Err(_) => Err("Failed to decode".to_owned()),
+                    Err(_) => apierr_generic!("Failed to decode"),
                 }
             }
         }
@@ -255,28 +256,28 @@ macro_rules! byte_array_type {
         }
 
         impl TryFrom<String> for $name {
-            type Error = String;
+            type Error = VeilidAPIError;
             fn try_from(value: String) -> Result<Self, Self::Error> {
                 $name::try_from(value.as_str())
             }
         }
 
         impl TryFrom<&str> for $name {
-            type Error = String;
+            type Error = VeilidAPIError;
             fn try_from(value: &str) -> Result<Self, Self::Error> {
                 let mut out = $name::default();
                 if value == "" {
                     return Ok(out);
                 }
                 if value.len() != ($size * 2) {
-                    return Err(concat!(stringify!($name), " is incorrect length").to_owned());
+                    apibail_generic!(concat!(stringify!($name), " is incorrect length"));
                 }
                 match hex::decode_to_slice(value, &mut out.bytes) {
                     Ok(_) => {
                         out.valid = true;
                         Ok(out)
                     }
-                    Err(err) => Err(format!("{}", err)),
+                    Err(err) => apierr_generic!(err),
                 }
             }
         }
@@ -372,7 +373,7 @@ pub fn sign(
     dht_key: &DHTKey,
     dht_key_secret: &DHTKeySecret,
     data: &[u8],
-) -> Result<DHTSignature, String> {
+) -> Result<DHTSignature, VeilidAPIError> {
     assert!(dht_key.valid);
     assert!(dht_key_secret.valid);
 
@@ -381,32 +382,36 @@ pub fn sign(
 
     kpb[..DHT_KEY_SECRET_LENGTH].copy_from_slice(&dht_key_secret.bytes);
     kpb[DHT_KEY_SECRET_LENGTH..].copy_from_slice(&dht_key.bytes);
-    let keypair = Keypair::from_bytes(&kpb).map_err(|_| "Keypair is invalid".to_owned())?;
+    let keypair = Keypair::from_bytes(&kpb).map_err(mapapierr_parse!("Keypair is invalid"))?;
 
     let mut dig = Blake3Digest512::new();
     dig.update(data);
 
     let sig = keypair
         .sign_prehashed(dig, None)
-        .map_err(|_| "Signature failed".to_owned())?;
+        .map_err(VeilidAPIError::internal)?;
 
     let dht_sig = DHTSignature::new(sig.to_bytes());
     Ok(dht_sig)
 }
 
-pub fn verify(dht_key: &DHTKey, data: &[u8], signature: &DHTSignature) -> Result<(), String> {
+pub fn verify(
+    dht_key: &DHTKey,
+    data: &[u8],
+    signature: &DHTSignature,
+) -> Result<(), VeilidAPIError> {
     assert!(dht_key.valid);
     assert!(signature.valid);
     let pk =
-        PublicKey::from_bytes(&dht_key.bytes).map_err(|_| "Public key is invalid".to_owned())?;
-    let sig =
-        Signature::from_bytes(&signature.bytes).map_err(|_| "Signature is invalid".to_owned())?;
+        PublicKey::from_bytes(&dht_key.bytes).map_err(mapapierr_parse!("Public key is invalid"))?;
+    let sig = Signature::from_bytes(&signature.bytes)
+        .map_err(mapapierr_parse!("Signature is invalid"))?;
 
     let mut dig = Blake3Digest512::new();
     dig.update(data);
 
     pk.verify_prehashed(dig, None, &sig)
-        .map_err(|_| "Verification failed".to_owned())?;
+        .map_err(mapapierr_parse!("Verification failed"))?;
     Ok(())
 }
 

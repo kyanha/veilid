@@ -76,7 +76,7 @@ impl ServicesContext {
         // Init node id from config now that protected store is set up
         if let Err(e) = self.config.init_node_id(protected_store.clone()).await {
             self.shutdown().await;
-            return Err(VeilidAPIError::Internal { message: e });
+            return Err(e);
         }
 
         // Set up tablestore
@@ -177,9 +177,7 @@ impl VeilidCoreContext {
         // Set up config from callback
         trace!("setup config with callback");
         let mut config = VeilidConfig::new();
-        if let Err(e) = config.setup(config_callback) {
-            return Err(VeilidAPIError::Internal { message: e });
-        }
+        config.setup(config_callback)?;
 
         Self::new_common(update_callback, config).await
     }
@@ -192,9 +190,7 @@ impl VeilidCoreContext {
         // Set up config from callback
         trace!("setup config with json");
         let mut config = VeilidConfig::new();
-        if let Err(e) = config.setup_from_json(config_json) {
-            return Err(VeilidAPIError::Internal { message: e });
-        }
+        config.setup_from_json(config_json)?;
         Self::new_common(update_callback, config).await
     }
 

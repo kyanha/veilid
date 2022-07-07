@@ -10,17 +10,20 @@ pub enum RPCError {
     Internal(String),
 }
 
-pub fn rpc_error_internal<T: AsRef<str>>(x: T) -> RPCError {
-    error!("RPCError Internal: {}", x.as_ref());
-    RPCError::Internal(x.as_ref().to_owned())
+pub fn rpc_error_internal<T: ToString>(x: T) -> RPCError {
+    let x = x.to_string();
+    error!("RPCError Internal: {}", x);
+    RPCError::Internal(x)
 }
-pub fn rpc_error_invalid_format<T: AsRef<str>>(x: T) -> RPCError {
-    error!("RPCError Invalid Format: {}", x.as_ref());
-    RPCError::InvalidFormat(x.as_ref().to_owned())
+pub fn rpc_error_invalid_format<T: ToString>(x: T) -> RPCError {
+    let x = x.to_string();
+    error!("RPCError Invalid Format: {}", x);
+    RPCError::InvalidFormat(x)
 }
-pub fn rpc_error_protocol<T: AsRef<str>>(x: T) -> RPCError {
-    error!("RPCError Protocol: {}", x.as_ref());
-    RPCError::Protocol(x.as_ref().to_owned())
+pub fn rpc_error_protocol<T: ToString>(x: T) -> RPCError {
+    let x = x.to_string();
+    error!("RPCError Protocol: {}", x);
+    RPCError::Protocol(x)
 }
 pub fn rpc_error_capnp_error(e: capnp::Error) -> RPCError {
     error!("RPCError Protocol: capnp error: {}", &e.description);
@@ -30,9 +33,10 @@ pub fn rpc_error_capnp_notinschema(e: capnp::NotInSchema) -> RPCError {
     error!("RPCError Protocol: not in schema: {}", &e.0);
     RPCError::Protocol(format!("not in schema: {}", &e.0))
 }
-pub fn rpc_error_unimplemented<T: AsRef<str>>(x: T) -> RPCError {
-    error!("RPCError Unimplemented: {}", x.as_ref());
-    RPCError::Unimplemented(x.as_ref().to_owned())
+pub fn rpc_error_unimplemented<T: ToString>(x: T) -> RPCError {
+    let x = x.to_string();
+    error!("RPCError Unimplemented: {}", x);
+    RPCError::Unimplemented(x)
 }
 
 impl fmt::Display for RPCError {

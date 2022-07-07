@@ -222,26 +222,29 @@ impl AttachmentManager {
 
     #[instrument(level = "debug", skip(self))]
     async fn attachment_maintainer(self) {
-        trace!("attachment starting");
+        debug!("attachment starting");
         let netman = {
             let mut inner = self.inner.lock();
             inner.attach_timestamp = Some(intf::get_timestamp());
             inner.network_manager.clone()
         };
 
-        let mut started = true;
-        if let Err(err) = netman.startup().await {
-            error!("network startup failed: {}", err);
-            started = false;
-        }
+        let mut restart;
+        loop {
+            restart = false;
+            if let Err(err) = netman.startup().await {
+                error!("network startup failed: {}", err);
+                netman.shutdown().await;
+                break;
+            }
 
-        if started {
-            trace!("started maintaining peers");
+            debug!("started maintaining peers");
             while self.inner.lock().maintain_peers {
                 // tick network manager
                 if let Err(err) = netman.tick().await {
                     error!("Error in network manager: {}", err);
                     self.inner.lock().maintain_peers = false;
+                    restart = true;
                     break;
                 }
 
@@ -250,10 +253,18 @@ impl AttachmentManager {
                 // sleep should be at the end in case maintain_peers changes state
                 intf::sleep(1000).await;
             }
-            trace!("stopped maintaining peers");
+            debug!("stopped maintaining peers");
 
-            trace!("stopping network");
+            debug!("stopping network");
             netman.shutdown().await;
+
+            if !restart {
+                break;
+            }
+
+            debug!("completely restarting attachment");
+            // chill out for a second first, give network stack time to settle out
+            intf::sleep(1000).await;
         }
 
         trace!("stopping attachment");
@@ -261,7 +272,7 @@ impl AttachmentManager {
         let _output = attachment_machine
             .consume(&AttachmentInput::AttachmentStopped)
             .await;
-        trace!("attachment stopped");
+        debug!("attachment stopped");
         self.inner.lock().attach_timestamp = None;
     }
 

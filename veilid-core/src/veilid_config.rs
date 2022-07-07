@@ -5,11 +5,11 @@ use serde::*;
 ////////////////////////////////////////////////////////////////////////////////////////////////
 cfg_if! {
     if #[cfg(target_arch = "wasm32")] {
-        pub type ConfigCallbackReturn = Result<Box<dyn core::any::Any>, String>;
+        pub type ConfigCallbackReturn = Result<Box<dyn core::any::Any>, VeilidAPIError>;
         pub type ConfigCallback = Arc<dyn Fn(String) -> ConfigCallbackReturn>;
 
     } else {
-        pub type ConfigCallbackReturn = Result<Box<dyn core::any::Any + Send>, String>;
+        pub type ConfigCallbackReturn = Result<Box<dyn core::any::Any + Send>, VeilidAPIError>;
         pub type ConfigCallback = Arc<dyn Fn(String) -> ConfigCallbackReturn + Send + Sync>;
     }
 }
@@ -281,10 +281,10 @@ impl VeilidConfig {
         }
     }
 
-    pub fn setup_from_json(&mut self, config: String) -> Result<(), String> {
+    pub fn setup_from_json(&mut self, config: String) -> Result<(), VeilidAPIError> {
         {
             let mut inner = self.inner.write();
-            *inner = serde_json::from_str(&config).map_err(map_to_string)?;
+            *inner = serde_json::from_str(&config).map_err(VeilidAPIError::generic)?;
         }
 
         // Validate settings
@@ -293,14 +293,14 @@ impl VeilidConfig {
         Ok(())
     }
 
-    pub fn setup(&mut self, cb: ConfigCallback) -> Result<(), String> {
+    pub fn setup(&mut self, cb: ConfigCallback) -> Result<(), VeilidAPIError> {
         macro_rules! get_config {
             ($key:expr) => {
                 let keyname = &stringify!($key)[6..];
                 $key = *cb(keyname.to_owned())?.downcast().map_err(|_| {
-                    let err = format!("incorrect type for key: {}", keyname);
+                    let err = format!("incorrect type for key {}", keyname);
                     debug!("{}", err);
-                    err
+                    VeilidAPIError::generic(err)
                 })?;
             };
         }
@@ -411,12 +411,12 @@ impl VeilidConfig {
         self.inner.write()
     }
 
-    pub fn get_key_json(&self, key: &str) -> Result<String, String> {
+    pub fn get_key_json(&self, key: &str) -> Result<String, VeilidAPIError> {
         let c = self.get();
 
         // Generate json from whole config
-        let jc = serde_json::to_string(&*c).map_err(map_to_string)?;
-        let jvc = json::parse(&jc).map_err(map_to_string)?;
+        let jc = serde_json::to_string(&*c).map_err(VeilidAPIError::generic)?;
+        let jvc = json::parse(&jc).map_err(VeilidAPIError::generic)?;
 
         // Find requested subkey
         if key.is_empty() {
@@ -427,25 +427,25 @@ impl VeilidConfig {
             let mut out = &jvc;
             for k in keypath {
                 if !out.has_key(k) {
-                    return Err(format!("invalid subkey '{}' in key '{}'", k, key));
+                    apibail_parse!(format!("invalid subkey in key '{}'", key), k);
                 }
                 out = &out[k];
             }
             Ok(out.to_string())
         }
     }
-    pub fn set_key_json(&self, key: &str, value: &str) -> Result<(), String> {
+    pub fn set_key_json(&self, key: &str, value: &str) -> Result<(), VeilidAPIError> {
         let mut c = self.get_mut();
 
         // Split key into path parts
         let keypath: Vec<&str> = key.split('.').collect();
 
         // Convert value into jsonvalue
-        let newval = json::parse(value).map_err(map_to_string)?;
+        let newval = json::parse(value).map_err(VeilidAPIError::generic)?;
 
         // Generate json from whole config
-        let jc = serde_json::to_string(&*c).map_err(map_to_string)?;
-        let mut jvc = json::parse(&jc).map_err(map_to_string)?;
+        let jc = serde_json::to_string(&*c).map_err(VeilidAPIError::generic)?;
+        let mut jvc = json::parse(&jc).map_err(VeilidAPIError::generic)?;
 
         // Find requested subkey
         let newconfigstring = if let Some((objkeyname, objkeypath)) = keypath.split_last() {
@@ -453,12 +453,12 @@ impl VeilidConfig {
             let mut out = &mut jvc;
             for k in objkeypath {
                 if !out.has_key(*k) {
-                    return Err(format!("invalid subkey '{}' in key '{}'", *k, key));
+                    apibail_parse!(format!("invalid subkey in key '{}'", key), k);
                 }
                 out = &mut out[*k];
             }
             if !out.has_key(objkeyname) {
-                return Err(format!("invalid subkey '{}' in key '{}'", objkeyname, key));
+                apibail_parse!(format!("invalid subkey in key '{}'", key), objkeyname);
             }
             out[*objkeyname] = newval;
             jvc.to_string()
@@ -473,11 +473,11 @@ impl VeilidConfig {
         Ok(())
     }
 
-    fn validate(&self) -> Result<(), String> {
+    fn validate(&self) -> Result<(), VeilidAPIError> {
         let inner = self.inner.read();
 
         if inner.program_name.is_empty() {
-            return Err("Program name must not be empty in 'program_name'".to_owned());
+            apibail_generic!("Program name must not be empty in 'program_name'");
         }
 
         // if inner.network.protocol.udp.enabled {
@@ -486,29 +486,29 @@ impl VeilidConfig {
         if inner.network.protocol.tcp.listen {
             // Validate TCP settings
             if inner.network.protocol.tcp.max_connections == 0 {
-                return Err("TCP max connections must be > 0 in config key 'network.protocol.tcp.max_connections'".to_owned());
+                apibail_generic!("TCP max connections must be > 0 in config key 'network.protocol.tcp.max_connections'");
             }
         }
         if inner.network.protocol.ws.listen {
             // Validate WS settings
             if inner.network.protocol.ws.max_connections == 0 {
-                return Err("WS max connections must be > 0 in config key 'network.protocol.ws.max_connections'".to_owned());
+                apibail_generic!("WS max connections must be > 0 in config key 'network.protocol.ws.max_connections'");
             }
             if inner.network.application.https.enabled
                 && inner.network.application.https.path == inner.network.protocol.ws.path
             {
-                return Err("WS path conflicts with HTTPS application path in config key 'network.protocol.ws.path'".to_owned());
+                apibail_generic!("WS path conflicts with HTTPS application path in config key 'network.protocol.ws.path'");
             }
             if inner.network.application.http.enabled
                 && inner.network.application.http.path == inner.network.protocol.ws.path
             {
-                return Err("WS path conflicts with HTTP application path in config key 'network.protocol.ws.path'".to_owned());
+                apibail_generic!("WS path conflicts with HTTP application path in config key 'network.protocol.ws.path'");
             }
         }
         if inner.network.protocol.wss.listen {
             // Validate WSS settings
             if inner.network.protocol.wss.max_connections == 0 {
-                return Err("WSS max connections must be > 0 in config key 'network.protocol.wss.max_connections'".to_owned());
+                apibail_generic!("WSS max connections must be > 0 in config key 'network.protocol.wss.max_connections'");
             }
             if inner
                 .network
@@ -519,19 +519,19 @@ impl VeilidConfig {
                 .map(|u| u.is_empty())
                 .unwrap_or_default()
             {
-                return Err(
-                    "WSS URL must be specified in config key 'network.protocol.wss.url'".to_owned(),
+                apibail_generic!(
+                    "WSS URL must be specified in config key 'network.protocol.wss.url'"
                 );
             }
             if inner.network.application.https.enabled
                 && inner.network.application.https.path == inner.network.protocol.wss.path
             {
-                return Err("WSS path conflicts with HTTPS application path in config key 'network.protocol.ws.path'".to_owned());
+                apibail_generic!("WSS path conflicts with HTTPS application path in config key 'network.protocol.ws.path'");
             }
             if inner.network.application.http.enabled
                 && inner.network.application.http.path == inner.network.protocol.wss.path
             {
-                return Err("WSS path conflicts with HTTP application path in config key 'network.protocol.ws.path'".to_owned());
+                apibail_generic!("WSS path conflicts with HTTP application path in config key 'network.protocol.ws.path'");
             }
         }
         if inner.network.application.https.enabled {
@@ -545,9 +545,8 @@ impl VeilidConfig {
                 .map(|u| u.is_empty())
                 .unwrap_or_default()
             {
-                return Err(
+                apibail_generic!(
                     "HTTPS URL must be specified in config key 'network.application.https.url'"
-                        .to_owned(),
                 );
             }
         }
@@ -556,15 +555,22 @@ impl VeilidConfig {
 
     // Get the node id from config if one is specified
     // Must be done -after- protected store startup
-    pub async fn init_node_id(&self, protected_store: intf::ProtectedStore) -> Result<(), String> {
+    pub async fn init_node_id(
+        &self,
+        protected_store: intf::ProtectedStore,
+    ) -> Result<(), VeilidAPIError> {
         let mut node_id = self.inner.read().network.node_id;
         let mut node_id_secret = self.inner.read().network.node_id_secret;
         // See if node id was previously stored in the protected store
         if !node_id.valid {
             debug!("pulling node id from storage");
-            if let Some(s) = protected_store.load_user_secret_string("node_id").await? {
+            if let Some(s) = protected_store
+                .load_user_secret_string("node_id")
+                .await
+                .map_err(VeilidAPIError::internal)?
+            {
                 debug!("node id found in storage");
-                node_id = DHTKey::try_decode(s.as_str())?
+                node_id = DHTKey::try_decode(s.as_str()).map_err(VeilidAPIError::internal)?
             } else {
                 debug!("node id not found in storage");
             }
@@ -575,10 +581,12 @@ impl VeilidConfig {
             debug!("pulling node id secret from storage");
             if let Some(s) = protected_store
                 .load_user_secret_string("node_id_secret")
-                .await?
+                .await
+                .map_err(VeilidAPIError::internal)?
             {
                 debug!("node id secret found in storage");
-                node_id_secret = DHTKeySecret::try_decode(s.as_str())?
+                node_id_secret =
+                    DHTKeySecret::try_decode(s.as_str()).map_err(VeilidAPIError::internal)?
             } else {
                 debug!("node id secret not found in storage");
             }
@@ -588,7 +596,7 @@ impl VeilidConfig {
         if node_id.valid && node_id_secret.valid {
             // Validate node id
             if !dht::validate_key(&node_id, &node_id_secret) {
-                return Err("node id secret and node id key don't match".to_owned());
+                apibail_generic!("node id secret and node id key don't match");
             }
         }
 
@@ -605,10 +613,12 @@ impl VeilidConfig {
         // Save the node id / secret in storage
         protected_store
             .save_user_secret_string("node_id", node_id.encode().as_str())
-            .await?;
+            .await
+            .map_err(VeilidAPIError::internal)?;
         protected_store
             .save_user_secret_string("node_id_secret", node_id_secret.encode().as_str())
-            .await?;
+            .await
+            .map_err(VeilidAPIError::internal)?;
 
         self.inner.write().network.node_id = node_id;
         self.inner.write().network.node_id_secret = node_id_secret;

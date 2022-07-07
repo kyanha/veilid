@@ -1227,8 +1227,8 @@ impl NetworkManager {
                 // pinging this node regularly to keep itself in the routing table
                 routing_table.lookup_node_ref(recipient_id).ok_or_else(|| {
                     format!(
-                        "Inbound relay asked for recipient not in routing table: {}",
-                        recipient_id
+                        "Inbound relay asked for recipient not in routing table: sender_id={:?} recipient={:?}",
+                        sender_id, recipient_id
                     )
                 })?
             };

@@ -1,4 +1,5 @@
 use crate::settings::*;
+use crate::*;
 use clap::{Arg, ArgMatches, Command};
 use std::ffi::OsStr;
 use std::path::Path;
@@ -145,11 +146,11 @@ fn do_clap_matches(default_config_path: &OsStr) -> Result<clap::ArgMatches, clap
     Ok(matches.get_matches())
 }
 
-pub fn process_command_line() -> Result<(Settings, ArgMatches), String> {
+pub fn process_command_line() -> EyreResult<(Settings, ArgMatches)> {
     // Get command line options
     let default_config_path = Settings::get_default_config_path();
     let matches = do_clap_matches(default_config_path.as_os_str())
-        .map_err(|e| format!("failed to parse command line: {}", e))?;
+        .wrap_err("failed to parse command line: {}")?;
 
     // Check for one-off commands
     #[cfg(debug_assertions)]
@@ -169,8 +170,7 @@ pub fn process_command_line() -> Result<(Settings, ArgMatches), String> {
         None
     };
 
-    let settings =
-        Settings::new(settings_path).map_err(|e| format!("configuration is invalid: {}", e))?;
+    let settings = Settings::new(settings_path).wrap_err("configuration is invalid")?;
 
     // write lock the settings
     let mut settingsrw = settings.write();
@@ -185,15 +185,13 @@ pub fn process_command_line() -> Result<(Settings, ArgMatches), String> {
     }
     if matches.occurrences_of("subnode-index") != 0 {
         let subnode_index = match matches.value_of("subnode-index") {
-            Some(x) => x
-                .parse()
-                .map_err(|e| format!("couldn't parse subnode index: {}", e))?,
+            Some(x) => x.parse().wrap_err("couldn't parse subnode index")?,
             None => {
-                return Err("value not specified for subnode-index".to_owned());
+                bail!("value not specified for subnode-index");
             }
         };
         if subnode_index == 0 {
-            return Err("value of subnode_index should be between 1 and 65535".to_owned());
+            bail!("value of subnode_index should be between 1 and 65535");
         }
         settingsrw.testing.subnode_index = subnode_index;
     }
@@ -214,7 +212,7 @@ pub fn process_command_line() -> Result<(Settings, ArgMatches), String> {
                 .expect("should not be null because of default missing value")
                 .to_string(),
         )
-        .map_err(|e| format!("failed to parse OTLP address: {}", e))?;
+        .wrap_err("failed to parse OTLP address")?;
         settingsrw.logging.otlp.level = LogLevel::Trace;
     }
     if matches.is_present("attach") {
@@ -242,13 +240,13 @@ pub fn process_command_line() -> Result<(Settings, ArgMatches), String> {
 
         // Split or get secret
         let (k, s) = if let Some((k, s)) = v.split_once(':') {
-            let k = DHTKey::try_decode(k)?;
+            let k = DHTKey::try_decode(k).wrap_err("failed to decode node id from command line")?;
             let s = DHTKeySecret::try_decode(s)?;
             (k, s)
         } else {
             let k = DHTKey::try_decode(v)?;
             let buffer = rpassword::prompt_password("Enter secret key (will not echo): ")
-                .map_err(|e| e.to_string())?;
+                .wrap_err("invalid secret key")?;
             let buffer = buffer.trim().to_string();
             let s = DHTKeySecret::try_decode(&buffer)?;
             (k, s)
@@ -270,7 +268,7 @@ pub fn process_command_line() -> Result<(Settings, ArgMatches), String> {
                 out
             }
             None => {
-                return Err("value not specified for bootstrap".to_owned());
+                bail!("value not specified for bootstrap");
             }
         };
         settingsrw.core.network.bootstrap = bootstrap_list;
@@ -284,17 +282,15 @@ pub fn process_command_line() -> Result<(Settings, ArgMatches), String> {
                 for x in x.split(',') {
                     let x = x.trim();
                     println!("    {}", x);
-                    out.push(ParsedNodeDialInfo::from_str(x).map_err(|e| {
-                        format!(
-                            "unable to parse dial info in bootstrap node list: {} for {}",
-                            e, x
-                        )
-                    })?);
+                    out.push(
+                        ParsedNodeDialInfo::from_str(x)
+                            .wrap_err("unable to parse dial info in bootstrap node list")?,
+                    );
                 }
                 out
             }
             None => {
-                return Err("value not specified for bootstrap node list".to_owned());
+                bail!("value not specified for bootstrap node list");
             }
         };
         settingsrw.core.network.bootstrap_nodes = bootstrap_list;
@@ -315,7 +311,7 @@ pub fn process_command_line() -> Result<(Settings, ArgMatches), String> {
     // Apply subnode index if we're testing
     settings
         .apply_subnode_index()
-        .map_err(|_| "failed to apply subnode index".to_owned())?;
+        .wrap_err("failed to apply subnode index")?;
 
     Ok((settings, matches))
 }

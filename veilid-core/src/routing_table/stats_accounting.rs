@@ -98,7 +98,7 @@ impl LatencyStatsAccounting {
         self.rolling_latencies.push_back(latency);
 
         let mut ls = LatencyStats {
-            fastest: 0,
+            fastest: u64::MAX,
             average: 0,
             slowest: 0,
         };

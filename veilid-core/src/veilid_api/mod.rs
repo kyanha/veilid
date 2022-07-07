@@ -31,6 +31,62 @@ use xx::*;
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 
+#[allow(unused_macros)]
+#[macro_export]
+macro_rules! apierr_generic {
+    ($x:expr) => {
+        Err(VeilidAPIError::generic($x))
+    };
+}
+
+#[allow(unused_macros)]
+#[macro_export]
+macro_rules! apierr_internal {
+    ($x:expr) => {
+        Err(VeilidAPIError::internal($x))
+    };
+}
+
+#[allow(unused_macros)]
+#[macro_export]
+macro_rules! apierr_parse {
+    ($x:expr, $y:expr) => {
+        Err(VeilidAPIError::parse_error($x, $y))
+    };
+}
+
+#[allow(unused_macros)]
+#[macro_export]
+macro_rules! mapapierr_parse {
+    ($x:expr) => {
+        |e| VeilidAPIError::parse_error($x, e)
+    };
+}
+
+#[allow(unused_macros)]
+#[macro_export]
+macro_rules! apibail_generic {
+    ($x:expr) => {
+        return Err(VeilidAPIError::generic($x));
+    };
+}
+
+#[allow(unused_macros)]
+#[macro_export]
+macro_rules! apibail_internal {
+    ($x:expr) => {
+        return Err(VeilidAPIError::internal($x));
+    };
+}
+
+#[allow(unused_macros)]
+#[macro_export]
+macro_rules! apibail_parse {
+    ($x:expr, $y:expr) => {
+        return Err(VeilidAPIError::parse_error($x, $y));
+    };
+}
+
 #[derive(Clone, Debug, PartialOrd, PartialEq, Eq, Ord, Serialize, Deserialize)]
 #[serde(tag = "kind")]
 pub enum VeilidAPIError {
@@ -66,7 +122,62 @@ pub enum VeilidAPIError {
         context: String,
         argument: String,
     },
+    Generic {
+        message: String,
+    },
 }
+
+impl VeilidAPIError {
+    pub fn node_not_found(node_id: NodeId) -> Self {
+        Self::NodeNotFound { node_id }
+    }
+    pub fn no_dial_info(node_id: NodeId) -> Self {
+        Self::NoDialInfo { node_id }
+    }
+    pub fn no_peer_info(node_id: NodeId) -> Self {
+        Self::NoPeerInfo { node_id }
+    }
+    pub fn internal<T: ToString>(msg: T) -> Self {
+        Self::Internal {
+            message: msg.to_string(),
+        }
+    }
+    pub fn unimplemented<T: ToString>(msg: T) -> Self {
+        Self::Unimplemented {
+            message: msg.to_string(),
+        }
+    }
+    pub fn parse_error<T: ToString, S: ToString>(msg: T, value: S) -> Self {
+        Self::ParseError {
+            message: msg.to_string(),
+            value: value.to_string(),
+        }
+    }
+    pub fn invalid_argument<T: ToString, S: ToString, R: ToString>(
+        context: T,
+        argument: S,
+        value: R,
+    ) -> Self {
+        Self::InvalidArgument {
+            context: context.to_string(),
+            argument: argument.to_string(),
+            value: value.to_string(),
+        }
+    }
+    pub fn missing_argument<T: ToString, S: ToString>(context: T, argument: S) -> Self {
+        Self::MissingArgument {
+            context: context.to_string(),
+            argument: argument.to_string(),
+        }
+    }
+    pub fn generic<T: ToString>(msg: T) -> Self {
+        Self::Generic {
+            message: msg.to_string(),
+        }
+    }
+}
+
+impl std::error::Error for VeilidAPIError {}
 
 impl fmt::Display for VeilidAPIError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
@@ -110,6 +221,9 @@ impl fmt::Display for VeilidAPIError {
                     "VeilidAPIError::MissingArgument({}: {})",
                     context, argument
                 )
+            }
+            VeilidAPIError::Generic { message } => {
+                write!(f, "VeilidAPIError::Generic({})", message)
             }
         }
     }
@@ -1321,9 +1435,11 @@ impl SignedNodeInfo {
         node_id: NodeId,
         signature: DHTSignature,
         timestamp: u64,
-    ) -> Result<Self, String> {
-        let mut node_info_bytes = serde_cbor::to_vec(&node_info).map_err(map_to_string)?;
-        let mut timestamp_bytes = serde_cbor::to_vec(&timestamp).map_err(map_to_string)?;
+    ) -> Result<Self, VeilidAPIError> {
+        let mut node_info_bytes = serde_cbor::to_vec(&node_info)
+            .map_err(mapapierr_parse!("failed to encode node info as cbor"))?;
+        let mut timestamp_bytes = serde_cbor::to_vec(&timestamp)
+            .map_err(mapapierr_parse!("failed to encode timestamp as cbor"))?;
 
         node_info_bytes.append(&mut timestamp_bytes);
 
@@ -1339,11 +1455,13 @@ impl SignedNodeInfo {
         node_info: NodeInfo,
         node_id: NodeId,
         secret: &DHTKeySecret,
-    ) -> Result<Self, String> {
+    ) -> Result<Self, VeilidAPIError> {
         let timestamp = intf::get_timestamp();
 
-        let mut node_info_bytes = serde_cbor::to_vec(&node_info).map_err(map_to_string)?;
-        let mut timestamp_bytes = serde_cbor::to_vec(&timestamp).map_err(map_to_string)?;
+        let mut node_info_bytes = serde_cbor::to_vec(&node_info)
+            .map_err(mapapierr_parse!("failed to encode node info as cbor"))?;
+        let mut timestamp_bytes = serde_cbor::to_vec(&timestamp)
+            .map_err(mapapierr_parse!("failed to encode timestamp as cbor"))?;
 
         node_info_bytes.append(&mut timestamp_bytes);
 

@@ -5047,6 +5047,7 @@ dependencies = [
  "capnpc",
  "cfg-if 1.0.0",
  "clap 3.2.8",
+ "color-eyre",
  "config",
  "ctrlc",
  "daemonize",

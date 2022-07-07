@@ -57,14 +57,8 @@ pub async fn test_sign_and_verify() {
 
     assert_eq!(key::verify(&dht_key, LOREM_IPSUM.as_bytes(), &a1), Ok(()));
     assert_eq!(key::verify(&dht_key2, LOREM_IPSUM.as_bytes(), &a2), Ok(()));
-    assert_eq!(
-        key::verify(&dht_key, LOREM_IPSUM.as_bytes(), &b1),
-        Err("Verification failed".to_owned())
-    );
-    assert_eq!(
-        key::verify(&dht_key2, LOREM_IPSUM.as_bytes(), &b2),
-        Err("Verification failed".to_owned())
-    );
+    assert!(key::verify(&dht_key, LOREM_IPSUM.as_bytes(), &b1).is_err());
+    assert!(key::verify(&dht_key2, LOREM_IPSUM.as_bytes(), &b2).is_err());
 
     // Try verifications that should work
     assert_eq!(
@@ -84,22 +78,10 @@ pub async fn test_sign_and_verify() {
         Ok(())
     );
     // Try verifications that shouldn't work
-    assert_eq!(
-        key::verify(&dht_key2, LOREM_IPSUM.as_bytes(), &dht_sig),
-        Err("Verification failed".to_owned())
-    );
-    assert_eq!(
-        key::verify(&dht_key, LOREM_IPSUM.as_bytes(), &dht_sig2),
-        Err("Verification failed".to_owned())
-    );
-    assert_eq!(
-        key::verify(&dht_key2, CHEEZBURGER.as_bytes(), &dht_sig_c),
-        Err("Verification failed".to_owned())
-    );
-    assert_eq!(
-        key::verify(&dht_key, CHEEZBURGER.as_bytes(), &dht_sig),
-        Err("Verification failed".to_owned())
-    );
+    assert!(key::verify(&dht_key2, LOREM_IPSUM.as_bytes(), &dht_sig).is_err());
+    assert!(key::verify(&dht_key, LOREM_IPSUM.as_bytes(), &dht_sig2).is_err());
+    assert!(key::verify(&dht_key2, CHEEZBURGER.as_bytes(), &dht_sig_c).is_err());
+    assert!(key::verify(&dht_key, CHEEZBURGER.as_bytes(), &dht_sig).is_err());
 }
 
 pub async fn test_key_conversions() {
@@ -214,9 +196,9 @@ pub async fn test_encode_decode() {
 
     // Failures
     let f1 = key::DHTKeySecret::try_decode("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
-    assert_eq!(f1, Err("Incorrect length in decode".to_owned()));
+    assert!(f1.is_err());
     let f2 = key::DHTKeySecret::try_decode("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA&");
-    assert_eq!(f2, Err("Failed to decode".to_owned()));
+    assert!(f2.is_err());
 }
 
 async fn test_hash() {

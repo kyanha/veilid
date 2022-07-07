@@ -2,6 +2,7 @@ use crate::client_api;
 use crate::settings::*;
 use crate::tools::*;
 use crate::veilid_logs::*;
+use crate::*;
 use flume::{unbounded, Receiver, Sender};
 use lazy_static::*;
 use parking_lot::Mutex;
@@ -34,16 +35,16 @@ pub async fn run_veilid_server(
     settings: Settings,
     server_mode: ServerMode,
     veilid_logs: VeilidLogs,
-) -> Result<(), String> {
+) -> EyreResult<()> {
     run_veilid_server_internal(settings, server_mode, veilid_logs).await
 }
 
-#[instrument(err, skip_all)]
+//#[instrument(err, skip_all)]
 pub async fn run_veilid_server_internal(
     settings: Settings,
     server_mode: ServerMode,
     veilid_logs: VeilidLogs,
-) -> Result<(), String> {
+) -> EyreResult<()> {
     trace!(?settings, ?server_mode);
 
     let settingsr = settings.read();
@@ -65,7 +66,7 @@ pub async fn run_veilid_server_internal(
     // Start Veilid Core and get API
     let veilid_api = veilid_core::api_startup(update_callback, config_callback)
         .await
-        .map_err(|e| format!("VeilidCore startup failed: {}", e))?;
+        .wrap_err("VeilidCore startup failed")?;
 
     // Start client api if one is requested
     let mut capi = if settingsr.client_api.enabled && matches!(server_mode, ServerMode::Normal) {
@@ -98,9 +99,10 @@ pub async fn run_veilid_server_internal(
     if auto_attach {
         info!("Auto-attach to the Veilid network");
         if let Err(e) = veilid_api.attach().await {
-            let outerr = format!("Auto-attaching to the Veilid network failed: {:?}", e);
-            error!("{}", outerr);
-            out = Err(outerr);
+            out = Err(eyre!(
+                "Auto-attaching to the Veilid network failed: {:?}",
+                e
+            ));
             shutdown();
         }
     }
@@ -116,9 +118,7 @@ pub async fn run_veilid_server_internal(
                     }
                 }
                 Err(e) => {
-                    let outerr = format!("Getting state failed: {:?}", e);
-                    error!("{}", outerr);
-                    out = Err(outerr);
+                    out = Err(eyre!("Getting state failed: {:?}", e));
                     break;
                 }
             }
@@ -129,9 +129,7 @@ pub async fn run_veilid_server_internal(
                 print!("{}", v);
             }
             Err(e) => {
-                let outerr = format!("Getting TXT record failed: {:?}", e);
-                error!("{}", outerr);
-                out = Err(outerr);
+                out = Err(eyre!("Getting TXT record failed: {:?}", e));
             }
         };
         shutdown();

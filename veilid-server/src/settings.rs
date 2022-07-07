@@ -1,5 +1,7 @@
 #![allow(clippy::bool_assert_comparison)]
 
+use crate::*;
+
 use directories::*;
 use parking_lot::*;
 
@@ -11,8 +13,9 @@ use std::str::FromStr;
 use std::sync::Arc;
 use url::Url;
 use veilid_core::xx::*;
+use veilid_core::*;
 
-pub fn load_default_config() -> Result<config::Config, config::ConfigError> {
+pub fn load_default_config() -> EyreResult<config::Config> {
     let default_config = String::from(
         r#"---
 daemon:
@@ -172,21 +175,18 @@ core:
             config::FileFormat::Yaml,
         ))
         .build()
+        .wrap_err("failed to parse default config")
 }
 
-pub fn load_config(
-    cfg: config::Config,
-    config_file: &Path,
-) -> Result<config::Config, config::ConfigError> {
+pub fn load_config(cfg: config::Config, config_file: &Path) -> EyreResult<config::Config> {
     if let Some(config_file_str) = config_file.to_str() {
         config::Config::builder()
             .add_source(cfg)
             .add_source(config::File::new(config_file_str, config::FileFormat::Yaml))
             .build()
+            .wrap_err("failed to load config")
     } else {
-        Err(config::ConfigError::Message(
-            "config file path is not valid UTF-8".to_owned(),
-        ))
+        bail!("config file path is not valid UTF-8")
     }
 }
 
@@ -254,9 +254,11 @@ pub struct ParsedUrl {
 }
 
 impl ParsedUrl {
-    pub fn offset_port(&mut self, offset: u16) -> Result<(), ()> {
+    pub fn offset_port(&mut self, offset: u16) -> EyreResult<()> {
         // Bump port on url
-        self.url.set_port(Some(self.url.port().unwrap() + offset))?;
+        self.url
+            .set_port(Some(self.url.port().unwrap() + offset))
+            .map_err(|_| eyre!("failed to set port on url"))?;
         self.urlstring = self.url.to_string();
         Ok(())
     }
@@ -388,16 +390,16 @@ impl serde::Serialize for NamedSocketAddrs {
 }
 
 impl NamedSocketAddrs {
-    pub fn offset_port(&mut self, offset: u16) -> Result<(), ()> {
+    pub fn offset_port(&mut self, offset: u16) -> EyreResult<()> {
         // Bump port on name
         if let Some(split) = self.name.rfind(':') {
             let hoststr = &self.name[0..split];
             let portstr = &self.name[split + 1..];
-            let port: u16 = portstr.parse::<u16>().map_err(drop)? + offset;
+            let port: u16 = portstr.parse::<u16>().wrap_err("failed to parse port")? + offset;
 
             self.name = format!("{}:{}", hoststr, port);
         } else {
-            return Err(());
+            bail!("no port specified to offset");
         }
 
         // Bump port on addresses
@@ -655,7 +657,7 @@ pub struct Settings {
 }
 
 impl Settings {
-    pub fn new(config_file: Option<&OsStr>) -> Result<Self, config::ConfigError> {
+    pub fn new(config_file: Option<&OsStr>) -> EyreResult<Self> {
         // Load the default config
         let mut cfg = load_default_config()?;
 
@@ -681,7 +683,7 @@ impl Settings {
         self.inner.write()
     }
 
-    pub fn apply_subnode_index(&self) -> Result<(), ()> {
+    pub fn apply_subnode_index(&self) -> EyreResult<()> {
         let mut settingsrw = self.write();
         let idx = settingsrw.testing.subnode_index;
         if idx == 0 {
@@ -869,7 +871,7 @@ impl Settings {
         pk_path
     }
 
-    pub fn set(&self, key: &str, value: &str) -> Result<(), String> {
+    pub fn set(&self, key: &str, value: &str) -> EyreResult<()> {
         let mut inner = self.inner.write();
 
         macro_rules! set_config_value {
@@ -882,9 +884,11 @@ impl Settings {
                             return Ok(());
                         }
                         Err(e) => {
-                            return Err(format!(
+                            return Err(eyre!(
                                 "invalid type for key {}, value: {}: {}",
-                                key, value, e
+                                key,
+                                value,
+                                e
                             ))
                         }
                     }
@@ -1005,7 +1009,7 @@ impl Settings {
         set_config_value!(inner.core.network.protocol.wss.listen_address, value);
         set_config_value!(inner.core.network.protocol.wss.path, value);
         set_config_value!(inner.core.network.protocol.wss.url, value);
-        Err("settings key not found".to_owned())
+        Err(eyre!("settings key not found"))
     }
 
     pub fn get_core_config_callback(&self) -> veilid_core::ConfigCallback {
@@ -1013,7 +1017,7 @@ impl Settings {
 
         Arc::new(move |key: String| {
             let inner = inner.read();
-            let out: Result<Box<dyn core::any::Any + Send>, String> = match key.as_str() {
+            let out: ConfigCallbackReturn = match key.as_str() {
                 "program_name" => Ok(Box::new("veilid-server".to_owned())),
                 "namespace" => Ok(Box::new(if inner.testing.subnode_index == 0 {
                     "".to_owned()
@@ -1365,7 +1369,10 @@ impl Settings {
                         .as_ref()
                         .map(|a| a.urlstring.clone()),
                 )),
-                _ => Err(format!("config key '{}' doesn't exist", key)),
+                _ => Err(VeilidAPIError::generic(format!(
+                    "config key '{}' doesn't exist",
+                    key
+                ))),
             };
             out
         })

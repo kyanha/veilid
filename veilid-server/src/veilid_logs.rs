@@ -1,4 +1,5 @@
 use crate::settings::*;
+use crate::*;
 use cfg_if::*;
 use opentelemetry::sdk::*;
 use opentelemetry::*;
@@ -22,7 +23,7 @@ pub struct VeilidLogs {
 }
 
 impl VeilidLogs {
-    pub fn setup(settings: Settings) -> Result<VeilidLogs, String> {
+    pub fn setup(settings: Settings) -> EyreResult<VeilidLogs> {
         let settingsr = settings.read();
 
         // Set up subscriber and layers
@@ -77,7 +78,7 @@ impl VeilidLogs {
                     )]),
                 ))
                 .install_batch(batch)
-                .map_err(|e| format!("failed to install OpenTelemetry tracer: {}", e))?;
+                .wrap_err("failed to install OpenTelemetry tracer")?;
 
             let filter = veilid_core::VeilidLayerFilter::new(
                 convert_loglevel(settingsr.logging.otlp.level),
@@ -101,13 +102,11 @@ impl VeilidLogs {
                 .parent()
                 .unwrap_or(Path::new(&MAIN_SEPARATOR.to_string()))
                 .canonicalize()
-                .map_err(|e| {
-                    format!(
-                        "File log path parent does not exist: {} ({})",
-                        settingsr.logging.file.path, e
-                    )
-                })?;
-            let log_filename = full_path.file_name().ok_or(format!(
+                .wrap_err(format!(
+                    "File log path parent does not exist: {}",
+                    settingsr.logging.file.path
+                ))?;
+            let log_filename = full_path.file_name().ok_or(eyre!(
                 "File log filename not specified in path: {}",
                 settingsr.logging.file.path
             ))?;
@@ -149,7 +148,7 @@ impl VeilidLogs {
                         convert_loglevel(settingsr.logging.system.level),
                         None,
                     );
-                    let layer =tracing_journald::layer().map_err(|e| format!("failed to set up journald logging: {}", e))?
+                    let layer =tracing_journald::layer().wrap_err("failed to set up journald logging")?
                         .with_filter(filter.clone());
                     filters.insert("system", filter);
                     layers.push(layer.boxed());
@@ -160,7 +159,7 @@ impl VeilidLogs {
         let subscriber = subscriber.with(layers);
         subscriber
             .try_init()
-            .map_err(|e| format!("failed to initialize logging: {}", e))?;
+            .wrap_err("failed to initialize logging")?;
 
         Ok(VeilidLogs {
             inner: Arc::new(Mutex::new(VeilidLogsInner {

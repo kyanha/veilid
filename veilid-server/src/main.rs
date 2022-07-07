@@ -14,6 +14,8 @@ mod veilid_logs;
 mod windows;
 
 use cfg_if::*;
+#[allow(unused_imports)]
+use color_eyre::eyre::{bail, ensure, eyre, Result as EyreResult, WrapErr};
 use server::*;
 use tools::*;
 use tracing::*;
@@ -25,16 +27,17 @@ pub mod veilid_client_capnp {
 }
 
 #[instrument(err)]
-fn main() -> Result<(), String> {
+fn main() -> EyreResult<()> {
     #[cfg(windows)]
     let _ = ansi_term::enable_ansi_support();
+    color_eyre::install()?;
 
     let (settings, matches) = cmdline::process_command_line()?;
 
     // --- Dump Config ---
     if matches.occurrences_of("dump-config") != 0 {
         return serde_yaml::to_writer(std::io::stdout(), &*settings.read())
-            .map_err(|e| e.to_string());
+            .wrap_err("failed to write yaml");
     }
 
     // --- Generate DHT Key ---
