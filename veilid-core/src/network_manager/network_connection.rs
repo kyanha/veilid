@@ -1,5 +1,6 @@
 use super::*;
 use futures_util::{FutureExt, StreamExt};
+use std::io;
 use stop_token::prelude::*;
 
 cfg_if::cfg_if! {
@@ -15,7 +16,7 @@ cfg_if::cfg_if! {
                 &self,
                 stream: AsyncPeekStream,
                 peer_addr: SocketAddr,
-            ) -> SystemPinBoxFuture<Result<Option<ProtocolNetworkConnection>, String>>;
+            ) -> SystemPinBoxFuture<io::Result<Option<ProtocolNetworkConnection>>>;
         }
 
         pub trait ProtocolAcceptHandlerClone {
@@ -52,13 +53,13 @@ impl DummyNetworkConnection {
     pub fn descriptor(&self) -> ConnectionDescriptor {
         self.descriptor.clone()
     }
-    pub fn close(&self) -> Result<(), String> {
+    // pub fn close(&self) -> Result<(), String> {
+    //     Ok(())
+    // }
+    pub fn send(&self, _message: Vec<u8>) -> io::Result<()> {
         Ok(())
     }
-    pub fn send(&self, _message: Vec<u8>) -> Result<(), String> {
-        Ok(())
-    }
-    pub fn recv(&self) -> Result<Vec<u8>, String> {
+    pub fn recv(&self) -> io::Result<Vec<u8>> {
         Ok(Vec::new())
     }
 }
@@ -178,7 +179,7 @@ impl NetworkConnection {
         protocol_connection: &ProtocolNetworkConnection,
         stats: Arc<Mutex<NetworkConnectionStats>>,
         message: Vec<u8>,
-    ) -> Result<(), String> {
+    ) -> io::Result<()> {
         let ts = intf::get_timestamp();
         let out = protocol_connection.send(message).await;
         if out.is_ok() {
@@ -190,7 +191,7 @@ impl NetworkConnection {
     async fn recv_internal(
         protocol_connection: &ProtocolNetworkConnection,
         stats: Arc<Mutex<NetworkConnectionStats>>,
-    ) -> Result<Vec<u8>, String> {
+    ) -> io::Result<Vec<u8>> {
         let ts = intf::get_timestamp();
         let out = protocol_connection.recv().await;
         if out.is_ok() {
@@ -222,7 +223,7 @@ impl NetworkConnection {
     ) -> SystemPinBoxFuture<()> {
         Box::pin(async move {
             log_net!(
-                "Starting process_connection loop for {:?}",
+                "== Starting process_connection loop for {:?}",
                 descriptor.green()
             );
 
@@ -236,7 +237,7 @@ impl NetworkConnection {
             let new_timer = || {
                 intf::sleep(connection_inactivity_timeout_ms).then(|_| async {
                     // timeout
-                    log_net!("connection timeout on {:?}", descriptor.green());
+                    log_net!("== Connection timeout on {:?}", descriptor.green());
                     RecvLoopAction::Timeout
                 })
             };
@@ -288,7 +289,7 @@ impl NetworkConnection {
                                         .on_recv_envelope(message.as_slice(), descriptor)
                                         .await
                                     {
-                                        log_net!(error e);
+                                        log_net!(debug "failed to process received envelope: {}", e);
                                         RecvLoopAction::Finish
                                     } else {
                                         RecvLoopAction::Recv
@@ -296,7 +297,7 @@ impl NetworkConnection {
                                 }
                                 Err(e) => {
                                     // Connection unable to receive, closed
-                                    log_net!(warn e);
+                                    log_net!(debug e);
                                     RecvLoopAction::Finish
                                 }
                             }

@@ -10,7 +10,7 @@ impl RPCOperationReturnReceipt {
     pub fn decode(
         reader: &veilid_capnp::operation_return_receipt::Reader,
     ) -> Result<RPCOperationReturnReceipt, RPCError> {
-        let rcpt_reader = reader.get_receipt().map_err(map_error_capnp_error!())?;
+        let rcpt_reader = reader.get_receipt().map_err(RPCError::protocol)?;
         let receipt = rcpt_reader.to_vec();
 
         Ok(RPCOperationReturnReceipt { receipt })

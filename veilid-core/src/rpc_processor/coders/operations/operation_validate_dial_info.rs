@@ -12,9 +12,9 @@ impl RPCOperationValidateDialInfo {
     pub fn decode(
         reader: &veilid_capnp::operation_validate_dial_info::Reader,
     ) -> Result<RPCOperationValidateDialInfo, RPCError> {
-        let di_reader = reader.get_dial_info().map_err(map_error_capnp_error!())?;
+        let di_reader = reader.get_dial_info().map_err(RPCError::protocol)?;
         let dial_info = decode_dial_info(&di_reader)?;
-        let rcpt_reader = reader.get_receipt().map_err(map_error_capnp_error!())?;
+        let rcpt_reader = reader.get_receipt().map_err(RPCError::protocol)?;
         let receipt = rcpt_reader.to_vec();
         let redirect = reader.get_redirect();
 

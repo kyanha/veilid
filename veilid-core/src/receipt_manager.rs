@@ -201,7 +201,7 @@ impl ReceiptManager {
         self.inner.lock().network_manager.clone()
     }
 
-    pub async fn startup(&self) -> Result<(), String> {
+    pub async fn startup(&self) -> EyreResult<()> {
         trace!("startup receipt manager");
         // Retrieve config
 
@@ -288,7 +288,7 @@ impl ReceiptManager {
         }
     }
 
-    pub async fn tick(&self) -> Result<(), String> {
+    pub async fn tick(&self) -> EyreResult<()> {
         let (next_oldest_ts, timeout_task, stop_token) = {
             let inner = self.inner.lock();
             let stop_token = match inner.stop_source.as_ref() {
@@ -390,7 +390,7 @@ impl ReceiptManager {
         inner.next_oldest_ts = new_next_oldest_ts;
     }
 
-    pub async fn cancel_receipt(&self, nonce: &ReceiptNonce) -> Result<(), String> {
+    pub async fn cancel_receipt(&self, nonce: &ReceiptNonce) -> EyreResult<()> {
         log_rpc!(debug "== Cancel Receipt {}", nonce.encode());
 
         // Remove the record
@@ -399,7 +399,7 @@ impl ReceiptManager {
             let record = match inner.records_by_nonce.remove(nonce) {
                 Some(r) => r,
                 None => {
-                    return Err("receipt not recorded".to_owned());
+                    bail!("receipt not recorded");
                 }
             };
             Self::update_next_oldest_timestamp(&mut *inner);
@@ -424,7 +424,7 @@ impl ReceiptManager {
         &self,
         receipt: Receipt,
         inbound_noderef: Option<NodeRef>,
-    ) -> Result<(), String> {
+    ) -> EyreResult<()> {
         let receipt_nonce = receipt.get_nonce();
         let extra_data = receipt.get_extra_data();
 
@@ -456,7 +456,7 @@ impl ReceiptManager {
             let record = match inner.records_by_nonce.get(&receipt_nonce) {
                 Some(r) => r.clone(),
                 None => {
-                    return Err("receipt not recorded".to_owned());
+                    bail!("receipt not recorded");
                 }
             };
             // Generate the callback future

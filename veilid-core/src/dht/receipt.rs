@@ -3,6 +3,7 @@
 use super::envelope::{MAX_VERSION, MIN_VERSION};
 use super::key::*;
 use crate::xx::*;
+use crate::*;
 use core::convert::TryInto;
 use data_encoding::BASE64URL_NOPAD;
 
@@ -57,10 +58,13 @@ impl Receipt {
         nonce: ReceiptNonce,
         sender_id: DHTKey,
         extra_data: D,
-    ) -> Result<Self, String> {
+    ) -> Result<Self, VeilidAPIError> {
         assert!(sender_id.valid);
         if extra_data.as_ref().len() > MAX_EXTRA_DATA_SIZE {
-            return Err("extra data too large for receipt".to_owned());
+            return Err(VeilidAPIError::parse_error(
+                "extra data too large for receipt",
+                extra_data.as_ref().len(),
+            ));
         }
         Ok(Self {
             version,
@@ -70,53 +74,70 @@ impl Receipt {
         })
     }
 
-    pub fn from_signed_data(data: &[u8]) -> Result<Receipt, ()> {
+    pub fn from_signed_data(data: &[u8]) -> Result<Receipt, VeilidAPIError> {
         // Ensure we are at least the length of the envelope
         if data.len() < MIN_RECEIPT_SIZE {
-            trace!("receipt too small: len={}", data.len());
-            return Err(());
+            return Err(VeilidAPIError::parse_error("receipt too small", data.len()));
         }
 
         // Verify magic number
-        let magic: [u8; 4] = data[0x00..0x04].try_into().map_err(drop)?;
+        let magic: [u8; 4] = data[0x00..0x04]
+            .try_into()
+            .map_err(VeilidAPIError::internal)?;
         if magic != *RECEIPT_MAGIC {
-            trace!("bad magic number: len={:?}", magic);
-            return Err(());
+            return Err(VeilidAPIError::generic("bad magic number"));
         }
 
         // Check version
         let version = data[0x04];
         if version > MAX_VERSION || version < MIN_VERSION {
-            trace!("unsupported protocol version: version={}", version);
-            return Err(());
+            return Err(VeilidAPIError::parse_error(
+                "unsupported protocol version",
+                version,
+            ));
         }
 
         // Get size and ensure it matches the size of the envelope and is less than the maximum message size
-        let size: u16 = u16::from_le_bytes(data[0x06..0x08].try_into().map_err(drop)?);
+        let size: u16 = u16::from_le_bytes(
+            data[0x06..0x08]
+                .try_into()
+                .map_err(VeilidAPIError::internal)?,
+        );
         if (size as usize) > MAX_RECEIPT_SIZE {
-            trace!("receipt size is too large: size={}", size);
-            return Err(());
+            return Err(VeilidAPIError::parse_error(
+                "receipt size is too large",
+                size,
+            ));
         }
         if (size as usize) != data.len() {
-            trace!(
-                "size doesn't match receipt size: size={} data.len()={}",
-                size,
-                data.len()
-            );
-            return Err(());
+            return Err(VeilidAPIError::parse_error(
+                "size doesn't match receipt size",
+                format!("size={} data.len()={}", size, data.len()),
+            ));
         }
 
         // Get sender id
-        let sender_id = DHTKey::new(data[0x20..0x40].try_into().map_err(drop)?);
+        let sender_id = DHTKey::new(
+            data[0x20..0x40]
+                .try_into()
+                .map_err(VeilidAPIError::internal)?,
+        );
 
         // Get signature
-        let signature = DHTSignature::new(data[(data.len() - 64)..].try_into().map_err(drop)?);
+        let signature = DHTSignature::new(
+            data[(data.len() - 64)..]
+                .try_into()
+                .map_err(VeilidAPIError::internal)?,
+        );
 
         // Validate signature
-        verify(&sender_id, &data[0..(data.len() - 64)], &signature).map_err(drop)?;
+        verify(&sender_id, &data[0..(data.len() - 64)], &signature)
+            .map_err(VeilidAPIError::generic)?;
 
         // Get nonce
-        let nonce: ReceiptNonce = data[0x08..0x20].try_into().map_err(drop)?;
+        let nonce: ReceiptNonce = data[0x08..0x20]
+            .try_into()
+            .map_err(VeilidAPIError::internal)?;
 
         // Get extra data and signature
         let extra_data: Vec<u8> = Vec::from(&data[0x40..(data.len() - 64)]);
@@ -130,16 +151,19 @@ impl Receipt {
         })
     }
 
-    pub fn to_signed_data(&self, secret: &DHTKeySecret) -> Result<Vec<u8>, ()> {
+    pub fn to_signed_data(&self, secret: &DHTKeySecret) -> Result<Vec<u8>, VeilidAPIError> {
         // Ensure sender node id is valid
         if !self.sender_id.valid {
-            return Err(());
+            return Err(VeilidAPIError::internal("sender id is invalid"));
         }
 
         // Ensure extra data isn't too long
         let receipt_size: usize = self.extra_data.len() + MIN_RECEIPT_SIZE;
         if receipt_size > MAX_RECEIPT_SIZE {
-            return Err(());
+            return Err(VeilidAPIError::parse_error(
+                "receipt too large",
+                receipt_size,
+            ));
         }
         let mut data: Vec<u8> = vec![0u8; receipt_size];
 
@@ -158,8 +182,8 @@ impl Receipt {
             data[0x40..(receipt_size - 64)].copy_from_slice(self.extra_data.as_slice());
         }
         // Sign the receipt
-        let signature =
-            sign(&self.sender_id, secret, &data[0..(receipt_size - 64)]).map_err(drop)?;
+        let signature = sign(&self.sender_id, secret, &data[0..(receipt_size - 64)])
+            .map_err(VeilidAPIError::generic)?;
         // Append the signature
         data[(receipt_size - 64)..].copy_from_slice(&signature.bytes);
 

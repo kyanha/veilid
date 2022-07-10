@@ -13,7 +13,7 @@ impl RoutingTable {
         _stop_token: StopToken,
         last_ts: u64,
         cur_ts: u64,
-    ) -> Result<(), String> {
+    ) -> EyreResult<()> {
         // log_rtab!("--- rolling_transfers task");
         let mut inner = self.inner.write();
         let inner = &mut *inner;
@@ -37,7 +37,7 @@ impl RoutingTable {
     pub(super) async fn resolve_bootstrap(
         &self,
         bootstrap: Vec<String>,
-    ) -> Result<BootstrapRecordMap, String> {
+    ) -> EyreResult<BootstrapRecordMap> {
         // Resolve from bootstrap root to bootstrap hostnames
         let mut bsnames = Vec::<String>::new();
         for bh in bootstrap {
@@ -202,7 +202,7 @@ impl RoutingTable {
         self,
         stop_token: StopToken,
         bootstrap_dialinfos: Vec<DialInfo>,
-    ) -> Result<(), String> {
+    ) -> EyreResult<()> {
         let network_manager = self.network_manager();
 
         let mut unord = FuturesUnordered::new();
@@ -219,9 +219,7 @@ impl RoutingTable {
             for pi in peer_info {
                 let k = pi.node_id.key;
                 // Register the node
-                let nr = self
-                    .register_node_with_signed_node_info(k, pi.signed_node_info)
-                    .map_err(logthru_rtab!(error "Couldn't add bootstrap node: {}", k))?;
+                let nr = self.register_node_with_signed_node_info(k, pi.signed_node_info)?;
 
                 // Add this our futures to process in parallel
                 unord.push(
@@ -238,7 +236,7 @@ impl RoutingTable {
     }
 
     #[instrument(level = "trace", skip(self), err)]
-    pub(super) async fn bootstrap_task_routine(self, stop_token: StopToken) -> Result<(), String> {
+    pub(super) async fn bootstrap_task_routine(self, stop_token: StopToken) -> EyreResult<()> {
         let (bootstrap, bootstrap_nodes) = {
             let c = self.config.get();
             (
@@ -272,11 +270,7 @@ impl RoutingTable {
             let mut bootstrap_node_dial_infos = Vec::new();
             for b in bootstrap_nodes {
                 let ndis = NodeDialInfo::from_str(b.as_str())
-                    .map_err(map_to_string)
-                    .map_err(logthru_rtab!(
-                        "Invalid node dial info in bootstrap entry: {}",
-                        b
-                    ))?;
+                    .wrap_err("Invalid node dial info in bootstrap entry")?;
                 bootstrap_node_dial_infos.push(ndis);
             }
             for ndi in bootstrap_node_dial_infos {
@@ -311,19 +305,17 @@ impl RoutingTable {
             log_rtab!("--- bootstrapping {} with {:?}", k.encode(), &v);
 
             // Make invalid signed node info (no signature)
-            let nr = self
-                .register_node_with_signed_node_info(
-                    k,
-                    SignedNodeInfo::with_no_signature(NodeInfo {
-                        network_class: NetworkClass::InboundCapable, // Bootstraps are always inbound capable
-                        outbound_protocols: ProtocolSet::empty(), // Bootstraps do not participate in relaying and will not make outbound requests
-                        min_version: v.min_version, // Minimum protocol version specified in txt record
-                        max_version: v.max_version, // Maximum protocol version specified in txt record
-                        dial_info_detail_list: v.dial_info_details, // Dial info is as specified in the bootstrap list
-                        relay_peer_info: None, // Bootstraps never require a relay themselves
-                    }),
-                )
-                .map_err(logthru_rtab!(error "Couldn't add bootstrap node: {}", k))?;
+            let nr = self.register_node_with_signed_node_info(
+                k,
+                SignedNodeInfo::with_no_signature(NodeInfo {
+                    network_class: NetworkClass::InboundCapable, // Bootstraps are always inbound capable
+                    outbound_protocols: ProtocolSet::empty(), // Bootstraps do not participate in relaying and will not make outbound requests
+                    min_version: v.min_version, // Minimum protocol version specified in txt record
+                    max_version: v.max_version, // Maximum protocol version specified in txt record
+                    dial_info_detail_list: v.dial_info_details, // Dial info is as specified in the bootstrap list
+                    relay_peer_info: None, // Bootstraps never require a relay themselves
+                }),
+            )?;
 
             // Add this our futures to process in parallel
             let this = self.clone();
@@ -359,7 +351,7 @@ impl RoutingTable {
         stop_token: StopToken,
         _last_ts: u64,
         cur_ts: u64,
-    ) -> Result<(), String> {
+    ) -> EyreResult<()> {
         let rpc = self.rpc_processor();
         let netman = self.network_manager();
         let relay_node_id = netman.relay_node().map(|nr| nr.node_id());
@@ -389,7 +381,7 @@ impl RoutingTable {
     pub(super) async fn peer_minimum_refresh_task_routine(
         self,
         stop_token: StopToken,
-    ) -> Result<(), String> {
+    ) -> EyreResult<()> {
         // get list of all peers we know about, even the unreliable ones, and ask them to find nodes close to our node too
         let noderefs = {
             let inner = self.inner.read();
@@ -421,7 +413,7 @@ impl RoutingTable {
         _stop_token: StopToken,
         _last_ts: u64,
         cur_ts: u64,
-    ) -> Result<(), String> {
+    ) -> EyreResult<()> {
         let mut inner = self.inner.write();
         let kick_queue: Vec<usize> = inner.kick_queue.iter().map(|v| *v).collect();
         inner.kick_queue.clear();

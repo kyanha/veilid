@@ -5,26 +5,33 @@ use once_cell::sync::OnceCell;
 
 cfg_if! {
     if #[cfg(target_arch = "wasm32")] {
-        type TickTaskRoutine =
-            dyn Fn(StopToken, u64, u64) -> PinBoxFuture<Result<(), String>> + 'static;
+        type TickTaskRoutine<E> =
+            dyn Fn(StopToken, u64, u64) -> PinBoxFuture<Result<(), E>> + 'static;
     } else {
-        type TickTaskRoutine =
-            dyn Fn(StopToken, u64, u64) -> SendPinBoxFuture<Result<(), String>> + Send + Sync + 'static;
+        type TickTaskRoutine<E> =
+            dyn Fn(StopToken, u64, u64) -> SendPinBoxFuture<Result<(), E>> + Send + Sync + 'static;
     }
 }
 
 /// Runs a single-future background processing task, attempting to run it once every 'tick period' microseconds.
 /// If the prior tick is still running, it will allow it to finish, and do another tick when the timer comes around again.
 /// One should attempt to make tasks short-lived things that run in less than the tick period if you want things to happen with regular periodicity.
-pub struct TickTask {
+pub struct TickTask<
+    #[cfg(target_arch = "wasm32")] E: 'static,
+    #[cfg(not(target_arch = "wasm32"))] E: Send + 'static,
+> {
     last_timestamp_us: AtomicU64,
     tick_period_us: u64,
-    routine: OnceCell<Box<TickTaskRoutine>>,
+    routine: OnceCell<Box<TickTaskRoutine<E>>>,
     stop_source: AsyncMutex<Option<StopSource>>,
-    single_future: MustJoinSingleFuture<Result<(), String>>,
+    single_future: MustJoinSingleFuture<Result<(), E>>,
 }
 
-impl TickTask {
+impl<
+        #[cfg(target_arch = "wasm32")] E: 'static,
+        #[cfg(not(target_arch = "wasm32"))] E: Send + 'static,
+    > TickTask<E>
+{
     pub fn new_us(tick_period_us: u64) -> Self {
         Self {
             last_timestamp_us: AtomicU64::new(0),
@@ -53,25 +60,14 @@ impl TickTask {
         }
     }
 
-    cfg_if! {
-        if #[cfg(target_arch = "wasm32")] {
-            pub fn set_routine(
-                &self,
-                routine: impl Fn(StopToken, u64, u64) -> PinBoxFuture<Result<(), String>> + 'static,
-            ) {
-                self.routine.set(Box::new(routine)).map_err(drop).unwrap();
-            }
-        } else {
-            pub fn set_routine(
-                &self,
-                routine: impl Fn(StopToken, u64, u64) -> SendPinBoxFuture<Result<(), String>> + Send + Sync + 'static,
-            ) {
-                self.routine.set(Box::new(routine)).map_err(drop).unwrap();
-            }
-        }
+    pub fn set_routine(
+        &self,
+        routine: impl Fn(StopToken, u64, u64) -> SendPinBoxFuture<Result<(), E>> + Send + Sync + 'static,
+    ) {
+        self.routine.set(Box::new(routine)).map_err(drop).unwrap();
     }
 
-    pub async fn stop(&self) -> Result<(), String> {
+    pub async fn stop(&self) -> Result<(), E> {
         // drop the stop source if we have one
         let opt_stop_source = &mut *self.stop_source.lock().await;
         if opt_stop_source.is_none() {
@@ -89,7 +85,7 @@ impl TickTask {
         }
     }
 
-    pub async fn tick(&self) -> Result<(), String> {
+    pub async fn tick(&self) -> Result<(), E> {
         let now = intf::get_timestamp();
         let last_timestamp_us = self.last_timestamp_us.load(Ordering::Acquire);
 

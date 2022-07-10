@@ -23,27 +23,19 @@ pub fn encode_block_id(
     builder: &mut veilid_capnp::b_l_a_k_e3_hash::Builder,
 ) -> Result<(), RPCError> {
     if !key.valid {
-        return Err(rpc_error_protocol("invalid key"));
+        return Err(RPCError::protocol("invalid key"));
     }
     builder.set_u0(u64::from_be_bytes(
-        key.bytes[0..8]
-            .try_into()
-            .map_err(map_error_protocol!("slice with incorrect length"))?,
+        key.bytes[0..8].try_into().map_err(RPCError::internal)?,
     ));
     builder.set_u1(u64::from_be_bytes(
-        key.bytes[8..16]
-            .try_into()
-            .map_err(map_error_protocol!("slice with incorrect length"))?,
+        key.bytes[8..16].try_into().map_err(RPCError::internal)?,
     ));
     builder.set_u2(u64::from_be_bytes(
-        key.bytes[16..24]
-            .try_into()
-            .map_err(map_error_protocol!("slice with incorrect length"))?,
+        key.bytes[16..24].try_into().map_err(RPCError::internal)?,
     ));
     builder.set_u3(u64::from_be_bytes(
-        key.bytes[24..32]
-            .try_into()
-            .map_err(map_error_protocol!("slice with incorrect length"))?,
+        key.bytes[24..32].try_into().map_err(RPCError::internal)?,
     ));
     Ok(())
 }

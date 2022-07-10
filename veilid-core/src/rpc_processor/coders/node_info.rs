@@ -18,8 +18,8 @@ pub fn encode_node_info(
             .dial_info_detail_list
             .len()
             .try_into()
-            .map_err(map_error_protocol!(
-                "too many dial info details in node info"
+            .map_err(RPCError::map_protocol(
+                "too many dial info details in node info",
             ))?,
     );
 
@@ -44,14 +44,14 @@ pub fn decode_node_info(
         reader
             .reborrow()
             .get_network_class()
-            .map_err(map_error_capnp_notinschema!())?,
+            .map_err(RPCError::protocol)?,
     );
 
     let outbound_protocols = decode_protocol_set(
         &reader
             .reborrow()
             .get_outbound_protocols()
-            .map_err(map_error_capnp_error!())?,
+            .map_err(RPCError::protocol)?,
     )?;
 
     let min_version = reader.reborrow().get_min_version();
@@ -60,12 +60,12 @@ pub fn decode_node_info(
     let didl_reader = reader
         .reborrow()
         .get_dial_info_detail_list()
-        .map_err(map_error_capnp_error!())?;
+        .map_err(RPCError::protocol)?;
     let mut dial_info_detail_list = Vec::<DialInfoDetail>::with_capacity(
         didl_reader
             .len()
             .try_into()
-            .map_err(map_error_protocol!("too many dial info details"))?,
+            .map_err(RPCError::map_protocol("too many dial info details"))?,
     );
     for did in didl_reader.iter() {
         dial_info_detail_list.push(decode_dial_info_detail(&did)?)
@@ -77,7 +77,7 @@ pub fn decode_node_info(
                 &reader
                     .reborrow()
                     .get_relay_peer_info()
-                    .map_err(map_error_capnp_error!())?,
+                    .map_err(RPCError::protocol)?,
                 false,
             )?))
         } else {

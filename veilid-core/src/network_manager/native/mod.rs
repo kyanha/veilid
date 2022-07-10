@@ -61,7 +61,7 @@ struct NetworkUnlockedInner {
     network_manager: NetworkManager,
     connection_manager: ConnectionManager,
     // Background processes
-    update_network_class_task: TickTask,
+    update_network_class_task: TickTask<EyreReport>,
 }
 
 #[derive(Clone)]
@@ -266,7 +266,7 @@ impl Network {
     // See if our interface addresses have changed, if so we need to punt the network
     // and redo all our addresses. This is overkill, but anything more accurate
     // would require inspection of routing tables that we dont want to bother with
-    pub async fn check_interface_addresses(&self) -> Result<bool, String> {
+    pub async fn check_interface_addresses(&self) -> EyreResult<bool> {
         let mut inner = self.inner.lock();
         if !inner.interfaces.refresh().await? {
             return Ok(false);
@@ -286,7 +286,7 @@ impl Network {
         &self,
         dial_info: DialInfo,
         data: Vec<u8>,
-    ) -> Result<(), String> {
+    ) -> EyreResult<()> {
         let data_len = data.len();
         let res = match dial_info.protocol_type() {
             ProtocolType::UDP => {
@@ -300,7 +300,8 @@ impl Network {
             ProtocolType::WS | ProtocolType::WSS => {
                 WebsocketProtocolHandler::send_unbound_message(dial_info.clone(), data).await
             }
-        };
+        }
+        .wrap_err("low level network error");
         if res.is_ok() {
             // Network accounting
             self.network_manager()
@@ -320,7 +321,7 @@ impl Network {
         dial_info: DialInfo,
         data: Vec<u8>,
         timeout_ms: u32,
-    ) -> Result<Vec<u8>, String> {
+    ) -> EyreResult<Vec<u8>> {
         let data_len = data.len();
         let out = match dial_info.protocol_type() {
             ProtocolType::UDP => {
@@ -358,7 +359,7 @@ impl Network {
         &self,
         descriptor: ConnectionDescriptor,
         data: Vec<u8>,
-    ) -> Result<Option<Vec<u8>>, String> {
+    ) -> EyreResult<Option<Vec<u8>>> {
         let data_len = data.len();
 
         // Handle connectionless protocol
@@ -369,12 +370,10 @@ impl Network {
                 &peer_socket_addr,
                 &descriptor.local().map(|sa| sa.to_socket_addr()),
             ) {
-                log_net!(
-                    "send_data_to_existing_connection connectionless to {:?}",
-                    descriptor
-                );
-
-                ph.clone().send_message(data, peer_socket_addr).await?;
+                ph.clone()
+                    .send_message(data, peer_socket_addr)
+                    .await
+                    .wrap_err("sending data to existing conection")?;
 
                 // Network accounting
                 self.network_manager()
@@ -389,10 +388,10 @@ impl Network {
 
         // Try to send to the exact existing connection if one exists
         if let Some(conn) = self.connection_manager().get_connection(descriptor).await {
-            log_net!("send_data_to_existing_connection to {:?}", descriptor);
-
             // connection exists, send over it
-            conn.send_async(data).await?;
+            conn.send_async(data)
+                .await
+                .wrap_err("sending data to existing connection")?;
 
             // Network accounting
             self.network_manager()
@@ -413,13 +412,16 @@ impl Network {
         &self,
         dial_info: DialInfo,
         data: Vec<u8>,
-    ) -> Result<(), String> {
+    ) -> EyreResult<()> {
         let data_len = data.len();
         // Handle connectionless protocol
         if dial_info.protocol_type() == ProtocolType::UDP {
             let peer_socket_addr = dial_info.to_socket_addr();
             if let Some(ph) = self.find_best_udp_protocol_handler(&peer_socket_addr, &None) {
-                let res = ph.send_message(data, peer_socket_addr).await;
+                let res = ph
+                    .send_message(data, peer_socket_addr)
+                    .await
+                    .wrap_err("failed to send data to dial info");
                 if res.is_ok() {
                     // Network accounting
                     self.network_manager()
@@ -427,7 +429,7 @@ impl Network {
                 }
                 return res;
             }
-            return Err("no appropriate UDP protocol handler for dial_info".to_owned());
+            bail!("no appropriate UDP protocol handler for dial_info");
         }
 
         // Handle connection-oriented protocols
@@ -453,7 +455,7 @@ impl Network {
     }
 
     #[instrument(level = "debug", err, skip_all)]
-    pub async fn startup(&self) -> Result<(), String> {
+    pub async fn startup(&self) -> EyreResult<()> {
         // initialize interfaces
         let mut interfaces = NetworkInterfaces::new();
         interfaces.refresh().await?;
@@ -604,7 +606,7 @@ impl Network {
 
     //////////////////////////////////////////
 
-    pub async fn tick(&self) -> Result<(), String> {
+    pub async fn tick(&self) -> EyreResult<()> {
         let network_class = self.get_network_class().unwrap_or(NetworkClass::Invalid);
         let routing_table = self.routing_table();
 

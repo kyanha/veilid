@@ -21,22 +21,20 @@ impl RPCOperationKind {
         kind_reader: &veilid_capnp::operation::kind::Reader,
         sender_node_id: &DHTKey,
     ) -> Result<Self, RPCError> {
-        let which_reader = kind_reader
-            .which()
-            .map_err(map_error_capnp_notinschema!())?;
+        let which_reader = kind_reader.which().map_err(RPCError::protocol)?;
         let out = match which_reader {
             veilid_capnp::operation::kind::Which::Question(r) => {
-                let q_reader = r.map_err(map_error_capnp_error!())?;
+                let q_reader = r.map_err(RPCError::protocol)?;
                 let out = RPCQuestion::decode(&q_reader, sender_node_id)?;
                 RPCOperationKind::Question(out)
             }
             veilid_capnp::operation::kind::Which::Statement(r) => {
-                let q_reader = r.map_err(map_error_capnp_error!())?;
+                let q_reader = r.map_err(RPCError::protocol)?;
                 let out = RPCStatement::decode(&q_reader, sender_node_id)?;
                 RPCOperationKind::Statement(out)
             }
             veilid_capnp::operation::kind::Which::Answer(r) => {
-                let q_reader = r.map_err(map_error_capnp_error!())?;
+                let q_reader = r.map_err(RPCError::protocol)?;
                 let out = RPCAnswer::decode(&q_reader)?;
                 RPCOperationKind::Answer(out)
             }

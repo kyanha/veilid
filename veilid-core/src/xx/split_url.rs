@@ -7,7 +7,7 @@
 //   URLs must convert to UTF8
 //   Only IP address and DNS hostname host fields are supported
 
-use super::{IpAddr, Ipv4Addr, Ipv6Addr};
+use super::*;
 use alloc::borrow::ToOwned;
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -62,12 +62,14 @@ fn is_valid_scheme<H: AsRef<str>>(host: H) -> bool {
     true
 }
 
-fn hex_decode(h: u8) -> Result<u8, String> {
+fn hex_decode(h: u8) -> Result<u8, SplitUrlError> {
     match h {
         b'0'..=b'9' => Ok(h - b'0'),
         b'A'..=b'F' => Ok(h - b'A' + 10),
         b'a'..=b'f' => Ok(h - b'a' + 10),
-        _ => Err("Unexpected character in percent encoding".to_owned()),
+        _ => Err(SplitUrlError::new(
+            "Unexpected character in percent encoding",
+        )),
     }
 }
 
@@ -88,10 +90,10 @@ fn hex_encode(c: u8) -> (char, char) {
     )
 }
 
-fn url_decode<S: AsRef<str>>(s: S) -> Result<String, String> {
+fn url_decode<S: AsRef<str>>(s: S) -> Result<String, SplitUrlError> {
     let url = s.as_ref().to_owned();
     if !url.is_ascii() {
-        return Err("URL is not in ASCII encoding".to_owned());
+        return Err(SplitUrlError::new("URL is not in ASCII encoding"));
     }
     let url_bytes = url.as_bytes();
     let mut dec_bytes: Vec<u8> = Vec::with_capacity(url_bytes.len());
@@ -102,14 +104,15 @@ fn url_decode<S: AsRef<str>>(s: S) -> Result<String, String> {
         i += 1;
         if b == b'%' {
             if (i + 1) >= end {
-                return Err("Invalid URL encoding".to_owned());
+                return Err(SplitUrlError::new("Invalid URL encoding"));
             }
             b = hex_decode(url_bytes[i])? << 4 | hex_decode(url_bytes[i + 1])?;
             i += 2;
         }
         dec_bytes.push(b);
     }
-    String::from_utf8(dec_bytes).map_err(|e| format!("Decoded URL is not valid UTF-8: {}", e))
+    String::from_utf8(dec_bytes)
+        .map_err(|e| SplitUrlError::new(format!("Decoded URL is not valid UTF-8: {}", e)))
 }
 
 fn url_encode<S: AsRef<str>>(s: S, must_encode: impl Fn(u8) -> bool) -> String {
@@ -128,14 +131,25 @@ fn url_encode<S: AsRef<str>>(s: S, must_encode: impl Fn(u8) -> bool) -> String {
     out
 }
 
-fn convert_port<N>(port_str: N) -> Result<u16, String>
+fn convert_port<N>(port_str: N) -> Result<u16, SplitUrlError>
 where
     N: AsRef<str>,
 {
     port_str
         .as_ref()
         .parse::<u16>()
-        .map_err(|e| format!("Invalid port: {}", e))
+        .map_err(|e| SplitUrlError::new(format!("Invalid port: {}", e)))
+}
+
+///////////////////////////////////////////////////////////////////////////////
+#[derive(ThisError, Debug, Clone, Eq, PartialEq)]
+#[error("SplitUrlError: {0}")]
+pub struct SplitUrlError(String);
+
+impl SplitUrlError {
+    pub fn new<T: ToString>(message: T) -> Self {
+        SplitUrlError(message.to_string())
+    }
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -163,7 +177,7 @@ impl SplitUrlPath {
 }
 
 impl FromStr for SplitUrlPath {
-    type Err = String;
+    type Err = SplitUrlError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(if let Some((p, q)) = s.split_once('?') {
             if let Some((p, f)) = p.split_once('#') {
@@ -213,17 +227,17 @@ pub enum SplitUrlHost {
 }
 
 impl SplitUrlHost {
-    pub fn new<S: AsRef<str>>(s: S) -> Result<Self, String> {
+    pub fn new<S: AsRef<str>>(s: S) -> Result<Self, SplitUrlError> {
         Self::from_str(s.as_ref())
     }
 }
 
 impl FromStr for SplitUrlHost {
-    type Err = String;
+    type Err = SplitUrlError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if s.is_empty() {
-            return Err("Host is empty".to_owned());
+            return Err(SplitUrlError::new("Host is empty"));
         }
         if let Ok(v4) = Ipv4Addr::from_str(s) {
             return Ok(SplitUrlHost::IpAddr(IpAddr::V4(v4)));
@@ -232,13 +246,13 @@ impl FromStr for SplitUrlHost {
             if let Ok(v6) = Ipv6Addr::from_str(&s[1..s.len() - 1]) {
                 return Ok(SplitUrlHost::IpAddr(IpAddr::V6(v6)));
             }
-            return Err("Invalid ipv6 address".to_owned());
+            return Err(SplitUrlError::new("Invalid ipv6 address"));
         }
         for ch in s.chars() {
             if !matches!(ch,
                 'A'..='Z' | 'a'..='z' | '0'..='9' | '-' | '.' )
             {
-                return Err("Invalid hostname".to_owned());
+                return Err(SplitUrlError::new("Invalid hostname"));
             }
         }
         Ok(SplitUrlHost::Hostname(s.to_owned()))
@@ -311,11 +325,11 @@ fn split_host_with_port(s: &str) -> Option<(&str, &str)> {
 }
 
 impl FromStr for SplitUrl {
-    type Err = String;
+    type Err = SplitUrlError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if let Some((scheme, mut rest)) = s.split_once("://") {
             if !is_valid_scheme(scheme) {
-                return Err("Invalid scheme specified".to_owned());
+                return Err(SplitUrlError::new("Invalid scheme specified"));
             }
             let userinfo = {
                 if let Some((userinfo_str, after)) = rest.split_once('@') {
@@ -350,7 +364,7 @@ impl FromStr for SplitUrl {
                 Ok(SplitUrl::new(scheme, userinfo, host, None, None))
             }
         } else {
-            Err("No scheme specified".to_owned())
+            Err(SplitUrlError::new("No scheme specified"))
         }
     }
 }

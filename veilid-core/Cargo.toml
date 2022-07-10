@@ -22,7 +22,7 @@ tracking = [ "backtrace" ]
 tracing = { version = "^0", features = ["log", "attributes"] }
 tracing-subscriber = "^0"
 tracing-error = "^0"
-color-eyre = "^0"
+eyre = "^0"
 capnp = { version = "^0", default_features = false }
 rust-fsm = "^0"
 static_assertions = "^1"

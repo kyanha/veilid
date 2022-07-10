@@ -28,7 +28,7 @@ use winapi::um::iptypes::{
 pub struct PlatformSupportWindows {}
 
 impl PlatformSupportWindows {
-    pub fn new() -> Result<Self, String> {
+    pub fn new() -> EyreResult<Self> {
         Ok(PlatformSupportWindows {})
     }
 
@@ -54,7 +54,7 @@ impl PlatformSupportWindows {
     pub async fn get_interfaces(
         &mut self,
         interfaces: &mut BTreeMap<String, NetworkInterface>,
-    ) -> Result<(), String> {
+    ) -> EyreResult<()> {
         //self.refresh_default_route_interfaces().await?;
 
         // If we have no routes, this isn't going to work
@@ -63,7 +63,7 @@ impl PlatformSupportWindows {
         // }
 
         // Iterate all the interfaces
-        let windows_interfaces = WindowsInterfaces::new().map_err(map_to_string)?;
+        let windows_interfaces = WindowsInterfaces::new().wrap_err("failed to get windows interfaces")?;
         for windows_interface in windows_interfaces.iter() {
             // Get name
             let intf_name = windows_interface.name();

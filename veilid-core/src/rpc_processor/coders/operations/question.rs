@@ -78,55 +78,55 @@ impl RPCQuestionDetail {
     pub fn decode(
         reader: &veilid_capnp::question::detail::Reader,
     ) -> Result<RPCQuestionDetail, RPCError> {
-        let which_reader = reader.which().map_err(map_error_capnp_notinschema!())?;
+        let which_reader = reader.which().map_err(RPCError::protocol)?;
         let out = match which_reader {
             veilid_capnp::question::detail::StatusQ(r) => {
-                let op_reader = r.map_err(map_error_capnp_error!())?;
+                let op_reader = r.map_err(RPCError::protocol)?;
                 let out = RPCOperationStatusQ::decode(&op_reader)?;
                 RPCQuestionDetail::StatusQ(out)
             }
             veilid_capnp::question::detail::FindNodeQ(r) => {
-                let op_reader = r.map_err(map_error_capnp_error!())?;
+                let op_reader = r.map_err(RPCError::protocol)?;
                 let out = RPCOperationFindNodeQ::decode(&op_reader)?;
                 RPCQuestionDetail::FindNodeQ(out)
             }
             veilid_capnp::question::detail::GetValueQ(r) => {
-                let op_reader = r.map_err(map_error_capnp_error!())?;
+                let op_reader = r.map_err(RPCError::protocol)?;
                 let out = RPCOperationGetValueQ::decode(&op_reader)?;
                 RPCQuestionDetail::GetValueQ(out)
             }
             veilid_capnp::question::detail::SetValueQ(r) => {
-                let op_reader = r.map_err(map_error_capnp_error!())?;
+                let op_reader = r.map_err(RPCError::protocol)?;
                 let out = RPCOperationSetValueQ::decode(&op_reader)?;
                 RPCQuestionDetail::SetValueQ(out)
             }
             veilid_capnp::question::detail::WatchValueQ(r) => {
-                let op_reader = r.map_err(map_error_capnp_error!())?;
+                let op_reader = r.map_err(RPCError::protocol)?;
                 let out = RPCOperationWatchValueQ::decode(&op_reader)?;
                 RPCQuestionDetail::WatchValueQ(out)
             }
             veilid_capnp::question::detail::SupplyBlockQ(r) => {
-                let op_reader = r.map_err(map_error_capnp_error!())?;
+                let op_reader = r.map_err(RPCError::protocol)?;
                 let out = RPCOperationSupplyBlockQ::decode(&op_reader)?;
                 RPCQuestionDetail::SupplyBlockQ(out)
             }
             veilid_capnp::question::detail::FindBlockQ(r) => {
-                let op_reader = r.map_err(map_error_capnp_error!())?;
+                let op_reader = r.map_err(RPCError::protocol)?;
                 let out = RPCOperationFindBlockQ::decode(&op_reader)?;
                 RPCQuestionDetail::FindBlockQ(out)
             }
             veilid_capnp::question::detail::StartTunnelQ(r) => {
-                let op_reader = r.map_err(map_error_capnp_error!())?;
+                let op_reader = r.map_err(RPCError::protocol)?;
                 let out = RPCOperationStartTunnelQ::decode(&op_reader)?;
                 RPCQuestionDetail::StartTunnelQ(out)
             }
             veilid_capnp::question::detail::CompleteTunnelQ(r) => {
-                let op_reader = r.map_err(map_error_capnp_error!())?;
+                let op_reader = r.map_err(RPCError::protocol)?;
                 let out = RPCOperationCompleteTunnelQ::decode(&op_reader)?;
                 RPCQuestionDetail::CompleteTunnelQ(out)
             }
             veilid_capnp::question::detail::CancelTunnelQ(r) => {
-                let op_reader = r.map_err(map_error_capnp_error!())?;
+                let op_reader = r.map_err(RPCError::protocol)?;
                 let out = RPCOperationCancelTunnelQ::decode(&op_reader)?;
                 RPCQuestionDetail::CancelTunnelQ(out)
             }

@@ -12,27 +12,30 @@ impl RawUdpProtocolHandler {
     }
 
     #[instrument(level = "trace", err, skip(self, data), fields(data.len = data.len(), ret.len, ret.from))]
-    pub async fn recv_message(
-        &self,
-        data: &mut [u8],
-    ) -> Result<(usize, ConnectionDescriptor), String> {
-        let (size, remote_addr) = self.socket.recv_from(data).await.map_err(map_to_string)?;
-
-        if size > MAX_MESSAGE_SIZE {
-            return Err("received too large UDP message".to_owned());
-        }
-
-        trace!(
-            "receiving UDP message of length {} from {}",
-            size,
-            remote_addr
-        );
+    pub async fn recv_message(&self, data: &mut [u8]) -> io::Result<(usize, ConnectionDescriptor)> {
+        let (size, remote_addr) = loop {
+            match self.socket.recv_from(data).await {
+                Ok((size, remote_addr)) => {
+                    if size > MAX_MESSAGE_SIZE {
+                        bail_io_error_other!("received too large UDP message");
+                    }
+                    break (size, remote_addr);
+                }
+                Err(e) => {
+                    if e.kind() == io::ErrorKind::ConnectionReset {
+                        // Ignore icmp
+                    } else {
+                        return Err(e);
+                    }
+                }
+            }
+        };
 
         let peer_addr = PeerAddress::new(
             SocketAddress::from_socket_addr(remote_addr),
             ProtocolType::UDP,
         );
-        let local_socket_addr = self.socket.local_addr().map_err(map_to_string)?;
+        let local_socket_addr = self.socket.local_addr()?;
         let descriptor = ConnectionDescriptor::new(
             peer_addr,
             SocketAddress::from_socket_addr(local_socket_addr),
@@ -44,45 +47,24 @@ impl RawUdpProtocolHandler {
     }
 
     #[instrument(level = "trace", err, skip(self, data), fields(data.len = data.len(), ret.len, ret.from))]
-    pub async fn send_message(&self, data: Vec<u8>, socket_addr: SocketAddr) -> Result<(), String> {
+    pub async fn send_message(&self, data: Vec<u8>, socket_addr: SocketAddr) -> io::Result<()> {
         if data.len() > MAX_MESSAGE_SIZE {
-            return Err("sending too large UDP message".to_owned()).map_err(logthru_net!(error));
+            bail_io_error_other!("sending too large UDP message");
         }
 
-        log_net!(
-            "sending UDP message of length {} to {}",
-            data.len(),
-            socket_addr
-        );
-
-        let len = self
-            .socket
-            .send_to(&data, socket_addr)
-            .await
-            .map_err(map_to_string)
-            .map_err(logthru_net!(error "failed udp send: addr={}", socket_addr))?;
-
+        let len = self.socket.send_to(&data, socket_addr).await?;
         if len != data.len() {
-            Err("UDP partial send".to_owned()).map_err(logthru_net!(error))
-        } else {
-            Ok(())
+            bail_io_error_other!("UDP partial send")
         }
+
+        Ok(())
     }
 
     #[instrument(level = "trace", err, skip(data), fields(data.len = data.len()))]
-    pub async fn send_unbound_message(
-        socket_addr: SocketAddr,
-        data: Vec<u8>,
-    ) -> Result<(), String> {
+    pub async fn send_unbound_message(socket_addr: SocketAddr, data: Vec<u8>) -> io::Result<()> {
         if data.len() > MAX_MESSAGE_SIZE {
-            return Err("sending too large unbound UDP message".to_owned())
-                .map_err(logthru_net!(error));
+            bail_io_error_other!("sending too large unbound UDP message");
         }
-        log_net!(
-            "sending unbound message of length {} to {}",
-            data.len(),
-            socket_addr
-        );
 
         // get local wildcard address for bind
         let local_socket_addr = match socket_addr {
@@ -91,20 +73,13 @@ impl RawUdpProtocolHandler {
                 SocketAddr::new(IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0)), 0)
             }
         };
-        let socket = UdpSocket::bind(local_socket_addr)
-            .await
-            .map_err(map_to_string)
-            .map_err(logthru_net!(error "failed to bind unbound udp socket"))?;
-        let len = socket
-            .send_to(&data, socket_addr)
-            .await
-            .map_err(map_to_string)
-            .map_err(logthru_net!(error "failed unbound udp send: addr={}", socket_addr))?;
+        let socket = UdpSocket::bind(local_socket_addr).await?;
+        let len = socket.send_to(&data, socket_addr).await?;
         if len != data.len() {
-            Err("UDP partial unbound send".to_owned()).map_err(logthru_net!(error))
-        } else {
-            Ok(())
+            bail_io_error_other!("UDP partial unbound send")
         }
+
+        Ok(())
     }
 
     #[instrument(level = "trace", err, skip(data), fields(data.len = data.len(), ret.len))]
@@ -112,16 +87,10 @@ impl RawUdpProtocolHandler {
         socket_addr: SocketAddr,
         data: Vec<u8>,
         timeout_ms: u32,
-    ) -> Result<Vec<u8>, String> {
+    ) -> io::Result<Vec<u8>> {
         if data.len() > MAX_MESSAGE_SIZE {
-            return Err("sending too large unbound UDP message".to_owned())
-                .map_err(logthru_net!(error));
+            bail_io_error_other!("sending too large unbound UDP message");
         }
-        log_net!(
-            "sending unbound message of length {} to {}",
-            data.len(),
-            socket_addr
-        );
 
         // get local wildcard address for bind
         let local_socket_addr = match socket_addr {
@@ -132,29 +101,21 @@ impl RawUdpProtocolHandler {
         };
 
         // get unspecified bound socket
-        let socket = UdpSocket::bind(local_socket_addr)
-            .await
-            .map_err(map_to_string)
-            .map_err(logthru_net!(error "failed to bind unbound udp socket"))?;
-        let len = socket
-            .send_to(&data, socket_addr)
-            .await
-            .map_err(map_to_string)
-            .map_err(logthru_net!(error "failed unbound udp send: addr={}", socket_addr))?;
+        let socket = UdpSocket::bind(local_socket_addr).await?;
+        let len = socket.send_to(&data, socket_addr).await?;
         if len != data.len() {
-            return Err("UDP partial unbound send".to_owned()).map_err(logthru_net!(error));
+            bail_io_error_other!("UDP partial unbound send");
         }
 
         // receive single response
         let mut out = vec![0u8; MAX_MESSAGE_SIZE];
         let (len, from_addr) = timeout(timeout_ms, socket.recv_from(&mut out))
             .await
-            .map_err(map_to_string)?
-            .map_err(map_to_string)?;
+            .map_err(|e| e.to_io())??;
 
         // if the from address is not the same as the one we sent to, then drop this
         if from_addr != socket_addr {
-            return Err(format!(
+            bail_io_error_other!(format!(
                 "Unbound response received from wrong address: addr={}",
                 from_addr,
             ));

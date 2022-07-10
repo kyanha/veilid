@@ -1,7 +1,5 @@
 #![allow(clippy::bool_assert_comparison)]
 
-use crate::*;
-
 use directories::*;
 use parking_lot::*;
 

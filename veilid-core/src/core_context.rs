@@ -58,7 +58,7 @@ impl ServicesContext {
     }
 
     #[instrument(err, skip_all)]
-    pub async fn startup(&mut self) -> Result<(), VeilidAPIError> {
+    pub async fn startup(&mut self) -> EyreResult<()> {
         info!("Veilid API starting up");
 
         info!("init api tracing");
@@ -69,14 +69,14 @@ impl ServicesContext {
         let protected_store = ProtectedStore::new(self.config.clone());
         if let Err(e) = protected_store.init().await {
             self.shutdown().await;
-            return Err(VeilidAPIError::Internal { message: e });
+            return Err(e);
         }
         self.protected_store = Some(protected_store.clone());
 
         // Init node id from config now that protected store is set up
         if let Err(e) = self.config.init_node_id(protected_store.clone()).await {
             self.shutdown().await;
-            return Err(e);
+            return Err(e).wrap_err("init node id failed");
         }
 
         // Set up tablestore
@@ -84,7 +84,7 @@ impl ServicesContext {
         let table_store = TableStore::new(self.config.clone());
         if let Err(e) = table_store.init().await {
             self.shutdown().await;
-            return Err(VeilidAPIError::Internal { message: e });
+            return Err(e);
         }
         self.table_store = Some(table_store.clone());
 
@@ -93,7 +93,7 @@ impl ServicesContext {
         let crypto = Crypto::new(self.config.clone(), table_store.clone());
         if let Err(e) = crypto.init().await {
             self.shutdown().await;
-            return Err(VeilidAPIError::Internal { message: e });
+            return Err(e);
         }
         self.crypto = Some(crypto.clone());
 
@@ -102,7 +102,7 @@ impl ServicesContext {
         let block_store = BlockStore::new(self.config.clone());
         if let Err(e) = block_store.init().await {
             self.shutdown().await;
-            return Err(VeilidAPIError::Internal { message: e });
+            return Err(e);
         }
         self.block_store = Some(block_store.clone());
 
@@ -112,7 +112,7 @@ impl ServicesContext {
         let attachment_manager = AttachmentManager::new(self.config.clone(), table_store, crypto);
         if let Err(e) = attachment_manager.init(update_callback).await {
             self.shutdown().await;
-            return Err(VeilidAPIError::Internal { message: e });
+            return Err(e);
         }
         self.attachment_manager = Some(attachment_manager);
 
@@ -209,7 +209,7 @@ impl VeilidCoreContext {
         }
 
         let mut sc = ServicesContext::new_empty(config.clone(), update_callback);
-        sc.startup().await?;
+        sc.startup().await.map_err(VeilidAPIError::generic)?;
 
         Ok(VeilidCoreContext {
             update_callback: sc.update_callback,

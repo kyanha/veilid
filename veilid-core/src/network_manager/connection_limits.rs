@@ -1,33 +1,17 @@
 use super::*;
 use alloc::collections::btree_map::Entry;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(ThisError, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AddressFilterError {
+    #[error("Count exceeded")]
     CountExceeded,
+    #[error("Rate exceeded")]
     RateExceeded,
 }
-impl fmt::Display for AddressFilterError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            match *self {
-                Self::CountExceeded => "Count exceeded",
-                Self::RateExceeded => "Rate exceeded",
-            }
-        )
-    }
-}
-impl std::error::Error for AddressFilterError {}
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(ThisError, Debug, Clone, Copy, PartialEq, Eq)]
+#[error("Address not in table")]
 pub struct AddressNotInTableError {}
-impl fmt::Display for AddressNotInTableError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Address not in table")
-    }
-}
-impl std::error::Error for AddressNotInTableError {}
 
 #[derive(Debug)]
 pub struct ConnectionLimits {

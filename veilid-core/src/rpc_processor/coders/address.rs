@@ -55,6 +55,12 @@ pub fn decode_address(reader: &veilid_capnp::address::Reader) -> Result<Address,
                 v6b2[1], v6b2[2], v6b2[3], v6b3[0], v6b3[1], v6b3[2], v6b3[3],
             ])))
         }
-        _ => Err(rpc_error_protocol("invalid address type")),
+        Ok(veilid_capnp::address::Which::Ipv4(Err(_))) => {
+            Err(RPCError::protocol("invalid ipv4 address"))
+        }
+        Ok(veilid_capnp::address::Which::Ipv6(Err(_))) => {
+            Err(RPCError::protocol("invalid ipv6 address"))
+        }
+        Err(_) => Err(RPCError::protocol("invalid address type")),
     }
 }

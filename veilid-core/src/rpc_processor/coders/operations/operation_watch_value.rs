@@ -10,7 +10,7 @@ impl RPCOperationWatchValueQ {
     pub fn decode(
         reader: &veilid_capnp::operation_watch_value_q::Reader,
     ) -> Result<RPCOperationWatchValueQ, RPCError> {
-        let k_reader = reader.get_key().map_err(map_error_capnp_error!())?;
+        let k_reader = reader.get_key().map_err(RPCError::protocol)?;
         let key = decode_value_key(&k_reader)?;
         Ok(RPCOperationWatchValueQ { key })
     }
@@ -35,12 +35,12 @@ impl RPCOperationWatchValueA {
         reader: &veilid_capnp::operation_watch_value_a::Reader,
     ) -> Result<RPCOperationWatchValueA, RPCError> {
         let expiration = reader.get_expiration();
-        let peers_reader = reader.get_peers().map_err(map_error_capnp_error!())?;
+        let peers_reader = reader.get_peers().map_err(RPCError::protocol)?;
         let mut peers = Vec::<PeerInfo>::with_capacity(
             peers_reader
                 .len()
                 .try_into()
-                .map_err(map_error_internal!("too many peers"))?,
+                .map_err(RPCError::map_internal("too many peers"))?,
         );
         for p in peers_reader.iter() {
             let peer_info = decode_peer_info(&p, true)?;
@@ -59,7 +59,7 @@ impl RPCOperationWatchValueA {
             self.peers
                 .len()
                 .try_into()
-                .map_err(map_error_internal!("invalid peers list length"))?,
+                .map_err(RPCError::map_internal("invalid peers list length"))?,
         );
         for (i, peer) in self.peers.iter().enumerate() {
             let mut pi_builder = peers_builder.reborrow().get(i as u32);

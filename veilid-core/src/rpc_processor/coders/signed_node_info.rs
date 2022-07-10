@@ -25,17 +25,17 @@ pub fn decode_signed_node_info(
     let ni_reader = reader
         .reborrow()
         .get_node_info()
-        .map_err(map_error_capnp_error!())?;
+        .map_err(RPCError::protocol)?;
     let node_info = decode_node_info(&ni_reader, allow_relay_peer_info)?;
 
     let sig_reader = reader
         .reborrow()
         .get_signature()
-        .map_err(map_error_capnp_error!())?;
+        .map_err(RPCError::protocol)?;
     let signature = decode_signature(&sig_reader);
 
     let timestamp = reader.reborrow().get_timestamp();
 
     SignedNodeInfo::new(node_info, NodeId::new(*node_id), signature, timestamp)
-        .map_err(map_error_string!())
+        .map_err(RPCError::protocol)
 }

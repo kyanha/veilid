@@ -23,27 +23,27 @@ pub fn encode_public_key(
     builder: &mut veilid_capnp::curve25519_public_key::Builder,
 ) -> Result<(), RPCError> {
     if !key.valid {
-        return Err(rpc_error_protocol("invalid key"));
+        return Err(RPCError::protocol("invalid key"));
     }
     builder.set_u0(u64::from_be_bytes(
         key.bytes[0..8]
             .try_into()
-            .map_err(map_error_protocol!("slice with incorrect length"))?,
+            .map_err(RPCError::map_protocol("slice with incorrect length"))?,
     ));
     builder.set_u1(u64::from_be_bytes(
         key.bytes[8..16]
             .try_into()
-            .map_err(map_error_protocol!("slice with incorrect length"))?,
+            .map_err(RPCError::map_protocol("slice with incorrect length"))?,
     ));
     builder.set_u2(u64::from_be_bytes(
         key.bytes[16..24]
             .try_into()
-            .map_err(map_error_protocol!("slice with incorrect length"))?,
+            .map_err(RPCError::map_protocol("slice with incorrect length"))?,
     ));
     builder.set_u3(u64::from_be_bytes(
         key.bytes[24..32]
             .try_into()
-            .map_err(map_error_protocol!("slice with incorrect length"))?,
+            .map_err(RPCError::map_protocol("slice with incorrect length"))?,
     ));
     Ok(())
 }

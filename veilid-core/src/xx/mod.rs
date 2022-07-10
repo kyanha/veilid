@@ -15,9 +15,12 @@ mod mutable_future;
 mod single_shot_eventual;
 mod split_url;
 mod tick_task;
+mod timeout_or;
 mod tools;
 
 pub use cfg_if::*;
+#[allow(unused_imports)]
+pub use eyre::{bail, ensure, eyre, Report as EyreReport, Result as EyreResult, WrapErr};
 pub use futures_util::future::{select, Either};
 pub use futures_util::select;
 pub use futures_util::stream::FuturesUnordered;
@@ -28,6 +31,7 @@ pub use parking_lot::*;
 pub use split_url::*;
 pub use static_assertions::*;
 pub use stop_token::*;
+pub use thiserror::Error as ThisError;
 pub use tracing::*;
 
 pub type PinBox<T> = Pin<Box<T>>;
@@ -124,4 +128,5 @@ pub use mutable_future::*;
 // pub use single_future::*;
 pub use single_shot_eventual::*;
 pub use tick_task::*;
+pub use timeout_or::*;
 pub use tools::*;

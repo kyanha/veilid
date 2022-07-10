@@ -18,14 +18,16 @@ impl ConnectionHandle {
         self.descriptor.clone()
     }
 
-    pub fn send(&self, message: Vec<u8>) -> Result<(), String> {
-        self.channel.send(message).map_err(map_to_string)
+    pub fn send(&self, message: Vec<u8>) -> EyreResult<()> {
+        self.channel
+            .send(message)
+            .wrap_err("failed to send to connection")
     }
-    pub async fn send_async(&self, message: Vec<u8>) -> Result<(), String> {
+    pub async fn send_async(&self, message: Vec<u8>) -> EyreResult<()> {
         self.channel
             .send_async(message)
             .await
-            .map_err(map_to_string)
+            .wrap_err("failed to send_async to connection")
     }
 }
 

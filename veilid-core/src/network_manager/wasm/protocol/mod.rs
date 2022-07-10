@@ -15,7 +15,7 @@ impl ProtocolNetworkConnection {
     pub async fn connect(
         local_address: Option<SocketAddr>,
         dial_info: DialInfo,
-    ) -> Result<ProtocolNetworkConnection, String> {
+    ) -> io::Result<ProtocolNetworkConnection> {
         match dial_info.protocol_type() {
             ProtocolType::UDP => {
                 panic!("UDP dial info is not supported on WASM targets");
@@ -32,7 +32,7 @@ impl ProtocolNetworkConnection {
     pub async fn send_unbound_message(
         dial_info: DialInfo,
         data: Vec<u8>,
-    ) -> Result<(), String> {
+    ) -> io::Result<()> {
         match dial_info.protocol_type() {
             ProtocolType::UDP => {
                 panic!("UDP dial info is not supported on WASM targets");
@@ -50,7 +50,7 @@ impl ProtocolNetworkConnection {
         dial_info: DialInfo,
         data: Vec<u8>,
         timeout_ms: u32,
-    ) -> Result<Vec<u8>, String> {
+    ) -> io::Result<Vec<u8>> {
         match dial_info.protocol_type() {
             ProtocolType::UDP => {
                 panic!("UDP dial info is not supported on WASM targets");
@@ -72,20 +72,20 @@ impl ProtocolNetworkConnection {
         }
     }
 
-    pub async fn close(&self) -> Result<(), String> {
-        match self {
-            Self::Dummy(d) => d.close(),
-            Self::Ws(w) => w.close().await,
-        }
-    }
-    pub async fn send(&self, message: Vec<u8>) -> Result<(), String> {
+    // pub async fn close(&self) -> io::Result<()> {
+    //     match self {
+    //         Self::Dummy(d) => d.close(),
+    //         Self::Ws(w) => w.close().await,
+    //     }
+    // }
+    pub async fn send(&self, message: Vec<u8>) -> io::Result<()> {
         match self {
             Self::Dummy(d) => d.send(message),
             Self::Ws(w) => w.send(message).await,
         }
     }
 
-    pub async fn recv(&self) -> Result<Vec<u8>, String> {
+    pub async fn recv(&self) -> io::Result<Vec<u8>> {
         match self {
             Self::Dummy(d) => d.recv(),
             Self::Ws(w) => w.recv().await,

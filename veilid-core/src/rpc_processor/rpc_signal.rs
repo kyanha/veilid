@@ -34,6 +34,6 @@ impl RPCProcessor {
         network_manager
             .handle_signal(signal.signal_info)
             .await
-            .map_err(map_error_string!())
+            .map_err(RPCError::network)
     }
 }

@@ -17,7 +17,7 @@ pub fn decode_socket_address(
     let ar = reader
         .reborrow()
         .get_address()
-        .map_err(map_error_internal!("missing socketAddress"))?;
+        .map_err(RPCError::map_internal("missing socketAddress"))?;
     let address = decode_address(&ar)?;
     let port = reader.get_port();
 

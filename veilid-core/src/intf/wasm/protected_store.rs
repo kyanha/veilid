@@ -30,7 +30,7 @@ impl ProtectedStore {
         }
     }
 
-    pub async fn delete_all(&self) -> Result<(), String> {
+    pub async fn delete_all(&self) -> EyreResult<()> {
         // Delete all known keys
         if self.remove_user_secret_string("node_id").await? {
             debug!("deleted protected_store key 'node_id'");
@@ -44,7 +44,7 @@ impl ProtectedStore {
         Ok(())
     }
 
-    pub async fn init(&self) -> Result<(), String> {
+    pub async fn init(&self) -> EyreResult<()> {
         Ok(())
     }
 
@@ -68,11 +68,11 @@ impl ProtectedStore {
         }
     }
 
-    pub async fn save_user_secret_string(&self, key: &str, value: &str) -> Result<bool, String> {
+    pub async fn save_user_secret_string(&self, key: &str, value: &str) -> EyreResult<bool> {
         if utils::is_nodejs() {
             let prev = match JsFuture::from(
                 keytar_getPassword(self.keyring_name().as_str(), key)
-                    .map_err(|_| "exception thrown".to_owned())?,
+                    .wrap_err("exception thrown")?,
             )
             .await
             {
@@ -82,12 +82,12 @@ impl ProtectedStore {
 
             match JsFuture::from(
                 keytar_setPassword(self.keyring_name().as_str(), key, value)
-                    .map_err(|_| "exception thrown".to_owned())?,
+                    .wrap_err("exception thrown")?,
             )
             .await
             {
                 Ok(_) => {}
-                Err(_) => return Err("Failed to set password".to_owned()),
+                Err(_) => bail!("Failed to set password"),
             }
 
             Ok(prev)
@@ -95,17 +95,17 @@ impl ProtectedStore {
             let win = match window() {
                 Some(w) => w,
                 None => {
-                    return Err("failed to get window".to_owned());
+                    bail!("failed to get window");
                 }
             };
 
             let ls = match win
                 .local_storage()
-                .map_err(|_| "exception getting local storage".to_owned())?
+                .wrap_err("exception getting local storage")?
             {
                 Some(l) => l,
                 None => {
-                    return Err("failed to get local storage".to_owned());
+                    bail!("failed to get local storage");
                 }
             };
 
@@ -113,26 +113,26 @@ impl ProtectedStore {
 
             let prev = match ls
                 .get_item(&vkey)
-                .map_err(|_| "exception_thrown".to_owned())?
+                .wrap_err("exception_thrown")?
             {
                 Some(_) => true,
                 None => false,
             };
 
             ls.set_item(&vkey, value)
-                .map_err(|_| "exception_thrown".to_owned())?;
+                .wrap_err("exception_thrown")?;
 
             Ok(prev)
         } else {
-            Err("unimplemented".to_owned())
+            unimplemented!()
         }
     }
 
-    pub async fn load_user_secret_string(&self, key: &str) -> Result<Option<String>, String> {
+    pub async fn load_user_secret_string(&self, key: &str) -> EyreResult<Option<String>> {
         if utils::is_nodejs() {
             let prev = match JsFuture::from(
                 keytar_getPassword(self.keyring_name().as_str(), key)
-                    .map_err(|_| "exception thrown".to_owned())?,
+                    .wrap_err("exception thrown")?,
             )
             .await
             {
@@ -149,54 +149,54 @@ impl ProtectedStore {
             let win = match window() {
                 Some(w) => w,
                 None => {
-                    return Err("failed to get window".to_owned());
+                    bail!("failed to get window");
                 }
             };
 
             let ls = match win
                 .local_storage()
-                .map_err(|_| "exception getting local storage".to_owned())?
+                .wrap_err("exception getting local storage")?
             {
                 Some(l) => l,
                 None => {
-                    return Err("failed to get local storage".to_owned());
+                    bail!("failed to get local storage");
                 }
             };
 
             let vkey = self.browser_key_name(key);
 
             ls.get_item(&vkey)
-                .map_err(|_| "exception_thrown".to_owned())
+                .wrap_err("exception_thrown")
         } else {
-            Err("unimplemented".to_owned())
+            unimplemented!();
         }
     }
 
-    pub async fn remove_user_secret_string(&self, key: &str) -> Result<bool, String> {
+    pub async fn remove_user_secret_string(&self, key: &str) -> EyreResult<bool> {
         if utils::is_nodejs() {
             match JsFuture::from(
-                keytar_deletePassword(self.keyring_name().as_str(), key).map_err(|_| "exception thrown".to_owned())?,
+                keytar_deletePassword(self.keyring_name().as_str(), key).wrap_err("exception thrown")?,
             )
             .await
             {
                 Ok(v) => Ok(v.is_truthy()),
-                Err(_) => Err("Failed to delete".to_owned()),
+                Err(_) => bail!("Failed to delete"),
             }
         } else if utils::is_browser() {
             let win = match window() {
                 Some(w) => w,
                 None => {
-                    return Err("failed to get window".to_owned());
+                    bail!("failed to get window");
                 }
             };
 
             let ls = match win
                 .local_storage()
-                .map_err(|_| "exception getting local storage".to_owned())?
+                .wrap_err("exception getting local storage")?
             {
                 Some(l) => l,
                 None => {
-                    return Err("failed to get local storage".to_owned());
+                    bail!("failed to get local storage");
                 }
             };
 
@@ -204,28 +204,28 @@ impl ProtectedStore {
 
             match ls
                 .get_item(&vkey)
-                .map_err(|_| "exception_thrown".to_owned())?
+                .wrap_err("exception_thrown")?
             {
                 Some(_) => {
                     ls.delete(&vkey)
-                        .map_err(|_| "exception_thrown".to_owned())?;
+                        .wrap_err("exception_thrown")?;
                     Ok(true)
                 }
                 None => Ok(false),
             }
         } else {
-            Err("unimplemented".to_owned())
+            unimplemented!();
         }
     }
         
-    pub async fn save_user_secret(&self, key: &str, value: &[u8]) -> Result<bool, String> {
+    pub async fn save_user_secret(&self, key: &str, value: &[u8]) -> EyreResult<bool> {
         let mut s = BASE64URL_NOPAD.encode(value);
         s.push('!');
 
         self.save_user_secret_string(key, s.as_str()).await
     }
 
-    pub async fn load_user_secret(&self, key: &str) -> Result<Option<Vec<u8>>, String> {
+    pub async fn load_user_secret(&self, key: &str) -> EyreResult<Option<Vec<u8>>> {
         let mut s = match self.load_user_secret_string(key).await? {
             Some(s) => s,
             None => {
@@ -234,7 +234,7 @@ impl ProtectedStore {
         };
 
         if s.pop() != Some('!') {
-            return Err("User secret is not a buffer".to_owned());
+            bail!("User secret is not a buffer");
         }
 
         let mut bytes = Vec::<u8>::new();
@@ -244,18 +244,18 @@ impl ProtectedStore {
                 bytes.resize(l, 0u8);
             }
             Err(_) => {
-                return Err("Failed to decode".to_owned());
+                bail!("Failed to decode");
             }
         }
 
         let res = BASE64URL_NOPAD.decode_mut(s.as_bytes(), &mut bytes);
         match res {
             Ok(_) => Ok(Some(bytes)),
-            Err(_) => Err("Failed to decode".to_owned()),
+            Err(_) => bail!("Failed to decode"),
         }
     }
 
-    pub async fn remove_user_secret(&self, key: &str) -> Result<bool, String> {
+    pub async fn remove_user_secret(&self, key: &str) -> EyreResult<bool> {
         self.remove_user_secret_string(key).await
     }
 }

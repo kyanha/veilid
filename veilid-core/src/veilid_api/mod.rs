@@ -87,44 +87,39 @@ macro_rules! apibail_parse {
     };
 }
 
-#[derive(Clone, Debug, PartialOrd, PartialEq, Eq, Ord, Serialize, Deserialize)]
+#[derive(ThisError, Clone, Debug, PartialOrd, PartialEq, Eq, Ord, Serialize, Deserialize)]
 #[serde(tag = "kind")]
 pub enum VeilidAPIError {
+    #[error("Not initialized")]
     NotInitialized,
+    #[error("Already initialized")]
     AlreadyInitialized,
+    #[error("Timeout")]
     Timeout,
+    #[error("Shutdown")]
     Shutdown,
-    NodeNotFound {
-        node_id: NodeId,
-    },
-    NoDialInfo {
-        node_id: NodeId,
-    },
-    NoPeerInfo {
-        node_id: NodeId,
-    },
-    Internal {
-        message: String,
-    },
-    Unimplemented {
-        message: String,
-    },
-    ParseError {
-        message: String,
-        value: String,
-    },
+    #[error("Node not found: {node_id}")]
+    NodeNotFound { node_id: NodeId },
+    #[error("No dial info: {node_id}")]
+    NoDialInfo { node_id: NodeId },
+    #[error("No peer info: {node_id}")]
+    NoPeerInfo { node_id: NodeId },
+    #[error("Internal: {message}")]
+    Internal { message: String },
+    #[error("Unimplemented: {message}")]
+    Unimplemented { message: String },
+    #[error("Parse error: '{message}' with value '{value}'")]
+    ParseError { message: String, value: String },
+    #[error("Invalid argument: '{argument}' for '{context}' with value '{value}'")]
     InvalidArgument {
         context: String,
         argument: String,
         value: String,
     },
-    MissingArgument {
-        context: String,
-        argument: String,
-    },
-    Generic {
-        message: String,
-    },
+    #[error("Missing argument: '{argument}' for '{context}'")]
+    MissingArgument { context: String, argument: String },
+    #[error("Generic: {message}")]
+    Generic { message: String },
 }
 
 impl VeilidAPIError {
@@ -176,79 +171,6 @@ impl VeilidAPIError {
         }
     }
 }
-
-impl std::error::Error for VeilidAPIError {}
-
-impl fmt::Display for VeilidAPIError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        match self {
-            VeilidAPIError::NotInitialized => write!(f, "VeilidAPIError::NotInitialized"),
-            VeilidAPIError::AlreadyInitialized => write!(f, "VeilidAPIError::AlreadyInitialized"),
-            VeilidAPIError::Timeout => write!(f, "VeilidAPIError::Timeout"),
-            VeilidAPIError::Shutdown => write!(f, "VeilidAPIError::Shutdown"),
-            VeilidAPIError::NodeNotFound { node_id } => {
-                write!(f, "VeilidAPIError::NodeNotFound({})", node_id)
-            }
-            VeilidAPIError::NoDialInfo { node_id } => {
-                write!(f, "VeilidAPIError::NoDialInfo({})", node_id)
-            }
-            VeilidAPIError::NoPeerInfo { node_id } => {
-                write!(f, "VeilidAPIError::NoPeerInfo({})", node_id)
-            }
-            VeilidAPIError::Internal { message } => {
-                write!(f, "VeilidAPIError::Internal({})", message)
-            }
-            VeilidAPIError::Unimplemented { message } => {
-                write!(f, "VeilidAPIError::Unimplemented({})", message)
-            }
-            VeilidAPIError::ParseError { message, value } => {
-                write!(f, "VeilidAPIError::ParseError({}: {})", message, value)
-            }
-            VeilidAPIError::InvalidArgument {
-                context,
-                argument,
-                value,
-            } => {
-                write!(
-                    f,
-                    "VeilidAPIError::InvalidArgument({}: {} = {})",
-                    context, argument, value
-                )
-            }
-            VeilidAPIError::MissingArgument { context, argument } => {
-                write!(
-                    f,
-                    "VeilidAPIError::MissingArgument({}: {})",
-                    context, argument
-                )
-            }
-            VeilidAPIError::Generic { message } => {
-                write!(f, "VeilidAPIError::Generic({})", message)
-            }
-        }
-    }
-}
-
-// fn convert_rpc_error(x: RPCError) -> VeilidAPIError {
-//     match x {
-//         RPCError::Timeout => VeilidAPIError::Timeout,
-//         RPCError::Unreachable(n) => VeilidAPIError::NodeNotFound {
-//             node_id: NodeId::new(n),
-//         },
-//         RPCError::Unimplemented(s) => VeilidAPIError::Unimplemented { message: s },
-//         RPCError::Internal(s) => VeilidAPIError::Internal { message: s },
-//         RPCError::Protocol(s) => VeilidAPIError::Internal { message: s },
-//         RPCError::InvalidFormat(s) => VeilidAPIError::Internal {
-//             message: format!("Invalid RPC format: {}", s),
-//         },
-//     }
-// }
-
-// macro_rules! map_rpc_error {
-//     () => {
-//         |x| convert_rpc_error(x)
-//     };
-// }
 
 macro_rules! parse_error {
     ($msg:expr, $val:expr) => {

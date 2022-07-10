@@ -164,7 +164,7 @@ impl Network {
 
     /////////////////////////////////////////////////////
 
-    fn find_available_udp_port(&self) -> Result<u16, String> {
+    fn find_available_udp_port(&self) -> EyreResult<u16> {
         // If the address is empty, iterate ports until we find one we can use.
         let mut udp_port = 5150u16;
         loop {
@@ -175,14 +175,14 @@ impl Network {
                 break;
             }
             if udp_port == 65535 {
-                return Err("Could not find free udp port to listen on".to_owned());
+                bail!("Could not find free udp port to listen on");
             }
             udp_port += 1;
         }
         Ok(udp_port)
     }
 
-    fn find_available_tcp_port(&self) -> Result<u16, String> {
+    fn find_available_tcp_port(&self) -> EyreResult<u16> {
         // If the address is empty, iterate ports until we find one we can use.
         let mut tcp_port = 5150u16;
         loop {
@@ -193,17 +193,14 @@ impl Network {
                 break;
             }
             if tcp_port == 65535 {
-                return Err("Could not find free tcp port to listen on".to_owned());
+                bail!("Could not find free tcp port to listen on");
             }
             tcp_port += 1;
         }
         Ok(tcp_port)
     }
 
-    async fn allocate_udp_port(
-        &self,
-        listen_address: String,
-    ) -> Result<(u16, Vec<IpAddr>), String> {
+    async fn allocate_udp_port(&self, listen_address: String) -> EyreResult<(u16, Vec<IpAddr>)> {
         if listen_address.is_empty() {
             // If listen address is empty, find us a port iteratively
             let port = self.find_available_udp_port()?;
@@ -217,21 +214,17 @@ impl Network {
             // If the address is specified, only use the specified port and fail otherwise
             let sockaddrs = listen_address_to_socket_addrs(&listen_address)?;
             if sockaddrs.is_empty() {
-                return Err(format!("No valid listen address: {}", listen_address));
+                bail!("No valid listen address: {}", listen_address);
             }
             let port = sockaddrs[0].port();
-            if self.bind_first_udp_port(port) {
-                Ok((port, sockaddrs.iter().map(|s| s.ip()).collect()))
-            } else {
-                Err("Could not find free udp port to listen on".to_owned())
+            if !self.bind_first_udp_port(port) {
+                bail!("Could not find free udp port to listen on");
             }
+            Ok((port, sockaddrs.iter().map(|s| s.ip()).collect()))
         }
     }
 
-    async fn allocate_tcp_port(
-        &self,
-        listen_address: String,
-    ) -> Result<(u16, Vec<IpAddr>), String> {
+    async fn allocate_tcp_port(&self, listen_address: String) -> EyreResult<(u16, Vec<IpAddr>)> {
         if listen_address.is_empty() {
             // If listen address is empty, find us a port iteratively
             let port = self.find_available_tcp_port()?;
@@ -245,20 +238,19 @@ impl Network {
             // If the address is specified, only use the specified port and fail otherwise
             let sockaddrs = listen_address_to_socket_addrs(&listen_address)?;
             if sockaddrs.is_empty() {
-                return Err(format!("No valid listen address: {}", listen_address));
+                bail!("No valid listen address: {}", listen_address);
             }
             let port = sockaddrs[0].port();
-            if self.bind_first_tcp_port(port) {
-                Ok((port, sockaddrs.iter().map(|s| s.ip()).collect()))
-            } else {
-                Err("Could not find free tcp port to listen on".to_owned())
+            if !self.bind_first_tcp_port(port) {
+                bail!("Could not find free tcp port to listen on");
             }
+            Ok((port, sockaddrs.iter().map(|s| s.ip()).collect()))
         }
     }
 
     /////////////////////////////////////////////////////
 
-    pub(super) async fn start_udp_listeners(&self) -> Result<(), String> {
+    pub(super) async fn start_udp_listeners(&self) -> EyreResult<()> {
         trace!("starting udp listeners");
         let routing_table = self.routing_table();
         let (listen_address, public_address, enable_local_peer_scope) = {
@@ -319,7 +311,7 @@ impl Network {
             // Resolve statically configured public dialinfo
             let mut public_sockaddrs = public_address
                 .to_socket_addrs()
-                .map_err(|e| format!("Unable to resolve address: {}\n{}", public_address, e))?;
+                .wrap_err(format!("Unable to resolve address: {}", public_address))?;
 
             // Add all resolved addresses as public dialinfo
             for pdi_addr in &mut public_sockaddrs {
@@ -364,7 +356,7 @@ impl Network {
         self.create_udp_listener_tasks().await
     }
 
-    pub(super) async fn start_ws_listeners(&self) -> Result<(), String> {
+    pub(super) async fn start_ws_listeners(&self) -> EyreResult<()> {
         trace!("starting ws listeners");
         let routing_table = self.routing_table();
         let (listen_address, url, path, enable_local_peer_scope) = {
@@ -405,9 +397,9 @@ impl Network {
 
         // Add static public dialinfo if it's configured
         if let Some(url) = url.as_ref() {
-            let mut split_url = SplitUrl::from_str(url)?;
+            let mut split_url = SplitUrl::from_str(url).wrap_err("couldn't split url")?;
             if split_url.scheme.to_ascii_lowercase() != "ws" {
-                return Err("WS URL must use 'ws://' scheme".to_owned());
+                bail!("WS URL must use 'ws://' scheme");
             }
             split_url.scheme = "ws".to_owned();
 
@@ -415,13 +407,11 @@ impl Network {
             let global_socket_addrs = split_url
                 .host_port(80)
                 .to_socket_addrs()
-                .map_err(map_to_string)
-                .map_err(logthru_net!(error))?;
+                .wrap_err("failed to resolve ws url")?;
 
             for gsa in global_socket_addrs {
                 let pdi = DialInfo::try_ws(SocketAddress::from_socket_addr(gsa), url.clone())
-                    .map_err(map_to_string)
-                    .map_err(logthru_net!(error))?;
+                    .wrap_err("try_ws failed")?;
 
                 routing_table.register_dial_info(
                     RoutingDomain::PublicInternet,
@@ -458,9 +448,7 @@ impl Network {
             }
             // Build dial info request url
             let local_url = format!("ws://{}/{}", socket_address, path);
-            let local_di = DialInfo::try_ws(socket_address, local_url)
-                .map_err(map_to_string)
-                .map_err(logthru_net!(error))?;
+            let local_di = DialInfo::try_ws(socket_address, local_url).wrap_err("try_ws failed")?;
 
             if url.is_none() && (socket_address.address().is_global() || enable_local_peer_scope) {
                 // Register public dial info
@@ -490,7 +478,7 @@ impl Network {
         Ok(())
     }
 
-    pub(super) async fn start_wss_listeners(&self) -> Result<(), String> {
+    pub(super) async fn start_wss_listeners(&self) -> EyreResult<()> {
         trace!("starting wss listeners");
 
         let routing_table = self.routing_table();
@@ -538,7 +526,7 @@ impl Network {
             // Add static public dialinfo if it's configured
             let mut split_url = SplitUrl::from_str(url)?;
             if split_url.scheme.to_ascii_lowercase() != "wss" {
-                return Err("WSS URL must use 'wss://' scheme".to_owned());
+                bail!("WSS URL must use 'wss://' scheme");
             }
             split_url.scheme = "wss".to_owned();
 
@@ -546,13 +534,10 @@ impl Network {
             let global_socket_addrs = split_url
                 .host_port(443)
                 .to_socket_addrs()
-                .map_err(map_to_string)
-                .map_err(logthru_net!(error))?;
-
+                .wrap_err("failed to resolve wss url")?;
             for gsa in global_socket_addrs {
                 let pdi = DialInfo::try_wss(SocketAddress::from_socket_addr(gsa), url.clone())
-                    .map_err(map_to_string)
-                    .map_err(logthru_net!(error))?;
+                    .wrap_err("try_wss failed")?;
 
                 routing_table.register_dial_info(
                     RoutingDomain::PublicInternet,
@@ -581,7 +566,7 @@ impl Network {
                 registered_addresses.insert(gsa.ip());
             }
         } else {
-            return Err("WSS URL must be specified due to TLS requirements".to_owned());
+            bail!("WSS URL must be specified due to TLS requirements");
         }
 
         if static_public {
@@ -594,7 +579,7 @@ impl Network {
         Ok(())
     }
 
-    pub(super) async fn start_tcp_listeners(&self) -> Result<(), String> {
+    pub(super) async fn start_tcp_listeners(&self) -> EyreResult<()> {
         trace!("starting tcp listeners");
 
         let routing_table = self.routing_table();
@@ -659,7 +644,7 @@ impl Network {
             // Resolve statically configured public dialinfo
             let mut public_sockaddrs = public_address
                 .to_socket_addrs()
-                .map_err(|e| format!("Unable to resolve address: {}\n{}", public_address, e))?;
+                .wrap_err("failed to resolve tcp address")?;
 
             // Add all resolved addresses as public dialinfo
             for pdi_addr in &mut public_sockaddrs {

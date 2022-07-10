@@ -266,13 +266,13 @@ pub struct PlatformSupportApple {
 }
 
 impl PlatformSupportApple {
-    pub fn new() -> Result<Self, String> {
+    pub fn new() -> EyreResult<Self> {
         Ok(PlatformSupportApple {
             default_route_interfaces: BTreeSet::new(),
         })
     }
 
-    async fn refresh_default_route_interfaces(&mut self) -> Result<(), String> {
+    async fn refresh_default_route_interfaces(&mut self) -> EyreResult<()> {
         self.default_route_interfaces.clear();
 
         let mut mib = [CTL_NET, PF_ROUTE, 0, 0, NET_RT_FLAGS, RTF_GATEWAY];
@@ -292,7 +292,7 @@ impl PlatformSupportApple {
             )
         } < 0
         {
-            return Err("Unable to get memory size for routing table".to_owned());
+            bail!("Unable to get memory size for routing table");
         }
 
         // Allocate a buffer
@@ -310,7 +310,7 @@ impl PlatformSupportApple {
             )
         } < 0
         {
-            return Err("Unable to get memory size for routing table".to_owned());
+            bail!("Unable to get memory size for routing table");
         }
 
         // Process each routing message
@@ -363,7 +363,7 @@ impl PlatformSupportApple {
         Ok(())
     }
 
-    fn get_interface_flags(&self, index: u32, flags: c_int) -> Result<InterfaceFlags, String> {
+    fn get_interface_flags(&self, index: u32, flags: c_int) -> EyreResult<InterfaceFlags> {
         Ok(InterfaceFlags {
             is_loopback: (flags & IFF_LOOPBACK) != 0,
             is_running: (flags & IFF_RUNNING) != 0,
@@ -371,23 +371,23 @@ impl PlatformSupportApple {
         })
     }
 
-    fn get_address_flags(ifname: &str, addr: sockaddr_in6) -> Result<AddressFlags, String> {
+    fn get_address_flags(ifname: &str, addr: sockaddr_in6) -> EyreResult<AddressFlags> {
         let mut req = in6_ifreq::from_name(&ifname).unwrap();
         req.set_addr(addr);
 
         let sock = unsafe { socket(AF_INET6, SOCK_DGRAM, 0) };
         if sock < 0 {
-            return Err(format!("Socket error {:?}", io::Error::last_os_error()));
+            bail!("Socket error {:?}", io::Error::last_os_error());
         }
 
         let res = unsafe { ioctl(sock, SIOCGIFAFLAG_IN6, &mut req) };
         unsafe { close(sock) };
         if res < 0 {
-            return Err(format!(
+            bail!(
                 "SIOCGIFAFLAG_IN6 failed with error on device '{}': {:?}",
                 ifname,
                 io::Error::last_os_error()
-            ));
+            );
         }
 
         let flags = req.get_flags6();
@@ -404,12 +404,12 @@ impl PlatformSupportApple {
     pub async fn get_interfaces(
         &mut self,
         interfaces: &mut BTreeMap<String, NetworkInterface>,
-    ) -> Result<(), String> {
+    ) -> EyreResult<()> {
         self.refresh_default_route_interfaces().await?;
 
         // If we have no routes, this isn't going to work
         if self.default_route_interfaces.is_empty() {
-            return Err("no routes available for NetworkInterfaces".to_owned());
+            bail!("no routes available for NetworkInterfaces");
         }
 
         // Ask for all the addresses we have

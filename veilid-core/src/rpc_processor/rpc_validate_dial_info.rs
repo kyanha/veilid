@@ -20,7 +20,7 @@ impl RPCProcessor {
         // Generate receipt and waitable eventual so we can see if we get the receipt back
         let (receipt, eventual_value) = network_manager
             .generate_single_shot_receipt(receipt_time, [])
-            .map_err(map_error_string!())?;
+            .map_err(RPCError::internal)?;
 
         let validate_dial_info = RPCOperationValidateDialInfo {
             dial_info,
@@ -36,7 +36,7 @@ impl RPCProcessor {
 
         // Wait for receipt
         match eventual_value.await.take_value().unwrap() {
-            ReceiptEvent::ReturnedInBand { inbound_noderef: _ } => Err(rpc_error_internal(
+            ReceiptEvent::ReturnedInBand { inbound_noderef: _ } => Err(RPCError::internal(
                 "validate_dial_info receipt should be returned out-of-band",
             )),
             ReceiptEvent::ReturnedOutOfBand => {
@@ -48,7 +48,7 @@ impl RPCProcessor {
                 Ok(false)
             }
             ReceiptEvent::Cancelled => {
-                Err(rpc_error_internal("receipt was dropped before expiration"))
+                Err(RPCError::internal("receipt was dropped before expiration"))
             }
         }
     }
@@ -82,7 +82,7 @@ impl RPCProcessor {
             };
             let peers = routing_table.find_fast_public_nodes_filtered(node_count, &filter);
             if peers.is_empty() {
-                return Err(rpc_error_internal(format!(
+                return Err(RPCError::internal(format!(
                     "no peers matching filter '{:?}'",
                     filter
                 )));
@@ -148,10 +148,7 @@ impl RPCProcessor {
         network_manager
             .send_out_of_band_receipt(dial_info.clone(), receipt)
             .await
-            .map_err(map_error_string!())
-            .map_err(
-                logthru_net!(error "failed to send direct receipt to dial info: {}", dial_info),
-            )?;
+            .map_err(RPCError::network)?;
 
         Ok(())
     }

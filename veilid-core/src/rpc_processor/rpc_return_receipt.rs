@@ -35,6 +35,6 @@ impl RPCProcessor {
         network_manager
             .handle_in_band_receipt(receipt, msg.header.peer_noderef)
             .await
-            .map_err(map_error_string!())
+            .map_err(RPCError::network)
     }
 }

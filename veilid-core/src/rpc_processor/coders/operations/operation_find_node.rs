@@ -10,7 +10,7 @@ impl RPCOperationFindNodeQ {
     pub fn decode(
         reader: &veilid_capnp::operation_find_node_q::Reader,
     ) -> Result<RPCOperationFindNodeQ, RPCError> {
-        let ni_reader = reader.get_node_id().map_err(map_error_capnp_error!())?;
+        let ni_reader = reader.get_node_id().map_err(RPCError::protocol)?;
         let node_id = decode_public_key(&ni_reader);
         Ok(RPCOperationFindNodeQ { node_id })
     }
@@ -33,12 +33,12 @@ impl RPCOperationFindNodeA {
     pub fn decode(
         reader: &veilid_capnp::operation_find_node_a::Reader,
     ) -> Result<RPCOperationFindNodeA, RPCError> {
-        let peers_reader = reader.get_peers().map_err(map_error_capnp_error!())?;
+        let peers_reader = reader.get_peers().map_err(RPCError::protocol)?;
         let mut peers = Vec::<PeerInfo>::with_capacity(
             peers_reader
                 .len()
                 .try_into()
-                .map_err(map_error_internal!("too many peers"))?,
+                .map_err(RPCError::map_internal("too many peers"))?,
         );
         for p in peers_reader.iter() {
             let peer_info = decode_peer_info(&p, true)?;
@@ -55,7 +55,7 @@ impl RPCOperationFindNodeA {
             self.peers
                 .len()
                 .try_into()
-                .map_err(map_error_internal!("invalid closest nodes list length"))?,
+                .map_err(RPCError::map_internal("invalid closest nodes list length"))?,
         );
         for (i, peer) in self.peers.iter().enumerate() {
             let mut pi_builder = peers_builder.reborrow().get(i as u32);

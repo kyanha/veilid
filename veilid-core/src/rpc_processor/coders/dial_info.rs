@@ -4,44 +4,51 @@ use core::convert::TryInto;
 use rpc_processor::*;
 
 pub fn decode_dial_info(reader: &veilid_capnp::dial_info::Reader) -> Result<DialInfo, RPCError> {
-    match reader.reborrow().which() {
-        Ok(veilid_capnp::dial_info::Which::Udp(Ok(udp))) => {
+    match reader
+        .reborrow()
+        .which()
+        .map_err(RPCError::map_protocol("Missing dial info type"))?
+    {
+        veilid_capnp::dial_info::Which::Udp(udp) => {
             let socket_address_reader = udp
+                .map_err(RPCError::protocol)?
                 .get_socket_address()
-                .map_err(map_error_protocol!("missing UDP socketAddress"))?;
+                .map_err(RPCError::map_protocol("missing UDP socketAddress"))?;
             let socket_address = decode_socket_address(&socket_address_reader)?;
             Ok(DialInfo::udp(socket_address))
         }
-        Ok(veilid_capnp::dial_info::Which::Tcp(Ok(tcp))) => {
+        veilid_capnp::dial_info::Which::Tcp(tcp) => {
             let socket_address_reader = tcp
+                .map_err(RPCError::protocol)?
                 .get_socket_address()
-                .map_err(map_error_protocol!("missing TCP socketAddress"))?;
+                .map_err(RPCError::map_protocol("missing TCP socketAddress"))?;
             let socket_address = decode_socket_address(&socket_address_reader)?;
             Ok(DialInfo::tcp(socket_address))
         }
-        Ok(veilid_capnp::dial_info::Which::Ws(Ok(ws))) => {
+        veilid_capnp::dial_info::Which::Ws(ws) => {
+            let ws = ws.map_err(RPCError::protocol)?;
             let socket_address_reader = ws
                 .get_socket_address()
-                .map_err(map_error_protocol!("missing WS socketAddress"))?;
+                .map_err(RPCError::map_protocol("missing WS socketAddress"))?;
             let socket_address = decode_socket_address(&socket_address_reader)?;
             let request = ws
                 .get_request()
-                .map_err(map_error_protocol!("missing WS request"))?;
+                .map_err(RPCError::map_protocol("missing WS request"))?;
             DialInfo::try_ws(socket_address, request.to_owned())
-                .map_err(map_error_protocol!("invalid WS dial info"))
+                .map_err(RPCError::map_protocol("invalid WS dial info"))
         }
-        Ok(veilid_capnp::dial_info::Which::Wss(Ok(wss))) => {
+        veilid_capnp::dial_info::Which::Wss(wss) => {
+            let wss = wss.map_err(RPCError::protocol)?;
             let socket_address_reader = wss
                 .get_socket_address()
-                .map_err(map_error_protocol!("missing WSS socketAddress"))?;
+                .map_err(RPCError::map_protocol("missing WSS socketAddress"))?;
             let socket_address = decode_socket_address(&socket_address_reader)?;
             let request = wss
                 .get_request()
-                .map_err(map_error_protocol!("missing WSS request"))?;
+                .map_err(RPCError::map_protocol("missing WSS request"))?;
             DialInfo::try_wss(socket_address, request.to_owned())
-                .map_err(map_error_protocol!("invalid WSS dial info"))
+                .map_err(RPCError::map_protocol("invalid WSS dial info"))
         }
-        _ => Err(rpc_error_internal("invalid dial info type")),
     }
 }
 
@@ -72,13 +79,13 @@ pub fn encode_dial_info(
             )?;
             let request = dial_info
                 .request()
-                .ok_or_else(|| rpc_error_internal("no request for WS dialinfo"))?;
+                .ok_or_else(RPCError::else_internal("no request for WS dialinfo"))?;
 
             let mut requestb = di_ws_builder.init_request(
                 request
                     .len()
                     .try_into()
-                    .map_err(map_error_protocol!("request too long"))?,
+                    .map_err(RPCError::map_protocol("request too long"))?,
             );
             requestb.push_str(request.as_str());
         }
@@ -90,13 +97,13 @@ pub fn encode_dial_info(
             )?;
             let request = dial_info
                 .request()
-                .ok_or_else(|| rpc_error_internal("no request for WSS dialinfo"))?;
+                .ok_or_else(RPCError::else_internal("no request for WSS dialinfo"))?;
 
             let mut requestb = di_wss_builder.init_request(
                 request
                     .len()
                     .try_into()
-                    .map_err(map_error_protocol!("request too long"))?,
+                    .map_err(RPCError::map_protocol("request too long"))?,
             );
             requestb.push_str(request.as_str());
         }

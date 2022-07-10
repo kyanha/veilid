@@ -11,9 +11,9 @@ impl RPCOperationValueChanged {
     pub fn decode(
         reader: &veilid_capnp::operation_value_changed::Reader,
     ) -> Result<RPCOperationValueChanged, RPCError> {
-        let k_reader = reader.get_key().map_err(map_error_capnp_error!())?;
+        let k_reader = reader.get_key().map_err(RPCError::protocol)?;
         let key = decode_value_key(&k_reader)?;
-        let v_reader = reader.get_value().map_err(map_error_capnp_error!())?;
+        let v_reader = reader.get_value().map_err(RPCError::protocol)?;
         let value = decode_value_data(&v_reader)?;
         Ok(RPCOperationValueChanged { key, value })
     }

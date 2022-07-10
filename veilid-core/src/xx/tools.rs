@@ -1,5 +1,6 @@
 use crate::xx::*;
 use alloc::string::ToString;
+use std::io;
 use std::path::Path;
 
 #[macro_export]
@@ -8,6 +9,24 @@ macro_rules! assert_err {
         if let Ok(v) = $ex {
             panic!("assertion failed, expected Err(..), got {:?}", v);
         }
+    };
+}
+
+#[macro_export]
+macro_rules! io_error_other {
+    ($msg:expr) => {
+        io::Error::new(io::ErrorKind::Other, $msg.to_string())
+    };
+}
+
+pub fn to_io_error_other<E: std::error::Error + Send + Sync + 'static>(x: E) -> io::Error {
+    io::Error::new(io::ErrorKind::Other, x)
+}
+
+#[macro_export]
+macro_rules! bail_io_error_other {
+    ($msg:expr) => {
+        return io::Result::Err(io::Error::new(io::ErrorKind::Other, $msg.to_string()))
     };
 }
 
@@ -129,7 +148,7 @@ where
     }
 }
 
-pub fn listen_address_to_socket_addrs(listen_address: &str) -> Result<Vec<SocketAddr>, String> {
+pub fn listen_address_to_socket_addrs(listen_address: &str) -> EyreResult<Vec<SocketAddr>> {
     // If no address is specified, but the port is, use ipv4 and ipv6 unspecified
     // If the address is specified, only use the specified port and fail otherwise
     let ip_addrs = vec![
@@ -138,12 +157,9 @@ pub fn listen_address_to_socket_addrs(listen_address: &str) -> Result<Vec<Socket
     ];
 
     Ok(if let Some(portstr) = listen_address.strip_prefix(':') {
-        let port = portstr.parse::<u16>().map_err(|_| {
-            format!(
-                "Invalid port format in udp listen address: {}",
-                listen_address
-            )
-        })?;
+        let port = portstr
+            .parse::<u16>()
+            .wrap_err("Invalid port format in udp listen address")?;
         ip_addrs.iter().map(|a| SocketAddr::new(*a, port)).collect()
     } else if let Ok(port) = listen_address.parse::<u16>() {
         ip_addrs.iter().map(|a| SocketAddr::new(*a, port)).collect()
@@ -151,11 +167,11 @@ pub fn listen_address_to_socket_addrs(listen_address: &str) -> Result<Vec<Socket
         cfg_if! {
             if #[cfg(target_arch = "wasm32")] {
                 use core::str::FromStr;
-                vec![SocketAddr::from_str(listen_address).map_err(|_| format!("Unable to parse address: {}", listen_address))?]
+                vec![SocketAddr::from_str(listen_address).wrap_err("Unable to parse address")?]
             } else {
                 listen_address
                     .to_socket_addrs()
-                    .map_err(|_| format!("Unable to resolve address: {}", listen_address))?
+                    .wrap_err("Unable to resolve address")?
                     .collect()
             }
         }
@@ -185,7 +201,7 @@ cfg_if::cfg_if! {
         use std::os::unix::prelude::PermissionsExt;
         use nix::unistd::{Uid, Gid};
 
-        pub fn ensure_file_private_owner<P:AsRef<Path>>(path: P) -> Result<(), String>
+        pub fn ensure_file_private_owner<P:AsRef<Path>>(path: P) -> EyreResult<()>
         {
             let path = path.as_ref();
             if !path.exists() {
@@ -194,13 +210,13 @@ cfg_if::cfg_if! {
 
             let uid = Uid::effective();
             let gid = Gid::effective();
-            let meta = std::fs::metadata(path).map_err(|e| format!("unable to get metadata for path '{:?}': {}",path, e))?;
+            let meta = std::fs::metadata(path).wrap_err("unable to get metadata for path")?;
 
             if meta.mode() != 0o600 {
-                std::fs::set_permissions(path,std::fs::Permissions::from_mode(0o600)).map_err(|e| format!("unable to set correct permissions on path '{:?}': {}", path, e))?;
+                std::fs::set_permissions(path,std::fs::Permissions::from_mode(0o600)).wrap_err("unable to set correct permissions on path")?;
             }
             if meta.uid() != uid.as_raw() || meta.gid() != gid.as_raw() {
-                return Err(format!("path has incorrect owner/group: {:?}", path));
+                bail!("path has incorrect owner/group");
             }
             Ok(())
         }
@@ -208,24 +224,13 @@ cfg_if::cfg_if! {
         //use std::os::windows::fs::MetadataExt;
         //use windows_permissions::*;
 
-        pub fn ensure_file_private_owner<P:AsRef<Path>>(path: P) -> Result<(),String>
+        pub fn ensure_file_private_owner<P:AsRef<Path>>(path: P) -> EyreResult<()>
         {
             let path = path.as_ref();
             if !path.exists() {
                 return Ok(());
             }
 
-            // let uid = Uid::effective();
-            // let gid = Gid::effective();
-            //let meta = std::fs::metadata(path).map_err(|e| format!("unable to get metadata for path '{:?}': {}",path, e))?;
-
-            //if meta.mode() != 0o600 {
-            //    std::fs::set_permissions(path,std::fs::Permissions::from_mode(0o600)).map_err(|e| format!("unable to set correct permissions on path '{:?}': {}", path, e))?;
-            //}
-
-            //if meta.uid() != uid.as_raw() || meta.gid() != gid.as_raw() {
-            //     chown(path, Some(uid), Some(gid)).map_err(|e| format!("unable to set correct owner on path '{:?}': {}", path, e))?;
-            //}
             Ok(())
         }
     } else {

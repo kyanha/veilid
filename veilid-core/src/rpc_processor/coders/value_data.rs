@@ -11,10 +11,7 @@ pub fn encode_value_data(
 }
 
 pub fn decode_value_data(reader: &veilid_capnp::value_data::Reader) -> Result<ValueData, RPCError> {
-    let data = reader
-        .get_data()
-        .map_err(map_error_capnp_error!())?
-        .to_vec();
+    let data = reader.get_data().map_err(RPCError::protocol)?.to_vec();
     let seq = reader.get_seq();
     Ok(ValueData { data, seq })
 }

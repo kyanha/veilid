@@ -3,6 +3,39 @@ use alloc::collections::btree_map::Entry;
 use futures_util::StreamExt;
 use hashlink::LruCache;
 
+///////////////////////////////////////////////////////////////////////////////
+#[derive(ThisError, Debug, Clone, Eq, PartialEq)]
+pub enum ConnectionTableAddError {
+    #[error("Connection already added to table")]
+    AlreadyExists,
+    #[error("Connection address was filtered")]
+    AddressFilter(AddressFilterError),
+}
+
+impl ConnectionTableAddError {
+    pub fn already_exists() -> Self {
+        ConnectionTableAddError::AlreadyExists
+    }
+    pub fn address_filter(err: AddressFilterError) -> Self {
+        ConnectionTableAddError::AddressFilter(err)
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////////
+#[derive(ThisError, Debug, Clone, Eq, PartialEq)]
+pub enum ConnectionTableRemoveError {
+    #[error("Connection not in table")]
+    NotInTable,
+}
+
+impl ConnectionTableRemoveError {
+    pub fn not_in_table() -> Self {
+        ConnectionTableRemoveError::NotInTable
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
 #[derive(Debug)]
 pub struct ConnectionTable {
     max_connections: Vec<usize>,
@@ -53,20 +86,22 @@ impl ConnectionTable {
         while unord.next().await.is_some() {}
     }
 
-    pub fn add_connection(&mut self, conn: NetworkConnection) -> Result<(), String> {
+    pub fn add_connection(
+        &mut self,
+        conn: NetworkConnection,
+    ) -> Result<(), ConnectionTableAddError> {
         let descriptor = conn.connection_descriptor();
         let ip_addr = descriptor.remote_address().to_ip_addr();
 
         let index = protocol_to_index(descriptor.protocol_type());
         if self.conn_by_descriptor[index].contains_key(&descriptor) {
-            return Err(format!(
-                "Connection already added to table: {:?}",
-                descriptor
-            ));
+            return Err(ConnectionTableAddError::already_exists());
         }
 
         // Filter by ip for connection limits
-        self.address_filter.add(ip_addr).map_err(map_to_string)?;
+        self.address_filter
+            .add(ip_addr)
+            .map_err(ConnectionTableAddError::address_filter)?;
 
         // Add the connection to the table
         let res = self.conn_by_descriptor[index].insert(descriptor.clone(), conn);
@@ -164,11 +199,11 @@ impl ConnectionTable {
     pub fn remove_connection(
         &mut self,
         descriptor: ConnectionDescriptor,
-    ) -> Result<NetworkConnection, String> {
+    ) -> Result<NetworkConnection, ConnectionTableRemoveError> {
         let index = protocol_to_index(descriptor.protocol_type());
         let conn = self.conn_by_descriptor[index]
             .remove(&descriptor)
-            .ok_or_else(|| format!("Connection not in table: {:?}", descriptor))?;
+            .ok_or_else(|| ConnectionTableRemoveError::not_in_table())?;
 
         self.remove_connection_records(descriptor);
         Ok(conn)

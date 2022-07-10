@@ -277,7 +277,7 @@ impl AttachmentManager {
     }
 
     #[instrument(level = "debug", skip_all, err)]
-    pub async fn init(&self, update_callback: UpdateCallback) -> Result<(), String> {
+    pub async fn init(&self, update_callback: UpdateCallback) -> EyreResult<()> {
         trace!("init");
         let network_manager = {
             let mut inner = self.inner.lock();

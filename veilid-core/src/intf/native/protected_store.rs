@@ -3,7 +3,6 @@ use crate::*;
 use data_encoding::BASE64URL_NOPAD;
 use keyring_manager::*;
 use std::path::Path;
-use std::result::Result;
 
 pub struct ProtectedStoreInner {
     keyring_manager: Option<KeyringManager>,
@@ -30,7 +29,7 @@ impl ProtectedStore {
     }
 
     #[instrument(level = "trace", skip(self), err)]
-    pub async fn delete_all(&self) -> Result<(), String> {
+    pub async fn delete_all(&self) -> EyreResult<()> {
         // Delete all known keys
         if self.remove_user_secret_string("node_id").await? {
             debug!("deleted protected_store key 'node_id'");
@@ -45,7 +44,7 @@ impl ProtectedStore {
     }
 
     #[instrument(level = "debug", skip(self), err)]
-    pub async fn init(&self) -> Result<(), String> {
+    pub async fn init(&self) -> EyreResult<()> {
         let delete = {
             let c = self.config.get();
             let mut inner = self.inner.lock();
@@ -80,12 +79,11 @@ impl ProtectedStore {
                 // Open the insecure keyring
                 inner.keyring_manager = Some(
                     KeyringManager::new_insecure(&c.program_name, &insecure_keyring_file)
-                        .map_err(map_to_string)
-                        .map_err(logthru_pstore!(error))?,
+                        .wrap_err("failed to create insecure keyring")?,
                 );
             }
             if inner.keyring_manager.is_none() {
-                return Err("Could not initialize the protected store.".to_owned());
+                bail!("Could not initialize the protected store.");
             }
             c.protected_store.delete
         };
@@ -112,56 +110,52 @@ impl ProtectedStore {
     }
 
     #[instrument(level = "trace", skip(self, value), ret, err)]
-    pub async fn save_user_secret_string(&self, key: &str, value: &str) -> Result<bool, String> {
+    pub async fn save_user_secret_string(&self, key: &str, value: &str) -> EyreResult<bool> {
         let inner = self.inner.lock();
         inner
             .keyring_manager
             .as_ref()
-            .ok_or_else(|| "Protected store not initialized".to_owned())?
+            .ok_or_else(|| eyre!("Protected store not initialized"))?
             .with_keyring(&self.service_name(), key, |kr| {
                 let existed = kr.get_value().is_ok();
-                kr.set_value(value)
-                    .map_err(|e| format!("Failed to save user secret: {}", e))?;
+                kr.set_value(value)?;
                 Ok(existed)
             })
-            .map_err(map_to_string)
-            .map_err(logthru_pstore!())
+            .wrap_err("failed to save user secret")
     }
 
     #[instrument(level = "trace", skip(self), err)]
-    pub async fn load_user_secret_string(&self, key: &str) -> Result<Option<String>, String> {
+    pub async fn load_user_secret_string(&self, key: &str) -> EyreResult<Option<String>> {
         let inner = self.inner.lock();
         match inner
             .keyring_manager
             .as_ref()
-            .ok_or_else(|| "Protected store not initialized".to_owned())?
+            .ok_or_else(|| eyre!("Protected store not initialized"))?
             .with_keyring(&self.service_name(), key, |kr| kr.get_value())
-            .map_err(logthru_pstore!())
         {
             Ok(v) => Ok(Some(v)),
             Err(KeyringError::NoPasswordFound) => Ok(None),
-            Err(e) => Err(format!("Failed to load user secret: {}", e)),
+            Err(e) => Err(eyre!("Failed to load user secret")),
         }
     }
 
     #[instrument(level = "trace", skip(self), ret, err)]
-    pub async fn remove_user_secret_string(&self, key: &str) -> Result<bool, String> {
+    pub async fn remove_user_secret_string(&self, key: &str) -> EyreResult<bool> {
         let inner = self.inner.lock();
         match inner
             .keyring_manager
             .as_ref()
-            .ok_or_else(|| "Protected store not initialized".to_owned())?
+            .ok_or_else(|| eyre!("Protected store not initialized"))?
             .with_keyring(&self.service_name(), key, |kr| kr.delete_value())
-            .map_err(logthru_pstore!())
         {
             Ok(_) => Ok(true),
             Err(KeyringError::NoPasswordFound) => Ok(false),
-            Err(e) => Err(format!("Failed to remove user secret: {}", e)),
+            Err(e) => Err(eyre!("Failed to remove user secret")),
         }
     }
 
     #[instrument(level = "trace", skip(self, value), ret, err)]
-    pub async fn save_user_secret(&self, key: &str, value: &[u8]) -> Result<bool, String> {
+    pub async fn save_user_secret(&self, key: &str, value: &[u8]) -> EyreResult<bool> {
         let mut s = BASE64URL_NOPAD.encode(value);
         s.push('!');
 
@@ -169,7 +163,7 @@ impl ProtectedStore {
     }
 
     #[instrument(level = "trace", skip(self), err)]
-    pub async fn load_user_secret(&self, key: &str) -> Result<Option<Vec<u8>>, String> {
+    pub async fn load_user_secret(&self, key: &str) -> EyreResult<Option<Vec<u8>>> {
         let mut s = match self.load_user_secret_string(key).await? {
             Some(s) => s,
             None => {
@@ -178,7 +172,7 @@ impl ProtectedStore {
         };
 
         if s.pop() != Some('!') {
-            return Err("User secret is not a buffer".to_owned());
+            bail!("User secret is not a buffer");
         }
 
         let mut bytes = Vec::<u8>::new();
@@ -188,19 +182,19 @@ impl ProtectedStore {
                 bytes.resize(l, 0u8);
             }
             Err(_) => {
-                return Err("Failed to decode".to_owned());
+                bail!("Failed to decode");
             }
         }
 
         let res = BASE64URL_NOPAD.decode_mut(s.as_bytes(), &mut bytes);
         match res {
             Ok(_) => Ok(Some(bytes)),
-            Err(_) => Err("Failed to decode".to_owned()),
+            Err(_) => bail!("Failed to decode"),
         }
     }
 
     #[instrument(level = "trace", skip(self), ret, err)]
-    pub async fn remove_user_secret(&self, key: &str) -> Result<bool, String> {
+    pub async fn remove_user_secret(&self, key: &str) -> EyreResult<bool> {
         self.remove_user_secret_string(key).await
     }
 }

@@ -32,13 +32,14 @@ impl RPCProcessor {
 
         // Update our routing table with signed node info
         if !self.filter_peer_scope(&node_info_update.signed_node_info.node_info) {
-            return Err(rpc_error_invalid_format(
+            return Err(RPCError::invalid_format(
                 "node_info_update has invalid peer scope",
             ));
         }
         let _ = self
             .routing_table()
             .register_node_with_signed_node_info(sender_node_id, node_info_update.signed_node_info)
+            .map_err(map_to_string)
             .map_err(RPCError::Internal)?;
 
         Ok(())

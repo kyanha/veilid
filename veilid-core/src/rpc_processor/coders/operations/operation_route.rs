@@ -20,24 +20,21 @@ impl RoutedOperation {
     pub fn decode(
         reader: &veilid_capnp::routed_operation::Reader,
     ) -> Result<RoutedOperation, RPCError> {
-        let sigs_reader = reader.get_signatures().map_err(map_error_capnp_error!())?;
+        let sigs_reader = reader.get_signatures().map_err(RPCError::protocol)?;
         let mut signatures = Vec::<DHTSignature>::with_capacity(
             sigs_reader
                 .len()
                 .try_into()
-                .map_err(map_error_internal!("too many signatures"))?,
+                .map_err(RPCError::map_internal("too many signatures"))?,
         );
         for s in sigs_reader.iter() {
             let sig = decode_signature(&s);
             signatures.push(sig);
         }
 
-        let n_reader = reader.get_nonce().map_err(map_error_capnp_error!())?;
+        let n_reader = reader.get_nonce().map_err(RPCError::protocol)?;
         let nonce = decode_nonce(&n_reader);
-        let data = reader
-            .get_data()
-            .map_err(map_error_capnp_error!())?
-            .to_vec();
+        let data = reader.get_data().map_err(RPCError::protocol)?.to_vec();
 
         Ok(RoutedOperation {
             signatures,
@@ -54,7 +51,7 @@ impl RoutedOperation {
             self.signatures
                 .len()
                 .try_into()
-                .map_err(map_error_internal!("invalid signatures list length"))?,
+                .map_err(RPCError::map_internal("invalid signatures list length"))?,
         );
         for (i, sig) in self.signatures.iter().enumerate() {
             let mut sig_builder = sigs_builder.reborrow().get(i as u32);
@@ -78,12 +75,10 @@ impl RPCOperationRoute {
     pub fn decode(
         reader: &veilid_capnp::operation_route::Reader,
     ) -> Result<RPCOperationRoute, RPCError> {
-        let sr_reader = reader
-            .get_safety_route()
-            .map_err(map_error_capnp_error!())?;
+        let sr_reader = reader.get_safety_route().map_err(RPCError::protocol)?;
         let safety_route = decode_safety_route(&sr_reader)?;
 
-        let o_reader = reader.get_operation().map_err(map_error_capnp_error!())?;
+        let o_reader = reader.get_operation().map_err(RPCError::protocol)?;
         let operation = RoutedOperation::decode(&o_reader)?;
 
         Ok(RPCOperationRoute {

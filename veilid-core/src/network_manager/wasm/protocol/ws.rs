@@ -1,10 +1,17 @@
 use super::*;
 use ws_stream_wasm::*;
 use futures_util::{StreamExt, SinkExt};
+use std::io;
 
 struct WebsocketNetworkConnectionInner {
     ws_meta: WsMeta,
     ws_stream: CloneStream<WsStream>,
+}
+
+fn to_io(err: WsErr) -> io::Error {
+    let kind = match err {
+        WsErr::InvalidWsState {supplied:_} => io::ErrorKind::
+    }
 }
 
 #[derive(Clone)]
@@ -36,15 +43,15 @@ impl WebsocketNetworkConnection {
         self.descriptor.clone()
     }
 
-    #[instrument(level = "trace", err, skip(self))]
-    pub async fn close(&self) -> Result<(), String> {
-        self.inner.ws_meta.close().await.map_err(map_to_string).map(drop)
-    }
+    // #[instrument(level = "trace", err, skip(self))]
+    // pub async fn close(&self) -> Result<(), String> {
+    //     self.inner.ws_meta.close().await.map_err(map_to_string).map(drop)
+    // }
 
     #[instrument(level = "trace", err, skip(self, message), fields(message.len = message.len()))]
-    pub async fn send(&self, message: Vec<u8>) -> Result<(), String> {
+    pub async fn send(&self, message: Vec<u8>) -> io::Result<()> {
         if message.len() > MAX_MESSAGE_SIZE {
-            return Err("sending too large WS message".to_owned()).map_err(logthru_net!(error));
+            bail_io_error_other!("sending too large WS message");
         }
         self.inner.ws_stream.clone()
             .send(WsMessage::Binary(message)).await

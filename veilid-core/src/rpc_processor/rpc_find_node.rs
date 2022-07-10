@@ -23,15 +23,15 @@ impl RPCProcessor {
         let find_node_a = match msg.operation.into_kind() {
             RPCOperationKind::Answer(a) => match a.into_detail() {
                 RPCAnswerDetail::FindNodeA(a) => a,
-                _ => return Err(rpc_error_invalid_format("not a find_node answer")),
+                _ => return Err(RPCError::invalid_format("not a find_node answer")),
             },
-            _ => return Err(rpc_error_invalid_format("not an answer")),
+            _ => return Err(RPCError::invalid_format("not an answer")),
         };
 
         // Verify peers are in the correct peer scope
         for peer_info in &find_node_a.peers {
             if !self.filter_peer_scope(&peer_info.signed_node_info.node_info) {
-                return Err(rpc_error_invalid_format(
+                return Err(RPCError::invalid_format(
                     "find_node response has invalid peer scope",
                 ));
             }

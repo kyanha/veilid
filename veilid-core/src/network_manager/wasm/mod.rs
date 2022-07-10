@@ -56,7 +56,7 @@ impl Network {
         &self,
         dial_info: DialInfo,
         data: Vec<u8>,
-    ) -> Result<(), String> {
+    ) -> EyreResult<()> {
         let data_len = data.len();
 
         let res = match dial_info.protocol_type() {
@@ -90,7 +90,7 @@ impl Network {
         dial_info: DialInfo,
         data: Vec<u8>,
         timeout_ms: u32,
-    ) -> Result<Vec<u8>, String> {
+    ) -> EyreResult<Vec<u8>> {
         let data_len = data.len();
         let out = match dial_info.protocol_type() {
             ProtocolType::UDP => {
@@ -124,7 +124,7 @@ impl Network {
         &self,
         descriptor: ConnectionDescriptor,
         data: Vec<u8>,
-    ) -> Result<Option<Vec<u8>>, String> {
+    ) -> EyreResult<Option<Vec<u8>>> {
         let data_len = data.len();
         match descriptor.protocol_type() {
             ProtocolType::UDP => {
@@ -161,7 +161,7 @@ impl Network {
         &self,
         dial_info: DialInfo,
         data: Vec<u8>,
-    ) -> Result<(), String> {
+    ) -> EyreResult<()> {
         let data_len = data.len();
         if dial_info.protocol_type() == ProtocolType::UDP {
             return Err("no support for UDP protocol".to_owned()).map_err(logthru_net!(error))
@@ -187,7 +187,7 @@ impl Network {
 
     /////////////////////////////////////////////////////////////////
 
-    pub async fn startup(&self) -> Result<(), String> {
+    pub async fn startup(&self) -> EyreResult<()> {
         // get protocol config
         self.inner.lock().protocol_config = Some({
             let c = self.config.get();
@@ -269,7 +269,7 @@ impl Network {
     }
 
     //////////////////////////////////////////
-    pub async fn tick(&self) -> Result<(), String> {
+    pub async fn tick(&self) -> EyreResult<()> {
         Ok(())
     }
 }

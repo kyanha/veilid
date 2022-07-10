@@ -1,8 +1,8 @@
 mod coders;
-mod debug;
 mod private_route;
 mod rpc_cancel_tunnel;
 mod rpc_complete_tunnel;
+mod rpc_error;
 mod rpc_find_block;
 mod rpc_find_node;
 mod rpc_get_value;
@@ -18,8 +18,8 @@ mod rpc_validate_dial_info;
 mod rpc_value_changed;
 mod rpc_watch_value;
 
-pub use debug::*;
 pub use private_route::*;
+pub use rpc_error::*;
 
 use super::*;
 use crate::dht::*;
@@ -101,20 +101,21 @@ where
     let wordvec = builder
         .into_reader()
         .canonicalize()
-        .map_err(map_error_capnp_error!())
+        .map_err(RPCError::protocol)
         .map_err(logthru_rpc!())?;
     Ok(capnp::Word::words_to_bytes(wordvec.as_slice()).to_vec())
 }
-fn reader_to_vec<'a, T>(reader: &capnp::message::Reader<T>) -> Result<Vec<u8>, RPCError>
-where
-    T: capnp::message::ReaderSegments + 'a,
-{
-    let wordvec = reader
-        .canonicalize()
-        .map_err(map_error_capnp_error!())
-        .map_err(logthru_rpc!())?;
-    Ok(capnp::Word::words_to_bytes(wordvec.as_slice()).to_vec())
-}
+
+// fn reader_to_vec<'a, T>(reader: &capnp::message::Reader<T>) -> Result<Vec<u8>, RPCError>
+// where
+//     T: capnp::message::ReaderSegments + 'a,
+// {
+//     let wordvec = reader
+//         .canonicalize()
+//         .map_err(RPCError::protocol)
+//         .map_err(logthru_rpc!())?;
+//     Ok(capnp::Word::words_to_bytes(wordvec.as_slice()).to_vec())
+// }
 
 #[derive(Debug)]
 struct WaitableReply {
@@ -243,16 +244,16 @@ impl RPCProcessor {
     // Search the DHT for a single node closest to a key and add it to the routing table and return the node reference
     pub async fn search_dht_single_key(
         &self,
-        node_id: DHTKey,
+        _node_id: DHTKey,
         _count: u32,
         _fanout: u32,
         _timeout: Option<u64>,
     ) -> Result<NodeRef, RPCError> {
-        let routing_table = self.routing_table();
+        //let routing_table = self.routing_table();
 
         // xxx find node but stop if we find the exact node we want
         // xxx return whatever node is closest after the timeout
-        Err(rpc_error_unimplemented("search_dht_single_key")).map_err(logthru_rpc!(error))
+        Err(RPCError::unimplemented("search_dht_single_key")).map_err(logthru_rpc!(error))
     }
 
     // Search the DHT for the 'count' closest nodes to a key, adding them all to the routing table if they are not there and returning their node references
@@ -264,7 +265,7 @@ impl RPCProcessor {
         _timeout: Option<u64>,
     ) -> Result<Vec<NodeRef>, RPCError> {
         // xxx return closest nodes after the timeout
-        Err(rpc_error_unimplemented("search_dht_multi_key")).map_err(logthru_rpc!(error))
+        Err(RPCError::unimplemented("search_dht_multi_key")).map_err(logthru_rpc!(error))
     }
 
     // Search the DHT for a specific node corresponding to a key unless we have that node in our routing table already, and return the node reference
@@ -328,7 +329,7 @@ impl RPCProcessor {
             inner
                 .waiting_rpc_table
                 .remove(&op_id)
-                .ok_or_else(|| rpc_error_internal("Unmatched operation id"))?
+                .ok_or_else(RPCError::else_internal("Unmatched operation id"))?
         };
         eventual.resolve(msg).await;
         Ok(())
@@ -340,7 +341,7 @@ impl RPCProcessor {
         waitable_reply: &WaitableReply,
     ) -> Result<(RPCMessage, u64), RPCError> {
         let timeout_ms = u32::try_from(waitable_reply.timeout / 1000u64)
-            .map_err(map_error_internal!("invalid timeout"))?;
+            .map_err(RPCError::map_internal("invalid timeout"))?;
         // wait for eventualvalue
         let start_ts = intf::get_timestamp();
         let res = intf::timeout(timeout_ms, waitable_reply.eventual.instance())
@@ -459,7 +460,7 @@ impl RPCProcessor {
                         out_node_id = sr
                             .hops
                             .first()
-                            .ok_or_else(|| rpc_error_internal("no hop in safety route"))?
+                            .ok_or_else(RPCError::else_internal("no hop in safety route"))?
                             .dial_info
                             .node_id
                             .key;
@@ -478,7 +479,7 @@ impl RPCProcessor {
                         out_hop_count = private_route.hop_count as usize;
                         let out_node_id = match &private_route.hops {
                             Some(rh) => rh.dial_info.node_id.key,
-                            _ => return Err(rpc_error_internal("private route has no hops")),
+                            _ => return Err(RPCError::internal("private route has no hops")),
                         };
                         out_message = self.wrap_with_route(None, private_route, message_vec)?;
                         out_node_id
@@ -489,7 +490,7 @@ impl RPCProcessor {
                         let out_node_id = sr
                             .hops
                             .first()
-                            .ok_or_else(|| rpc_error_internal("no hop in safety route"))?
+                            .ok_or_else(RPCError::else_internal("no hop in safety route"))?
                             .dial_info
                             .node_id
                             .key;
@@ -502,7 +503,7 @@ impl RPCProcessor {
 
         // Verify hop count isn't larger than out maximum routed hop count
         if out_hop_count > self.inner.lock().max_route_hop_count {
-            return Err(rpc_error_internal("hop count too long for route"))
+            return Err(RPCError::internal("hop count too long for route"))
                 .map_err(logthru_rpc!(warn));
         }
 
@@ -565,7 +566,7 @@ impl RPCProcessor {
             .network_manager()
             .send_envelope(node_ref.clone(), Some(node_id), message)
             .await
-            .map_err(RPCError::Internal)
+            .map_err(RPCError::internal)
         {
             Ok(v) => v,
             Err(e) => {
@@ -637,7 +638,7 @@ impl RPCProcessor {
             .network_manager()
             .send_envelope(node_ref.clone(), Some(node_id), message)
             .await
-            .map_err(RPCError::Internal)
+            .map_err(RPCError::network)
         {
             Ok(v) => v,
             Err(e) => {
@@ -729,7 +730,7 @@ impl RPCProcessor {
         self.network_manager()
             .send_envelope(node_ref.clone(), Some(node_id), message)
             .await
-            .map_err(RPCError::Internal)
+            .map_err(RPCError::network)
             .map_err(|e| {
                 self.routing_table()
                     .stats_failed_to_send(node_ref.clone(), send_ts, false);
@@ -763,7 +764,7 @@ impl RPCProcessor {
             let reader = capnp::message::Reader::new(encoded_msg.data, Default::default());
             let op_reader = reader
                 .get_root::<veilid_capnp::operation::Reader>()
-                .map_err(map_error_capnp_error!())
+                .map_err(RPCError::protocol)
                 .map_err(logthru_rpc!())?;
             RPCOperation::decode(&op_reader, &sender_node_id)?
         };
@@ -776,13 +777,14 @@ impl RPCProcessor {
                     RespondTo::Sender(Some(sender_ni)) => {
                         // Sender NodeInfo was specified, update our routing table with it
                         if !self.filter_peer_scope(&sender_ni.node_info) {
-                            return Err(rpc_error_invalid_format(
+                            return Err(RPCError::invalid_format(
                                 "respond_to_sender_signed_node_info has invalid peer scope",
                             ));
                         }
                         let nr = self
                             .routing_table()
                             .register_node_with_signed_node_info(sender_node_id, sender_ni.clone())
+                            .map_err(map_to_string)
                             .map_err(RPCError::Internal)?;
                         opt_sender_nr = Some(nr);
                     }
@@ -883,7 +885,7 @@ impl RPCProcessor {
     }
 
     #[instrument(level = "debug", skip_all, err)]
-    pub async fn startup(&self) -> Result<(), String> {
+    pub async fn startup(&self) -> EyreResult<()> {
         trace!("startup rpc processor");
         let mut inner = self.inner.lock();
         // make local copy of node id for easy access
@@ -966,7 +968,7 @@ impl RPCProcessor {
         envelope: Envelope,
         body: Vec<u8>,
         peer_noderef: NodeRef,
-    ) -> Result<(), String> {
+    ) -> EyreResult<()> {
         let msg = RPCMessageEncoded {
             header: RPCMessageHeader {
                 timestamp: intf::get_timestamp(),
@@ -982,7 +984,7 @@ impl RPCProcessor {
         };
         send_channel
             .try_send(msg)
-            .map_err(|e| format!("failed to enqueue received RPC message: {:?}", e))?;
+            .wrap_err("failed to enqueue received RPC message")?;
         Ok(())
     }
 }

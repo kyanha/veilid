@@ -27,13 +27,13 @@ impl TableStore {
         }
     }
 
-    pub async fn delete_all(&self) -> Result<(), String> {
+    pub async fn delete_all(&self) -> EyreResult<()> {
         // Delete all known keys
         self.delete("crypto_caches").await?;
         Ok(())
     }
 
-    pub async fn init(&self) -> Result<(), String> {
+    pub async fn init(&self) -> EyreResult<()> {
         Ok(())
     }
 
@@ -51,28 +51,27 @@ impl TableStore {
         }
     }
 
-    fn get_dbpath(&self, table: &str) -> Result<PathBuf, String> {
+    fn get_dbpath(&self, table: &str) -> EyreResult<PathBuf> {
         if !table
             .chars()
             .all(|c| char::is_alphanumeric(c) || c == '_' || c == '-')
         {
-            return Err(format!("table name '{}' is invalid", table));
+            bail!("table name '{}' is invalid", table);
         }
         let c = self.config.get();
         let tablestoredir = c.table_store.directory.clone();
-        std::fs::create_dir_all(&tablestoredir)
-            .map_err(|e| format!("failed to create tablestore path: {}", e))?;
+        std::fs::create_dir_all(&tablestoredir).wrap_err("failed to create tablestore path")?;
 
         let dbpath: PathBuf = [tablestoredir, String::from(table)].iter().collect();
         Ok(dbpath)
     }
 
-    fn get_table_name(&self, table: &str) -> Result<String, String> {
+    fn get_table_name(&self, table: &str) -> EyreResult<String> {
         if !table
             .chars()
             .all(|c| char::is_alphanumeric(c) || c == '_' || c == '-')
         {
-            return Err(format!("table name '{}' is invalid", table));
+            bail!("table name '{}' is invalid", table);
         }
         let c = self.config.get();
         let namespace = c.namespace.clone();
@@ -83,7 +82,7 @@ impl TableStore {
         })
     }
 
-    pub async fn open(&self, name: &str, column_count: u32) -> Result<TableDB, String> {
+    pub async fn open(&self, name: &str, column_count: u32) -> EyreResult<TableDB> {
         let table_name = self.get_table_name(name)?;
 
         let mut inner = self.inner.lock();
@@ -104,8 +103,7 @@ impl TableStore {
         ensure_file_private_owner(&dbpath)?;
 
         let cfg = DatabaseConfig::with_columns(column_count);
-        let db =
-            Database::open(&dbpath, cfg).map_err(|e| format!("failed to open tabledb: {}", e))?;
+        let db = Database::open(&dbpath, cfg).wrap_err("failed to open tabledb")?;
 
         // Ensure permissions are correct
         ensure_file_private_owner(&dbpath)?;
@@ -123,12 +121,12 @@ impl TableStore {
         Ok(table_db)
     }
 
-    pub async fn delete(&self, name: &str) -> Result<bool, String> {
+    pub async fn delete(&self, name: &str) -> EyreResult<bool> {
         let table_name = self.get_table_name(name)?;
 
         let inner = self.inner.lock();
         if inner.opened.contains_key(&table_name) {
-            return Err("Not deleting table that is still opened".to_owned());
+            bail!("Not deleting table that is still opened");
         }
         let dbpath = self.get_dbpath(&table_name)?;
         let ret = std::fs::remove_file(dbpath).is_ok();

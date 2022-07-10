@@ -48,58 +48,52 @@ impl TableDB {
         Arc::downgrade(&self.inner)
     }
 
-    pub async fn get_column_count(&self) -> Result<u32, String> {
+    pub async fn get_column_count(&self) -> EyreResult<u32> {
         let db = &self.inner.lock().database;
-        db.num_columns()
-            .map_err(|e| format!("failed to get column count: {}", e))
+        db.num_columns().wrap_err("failed to get column count: {}")
     }
 
-    pub async fn get_keys(&self, col: u32) -> Result<Vec<Box<[u8]>>, String> {
+    pub async fn get_keys(&self, col: u32) -> EyreResult<Vec<Box<[u8]>>> {
         let db = &self.inner.lock().database;
         let mut out: Vec<Box<[u8]>> = Vec::new();
         db.iter(col, None, &mut |kv| {
             out.push(kv.0.clone().into_boxed_slice());
             Ok(true)
         })
-        .map_err(|e| format!("failed to get keys for column {}: {}", col, e))?;
+        .wrap_err("failed to get keys for column")?;
         Ok(out)
     }
 
-    pub async fn store(&self, col: u32, key: &[u8], value: &[u8]) -> Result<(), String> {
+    pub async fn store(&self, col: u32, key: &[u8], value: &[u8]) -> EyreResult<()> {
         let db = &self.inner.lock().database;
         let mut dbt = db.transaction();
         dbt.put(col, key, value);
-        db.write(dbt)
-            .map_err(|e| format!("failed to store key {:?}: {}", key, e))
+        db.write(dbt).wrap_err("failed to store key")
     }
 
-    pub async fn store_cbor<T>(&self, col: u32, key: &[u8], value: &T) -> Result<(), String>
+    pub async fn store_cbor<T>(&self, col: u32, key: &[u8], value: &T) -> EyreResult<()>
     where
         T: Serialize,
     {
-        let v = serde_cbor::to_vec(value).map_err(|_| "couldn't store as CBOR".to_owned())?;
+        let v = serde_cbor::to_vec(value).wrap_err("couldn't store as CBOR")?;
 
         let db = &self.inner.lock().database;
         let mut dbt = db.transaction();
         dbt.put(col, key, v.as_slice());
-        db.write(dbt)
-            .map_err(|e| format!("failed to store key {:?}: {}", key, e))
+        db.write(dbt).wrap_err("failed to store key")
     }
 
-    pub async fn load(&self, col: u32, key: &[u8]) -> Result<Option<Vec<u8>>, String> {
+    pub async fn load(&self, col: u32, key: &[u8]) -> EyreResult<Option<Vec<u8>>> {
         let db = &self.inner.lock().database;
-        db.get(col, key)
-            .map_err(|e| format!("failed to get key {:?}: {}", key, e))
+        db.get(col, key).wrap_err("failed to get key")
     }
 
-    pub async fn load_cbor<T>(&self, col: u32, key: &[u8]) -> Result<Option<T>, String>
+    pub async fn load_cbor<T>(&self, col: u32, key: &[u8]) -> EyreResult<Option<T>>
     where
         T: for<'de> Deserialize<'de>,
     {
         let db = &self.inner.lock().database;
-        let out = db
-            .get(col, key)
-            .map_err(|e| format!("failed to get key {:?}: {}", key, e))?;
+        let out = db.get(col, key).wrap_err("failed to get key")?;
         let b = match out {
             Some(v) => v,
             None => {
@@ -109,24 +103,21 @@ impl TableDB {
         let obj = match serde_cbor::from_slice::<T>(&b) {
             Ok(value) => value,
             Err(e) => {
-                return Err(format!("failed to deserialize: {}", e));
+                bail!("failed to deserialize");
             }
         };
         Ok(Some(obj))
     }
 
-    pub async fn delete(&self, col: u32, key: &[u8]) -> Result<bool, String> {
+    pub async fn delete(&self, col: u32, key: &[u8]) -> EyreResult<bool> {
         let db = &self.inner.lock().database;
-        let found = db
-            .get(col, key)
-            .map_err(|e| format!("failed to get key {:?}: {}", key, e))?;
+        let found = db.get(col, key).wrap_err("failed to get key")?;
         match found {
             None => Ok(false),
             Some(_) => {
                 let mut dbt = db.transaction();
                 dbt.delete(col, key);
-                db.write(dbt)
-                    .map_err(|e| format!("failed to delete key {:?}: {}", key, e))?;
+                db.write(dbt).wrap_err("failed to delete key")?;
                 Ok(true)
             }
         }

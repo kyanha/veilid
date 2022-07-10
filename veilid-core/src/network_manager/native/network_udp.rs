@@ -3,7 +3,7 @@ use sockets::*;
 use stop_token::future::FutureExt;
 
 impl Network {
-    pub(super) async fn create_udp_listener_tasks(&self) -> Result<(), String> {
+    pub(super) async fn create_udp_listener_tasks(&self) -> EyreResult<()> {
         // Spawn socket tasks
         let mut task_count = {
             let c = self.config.get();
@@ -73,7 +73,7 @@ impl Network {
                                         .on_recv_envelope(&data[..size], descriptor)
                                         .await
                                     {
-                                        log_net!(error "failed to process received udp envelope: {}", e);
+                                        log_net!(debug "failed to process received udp envelope: {}", e);
                                     }
                                 }
                                 Ok(Err(_)) => {
@@ -110,7 +110,7 @@ impl Network {
         Ok(())
     }
 
-    pub(super) async fn create_udp_outbound_sockets(&self) -> Result<(), String> {
+    pub(super) async fn create_udp_outbound_sockets(&self) -> EyreResult<()> {
         let mut inner = self.inner.lock();
         let mut port = inner.udp_port;
         // v4
@@ -119,9 +119,9 @@ impl Network {
             // Pull the port if we randomly bound, so v6 can be on the same port
             port = socket
                 .local_addr()
-                .map_err(map_to_string)?
+                .wrap_err("failed to get local address")?
                 .as_socket_ipv4()
-                .ok_or_else(|| "expected ipv4 address type".to_owned())?
+                .ok_or_else(|| eyre!("expected ipv4 address type"))?
                 .port();
 
             // Make an async UdpSocket from the socket2 socket
@@ -131,7 +131,7 @@ impl Network {
                     let udp_socket = UdpSocket::from(std_udp_socket);
                 } else if #[cfg(feature="rt-tokio")] {
                     std_udp_socket.set_nonblocking(true).expect("failed to set nonblocking");
-                    let udp_socket = UdpSocket::from_std(std_udp_socket).map_err(map_to_string)?;
+                    let udp_socket = UdpSocket::from_std(std_udp_socket).wrap_err("failed to make outbound v4 tokio udpsocket")?;
                 }
             }
             let socket_arc = Arc::new(udp_socket);
@@ -152,7 +152,7 @@ impl Network {
                     let udp_socket = UdpSocket::from(std_udp_socket);
                 } else if #[cfg(feature="rt-tokio")] {
                     std_udp_socket.set_nonblocking(true).expect("failed to set nonblocking");
-                    let udp_socket = UdpSocket::from_std(std_udp_socket).map_err(map_to_string)?;
+                    let udp_socket = UdpSocket::from_std(std_udp_socket).wrap_err("failed to make outbound v6 tokio udpsocket")?;
                 }
             }
             let socket_arc = Arc::new(udp_socket);
@@ -166,7 +166,7 @@ impl Network {
         Ok(())
     }
 
-    async fn create_udp_inbound_socket(&self, addr: SocketAddr) -> Result<(), String> {
+    async fn create_udp_inbound_socket(&self, addr: SocketAddr) -> EyreResult<()> {
         log_net!("create_udp_inbound_socket on {:?}", &addr);
 
         // Create a reusable socket
@@ -179,7 +179,7 @@ impl Network {
                 let udp_socket = UdpSocket::from(std_udp_socket);
             } else if #[cfg(feature="rt-tokio")] {
                 std_udp_socket.set_nonblocking(true).expect("failed to set nonblocking");
-                let udp_socket = UdpSocket::from_std(std_udp_socket).map_err(map_to_string)?;
+                let udp_socket = UdpSocket::from_std(std_udp_socket).wrap_err("failed to make inbound tokio udpsocket")?;
             }
         }
         let socket_arc = Arc::new(udp_socket);
@@ -200,7 +200,7 @@ impl Network {
         &self,
         ip_addrs: Vec<IpAddr>,
         port: u16,
-    ) -> Result<Vec<DialInfo>, String> {
+    ) -> EyreResult<Vec<DialInfo>> {
         let mut out = Vec::<DialInfo>::new();
 
         for ip_addr in ip_addrs {

@@ -32,24 +32,17 @@ impl RespondTo {
         reader: &veilid_capnp::question::respond_to::Reader,
         sender_node_id: &DHTKey,
     ) -> Result<Self, RPCError> {
-        let respond_to = match reader.which().map_err(map_error_capnp_notinschema!())? {
-            veilid_capnp::question::respond_to::Sender(_) => RespondTo::Sender(None),
-            veilid_capnp::question::respond_to::SenderWithInfo(Ok(sender_ni_reader)) => {
+        let respond_to = match reader.which().map_err(RPCError::protocol)? {
+            veilid_capnp::question::respond_to::Sender(()) => RespondTo::Sender(None),
+            veilid_capnp::question::respond_to::SenderWithInfo(sender_ni_reader) => {
+                let sender_ni_reader = sender_ni_reader.map_err(RPCError::protocol)?;
                 let sni = decode_signed_node_info(&sender_ni_reader, sender_node_id, true)?;
                 RespondTo::Sender(Some(sni))
             }
-            veilid_capnp::question::respond_to::SenderWithInfo(Err(e)) => {
-                return Err(rpc_error_protocol(format!(
-                    "invalid signed node info: {}",
-                    e
-                )))
-            }
-            veilid_capnp::question::respond_to::PrivateRoute(Ok(pr_reader)) => {
+            veilid_capnp::question::respond_to::PrivateRoute(pr_reader) => {
+                let pr_reader = pr_reader.map_err(RPCError::protocol)?;
                 let pr = decode_private_route(&pr_reader)?;
                 RespondTo::PrivateRoute(pr)
-            }
-            veilid_capnp::question::respond_to::PrivateRoute(Err(e)) => {
-                return Err(rpc_error_protocol(format!("invalid private route: {}", e)));
             }
         };
         Ok(respond_to)

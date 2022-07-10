@@ -329,7 +329,7 @@ impl NetworkInterfaces {
         self.valid = false;
     }
     // returns Ok(false) if refresh had no changes, Ok(true) if changes were present
-    pub async fn refresh(&mut self) -> Result<bool, String> {
+    pub async fn refresh(&mut self) -> EyreResult<bool> {
         self.valid = false;
         let last_interfaces = core::mem::take(&mut self.interfaces);
 

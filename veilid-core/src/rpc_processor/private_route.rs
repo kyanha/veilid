@@ -12,7 +12,7 @@ impl RPCProcessor {
         let sr_hopcount = safety_route_spec.hops.len();
         let hopcount = 1 + sr_hopcount + pr_hopcount;
         if hopcount > self.inner.lock().max_route_hop_count {
-            return Err(rpc_error_internal("hop count too long for route"));
+            return Err(RPCError::internal("hop count too long for route"));
         }
 
         // Create hops
@@ -47,10 +47,10 @@ impl RPCProcessor {
                             &safety_route_spec.hops[h].dial_info.node_id.key,
                             &safety_route_spec.secret_key,
                         )
-                        .map_err(map_error_internal!("dh failed"))?;
+                        .map_err(RPCError::map_internal("dh failed"))?;
                     let enc_msg_data =
                         Crypto::encrypt_aead(blob_data.as_slice(), &nonce, &dh_secret, None)
-                            .map_err(map_error_internal!("encryption failed"))?;
+                            .map_err(RPCError::map_internal("encryption failed"))?;
 
                     // Make route hop data
                     let route_hop_data = RouteHopData {
@@ -86,9 +86,9 @@ impl RPCProcessor {
                     &safety_route_spec.hops[0].dial_info.node_id.key,
                     &safety_route_spec.secret_key,
                 )
-                .map_err(map_error_internal!("dh failed"))?;
+                .map_err(RPCError::map_internal("dh failed"))?;
             let enc_msg_data = Crypto::encrypt_aead(blob_data.as_slice(), &nonce, &dh_secret, None)
-                .map_err(map_error_internal!("encryption failed"))?;
+                .map_err(RPCError::map_internal("encryption failed"))?;
 
             let route_hop_data = RouteHopData {
                 nonce,
@@ -123,9 +123,9 @@ impl RPCProcessor {
         let dh_secret = self
             .crypto
             .cached_dh(&private_route.public_key, &safety_route_spec.secret_key)
-            .map_err(map_error_internal!("dh failed"))?;
+            .map_err(RPCError::map_internal("dh failed"))?;
         let enc_msg_data = Crypto::encrypt_aead(&message_data, &nonce, &dh_secret, None)
-            .map_err(map_error_internal!("encryption failed"))?;
+            .map_err(RPCError::map_internal("encryption failed"))?;
 
         // Compile the safety route with the private route
         let safety_route = self.compile_safety_route(safety_route_spec, private_route)?;

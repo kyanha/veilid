@@ -39,7 +39,7 @@ pub fn get_timestamp_string() -> String {
     )
 }
 
-pub fn random_bytes(dest: &mut [u8]) -> Result<(), String> {
+pub fn random_bytes(dest: &mut [u8]) -> EyreResult<()> {
     let len = dest.len();
     let u32len = len / 4;
     let remlen = len % 4;
@@ -161,25 +161,12 @@ where
     })
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct TimeoutError {
-    _private: (),
-}
-
-//impl Error for TimeoutError {}
-
-impl fmt::Display for TimeoutError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        "future has timed out".fmt(f)
-    }
-}
-
 pub async fn timeout<F, T>(dur_ms: u32, f: F) -> Result<T, TimeoutError>
 where
     F: Future<Output = T>,
 {
     match select(Box::pin(intf::sleep(dur_ms)), Box::pin(f)).await {
-        Either::Left((_x, _b)) => Err(TimeoutError { _private: () }),
+        Either::Left((_x, _b)) => Err(TimeoutError()),
         Either::Right((y, _a)) => Ok(y),
     }
 }
@@ -227,10 +214,10 @@ pub async fn get_outbound_relay_peer() -> Option<crate::veilid_api::PeerInfo> {
 // }
 
 
-pub async fn txt_lookup<S: AsRef<str>>(_host: S) -> Result<Vec<String>, String> {
-    Err("wasm does not support txt lookup".to_owned())   
+pub async fn txt_lookup<S: AsRef<str>>(_host: S) -> EyreResult<Vec<String>> {
+    bail!("wasm does not support txt lookup")   
 }
 
-pub async fn ptr_lookup(_ip_addr: IpAddr) -> Result<String, String> {
-    Err("wasm does not support ptr lookup".to_owned())   
+pub async fn ptr_lookup(_ip_addr: IpAddr) -> EyreResult<String> {
+    bail!("wasm does not support ptr lookup")
 }

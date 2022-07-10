@@ -250,7 +250,7 @@ impl DiscoveryContext {
 
     // If we know we are not behind NAT, check our firewall status
     #[instrument(level = "trace", skip(self), err)]
-    pub async fn protocol_process_no_nat(&self) -> Result<(), String> {
+    pub async fn protocol_process_no_nat(&self) -> EyreResult<()> {
         let (node_1, external_1_dial_info) = {
             let inner = self.inner.lock();
             (
@@ -281,7 +281,7 @@ impl DiscoveryContext {
 
     // If we know we are behind NAT check what kind
     #[instrument(level = "trace", skip(self), ret, err)]
-    pub async fn protocol_process_nat(&self) -> Result<bool, String> {
+    pub async fn protocol_process_nat(&self) -> EyreResult<bool> {
         let (node_1, external_1_dial_info, external_1_address, protocol_type, address_type) = {
             let inner = self.inner.lock();
             (
@@ -375,7 +375,7 @@ impl Network {
         &self,
         context: &DiscoveryContext,
         protocol_type: ProtocolType,
-    ) -> Result<(), String> {
+    ) -> EyreResult<()> {
         let mut retry_count = {
             let c = self.config.get();
             c.network.restricted_nat_retries
@@ -437,7 +437,7 @@ impl Network {
         &self,
         context: &DiscoveryContext,
         protocol_type: ProtocolType,
-    ) -> Result<(), String> {
+    ) -> EyreResult<()> {
         // Start doing ipv6 protocol
         context.protocol_begin(protocol_type, AddressType::IPV6);
 
@@ -479,7 +479,7 @@ impl Network {
         stop_token: StopToken,
         _l: u64,
         _t: u64,
-    ) -> Result<(), String> {
+    ) -> EyreResult<()> {
         // Ensure we aren't trying to update this without clearing it first
         let old_network_class = self.inner.lock().network_class;
         assert_eq!(old_network_class, None);

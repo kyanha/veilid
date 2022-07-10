@@ -3,6 +3,7 @@
 use super::crypto::*;
 use super::key::*;
 use crate::xx::*;
+use crate::*;
 use core::convert::TryInto;
 
 // #[repr(C, packed)]
@@ -76,89 +77,103 @@ impl Envelope {
         }
     }
 
-    pub fn from_signed_data(data: &[u8]) -> Result<Envelope, ()> {
+    pub fn from_signed_data(data: &[u8]) -> Result<Envelope, VeilidAPIError> {
         // Ensure we are at least the length of the envelope
         // Silent drop here, as we use zero length packets as part of the protocol for hole punching
         if data.len() < MIN_ENVELOPE_SIZE {
-            return Err(());
+            return Err(VeilidAPIError::generic("envelope data too small"));
         }
 
         // Verify magic number
-        let magic: [u8; 4] = data[0x00..0x04].try_into().map_err(drop)?;
+        let magic: [u8; 4] = data[0x00..0x04]
+            .try_into()
+            .map_err(VeilidAPIError::internal)?;
         if magic != *ENVELOPE_MAGIC {
-            trace!("bad magic number: len={:?}", magic);
-            return Err(());
+            return Err(VeilidAPIError::generic("bad magic number"));
         }
 
         // Check version
         let version = data[0x04];
         if version > MAX_VERSION || version < MIN_VERSION {
-            trace!("unsupported protocol version: version={}", version);
-            return Err(());
+            return Err(VeilidAPIError::parse_error(
+                "unsupported protocol version",
+                version,
+            ));
         }
 
         // Get min version
         let min_version = data[0x05];
         if min_version > version {
-            trace!(
-                "invalid version information in envelope: min_version={}, version={}",
-                min_version,
-                version,
-            );
-            return Err(());
+            return Err(VeilidAPIError::parse_error("version too low", version));
         }
 
         // Get max version
         let max_version = data[0x06];
-        if version > max_version || min_version > max_version {
-            trace!(
-                "invalid version information in envelope: min_version={}, version={}, max_version={}",
-                min_version,
-                version,
-                max_version
-            );
-            return Err(());
+        if version > max_version {
+            return Err(VeilidAPIError::parse_error("version too high", version));
+        }
+        if min_version > max_version {
+            return Err(VeilidAPIError::generic("version information invalid"));
         }
 
         // Get size and ensure it matches the size of the envelope and is less than the maximum message size
-        let size: u16 = u16::from_le_bytes(data[0x08..0x0A].try_into().map_err(drop)?);
+        let size: u16 = u16::from_le_bytes(
+            data[0x08..0x0A]
+                .try_into()
+                .map_err(VeilidAPIError::internal)?,
+        );
         if (size as usize) > MAX_ENVELOPE_SIZE {
-            trace!("envelope size is too large: size={}", size);
-            return Err(());
+            return Err(VeilidAPIError::parse_error("envelope too large", size));
         }
         if (size as usize) != data.len() {
-            trace!(
-                "size doesn't match envelope size: size={} data.len()={}",
-                size,
-                data.len()
-            );
-            return Err(());
+            return Err(VeilidAPIError::parse_error(
+                "size doesn't match envelope size",
+                format!(
+                    "size doesn't match envelope size: size={} data.len()={}",
+                    size,
+                    data.len()
+                ),
+            ));
         }
 
         // Get the timestamp
-        let timestamp: u64 = u64::from_le_bytes(data[0x0A..0x12].try_into().map_err(drop)?);
+        let timestamp: u64 = u64::from_le_bytes(
+            data[0x0A..0x12]
+                .try_into()
+                .map_err(VeilidAPIError::internal)?,
+        );
 
         // Get nonce and sender node id
-        let nonce: EnvelopeNonce = data[0x12..0x2A].try_into().map_err(drop)?;
-        let sender_id_slice: [u8; 32] = data[0x2A..0x4A].try_into().map_err(drop)?;
-        let recipient_id_slice: [u8; 32] = data[0x4A..0x6A].try_into().map_err(drop)?;
+        let nonce: EnvelopeNonce = data[0x12..0x2A]
+            .try_into()
+            .map_err(VeilidAPIError::internal)?;
+        let sender_id_slice: [u8; 32] = data[0x2A..0x4A]
+            .try_into()
+            .map_err(VeilidAPIError::internal)?;
+        let recipient_id_slice: [u8; 32] = data[0x4A..0x6A]
+            .try_into()
+            .map_err(VeilidAPIError::internal)?;
         let sender_id = DHTKey::new(sender_id_slice);
         let recipient_id = DHTKey::new(recipient_id_slice);
 
         // Ensure sender_id and recipient_id are not the same
         if sender_id == recipient_id {
-            trace!(
-                "sender_id should not be same as recipient_id: {}",
-                recipient_id.encode()
-            );
-            return Err(());
+            return Err(VeilidAPIError::parse_error(
+                "sender_id should not be same as recipient_id",
+                recipient_id.encode(),
+            ));
         }
 
         // Get signature
-        let signature = DHTSignature::new(data[(data.len() - 64)..].try_into().map_err(drop)?);
+        let signature = DHTSignature::new(
+            data[(data.len() - 64)..]
+                .try_into()
+                .map_err(VeilidAPIError::internal)?,
+        );
 
         // Validate signature
-        verify(&sender_id, &data[0..(data.len() - 64)], &signature).map_err(drop)?;
+        verify(&sender_id, &data[0..(data.len() - 64)], &signature)
+            .map_err(VeilidAPIError::internal)?;
 
         // Return envelope
         Ok(Self {
@@ -177,7 +192,7 @@ impl Envelope {
         crypto: Crypto,
         data: &[u8],
         node_id_secret: &DHTKeySecret,
-    ) -> Result<Vec<u8>, String> {
+    ) -> Result<Vec<u8>, VeilidAPIError> {
         // Get DH secret
         let dh_secret = crypto.cached_dh(&self.sender_id, node_id_secret)?;
 
@@ -192,20 +207,23 @@ impl Envelope {
         crypto: Crypto,
         body: &[u8],
         node_id_secret: &DHTKeySecret,
-    ) -> Result<Vec<u8>, ()> {
+    ) -> Result<Vec<u8>, VeilidAPIError> {
         // Ensure sender node id is valid
         if !self.sender_id.valid {
-            return Err(());
+            return Err(VeilidAPIError::generic("sender id is invalid"));
         }
         // Ensure recipient node id is valid
         if !self.recipient_id.valid {
-            return Err(());
+            return Err(VeilidAPIError::generic("recipient id is invalid"));
         }
 
         // Ensure body isn't too long
         let envelope_size: usize = body.len() + MIN_ENVELOPE_SIZE;
         if envelope_size > MAX_ENVELOPE_SIZE {
-            return Err(());
+            return Err(VeilidAPIError::parse_error(
+                "envelope size is too large",
+                envelope_size,
+            ));
         }
         let mut data = vec![0u8; envelope_size];
 
@@ -229,9 +247,7 @@ impl Envelope {
         data[0x4A..0x6A].copy_from_slice(&self.recipient_id.bytes);
 
         // Generate dh secret
-        let dh_secret = crypto
-            .cached_dh(&self.recipient_id, node_id_secret)
-            .map_err(drop)?;
+        let dh_secret = crypto.cached_dh(&self.recipient_id, node_id_secret)?;
 
         // Encrypt and authenticate message
         let encrypted_body = Crypto::crypt_no_auth(body, &self.nonce, &dh_secret);
@@ -246,8 +262,7 @@ impl Envelope {
             &self.sender_id,
             node_id_secret,
             &data[0..(envelope_size - 64)],
-        )
-        .map_err(drop)?;
+        )?;
 
         // Append the signature
         data[(envelope_size - 64)..].copy_from_slice(&signature.bytes);

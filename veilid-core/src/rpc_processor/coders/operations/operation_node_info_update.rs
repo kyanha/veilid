@@ -11,9 +11,7 @@ impl RPCOperationNodeInfoUpdate {
         reader: &veilid_capnp::operation_node_info_update::Reader,
         sender_node_id: &DHTKey,
     ) -> Result<RPCOperationNodeInfoUpdate, RPCError> {
-        let sni_reader = reader
-            .get_signed_node_info()
-            .map_err(map_error_capnp_error!())?;
+        let sni_reader = reader.get_signed_node_info().map_err(RPCError::protocol)?;
         let signed_node_info = decode_signed_node_info(&sni_reader, sender_node_id, true)?;
 
         Ok(RPCOperationNodeInfoUpdate { signed_node_info })

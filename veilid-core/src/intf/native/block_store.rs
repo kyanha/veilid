@@ -22,7 +22,7 @@ impl BlockStore {
         }
     }
 
-    pub async fn init(&self) -> Result<(), String> {
+    pub async fn init(&self) -> EyreResult<()> {
         // Ensure permissions are correct
         // ensure_file_private_owner(&dbpath)?;
 

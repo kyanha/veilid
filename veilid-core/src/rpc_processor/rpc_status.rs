@@ -24,9 +24,9 @@ impl RPCProcessor {
         let status_a = match msg.operation.into_kind() {
             RPCOperationKind::Answer(a) => match a.into_detail() {
                 RPCAnswerDetail::StatusA(a) => a,
-                _ => return Err(rpc_error_invalid_format("not a status answer")),
+                _ => return Err(RPCError::invalid_format("not a status answer")),
             },
-            _ => return Err(rpc_error_invalid_format("not an answer")),
+            _ => return Err(RPCError::invalid_format("not an answer")),
         };
 
         // Update latest node status in routing table

@@ -10,7 +10,7 @@ impl RPCOperationFindBlockQ {
     pub fn decode(
         reader: &veilid_capnp::operation_find_block_q::Reader,
     ) -> Result<RPCOperationFindBlockQ, RPCError> {
-        let bi_reader = reader.get_block_id().map_err(map_error_capnp_error!())?;
+        let bi_reader = reader.get_block_id().map_err(RPCError::protocol)?;
         let block_id = decode_block_id(&bi_reader);
 
         Ok(RPCOperationFindBlockQ { block_id })
@@ -37,29 +37,26 @@ impl RPCOperationFindBlockA {
     pub fn decode(
         reader: &veilid_capnp::operation_find_block_a::Reader,
     ) -> Result<RPCOperationFindBlockA, RPCError> {
-        let data = reader
-            .get_data()
-            .map_err(map_error_capnp_error!())?
-            .to_vec();
+        let data = reader.get_data().map_err(RPCError::protocol)?.to_vec();
 
-        let suppliers_reader = reader.get_suppliers().map_err(map_error_capnp_error!())?;
+        let suppliers_reader = reader.get_suppliers().map_err(RPCError::protocol)?;
         let mut suppliers = Vec::<PeerInfo>::with_capacity(
             suppliers_reader
                 .len()
                 .try_into()
-                .map_err(map_error_internal!("too many suppliers"))?,
+                .map_err(RPCError::map_internal("too many suppliers"))?,
         );
         for s in suppliers_reader.iter() {
             let peer_info = decode_peer_info(&s, true)?;
             suppliers.push(peer_info);
         }
 
-        let peers_reader = reader.get_peers().map_err(map_error_capnp_error!())?;
+        let peers_reader = reader.get_peers().map_err(RPCError::protocol)?;
         let mut peers = Vec::<PeerInfo>::with_capacity(
             peers_reader
                 .len()
                 .try_into()
-                .map_err(map_error_internal!("too many peers"))?,
+                .map_err(RPCError::map_internal("too many peers"))?,
         );
         for p in peers_reader.iter() {
             let peer_info = decode_peer_info(&p, true)?;
@@ -83,7 +80,7 @@ impl RPCOperationFindBlockA {
             self.suppliers
                 .len()
                 .try_into()
-                .map_err(map_error_internal!("invalid suppliers list length"))?,
+                .map_err(RPCError::map_internal("invalid suppliers list length"))?,
         );
         for (i, peer) in self.suppliers.iter().enumerate() {
             let mut pi_builder = suppliers_builder.reborrow().get(i as u32);
@@ -94,7 +91,7 @@ impl RPCOperationFindBlockA {
             self.peers
                 .len()
                 .try_into()
-                .map_err(map_error_internal!("invalid peers list length"))?,
+                .map_err(RPCError::map_internal("invalid peers list length"))?,
         );
         for (i, peer) in self.peers.iter().enumerate() {
             let mut pi_builder = peers_builder.reborrow().get(i as u32);

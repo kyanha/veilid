@@ -69,12 +69,12 @@ pub struct RoutingTableHealth {
 
 struct RoutingTableUnlockedInner {
     // Background processes
-    rolling_transfers_task: TickTask,
-    bootstrap_task: TickTask,
-    peer_minimum_refresh_task: TickTask,
-    ping_validator_task: TickTask,
+    rolling_transfers_task: TickTask<EyreReport>,
+    bootstrap_task: TickTask<EyreReport>,
+    peer_minimum_refresh_task: TickTask<EyreReport>,
+    ping_validator_task: TickTask<EyreReport>,
     node_info_update_single_future: MustJoinSingleFuture<()>,
-    kick_buckets_task: TickTask,
+    kick_buckets_task: TickTask<EyreReport>,
 }
 
 #[derive(Clone)]
@@ -283,7 +283,7 @@ impl RoutingTable {
         domain: RoutingDomain,
         dial_info: DialInfo,
         class: DialInfoClass,
-    ) -> Result<(), String> {
+    ) -> EyreResult<()> {
         log_rtab!(debug
             "Registering dial_info with:\n  domain: {:?}\n  dial_info: {:?}\n  class: {:?}",
             domain, dial_info, class
@@ -298,15 +298,13 @@ impl RoutingTable {
             && matches!(domain, RoutingDomain::PublicInternet)
             && dial_info.is_local()
         {
-            return Err("shouldn't be registering local addresses as public".to_owned())
-                .map_err(logthru_rtab!(error));
+            bail!("shouldn't be registering local addresses as public");
         }
         if !dial_info.is_valid() {
-            return Err(format!(
+            bail!(
                 "shouldn't be registering invalid addresses: {:?}",
                 dial_info
-            ))
-            .map_err(logthru_rtab!(error));
+            );
         }
 
         let mut inner = self.inner.write();
@@ -379,7 +377,7 @@ impl RoutingTable {
         }
     }
 
-    pub async fn init(&self) -> Result<(), String> {
+    pub async fn init(&self) -> EyreResult<()> {
         let mut inner = self.inner.write();
         // Size the buckets (one per bit)
         inner.buckets.reserve(DHT_KEY_LENGTH * 8);
@@ -578,13 +576,13 @@ impl RoutingTable {
     // Create a node reference, possibly creating a bucket entry
     // the 'update_func' closure is called on the node, and, if created,
     // in a locked fashion as to ensure the bucket entry state is always valid
-    pub fn create_node_ref<F>(&self, node_id: DHTKey, update_func: F) -> Result<NodeRef, String>
+    pub fn create_node_ref<F>(&self, node_id: DHTKey, update_func: F) -> EyreResult<NodeRef>
     where
         F: FnOnce(&mut BucketEntryInner),
     {
         // Ensure someone isn't trying register this node itself
         if node_id == self.node_id() {
-            return Err("can't register own node".to_owned()).map_err(logthru_rtab!(error));
+            bail!("can't register own node");
         }
 
         // Lock this entire operation
@@ -647,14 +645,14 @@ impl RoutingTable {
         &self,
         node_id: DHTKey,
         signed_node_info: SignedNodeInfo,
-    ) -> Result<NodeRef, String> {
+    ) -> EyreResult<NodeRef> {
         // validate signed node info is not something malicious
         if node_id == self.node_id() {
-            return Err("can't register own node id in routing table".to_owned());
+            bail!("can't register own node id in routing table");
         }
         if let Some(rpi) = &signed_node_info.node_info.relay_peer_info {
             if rpi.node_id.key == node_id {
-                return Err("node can not be its own relay".to_owned());
+                bail!("node can not be its own relay");
             }
         }
 
@@ -672,7 +670,7 @@ impl RoutingTable {
         node_id: DHTKey,
         descriptor: ConnectionDescriptor,
         timestamp: u64,
-    ) -> Result<NodeRef, String> {
+    ) -> EyreResult<NodeRef> {
         let nr = self.create_node_ref(node_id, |e| {
             // set the most recent node address for connection finding and udp replies
             e.set_last_connection(descriptor, timestamp);
@@ -681,53 +679,9 @@ impl RoutingTable {
         Ok(nr)
     }
 
-    // fn operate_on_bucket_entry_inner_locked<T, F>(
-    //     inner: &RoutingTableInner,
-    //     node_id: DHTKey,
-    //     f: F,
-    // ) -> T
-    // where
-    //     F: FnOnce(&BucketEntryInner) -> T,
-    // {
-    //     let idx = Self::find_bucket_index(&*inner, node_id);
-    //     let bucket = &inner.buckets[idx];
-    //     let entry = bucket.entry(&node_id).unwrap();
-    //     entry.with(f)
-    // }
-
-    // fn operate_on_bucket_entry_inner_locked_mut<T, F>(
-    //     inner: &RoutingTableInner,
-    //     node_id: DHTKey,
-    //     f: F,
-    // ) -> T
-    // where
-    //     F: FnOnce(&mut BucketEntryInner) -> T,
-    // {
-    //     let idx = Self::find_bucket_index(&*inner, node_id);
-    //     let bucket = &inner.buckets[idx];
-    //     let entry = bucket.entry(&node_id).unwrap();
-    //     entry.with_mut(f)
-    // }
-
-    // fn operate_on_bucket_entry<T, F>(&self, node_id: DHTKey, f: F) -> T
-    // where
-    //     F: FnOnce(&BucketEntryInner) -> T,
-    // {
-    //     let inner = self.inner.read();
-    //     Self::operate_on_bucket_entry_inner_locked(&mut *inner, node_id, f)
-    // }
-
-    // fn operate_on_bucket_entry_mut<T, F>(&self, node_id: DHTKey, f: F) -> T
-    // where
-    //     F: FnOnce(&mut BucketEntryInner) -> T,
-    // {
-    //     let inner = self.inner.read();
-    //     Self::operate_on_bucket_entry_inner_locked_mut(&*inner, node_id, f)
-    // }
-
     // Ticks about once per second
     // to run tick tasks which may run at slower tick rates as configured
-    pub async fn tick(&self) -> Result<(), String> {
+    pub async fn tick(&self) -> EyreResult<()> {
         // Do rolling transfers every ROLLING_TRANSFERS_INTERVAL_SECS secs
         self.unlocked_inner.rolling_transfers_task.tick().await?;
 

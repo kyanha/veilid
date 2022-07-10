@@ -26,7 +26,7 @@ cfg_if! {
         pub use tokio::net::TcpListener;
         //pub use tokio::net::TcpStream;
         //pub use tokio_util::compat::*;
-        pub use tokio::time::error::Elapsed as TimeoutError;
+        //pub use tokio::time::error::Elapsed as TimeoutError;
         pub fn spawn<F: Future<Output = T> + Send + 'static, T:  Send + 'static>(f: F) -> JoinHandle<T> {
             tokio::task::spawn(f)
         }

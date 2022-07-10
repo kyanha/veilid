@@ -25,14 +25,14 @@ impl ListenerState {
 /////////////////////////////////////////////////////////////////
 
 impl Network {
-    fn get_or_create_tls_acceptor(&self) -> Result<TlsAcceptor, String> {
+    fn get_or_create_tls_acceptor(&self) -> EyreResult<TlsAcceptor> {
         if let Some(ts) = self.inner.lock().tls_acceptor.as_ref() {
             return Ok(ts.clone());
         }
 
         let server_config = self
             .load_server_config()
-            .map_err(|e| format!("Couldn't create TLS configuration: {}", e))?;
+            .wrap_err("Couldn't create TLS configuration")?;
         let acceptor = TlsAcceptor::from(Arc::new(server_config));
         self.inner.lock().tls_acceptor = Some(acceptor.clone());
         Ok(acceptor)
@@ -45,12 +45,11 @@ impl Network {
         addr: SocketAddr,
         protocol_handlers: &[Box<dyn ProtocolAcceptHandler>],
         tls_connection_initial_timeout_ms: u32,
-    ) -> Result<Option<ProtocolNetworkConnection>, String> {
+    ) -> EyreResult<Option<ProtocolNetworkConnection>> {
         let tls_stream = tls_acceptor
             .accept(stream)
             .await
-            .map_err(map_to_string)
-            .map_err(logthru_net!(debug "TLS stream failed handshake"))?;
+            .wrap_err("TLS stream failed handshake")?;
         let ps = AsyncPeekStream::new(tls_stream);
         let mut first_packet = [0u8; PEEK_DETECT_LEN];
 
@@ -63,8 +62,8 @@ impl Network {
             ps.peek_exact(&mut first_packet),
         )
         .await
-        .map_err(map_to_string)?
-        .map_err(map_to_string)?;
+        .wrap_err("tls initial timeout")?
+        .wrap_err("failed to peek tls stream")?;
 
         self.try_handlers(ps, addr, protocol_handlers).await
     }
@@ -74,9 +73,13 @@ impl Network {
         stream: AsyncPeekStream,
         addr: SocketAddr,
         protocol_accept_handlers: &[Box<dyn ProtocolAcceptHandler>],
-    ) -> Result<Option<ProtocolNetworkConnection>, String> {
+    ) -> EyreResult<Option<ProtocolNetworkConnection>> {
         for ah in protocol_accept_handlers.iter() {
-            if let Some(nc) = ah.on_accept(stream.clone(), addr).await? {
+            if let Some(nc) = ah
+                .on_accept(stream.clone(), addr)
+                .await
+                .wrap_err("io error")?
+            {
                 return Ok(Some(nc));
             }
         }
@@ -114,7 +117,7 @@ impl Network {
                 return;
             }
         };
-        // XXX limiting
+        // XXX limiting here instead for connection table? may be faster and avoids tls negotiation
 
         log_net!("TCP connection from: {}", addr);
 
@@ -185,7 +188,7 @@ impl Network {
         }
     }
 
-    async fn spawn_socket_listener(&self, addr: SocketAddr) -> Result<(), String> {
+    async fn spawn_socket_listener(&self, addr: SocketAddr) -> EyreResult<()> {
         // Get config
         let (connection_initial_timeout_ms, tls_connection_initial_timeout_ms) = {
             let c = self.config.get();
@@ -196,11 +199,12 @@ impl Network {
         };
 
         // Create a reusable socket with no linger time, and no delay
-        let socket = new_bound_shared_tcp_socket(addr)?;
+        let socket = new_bound_shared_tcp_socket(addr)
+            .wrap_err("failed to create bound shared tcp socket")?;
         // Listen on the socket
         socket
             .listen(128)
-            .map_err(|e| format!("Couldn't listen on TCP socket: {}", e))?;
+            .wrap_err("Couldn't listen on TCP socket")?;
 
         // Make an async tcplistener from the socket2 socket
         let std_listener: std::net::TcpListener = socket.into();
@@ -209,7 +213,7 @@ impl Network {
                 let listener = TcpListener::from(std_listener);
             } else if #[cfg(feature="rt-tokio")] {
                 std_listener.set_nonblocking(true).expect("failed to set nonblocking");
-                let listener = TcpListener::from_std(std_listener).map_err(map_to_string)?;
+                let listener = TcpListener::from_std(std_listener).wrap_err("failed to create tokio tcp listener")?;
             }
         }
 
@@ -279,7 +283,7 @@ impl Network {
         port: u16,
         is_tls: bool,
         new_protocol_accept_handler: Box<NewProtocolAcceptHandler>,
-    ) -> Result<Vec<SocketAddress>, String> {
+    ) -> EyreResult<Vec<SocketAddress>> {
         let mut out = Vec::<SocketAddress>::new();
 
         for ip_addr in ip_addrs {

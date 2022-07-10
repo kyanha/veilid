@@ -19,15 +19,10 @@ pub fn decode_dial_info_detail(
         &reader
             .reborrow()
             .get_dial_info()
-            .map_err(map_error_capnp_error!())?,
+            .map_err(RPCError::protocol)?,
     )?;
 
-    let class = decode_dial_info_class(
-        reader
-            .reborrow()
-            .get_class()
-            .map_err(map_error_capnp_notinschema!())?,
-    );
+    let class = decode_dial_info_class(reader.reborrow().get_class().map_err(RPCError::protocol)?);
 
     Ok(DialInfoDetail { dial_info, class })
 }

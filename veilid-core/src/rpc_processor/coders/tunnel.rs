@@ -46,10 +46,10 @@ pub fn encode_tunnel_endpoint(
 pub fn decode_tunnel_endpoint(
     reader: &veilid_capnp::tunnel_endpoint::Reader,
 ) -> Result<TunnelEndpoint, RPCError> {
-    let mode = decode_tunnel_mode(reader.get_mode().map_err(map_error_capnp_notinschema!())?);
+    let mode = decode_tunnel_mode(reader.get_mode().map_err(RPCError::protocol)?);
     let description = reader
         .get_description()
-        .map_err(map_error_capnp_error!())?
+        .map_err(RPCError::protocol)?
         .to_owned();
 
     Ok(TunnelEndpoint { mode, description })
@@ -73,9 +73,9 @@ pub fn decode_full_tunnel(
 ) -> Result<FullTunnel, RPCError> {
     let id = reader.get_id();
     let timeout = reader.get_timeout();
-    let l_reader = reader.get_local().map_err(map_error_capnp_error!())?;
+    let l_reader = reader.get_local().map_err(RPCError::protocol)?;
     let local = decode_tunnel_endpoint(&l_reader)?;
-    let r_reader = reader.get_remote().map_err(map_error_capnp_error!())?;
+    let r_reader = reader.get_remote().map_err(RPCError::protocol)?;
     let remote = decode_tunnel_endpoint(&r_reader)?;
 
     Ok(FullTunnel {
@@ -102,7 +102,7 @@ pub fn decode_partial_tunnel(
 ) -> Result<PartialTunnel, RPCError> {
     let id = reader.get_id();
     let timeout = reader.get_timeout();
-    let l_reader = reader.get_local().map_err(map_error_capnp_error!())?;
+    let l_reader = reader.get_local().map_err(RPCError::protocol)?;
     let local = decode_tunnel_endpoint(&l_reader)?;
 
     Ok(PartialTunnel { id, timeout, local })

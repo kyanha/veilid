@@ -23,7 +23,7 @@ impl BlockStore {
         }
     }
 
-    pub async fn init(&self) -> Result<(), String> {
+    pub async fn init(&self) -> EyreResult<()> {
         Ok(())
     }
 

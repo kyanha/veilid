@@ -34,12 +34,12 @@ impl RPCOperationCancelTunnelA {
     pub fn decode(
         reader: &veilid_capnp::operation_cancel_tunnel_a::Reader,
     ) -> Result<RPCOperationCancelTunnelA, RPCError> {
-        match reader.which().map_err(map_error_capnp_notinschema!())? {
+        match reader.which().map_err(RPCError::protocol)? {
             veilid_capnp::operation_cancel_tunnel_a::Which::Tunnel(r) => {
                 Ok(RPCOperationCancelTunnelA::Tunnel(r))
             }
             veilid_capnp::operation_cancel_tunnel_a::Which::Error(r) => {
-                let tunnel_error = decode_tunnel_error(r.map_err(map_error_capnp_notinschema!())?);
+                let tunnel_error = decode_tunnel_error(r.map_err(RPCError::protocol)?);
                 Ok(RPCOperationCancelTunnelA::Error(tunnel_error))
             }
         }

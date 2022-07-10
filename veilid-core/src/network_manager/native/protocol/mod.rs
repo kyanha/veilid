@@ -6,6 +6,7 @@ pub mod ws;
 
 use super::*;
 use crate::xx::*;
+use std::io;
 
 #[derive(Debug)]
 pub enum ProtocolNetworkConnection {
@@ -21,7 +22,7 @@ impl ProtocolNetworkConnection {
     pub async fn connect(
         local_address: Option<SocketAddr>,
         dial_info: DialInfo,
-    ) -> Result<ProtocolNetworkConnection, String> {
+    ) -> io::Result<ProtocolNetworkConnection> {
         match dial_info.protocol_type() {
             ProtocolType::UDP => {
                 panic!("Should not connect to UDP dialinfo");
@@ -35,7 +36,7 @@ impl ProtocolNetworkConnection {
         }
     }
 
-    pub async fn send_unbound_message(dial_info: DialInfo, data: Vec<u8>) -> Result<(), String> {
+    pub async fn send_unbound_message(dial_info: DialInfo, data: Vec<u8>) -> io::Result<()> {
         match dial_info.protocol_type() {
             ProtocolType::UDP => {
                 let peer_socket_addr = dial_info.to_socket_addr();
@@ -55,7 +56,7 @@ impl ProtocolNetworkConnection {
         dial_info: DialInfo,
         data: Vec<u8>,
         timeout_ms: u32,
-    ) -> Result<Vec<u8>, String> {
+    ) -> io::Result<Vec<u8>> {
         match dial_info.protocol_type() {
             ProtocolType::UDP => {
                 let peer_socket_addr = dial_info.to_socket_addr();
@@ -102,7 +103,7 @@ impl ProtocolNetworkConnection {
     //     }
     // }
 
-    pub async fn send(&self, message: Vec<u8>) -> Result<(), String> {
+    pub async fn send(&self, message: Vec<u8>) -> io::Result<()> {
         match self {
             Self::Dummy(d) => d.send(message),
             Self::RawTcp(t) => t.send(message).await,
@@ -111,7 +112,7 @@ impl ProtocolNetworkConnection {
             Self::Wss(w) => w.send(message).await,
         }
     }
-    pub async fn recv(&self) -> Result<Vec<u8>, String> {
+    pub async fn recv(&self) -> io::Result<Vec<u8>> {
         match self {
             Self::Dummy(d) => d.recv(),
             Self::RawTcp(t) => t.recv().await,

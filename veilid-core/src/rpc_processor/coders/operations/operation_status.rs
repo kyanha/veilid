@@ -10,7 +10,7 @@ impl RPCOperationStatusQ {
     pub fn decode(
         reader: &veilid_capnp::operation_status_q::Reader,
     ) -> Result<RPCOperationStatusQ, RPCError> {
-        let ns_reader = reader.get_node_status().map_err(map_error_capnp_error!())?;
+        let ns_reader = reader.get_node_status().map_err(RPCError::protocol)?;
         let node_status = decode_node_status(&ns_reader)?;
         Ok(RPCOperationStatusQ { node_status })
     }
@@ -34,10 +34,10 @@ impl RPCOperationStatusA {
     pub fn decode(
         reader: &veilid_capnp::operation_status_a::Reader,
     ) -> Result<RPCOperationStatusA, RPCError> {
-        let ns_reader = reader.get_node_status().map_err(map_error_capnp_error!())?;
+        let ns_reader = reader.get_node_status().map_err(RPCError::protocol)?;
         let node_status = decode_node_status(&ns_reader)?;
 
-        let si_reader = reader.get_sender_info().map_err(map_error_capnp_error!())?;
+        let si_reader = reader.get_sender_info().map_err(RPCError::protocol)?;
         let sender_info = decode_sender_info(&si_reader)?;
 
         Ok(RPCOperationStatusA {

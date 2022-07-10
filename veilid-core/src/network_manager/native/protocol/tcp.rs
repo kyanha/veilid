@@ -42,47 +42,45 @@ impl RawTcpNetworkConnection {
     //     }
     // }
 
-    async fn send_internal(stream: &mut AsyncPeekStream, message: Vec<u8>) -> Result<(), String> {
+    async fn send_internal(stream: &mut AsyncPeekStream, message: Vec<u8>) -> io::Result<()> {
         log_net!("sending TCP message of size {}", message.len());
         if message.len() > MAX_MESSAGE_SIZE {
-            return Err("sending too large TCP message".to_owned());
+            bail_io_error_other!("sending too large TCP message");
         }
         let len = message.len() as u16;
         let header = [b'V', b'L', len as u8, (len >> 8) as u8];
 
-        stream.write_all(&header).await.map_err(map_to_string)?;
-        stream.write_all(&message).await.map_err(map_to_string)
+        stream.write_all(&header).await?;
+        stream.write_all(&message).await
     }
 
     #[instrument(level="trace", err, skip(self, message), fields(message.len = message.len()))]
-    pub async fn send(&self, message: Vec<u8>) -> Result<(), String> {
+    pub async fn send(&self, message: Vec<u8>) -> io::Result<()> {
         let mut stream = self.stream.clone();
         Self::send_internal(&mut stream, message).await
     }
 
-    pub async fn recv_internal(stream: &mut AsyncPeekStream) -> Result<Vec<u8>, String> {
+    pub async fn recv_internal(stream: &mut AsyncPeekStream) -> io::Result<Vec<u8>> {
         let mut header = [0u8; 4];
 
-        stream
-            .read_exact(&mut header)
-            .await
-            .map_err(|e| format!("TCP recv error: {}", e))?;
+        stream.read_exact(&mut header).await?;
+
         if header[0] != b'V' || header[1] != b'L' {
-            return Err("received invalid TCP frame header".to_owned());
+            bail_io_error_other!("received invalid TCP frame header");
         }
         let len = ((header[3] as usize) << 8) | (header[2] as usize);
         if len > MAX_MESSAGE_SIZE {
-            return Err("received too large TCP frame".to_owned());
+            bail_io_error_other!("received too large TCP frame");
         }
 
         let mut out: Vec<u8> = vec![0u8; len];
-        stream.read_exact(&mut out).await.map_err(map_to_string)?;
+        stream.read_exact(&mut out).await?;
 
         Ok(out)
     }
 
     #[instrument(level="trace", err, skip(self), fields(ret.len))]
-    pub async fn recv(&self) -> Result<Vec<u8>, String> {
+    pub async fn recv(&self) -> io::Result<Vec<u8>> {
         let mut stream = self.stream.clone();
         let out = Self::recv_internal(&mut stream).await?;
         tracing::Span::current().record("ret.len", &out.len());
@@ -121,14 +119,10 @@ impl RawTcpProtocolHandler {
         self,
         stream: AsyncPeekStream,
         socket_addr: SocketAddr,
-    ) -> Result<Option<ProtocolNetworkConnection>, String> {
+    ) -> io::Result<Option<ProtocolNetworkConnection>> {
         log_net!("TCP: on_accept_async: enter");
         let mut peekbuf: [u8; PEEK_DETECT_LEN] = [0u8; PEEK_DETECT_LEN];
-        let peeklen = stream
-            .peek(&mut peekbuf)
-            .await
-            .map_err(map_to_string)
-            .map_err(logthru_net!("could not peek tcp stream"))?;
+        let peeklen = stream.peek(&mut peekbuf).await?;
         assert_eq!(peeklen, PEEK_DETECT_LEN);
 
         let peer_addr = PeerAddress::new(
@@ -150,7 +144,7 @@ impl RawTcpProtocolHandler {
     pub async fn connect(
         local_address: Option<SocketAddr>,
         dial_info: DialInfo,
-    ) -> Result<ProtocolNetworkConnection, String> {
+    ) -> io::Result<ProtocolNetworkConnection> {
         // Get remote socket address to connect to
         let remote_socket_addr = dial_info.to_socket_addr();
 
@@ -163,15 +157,10 @@ impl RawTcpProtocolHandler {
         };
 
         // Non-blocking connect to remote address
-        let ts = nonblocking_connect(socket, remote_socket_addr).await
-            .map_err(map_to_string)
-            .map_err(logthru_net!(error "local_address={:?} remote_addr={}", local_address, remote_socket_addr))?;
+        let ts = nonblocking_connect(socket, remote_socket_addr).await?;
 
         // See what local address we ended up with and turn this into a stream
-        let actual_local_address = ts
-            .local_addr()
-            .map_err(map_to_string)
-            .map_err(logthru_net!("could not get local address from TCP stream"))?;
+        let actual_local_address = ts.local_addr()?;
         #[cfg(feature = "rt-tokio")]
         let ts = ts.compat();
         let ps = AsyncPeekStream::new(ts);
@@ -189,12 +178,9 @@ impl RawTcpProtocolHandler {
     }
 
     #[instrument(level = "trace", err, skip(data), fields(data.len = data.len()))]
-    pub async fn send_unbound_message(
-        socket_addr: SocketAddr,
-        data: Vec<u8>,
-    ) -> Result<(), String> {
+    pub async fn send_unbound_message(socket_addr: SocketAddr, data: Vec<u8>) -> io::Result<()> {
         if data.len() > MAX_MESSAGE_SIZE {
-            return Err("sending too large unbound TCP message".to_owned());
+            bail_io_error_other!("sending too large unbound TCP message");
         }
         trace!(
             "sending unbound message of length {} to {}",
@@ -206,10 +192,7 @@ impl RawTcpProtocolHandler {
         let socket = new_unbound_shared_tcp_socket(socket2::Domain::for_address(socket_addr))?;
 
         // Non-blocking connect to remote address
-        let ts = nonblocking_connect(socket, socket_addr)
-            .await
-            .map_err(map_to_string)
-            .map_err(logthru_net!(error "remote_addr={}", socket_addr))?;
+        let ts = nonblocking_connect(socket, socket_addr).await?;
 
         // See what local address we ended up with and turn this into a stream
         // let actual_local_address = ts
@@ -231,9 +214,9 @@ impl RawTcpProtocolHandler {
         socket_addr: SocketAddr,
         data: Vec<u8>,
         timeout_ms: u32,
-    ) -> Result<Vec<u8>, String> {
+    ) -> io::Result<Vec<u8>> {
         if data.len() > MAX_MESSAGE_SIZE {
-            return Err("sending too large unbound TCP message".to_owned());
+            bail_io_error_other!("sending too large unbound TCP message");
         }
         trace!(
             "sending unbound message of length {} to {}",
@@ -245,10 +228,7 @@ impl RawTcpProtocolHandler {
         let socket = new_unbound_shared_tcp_socket(socket2::Domain::for_address(socket_addr))?;
 
         // Non-blocking connect to remote address
-        let ts = nonblocking_connect(socket, socket_addr)
-            .await
-            .map_err(map_to_string)
-            .map_err(logthru_net!(error "remote_addr={}", socket_addr))?;
+        let ts = nonblocking_connect(socket, socket_addr).await?;
 
         // See what local address we ended up with and turn this into a stream
         // let actual_local_address = ts
@@ -265,7 +245,7 @@ impl RawTcpProtocolHandler {
 
         let out = timeout(timeout_ms, RawTcpNetworkConnection::recv_internal(&mut ps))
             .await
-            .map_err(map_to_string)??;
+            .map_err(|e| e.to_io())??;
 
         tracing::Span::current().record("ret.len", &out.len());
         Ok(out)
@@ -277,7 +257,7 @@ impl ProtocolAcceptHandler for RawTcpProtocolHandler {
         &self,
         stream: AsyncPeekStream,
         peer_addr: SocketAddr,
-    ) -> SystemPinBoxFuture<core::result::Result<Option<ProtocolNetworkConnection>, String>> {
+    ) -> SystemPinBoxFuture<io::Result<Option<ProtocolNetworkConnection>>> {
         Box::pin(self.clone().on_accept_async(stream, peer_addr))
     }
 }

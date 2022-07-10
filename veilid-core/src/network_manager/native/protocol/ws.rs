@@ -17,6 +17,25 @@ cfg_if! {
     }
 }
 
+fn to_io(err: async_tungstenite::tungstenite::Error) -> io::Error {
+    let kind = match err {
+        async_tungstenite::tungstenite::Error::ConnectionClosed => io::ErrorKind::ConnectionReset,
+        async_tungstenite::tungstenite::Error::AlreadyClosed => io::ErrorKind::NotConnected,
+        async_tungstenite::tungstenite::Error::Io(x) => {
+            return x;
+        }
+        async_tungstenite::tungstenite::Error::Tls(_) => io::ErrorKind::InvalidData,
+        async_tungstenite::tungstenite::Error::Capacity(_) => io::ErrorKind::Other,
+        async_tungstenite::tungstenite::Error::Protocol(_) => io::ErrorKind::Other,
+        async_tungstenite::tungstenite::Error::SendQueueFull(_) => io::ErrorKind::Other,
+        async_tungstenite::tungstenite::Error::Utf8 => io::ErrorKind::Other,
+        async_tungstenite::tungstenite::Error::Url(_) => io::ErrorKind::Other,
+        async_tungstenite::tungstenite::Error::Http(_) => io::ErrorKind::Other,
+        async_tungstenite::tungstenite::Error::HttpFormat(_) => io::ErrorKind::Other,
+    };
+    io::Error::new(kind, err)
+}
+
 pub type WebSocketNetworkConnectionAccepted = WebsocketNetworkConnection<AsyncPeekStream>;
 
 pub struct WebsocketNetworkConnection<T>
@@ -62,41 +81,49 @@ where
     // }
 
     #[instrument(level = "trace", err, skip(self, message), fields(message.len = message.len()))]
-    pub async fn send(&self, message: Vec<u8>) -> Result<(), String> {
+    pub async fn send(&self, message: Vec<u8>) -> io::Result<()> {
         if message.len() > MAX_MESSAGE_SIZE {
-            return Err("received too large WS message".to_owned());
+            bail_io_error_other!("received too large WS message");
         }
         self.stream
             .clone()
             .send(Message::binary(message))
             .await
-            .map_err(map_to_string)
-            .map_err(logthru_net!(error "failed to send websocket message"))
+            .map_err(to_io)
     }
 
     #[instrument(level = "trace", err, skip(self), fields(ret.len))]
-    pub async fn recv(&self) -> Result<Vec<u8>, String> {
+    pub async fn recv(&self) -> io::Result<Vec<u8>> {
         let out = match self.stream.clone().next().await {
-            Some(Ok(Message::Binary(v))) => v,
-            Some(Ok(Message::Close(e))) => {
-                return Err(format!("WS connection closed: {:?}", e));
+            Some(Ok(Message::Binary(v))) => {
+                if v.len() > MAX_MESSAGE_SIZE {
+                    return Err(io::Error::new(
+                        io::ErrorKind::ConnectionReset,
+                        "too large ws message",
+                    ));
+                }
+                v
+            }
+            Some(Ok(Message::Close(_))) => {
+                return Err(io::Error::new(io::ErrorKind::ConnectionReset, "closeframe"))
             }
             Some(Ok(x)) => {
-                return Err(format!("Unexpected WS message type: {:?}", x));
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("Unexpected WS message type: {:?}", x),
+                ));
             }
-            Some(Err(e)) => {
-                return Err(e.to_string()).map_err(logthru_net!(error));
-            }
+            Some(Err(e)) => return Err(to_io(e)),
             None => {
-                return Err("WS stream closed".to_owned());
+                return Err(io::Error::new(
+                    io::ErrorKind::ConnectionReset,
+                    "connection ended",
+                ))
             }
         };
-        if out.len() > MAX_MESSAGE_SIZE {
-            Err("sending too large WS message".to_owned()).map_err(logthru_net!(error))
-        } else {
-            tracing::Span::current().record("ret.len", &out.len());
-            Ok(out)
-        }
+
+        tracing::Span::current().record("ret.len", &out.len());
+        Ok(out)
     }
 }
 
@@ -145,21 +172,18 @@ impl WebsocketProtocolHandler {
         self,
         ps: AsyncPeekStream,
         socket_addr: SocketAddr,
-    ) -> Result<Option<ProtocolNetworkConnection>, String> {
+    ) -> io::Result<Option<ProtocolNetworkConnection>> {
         log_net!("WS: on_accept_async: enter");
         let request_path_len = self.arc.request_path.len() + 2;
 
         let mut peekbuf: Vec<u8> = vec![0u8; request_path_len];
-        match timeout(
+        if let Err(_) = timeout(
             self.arc.connection_initial_timeout_ms,
             ps.peek_exact(&mut peekbuf),
         )
         .await
         {
-            Ok(_) => (),
-            Err(e) => {
-                return Err(e.to_string());
-            }
+            return Ok(None);
         }
 
         // Check for websocket path
@@ -169,15 +193,12 @@ impl WebsocketProtocolHandler {
                     && peekbuf[request_path_len - 1] == b' '));
 
         if !matches_path {
-            log_net!("WS: not websocket");
             return Ok(None);
         }
-        log_net!("WS: found websocket");
 
         let ws_stream = accept_async(ps)
             .await
-            .map_err(map_to_string)
-            .map_err(logthru_net!("failed websockets handshake"))?;
+            .map_err(|e| io_error_other!(format!("failed websockets handshake: {}", e)))?;
 
         // Wrap the websocket in a NetworkConnection and register it
         let protocol_type = if self.arc.tls {
@@ -205,7 +226,7 @@ impl WebsocketProtocolHandler {
     async fn connect_internal(
         local_address: Option<SocketAddr>,
         dial_info: DialInfo,
-    ) -> Result<ProtocolNetworkConnection, String> {
+    ) -> io::Result<ProtocolNetworkConnection> {
         // Split dial info up
         let (tls, scheme) = match &dial_info {
             DialInfo::WS(_) => (false, "ws"),
@@ -213,9 +234,9 @@ impl WebsocketProtocolHandler {
             _ => panic!("invalid dialinfo for WS/WSS protocol"),
         };
         let request = dial_info.request().unwrap();
-        let split_url = SplitUrl::from_str(&request)?;
+        let split_url = SplitUrl::from_str(&request).map_err(to_io_error_other)?;
         if split_url.scheme != scheme {
-            return Err("invalid websocket url scheme".to_string());
+            bail_io_error_other!("invalid websocket url scheme");
         }
         let domain = split_url.host.clone();
 
@@ -231,12 +252,10 @@ impl WebsocketProtocolHandler {
         };
 
         // Non-blocking connect to remote address
-        let tcp_stream = nonblocking_connect(socket, remote_socket_addr).await
-            .map_err(map_to_string)
-            .map_err(logthru_net!(error "local_address={:?} remote_addr={}", local_address, remote_socket_addr))?;
+        let tcp_stream = nonblocking_connect(socket, remote_socket_addr).await?;
 
         // See what local address we ended up with
-        let actual_local_addr = tcp_stream.local_addr().map_err(map_to_string)?;
+        let actual_local_addr = tcp_stream.local_addr()?;
 
         #[cfg(feature = "rt-tokio")]
         let tcp_stream = tcp_stream.compat();
@@ -249,15 +268,10 @@ impl WebsocketProtocolHandler {
         // Negotiate TLS if this is WSS
         if tls {
             let connector = TlsConnector::default();
-            let tls_stream = connector
-                .connect(domain.to_string(), tcp_stream)
-                .await
-                .map_err(map_to_string)
-                .map_err(logthru_net!(error))?;
+            let tls_stream = connector.connect(domain.to_string(), tcp_stream).await?;
             let (ws_stream, _response) = client_async(request, tls_stream)
                 .await
-                .map_err(map_to_string)
-                .map_err(logthru_net!(error))?;
+                .map_err(to_io_error_other)?;
 
             Ok(ProtocolNetworkConnection::Wss(
                 WebsocketNetworkConnection::new(descriptor, ws_stream),
@@ -265,8 +279,7 @@ impl WebsocketProtocolHandler {
         } else {
             let (ws_stream, _response) = client_async(request, tcp_stream)
                 .await
-                .map_err(map_to_string)
-                .map_err(logthru_net!(error))?;
+                .map_err(to_io_error_other)?;
             Ok(ProtocolNetworkConnection::Ws(
                 WebsocketNetworkConnection::new(descriptor, ws_stream),
             ))
@@ -277,19 +290,17 @@ impl WebsocketProtocolHandler {
     pub async fn connect(
         local_address: Option<SocketAddr>,
         dial_info: DialInfo,
-    ) -> Result<ProtocolNetworkConnection, String> {
+    ) -> io::Result<ProtocolNetworkConnection> {
         Self::connect_internal(local_address, dial_info).await
     }
 
     #[instrument(level = "trace", err, skip(data), fields(data.len = data.len()))]
-    pub async fn send_unbound_message(dial_info: DialInfo, data: Vec<u8>) -> Result<(), String> {
+    pub async fn send_unbound_message(dial_info: DialInfo, data: Vec<u8>) -> io::Result<()> {
         if data.len() > MAX_MESSAGE_SIZE {
-            return Err("sending too large unbound WS message".to_owned());
+            bail_io_error_other!("sending too large unbound WS message");
         }
 
-        let protconn = Self::connect_internal(None, dial_info.clone())
-            .await
-            .map_err(|e| format!("failed to connect websocket for unbound message: {}", e))?;
+        let protconn = Self::connect_internal(None, dial_info.clone()).await?;
 
         protconn.send(data).await
     }
@@ -299,19 +310,17 @@ impl WebsocketProtocolHandler {
         dial_info: DialInfo,
         data: Vec<u8>,
         timeout_ms: u32,
-    ) -> Result<Vec<u8>, String> {
+    ) -> io::Result<Vec<u8>> {
         if data.len() > MAX_MESSAGE_SIZE {
-            return Err("sending too large unbound WS message".to_owned());
+            bail_io_error_other!("sending too large unbound WS message");
         }
 
-        let protconn = Self::connect_internal(None, dial_info.clone())
-            .await
-            .map_err(|e| format!("failed to connect websocket for unbound message: {}", e))?;
+        let protconn = Self::connect_internal(None, dial_info.clone()).await?;
 
         protconn.send(data).await?;
         let out = timeout(timeout_ms, protconn.recv())
             .await
-            .map_err(map_to_string)??;
+            .map_err(|e| e.to_io())??;
 
         tracing::Span::current().record("ret.len", &out.len());
         Ok(out)
@@ -323,7 +332,7 @@ impl ProtocolAcceptHandler for WebsocketProtocolHandler {
         &self,
         stream: AsyncPeekStream,
         peer_addr: SocketAddr,
-    ) -> SystemPinBoxFuture<Result<Option<ProtocolNetworkConnection>, String>> {
+    ) -> SystemPinBoxFuture<io::Result<Option<ProtocolNetworkConnection>>> {
         Box::pin(self.clone().on_accept_async(stream, peer_addr))
     }
 }

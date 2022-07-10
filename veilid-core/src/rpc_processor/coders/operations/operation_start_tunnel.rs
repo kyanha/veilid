@@ -13,10 +13,7 @@ impl RPCOperationStartTunnelQ {
         reader: &veilid_capnp::operation_start_tunnel_q::Reader,
     ) -> Result<RPCOperationStartTunnelQ, RPCError> {
         let id = reader.get_id();
-        let local_mode = match reader
-            .get_local_mode()
-            .map_err(map_error_capnp_notinschema!())?
-        {
+        let local_mode = match reader.get_local_mode().map_err(RPCError::protocol)? {
             veilid_capnp::TunnelEndpointMode::Raw => TunnelMode::Raw,
             veilid_capnp::TunnelEndpointMode::Turn => TunnelMode::Turn,
         };
@@ -53,14 +50,14 @@ impl RPCOperationStartTunnelA {
     pub fn decode(
         reader: &veilid_capnp::operation_start_tunnel_a::Reader,
     ) -> Result<RPCOperationStartTunnelA, RPCError> {
-        match reader.which().map_err(map_error_capnp_notinschema!())? {
+        match reader.which().map_err(RPCError::protocol)? {
             veilid_capnp::operation_start_tunnel_a::Which::Partial(r) => {
-                let pt_reader = r.map_err(map_error_capnp_error!())?;
+                let pt_reader = r.map_err(RPCError::protocol)?;
                 let partial_tunnel = decode_partial_tunnel(&pt_reader)?;
                 Ok(RPCOperationStartTunnelA::Partial(partial_tunnel))
             }
             veilid_capnp::operation_start_tunnel_a::Which::Error(r) => {
-                let tunnel_error = decode_tunnel_error(r.map_err(map_error_capnp_notinschema!())?);
+                let tunnel_error = decode_tunnel_error(r.map_err(RPCError::protocol)?);
                 Ok(RPCOperationStartTunnelA::Error(tunnel_error))
             }
         }

@@ -10,7 +10,7 @@ impl RPCOperationSupplyBlockQ {
     pub fn decode(
         reader: &veilid_capnp::operation_supply_block_q::Reader,
     ) -> Result<RPCOperationSupplyBlockQ, RPCError> {
-        let bi_reader = reader.get_block_id().map_err(map_error_capnp_error!())?;
+        let bi_reader = reader.get_block_id().map_err(RPCError::protocol)?;
         let block_id = decode_block_id(&bi_reader);
 
         Ok(RPCOperationSupplyBlockQ { block_id })
@@ -36,17 +36,17 @@ impl RPCOperationSupplyBlockA {
     pub fn decode(
         reader: &veilid_capnp::operation_supply_block_a::Reader,
     ) -> Result<RPCOperationSupplyBlockA, RPCError> {
-        match reader.which().map_err(map_error_capnp_notinschema!())? {
+        match reader.which().map_err(RPCError::protocol)? {
             veilid_capnp::operation_supply_block_a::Which::Expiration(r) => {
                 Ok(RPCOperationSupplyBlockA::Expiration(r))
             }
             veilid_capnp::operation_supply_block_a::Which::Peers(r) => {
-                let peers_reader = r.map_err(map_error_capnp_error!())?;
+                let peers_reader = r.map_err(RPCError::protocol)?;
                 let mut peers = Vec::<PeerInfo>::with_capacity(
                     peers_reader
                         .len()
                         .try_into()
-                        .map_err(map_error_internal!("too many peers"))?,
+                        .map_err(RPCError::map_internal("too many peers"))?,
                 );
                 for p in peers_reader.iter() {
                     let peer_info = decode_peer_info(&p, true)?;
@@ -70,7 +70,7 @@ impl RPCOperationSupplyBlockA {
                     peers
                         .len()
                         .try_into()
-                        .map_err(map_error_internal!("invalid peers list length"))?,
+                        .map_err(RPCError::map_internal("invalid peers list length"))?,
                 );
                 for (i, peer) in peers.iter().enumerate() {
                     let mut pi_builder = peers_builder.reborrow().get(i as u32);

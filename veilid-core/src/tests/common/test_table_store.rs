@@ -59,8 +59,8 @@ pub async fn test_store_delete_load(ts: TableStore) {
     );
 
     assert_eq!(
-        db.load(0, b"foo").await,
-        Ok(None),
+        db.load(0, b"foo").await.unwrap(),
+        None,
         "should not load missing key"
     );
     assert!(
@@ -68,11 +68,14 @@ pub async fn test_store_delete_load(ts: TableStore) {
         "should store new key"
     );
     assert_eq!(
-        db.load(0, b"foo").await,
-        Ok(None),
+        db.load(0, b"foo").await.unwrap(),
+        None,
         "should not load missing key"
     );
-    assert_eq!(db.load(1, b"foo").await, Ok(Some(b"1234567890".to_vec())));
+    assert_eq!(
+        db.load(1, b"foo").await.unwrap(),
+        Some(b"1234567890".to_vec())
+    );
 
     assert!(
         db.store(1, b"bar", b"FNORD").await.is_ok(),
@@ -97,16 +100,19 @@ pub async fn test_store_delete_load(ts: TableStore) {
         "should store new key"
     );
 
-    assert_eq!(db.load(1, b"bar").await, Ok(Some(b"FNORD".to_vec())));
+    assert_eq!(db.load(1, b"bar").await.unwrap(), Some(b"FNORD".to_vec()));
     assert_eq!(
-        db.load(0, b"bar").await,
-        Ok(Some(b"ABCDEFGHIJKLMNOPQRSTUVWXYZ".to_vec()))
+        db.load(0, b"bar").await.unwrap(),
+        Some(b"ABCDEFGHIJKLMNOPQRSTUVWXYZ".to_vec())
     );
-    assert_eq!(db.load(2, b"bar").await, Ok(Some(b"QWERTYUIOP".to_vec())));
-    assert_eq!(db.load(2, b"baz").await, Ok(Some(b"QWERTY".to_vec())));
+    assert_eq!(
+        db.load(2, b"bar").await.unwrap(),
+        Some(b"QWERTYUIOP".to_vec())
+    );
+    assert_eq!(db.load(2, b"baz").await.unwrap(), Some(b"QWERTY".to_vec()));
 
-    assert_eq!(db.delete(1, b"bar").await, Ok(true));
-    assert_eq!(db.delete(1, b"bar").await, Ok(false));
+    assert_eq!(db.delete(1, b"bar").await.unwrap(), true);
+    assert_eq!(db.delete(1, b"bar").await.unwrap(), false);
     assert!(
         db.delete(4, b"bar").await.is_err(),
         "can't delete from column that doesn't exist"
@@ -115,13 +121,16 @@ pub async fn test_store_delete_load(ts: TableStore) {
     drop(db);
     let db = ts.open("test", 3).await.expect("should have opened");
 
-    assert_eq!(db.load(1, b"bar").await, Ok(None));
+    assert_eq!(db.load(1, b"bar").await.unwrap(), None);
     assert_eq!(
-        db.load(0, b"bar").await,
-        Ok(Some(b"ABCDEFGHIJKLMNOPQRSTUVWXYZ".to_vec()))
+        db.load(0, b"bar").await.unwrap(),
+        Some(b"ABCDEFGHIJKLMNOPQRSTUVWXYZ".to_vec())
     );
-    assert_eq!(db.load(2, b"bar").await, Ok(Some(b"QWERTYUIOP".to_vec())));
-    assert_eq!(db.load(2, b"baz").await, Ok(Some(b"QWERTY".to_vec())));
+    assert_eq!(
+        db.load(2, b"bar").await.unwrap(),
+        Some(b"QWERTYUIOP".to_vec())
+    );
+    assert_eq!(db.load(2, b"baz").await.unwrap(), Some(b"QWERTY".to_vec()));
 }
 
 pub async fn test_cbor(ts: TableStore) {
@@ -133,7 +142,7 @@ pub async fn test_cbor(ts: TableStore) {
 
     assert!(db.store_cbor(0, b"asdf", &dht_key).await.is_ok());
 
-    assert_eq!(db.load_cbor::<DHTKey>(0, b"qwer").await, Ok(None));
+    assert_eq!(db.load_cbor::<DHTKey>(0, b"qwer").await.unwrap(), None);
 
     let d = match db.load_cbor::<DHTKey>(0, b"asdf").await {
         Ok(x) => x,

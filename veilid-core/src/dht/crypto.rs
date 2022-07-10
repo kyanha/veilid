@@ -91,7 +91,7 @@ impl Crypto {
         }
     }
 
-    pub async fn init(&self) -> Result<(), String> {
+    pub async fn init(&self) -> EyreResult<()> {
         trace!("Crypto::init");
 
         // make local copy of node id for easy access
@@ -136,7 +136,7 @@ impl Crypto {
         Ok(())
     }
 
-    pub async fn flush(&self) -> Result<(), String> {
+    pub async fn flush(&self) -> EyreResult<()> {
         //trace!("Crypto::flush");
         let (table_store, cache_bytes) = {
             let inner = self.inner.lock();
@@ -166,23 +166,27 @@ impl Crypto {
         };
     }
 
-    fn ed25519_to_x25519_pk(key: &ed::PublicKey) -> Result<xd::PublicKey, String> {
+    fn ed25519_to_x25519_pk(key: &ed::PublicKey) -> Result<xd::PublicKey, VeilidAPIError> {
         let bytes = key.to_bytes();
         let compressed = cd::edwards::CompressedEdwardsY(bytes);
         let point = compressed
             .decompress()
-            .ok_or_else(fn_string!("ed25519_to_x25519_pk failed"))?;
+            .ok_or_else(|| VeilidAPIError::internal("ed25519_to_x25519_pk failed"))?;
         let mp = point.to_montgomery();
         Ok(xd::PublicKey::from(mp.to_bytes()))
     }
-    fn ed25519_to_x25519_sk(key: &ed::SecretKey) -> Result<xd::StaticSecret, String> {
+    fn ed25519_to_x25519_sk(key: &ed::SecretKey) -> Result<xd::StaticSecret, VeilidAPIError> {
         let exp = ed::ExpandedSecretKey::from(key);
         let bytes: [u8; ed::EXPANDED_SECRET_KEY_LENGTH] = exp.to_bytes();
-        let lowbytes: [u8; 32] = bytes[0..32].try_into().map_err(map_to_string)?;
+        let lowbytes: [u8; 32] = bytes[0..32].try_into().map_err(VeilidAPIError::internal)?;
         Ok(xd::StaticSecret::from(lowbytes))
     }
 
-    pub fn cached_dh(&self, key: &DHTKey, secret: &DHTKeySecret) -> Result<SharedSecret, String> {
+    pub fn cached_dh(
+        &self,
+        key: &DHTKey,
+        secret: &DHTKeySecret,
+    ) -> Result<SharedSecret, VeilidAPIError> {
         Ok(
             match self.inner.lock().dh_cache.entry(DHCacheKey {
                 key: *key,
@@ -201,12 +205,12 @@ impl Crypto {
     ///////////
     // These are safe to use regardless of initialization status
 
-    pub fn compute_dh(key: &DHTKey, secret: &DHTKeySecret) -> Result<SharedSecret, String> {
+    pub fn compute_dh(key: &DHTKey, secret: &DHTKeySecret) -> Result<SharedSecret, VeilidAPIError> {
         assert!(key.valid);
         assert!(secret.valid);
-        let pk_ed = ed::PublicKey::from_bytes(&key.bytes).map_err(map_to_string)?;
+        let pk_ed = ed::PublicKey::from_bytes(&key.bytes).map_err(VeilidAPIError::internal)?;
         let pk_xd = Self::ed25519_to_x25519_pk(&pk_ed)?;
-        let sk_ed = ed::SecretKey::from_bytes(&secret.bytes).map_err(map_to_string)?;
+        let sk_ed = ed::SecretKey::from_bytes(&secret.bytes).map_err(VeilidAPIError::internal)?;
         let sk_xd = Self::ed25519_to_x25519_sk(&sk_ed)?;
         Ok(sk_xd.diffie_hellman(&pk_xd).to_bytes())
     }

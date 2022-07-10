@@ -142,13 +142,13 @@ impl ConnectionManager {
         &self,
         inner: &mut ConnectionManagerInner,
         conn: ProtocolNetworkConnection,
-    ) -> Result<ConnectionHandle, String> {
+    ) -> EyreResult<ConnectionHandle> {
         log_net!("on_new_protocol_network_connection: {:?}", conn);
 
         // Wrap with NetworkConnection object to start the connection processing loop
         let stop_token = match &inner.stop_source {
             Some(ss) => ss.token(),
-            None => return Err("not creating connection because we are stopping".to_owned()),
+            None => bail!("not creating connection because we are stopping"),
         };
 
         let conn = NetworkConnection::from_protocol(self.clone(), stop_token, conn);
@@ -165,7 +165,7 @@ impl ConnectionManager {
         &self,
         local_addr: Option<SocketAddr>,
         dial_info: DialInfo,
-    ) -> Result<ConnectionHandle, String> {
+    ) -> EyreResult<ConnectionHandle> {
         let killed = {
             let mut inner = self.arc.inner.lock();
             let inner = match &mut *inner {
@@ -274,7 +274,7 @@ impl ConnectionManager {
         let inner = match &mut *inner {
             Some(v) => v,
             None => {
-                return Err("shutting down".to_owned());
+                bail!("shutting down");
             }
         };
         self.on_new_protocol_network_connection(inner, conn)
@@ -336,7 +336,7 @@ impl ConnectionManager {
     pub(super) async fn on_accepted_protocol_network_connection(
         &self,
         conn: ProtocolNetworkConnection,
-    ) -> Result<(), String> {
+    ) -> EyreResult<()> {
         // Get channel sender
         let sender = {
             let mut inner = self.arc.inner.lock();

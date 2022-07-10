@@ -21,11 +21,11 @@ pub fn decode_peer_info(
     let nid_reader = reader
         .reborrow()
         .get_node_id()
-        .map_err(map_error_capnp_error!())?;
+        .map_err(RPCError::protocol)?;
     let sni_reader = reader
         .reborrow()
         .get_signed_node_info()
-        .map_err(map_error_capnp_error!())?;
+        .map_err(RPCError::protocol)?;
     let node_id = NodeId::new(decode_public_key(&nid_reader));
     let signed_node_info =
         decode_signed_node_info(&sni_reader, &node_id.key, allow_relay_peer_info)?;

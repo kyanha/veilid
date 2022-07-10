@@ -16,9 +16,9 @@ pub fn get_timestamp_string() -> String {
     dt.time().format("%H:%M:%S.3f").to_string()
 }
 
-pub fn random_bytes(dest: &mut [u8]) -> Result<(), String> {
+pub fn random_bytes(dest: &mut [u8]) -> EyreResult<()> {
     let mut rng = rand::thread_rng();
-    rng.try_fill_bytes(dest).map_err(|err| format!("{:?}", err))
+    rng.try_fill_bytes(dest).wrap_err("failed to fill bytes")
 }
 
 pub fn get_random_u32() -> u32 {
@@ -137,23 +137,15 @@ where
     })
 }
 
-cfg_if! {
-    if #[cfg(feature="rt-async-std")] {
-        pub use async_std::future::TimeoutError;
-    } else if #[cfg(feature="rt-tokio")] {
-        pub use tokio::time::error::Elapsed as TimeoutError;
-    }
-}
-
 pub async fn timeout<F, T>(dur_ms: u32, f: F) -> Result<T, TimeoutError>
 where
     F: Future<Output = T>,
 {
     cfg_if! {
         if #[cfg(feature="rt-async-std")] {
-            async_std::future::timeout(Duration::from_millis(dur_ms as u64), f).await
+            async_std::future::timeout(Duration::from_millis(dur_ms as u64), f).await.map_err(|e| e.into())
         } else if #[cfg(feature="rt-tokio")] {
-            tokio::time::timeout(Duration::from_millis(dur_ms as u64), f).await
+            tokio::time::timeout(Duration::from_millis(dur_ms as u64), f).await.map_err(|e| e.into())
         }
     }
 }
@@ -228,7 +220,7 @@ cfg_if! {
 
 cfg_if! {
     if #[cfg(not(target_os = "windows"))] {
-        async fn get_resolver() -> Result<AsyncResolver, String> {
+        async fn get_resolver() -> EyreResult<AsyncResolver> {
             let mut resolver_lock = RESOLVER.lock().await;
             if let Some(r) = &*resolver_lock {
                 Ok(r.clone())
@@ -250,7 +242,7 @@ cfg_if! {
     }
 }
 
-pub async fn txt_lookup<S: AsRef<str>>(host: S) -> Result<Vec<String>, String> {
+pub async fn txt_lookup<S: AsRef<str>>(host: S) -> EyreResult<Vec<String>> {
     cfg_if! {
         if #[cfg(target_os = "windows")] {
             use core::ffi::c_void;
@@ -263,7 +255,7 @@ pub async fn txt_lookup<S: AsRef<str>>(host: S) -> Result<Vec<String>, String> {
                 let mut p_query_results: *mut DNS_RECORDA = core::ptr::null_mut();
                 let status = DnsQuery_UTF8(host.as_ref(), DNS_TYPE_TEXT as u16, DNS_QUERY_STANDARD, core::ptr::null_mut(), &mut p_query_results as *mut *mut DNS_RECORDA, core::ptr::null_mut());
                 if status != 0 {
-                    return Err("Failed to resolve TXT record".to_owned());
+                    bail!("Failed to resolve TXT record");
                 }
 
                 let mut p_record: *mut DNS_RECORDA = p_query_results;
@@ -290,12 +282,11 @@ pub async fn txt_lookup<S: AsRef<str>>(host: S) -> Result<Vec<String>, String> {
             let resolver = get_resolver().await?;
             let txt_result = resolver
                 .txt_lookup(host.as_ref())
-                .await
-                .map_err(|e| e.to_string())?;
+                .await?;
             let mut out = Vec::new();
             for x in txt_result.iter() {
                 for s in x.txt_data() {
-                    out.push(String::from_utf8(s.to_vec()).map_err(|e| e.to_string())?);
+                    out.push(String::from_utf8(s.to_vec()).wrap_err("utf8 conversion error")?);
                 }
             }
             Ok(out)
@@ -303,7 +294,7 @@ pub async fn txt_lookup<S: AsRef<str>>(host: S) -> Result<Vec<String>, String> {
     }
 }
 
-pub async fn ptr_lookup(ip_addr: IpAddr) -> Result<String, String> {
+pub async fn ptr_lookup(ip_addr: IpAddr) -> EyreResult<String> {
     cfg_if! {
         if #[cfg(target_os = "windows")] {
             use core::ffi::c_void;
@@ -329,7 +320,7 @@ pub async fn ptr_lookup(ip_addr: IpAddr) -> Result<String, String> {
                 let mut p_query_results: *mut DNS_RECORDA = core::ptr::null_mut();
                 let status = DnsQuery_UTF8(host, DNS_TYPE_PTR as u16, DNS_QUERY_STANDARD, core::ptr::null_mut(), &mut p_query_results as *mut *mut DNS_RECORDA, core::ptr::null_mut());
                 if status != 0 {
-                    return Err("Failed to resolve PTR record".to_owned());
+                    bail!("Failed to resolve PTR record");
                 }
 
                 let mut p_record: *mut DNS_RECORDA = p_query_results;
@@ -346,17 +337,17 @@ pub async fn ptr_lookup(ip_addr: IpAddr) -> Result<String, String> {
                 }
                 DnsFree(p_query_results as *const c_void, DnsFreeRecordList);
             }
-            return Err("No records returned".to_owned());
+            bail!("No records returned");
         } else {
             let resolver = get_resolver().await?;
             let ptr_result = resolver
                 .reverse_lookup(ip_addr)
                 .await
-                .map_err(|e| e.to_string())?;
+                .wrap_err("resolver error")?;
             if let Some(r) = ptr_result.iter().next() {
                 Ok(r.to_string().trim_end_matches('.').to_string())
             } else {
-                Err("PTR lookup returned an empty string".to_owned())
+                bail!("PTR lookup returned an empty string");
             }
         }
     }
