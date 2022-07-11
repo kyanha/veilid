@@ -34,13 +34,16 @@ impl Network {
         }
     }
 
-    pub fn new(network_manager: NetworkManager) -> Self {
+    pub fn new(
+        network_manager: NetworkManager,
+        routing_table: RoutingTable,
+        connection_manager: ConnectionManager,
+    ) -> Self {
         Self {
             config: network_manager.config(),
             inner: Arc::new(Mutex::new(Self::new_inner(network_manager))),
         }
     }
-
 
     fn network_manager(&self) -> NetworkManager {
         self.inner.lock().network_manager.clone()
@@ -61,14 +64,15 @@ impl Network {
 
         let res = match dial_info.protocol_type() {
             ProtocolType::UDP => {
-                return Err("no support for UDP protocol".to_owned()).map_err(logthru_net!(error))
+                bail!("no support for UDP protocol")
             }
             ProtocolType::TCP => {
-                return Err("no support for TCP protocol".to_owned()).map_err(logthru_net!(error))
+                bail!("no support for TCP protocol")
             }
             ProtocolType::WS | ProtocolType::WSS => {
                 WebsocketProtocolHandler::send_unbound_message(dial_info.clone(), data)
                     .await
+                    .wrap_err("failed to send unbound message")
             }
         };
         if res.is_ok() {
@@ -94,10 +98,10 @@ impl Network {
         let data_len = data.len();
         let out = match dial_info.protocol_type() {
             ProtocolType::UDP => {
-                return Err("no support for UDP protocol".to_owned()).map_err(logthru_net!(error))
+                bail!("no support for UDP protocol")
             }
             ProtocolType::TCP => {
-                return Err("no support for TCP protocol".to_owned()).map_err(logthru_net!(error))
+                bail!("no support for TCP protocol")
             }
             ProtocolType::WS | ProtocolType::WSS => {
                 WebsocketProtocolHandler::send_recv_unbound_message(
@@ -128,14 +132,14 @@ impl Network {
         let data_len = data.len();
         match descriptor.protocol_type() {
             ProtocolType::UDP => {
-                return Err("no support for udp protocol".to_owned()).map_err(logthru_net!(error))
+                bail!("no support for UDP protocol")
             }
             ProtocolType::TCP => {
-                return Err("no support for tcp protocol".to_owned()).map_err(logthru_net!(error))
+                bail!("no support for TCP protocol")
             }
             _ => {}
         }
-        
+
         // Handle connection-oriented protocols
 
         // Try to send to the exact existing connection if one exists
@@ -164,10 +168,10 @@ impl Network {
     ) -> EyreResult<()> {
         let data_len = data.len();
         if dial_info.protocol_type() == ProtocolType::UDP {
-            return Err("no support for UDP protocol".to_owned()).map_err(logthru_net!(error))
+            bail!("no support for UDP protocol");
         }
         if dial_info.protocol_type() == ProtocolType::TCP {
-            return Err("no support for TCP protocol".to_owned()).map_err(logthru_net!(error))
+            bail!("no support for TCP protocol");
         }
 
         // Handle connection-oriented protocols
@@ -176,7 +180,7 @@ impl Network {
             .get_or_create_connection(None, dial_info.clone())
             .await?;
 
-        let res = conn.send_async(data).await.map_err(logthru_net!(error));
+        let res = conn.send_async(data).await;
         if res.is_ok() {
             // Network accounting
             self.network_manager()
@@ -215,7 +219,7 @@ impl Network {
     pub fn is_started(&self) -> bool {
         self.inner.lock().network_started
     }
-    
+
     pub fn restart_network(&self) {
         self.inner.lock().network_needs_restart = true;
     }
@@ -247,8 +251,7 @@ impl Network {
     pub async fn check_interface_addresses(&self) -> Result<bool, String> {
         Ok(false)
     }
-    
-        
+
     //////////////////////////////////////////
     pub fn get_network_class(&self) -> Option<NetworkClass> {
         // xxx eventually detect tor browser?

@@ -1,10 +1,11 @@
-use super::utils;
+use super::*;
 use crate::xx::*;
 use crate::*;
 use data_encoding::BASE64URL_NOPAD;
 use js_sys::*;
 use wasm_bindgen_futures::*;
 use web_sys::*;
+
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(catch, js_name = setPassword, js_namespace = ["global", "wasmhost", "keytar"])]
@@ -69,10 +70,11 @@ impl ProtectedStore {
     }
 
     pub async fn save_user_secret_string(&self, key: &str, value: &str) -> EyreResult<bool> {
-        if utils::is_nodejs() {
+        if is_nodejs() {
             let prev = match JsFuture::from(
                 keytar_getPassword(self.keyring_name().as_str(), key)
-                    .wrap_err("exception thrown")?,
+                .map_err(map_jsvalue_error)
+                .wrap_err("exception thrown")?,
             )
             .await
             {
@@ -82,7 +84,8 @@ impl ProtectedStore {
 
             match JsFuture::from(
                 keytar_setPassword(self.keyring_name().as_str(), key, value)
-                    .wrap_err("exception thrown")?,
+                .map_err(map_jsvalue_error)
+                .wrap_err("exception thrown")?,
             )
             .await
             {
@@ -91,7 +94,7 @@ impl ProtectedStore {
             }
 
             Ok(prev)
-        } else if utils::is_browser() {
+        } else if is_browser() {
             let win = match window() {
                 Some(w) => w,
                 None => {
@@ -101,6 +104,7 @@ impl ProtectedStore {
 
             let ls = match win
                 .local_storage()
+                .map_err(map_jsvalue_error)
                 .wrap_err("exception getting local storage")?
             {
                 Some(l) => l,
@@ -113,6 +117,7 @@ impl ProtectedStore {
 
             let prev = match ls
                 .get_item(&vkey)
+                .map_err(map_jsvalue_error)
                 .wrap_err("exception_thrown")?
             {
                 Some(_) => true,
@@ -120,6 +125,7 @@ impl ProtectedStore {
             };
 
             ls.set_item(&vkey, value)
+                .map_err(map_jsvalue_error)
                 .wrap_err("exception_thrown")?;
 
             Ok(prev)
@@ -129,9 +135,10 @@ impl ProtectedStore {
     }
 
     pub async fn load_user_secret_string(&self, key: &str) -> EyreResult<Option<String>> {
-        if utils::is_nodejs() {
+        if is_nodejs() {
             let prev = match JsFuture::from(
                 keytar_getPassword(self.keyring_name().as_str(), key)
+                    .map_err(map_jsvalue_error)
                     .wrap_err("exception thrown")?,
             )
             .await
@@ -145,7 +152,7 @@ impl ProtectedStore {
             }
 
             Ok(prev.as_string())
-        } else if utils::is_browser() {
+        } else if is_browser() {
             let win = match window() {
                 Some(w) => w,
                 None => {
@@ -155,6 +162,7 @@ impl ProtectedStore {
 
             let ls = match win
                 .local_storage()
+                .map_err(map_jsvalue_error)
                 .wrap_err("exception getting local storage")?
             {
                 Some(l) => l,
@@ -166,6 +174,7 @@ impl ProtectedStore {
             let vkey = self.browser_key_name(key);
 
             ls.get_item(&vkey)
+                .map_err(map_jsvalue_error)
                 .wrap_err("exception_thrown")
         } else {
             unimplemented!();
@@ -173,16 +182,18 @@ impl ProtectedStore {
     }
 
     pub async fn remove_user_secret_string(&self, key: &str) -> EyreResult<bool> {
-        if utils::is_nodejs() {
+        if is_nodejs() {
             match JsFuture::from(
-                keytar_deletePassword(self.keyring_name().as_str(), key).wrap_err("exception thrown")?,
+                keytar_deletePassword(self.keyring_name().as_str(), key)
+                    .map_err(map_jsvalue_error)
+                    .wrap_err("exception thrown")?,
             )
             .await
             {
                 Ok(v) => Ok(v.is_truthy()),
                 Err(_) => bail!("Failed to delete"),
             }
-        } else if utils::is_browser() {
+        } else if is_browser() {
             let win = match window() {
                 Some(w) => w,
                 None => {
@@ -192,6 +203,7 @@ impl ProtectedStore {
 
             let ls = match win
                 .local_storage()
+                .map_err(map_jsvalue_error)
                 .wrap_err("exception getting local storage")?
             {
                 Some(l) => l,
@@ -204,10 +216,12 @@ impl ProtectedStore {
 
             match ls
                 .get_item(&vkey)
+                .map_err(map_jsvalue_error)
                 .wrap_err("exception_thrown")?
             {
                 Some(_) => {
                     ls.delete(&vkey)
+                        .map_err(map_jsvalue_error)
                         .wrap_err("exception_thrown")?;
                     Ok(true)
                 }

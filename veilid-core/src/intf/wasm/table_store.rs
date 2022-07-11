@@ -28,7 +28,7 @@ impl TableStore {
         }
     }
 
-    pub async fn init(&self) -> Result<(), String> {
+    pub async fn init(&self) -> EyreResult<()> {
         Ok(())
     }
 
@@ -49,12 +49,12 @@ impl TableStore {
         }
     }
 
-    fn get_table_name(&self, table: &str) -> Result<String, String> {
+    fn get_table_name(&self, table: &str) -> EyreResult<String> {
         if !table
             .chars()
             .all(|c| char::is_alphanumeric(c) || c == '_' || c == '-')
         {
-            return Err(format!("table name '{}' is invalid", table));
+            bail!("table name '{}' is invalid", table);
         }
         let c = self.config.get();
         let namespace = c.namespace.clone();
@@ -65,7 +65,7 @@ impl TableStore {
         })
     }
 
-    pub async fn open(&self, name: &str, column_count: u32) -> Result<TableDB, String> {
+    pub async fn open(&self, name: &str, column_count: u32) -> EyreResult<TableDB> {
         let table_name = self.get_table_name(name)?;
 
         let mut inner = self.inner.lock();        
@@ -81,7 +81,7 @@ impl TableStore {
         }
         let db = Database::open(table_name.clone(), column_count)
             .await
-            .map_err(|e| format!("failed to open tabledb at: {} ({})", table_name, e))?;
+            .wrap_err("failed to open tabledb")?;
         info!("opened table store '{}' with table name '{:?}' with {} columns", name, table_name, column_count);
 
         let table_db = TableDB::new(table_name.clone(), self.clone(), db);
@@ -91,7 +91,7 @@ impl TableStore {
         Ok(table_db)
     }
 
-    pub async fn delete(&self, name: &str) -> Result<bool, String> {
+    pub async fn delete(&self, name: &str) -> EyreResult<bool> {
         trace!("TableStore::delete {}", name);
         let table_name = self.get_table_name(name)?;
         
@@ -101,11 +101,11 @@ impl TableStore {
                 "TableStore::delete {}: Not deleting, still open.",
                 table_name
             );
-            return Err("Not deleting table that is still opened".to_owned());
+            bail!("Not deleting table that is still opened");
         }
 
         if utils::is_nodejs() {
-            Err("unimplemented".to_owned())
+            unimplemented!();
         } else if utils::is_browser() {
             let out = match Database::delete(table_name.clone()).await {
                 Ok(_) => true,
@@ -115,7 +115,7 @@ impl TableStore {
             trace!("TableStore::deleted {}", table_name);
             Ok(out)
         } else {
-            Err("unimplemented".to_owned())
+            unimplemented!();
         }
     }
 }

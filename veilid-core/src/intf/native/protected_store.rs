@@ -135,7 +135,7 @@ impl ProtectedStore {
         {
             Ok(v) => Ok(Some(v)),
             Err(KeyringError::NoPasswordFound) => Ok(None),
-            Err(e) => Err(eyre!("Failed to load user secret")),
+            Err(e) => Err(eyre!("Failed to load user secret: {}", e)),
         }
     }
 
@@ -150,7 +150,7 @@ impl ProtectedStore {
         {
             Ok(_) => Ok(true),
             Err(KeyringError::NoPasswordFound) => Ok(false),
-            Err(e) => Err(eyre!("Failed to remove user secret")),
+            Err(e) => Err(eyre!("Failed to remove user secret: {}", e)),
         }
     }
 

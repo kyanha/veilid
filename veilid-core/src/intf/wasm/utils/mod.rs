@@ -77,3 +77,11 @@ pub fn node_require(module: &str) -> JsValue {
         }
     }
 }
+
+#[derive(ThisError, Debug, Clone, Eq, PartialEq)]
+#[error("JsValue error")]
+pub struct JsValueError(String);
+
+pub fn map_jsvalue_error(x: JsValue) -> JsValueError {
+    JsValueError(x.as_string().unwrap_or_default())
+}

@@ -2,7 +2,6 @@ use super::utils;
 use crate::xx::*;
 use crate::*;
 use async_executors::{Bindgen, LocalSpawnHandleExt /*, SpawnHandleExt*/};
-use core::fmt;
 use futures_util::future::{select, Either};
 use js_sys::*;
 use wasm_bindgen_futures::*;

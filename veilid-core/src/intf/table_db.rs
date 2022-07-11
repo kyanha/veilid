@@ -100,12 +100,7 @@ impl TableDB {
                 return Ok(None);
             }
         };
-        let obj = match serde_cbor::from_slice::<T>(&b) {
-            Ok(value) => value,
-            Err(e) => {
-                bail!("failed to deserialize");
-            }
-        };
+        let obj = serde_cbor::from_slice::<T>(&b).wrap_err("failed to deserialize")?;
         Ok(Some(obj))
     }
 
