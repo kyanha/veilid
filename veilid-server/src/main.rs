@@ -83,7 +83,7 @@ fn main() -> EyreResult<()> {
     if settings.read().daemon.enabled {
         cfg_if! {
             if #[cfg(windows)] {
-                return windows::run_service(settings, matches).map_err(|e| format!("{}", e));
+                return windows::run_service(settings, matches);
             } else if #[cfg(unix)] {
                 return unix::run_daemon(settings, matches);
             }
