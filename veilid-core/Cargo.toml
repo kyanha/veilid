@@ -104,9 +104,9 @@ serde_cbor = { version = "^0", default-features = false, features = ["alloc"] }
 serde_json = { version = "^1", default-features = false, features = ["alloc"] }
 getrandom = { version = "^0", features = ["js"] }
 ws_stream_wasm = "^0"
-async_executors = { version = "^0", default-features = false, features = [ "bindgen" ]}
+async_executors = { version = "^0", default-features = false, features = [ "bindgen", "timer" ]}
 async-lock = "^2"
-send_wrapper = "^0"
+send_wrapper = { version = "^0", features = ["futures"] }
 wasm-logger = "^0"
 tracing-wasm = "^0"
 

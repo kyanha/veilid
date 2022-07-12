@@ -69,8 +69,8 @@ cfg_if! {
         pub use async_lock::Mutex as AsyncMutex;
         pub use async_lock::MutexGuard as AsyncMutexGuard;
         pub use no_std_net::{ SocketAddr, SocketAddrV4, SocketAddrV6, ToSocketAddrs, IpAddr, Ipv4Addr, Ipv6Addr };
-        pub type SystemPinBoxFuture<T> = PinBox<dyn Future<Output = T> + 'static>;
-        pub type SystemPinBoxFutureLifetime<'a, T> = PinBox<dyn Future<Output = T> + 'a>;
+        pub type SystemPinBoxFuture<T> = PinBox<dyn Future<Output = T> + Send + 'static>;
+        pub type SystemPinBoxFutureLifetime<'a, T> = PinBox<dyn Future<Output = T> + Send + 'a>;
         pub use async_executors::JoinHandle as LowLevelJoinHandle;
     } else {
         pub use std::string::String;

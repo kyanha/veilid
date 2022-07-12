@@ -7,6 +7,7 @@ use std::io;
 
 #[derive(Debug)]
 pub enum ProtocolNetworkConnection {
+    #[allow(dead_code)]
     Dummy(DummyNetworkConnection),
     Ws(ws::WebsocketNetworkConnection),
     //WebRTC(wrtc::WebRTCNetworkConnection),

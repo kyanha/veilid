@@ -15,57 +15,28 @@ pub enum ReceiptEvent {
     Cancelled,
 }
 
-cfg_if! {
-    if #[cfg(target_arch = "wasm32")] {
-        pub trait ReceiptCallback: 'static {
-            fn call(
-                &self,
-                event: ReceiptEvent,
-                receipt: Receipt,
-                returns_so_far: u32,
-                expected_returns: u32,
-            ) -> SystemPinBoxFuture<()>;
-        }
-        impl<T, F> ReceiptCallback for T
-        where
-            T: Fn(ReceiptEvent, Receipt, u32, u32) -> F + 'static,
-            F: Future<Output = ()> + 'static,
-        {
-            fn call(
-                &self,
-                event: ReceiptEvent,
-                receipt: Receipt,
-                returns_so_far: u32,
-                expected_returns: u32,
-            ) -> SystemPinBoxFuture<()> {
-                Box::pin(self(event, receipt, returns_so_far, expected_returns))
-            }
-        }
-    } else {
-        pub trait ReceiptCallback: Send + 'static {
-            fn call(
-                &self,
-                event: ReceiptEvent,
-                receipt: Receipt,
-                returns_so_far: u32,
-                expected_returns: u32,
-            ) -> SystemPinBoxFuture<()>;
-        }
-        impl<F, T> ReceiptCallback for T
-        where
-            T: Fn(ReceiptEvent, Receipt, u32, u32) -> F + Send + 'static,
-            F: Future<Output = ()> + Send + 'static
-        {
-            fn call(
-                &self,
-                event: ReceiptEvent,
-                receipt: Receipt,
-                returns_so_far: u32,
-                expected_returns: u32,
-            ) -> SystemPinBoxFuture<()> {
-                Box::pin(self(event, receipt, returns_so_far, expected_returns))
-            }
-        }
+pub trait ReceiptCallback: Send + 'static {
+    fn call(
+        &self,
+        event: ReceiptEvent,
+        receipt: Receipt,
+        returns_so_far: u32,
+        expected_returns: u32,
+    ) -> SystemPinBoxFuture<()>;
+}
+impl<F, T> ReceiptCallback for T
+where
+    T: Fn(ReceiptEvent, Receipt, u32, u32) -> F + Send + 'static,
+    F: Future<Output = ()> + Send + 'static,
+{
+    fn call(
+        &self,
+        event: ReceiptEvent,
+        receipt: Receipt,
+        returns_so_far: u32,
+        expected_returns: u32,
+    ) -> SystemPinBoxFuture<()> {
+        Box::pin(self(event, receipt, returns_so_far, expected_returns))
     }
 }
 

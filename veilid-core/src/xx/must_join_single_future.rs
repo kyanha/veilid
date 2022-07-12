@@ -125,88 +125,81 @@ where
     }
 
     // Possibly spawn the future possibly returning the value of the last execution
-    cfg_if! {
-        if #[cfg(target_arch = "wasm32")] {
-            pub async fn single_spawn(
-                &self,
-                future: impl Future<Output = T> + 'static,
-            ) -> Result<(Option<T>,bool), ()> {
-                let mut out: Option<T> = None;
+    pub async fn single_spawn_local(
+        &self,
+        future: impl Future<Output = T> + 'static,
+    ) -> Result<(Option<T>, bool), ()> {
+        let mut out: Option<T> = None;
 
-                // See if we have a result we can return
-                let maybe_jh = match self.try_lock() {
-                    Ok(v) => v,
-                    Err(_) => {
-                        // If we are already polling somewhere else, don't hand back a result
-                        return Err(());
-                    }
-                };
-                let mut run = true;
+        // See if we have a result we can return
+        let maybe_jh = match self.try_lock() {
+            Ok(v) => v,
+            Err(_) => {
+                // If we are already polling somewhere else, don't hand back a result
+                return Err(());
+            }
+        };
+        let mut run = true;
 
-                if maybe_jh.is_some() {
-                    let mut jh = maybe_jh.unwrap();
+        if maybe_jh.is_some() {
+            let mut jh = maybe_jh.unwrap();
 
-                    // See if we finished, if so, return the value of the last execution
-                    if let Poll::Ready(r) = poll!(&mut jh) {
-                        out = Some(r);
-                        // Task finished, unlock with a new task
-                    } else {
-                        // Still running, don't run again, unlock with the current join handle
-                        run = false;
-                        self.unlock(Some(jh));
-                    }
-                }
-
-                // Run if we should do that
-                if run {
-                    self.unlock(Some(intf::spawn_local(future)));
-                }
-
-                // Return the prior result if we have one
-                Ok((out, run))
+            // See if we finished, if so, return the value of the last execution
+            if let Poll::Ready(r) = poll!(&mut jh) {
+                out = Some(r);
+                // Task finished, unlock with a new task
+            } else {
+                // Still running, don't run again, unlock with the current join handle
+                run = false;
+                self.unlock(Some(jh));
             }
         }
+
+        // Run if we should do that
+        if run {
+            self.unlock(Some(intf::spawn_local(future)));
+        }
+
+        // Return the prior result if we have one
+        Ok((out, run))
     }
 }
-cfg_if! {
-    if #[cfg(not(target_arch = "wasm32"))] {
-        impl<T> MustJoinSingleFuture<T>
-        where
-            T: 'static + Send,
-        {
-            pub async fn single_spawn(
-                &self,
-                future: impl Future<Output = T> + Send + 'static,
-            ) -> Result<(Option<T>, bool), ()> {
-                let mut out: Option<T> = None;
-                // See if we have a result we can return
-                let maybe_jh = match self.try_lock() {
-                    Ok(v) => v,
-                    Err(_) => {
-                        // If we are already polling somewhere else, don't hand back a result
-                        return Err(());
-                    }
-                };
-                let mut run = true;
-                if maybe_jh.is_some() {
-                    let mut jh = maybe_jh.unwrap();
-                    // See if we finished, if so, return the value of the last execution
-                    if let Poll::Ready(r) = poll!(&mut jh) {
-                        out = Some(r);
-                        // Task finished, unlock with a new task
-                    } else {
-                        // Still running, don't run again, unlock with the current join handle
-                        run = false;
-                        self.unlock(Some(jh));
-                    }
-                }
-                // Run if we should do that
-                if run {
-                    self.unlock(Some(intf::spawn(future)));
-                }
-                // Return the prior result if we have one
-                Ok((out, run))
+
+impl<T> MustJoinSingleFuture<T>
+where
+    T: 'static + Send,
+{
+    pub async fn single_spawn(
+        &self,
+        future: impl Future<Output = T> + Send + 'static,
+    ) -> Result<(Option<T>, bool), ()> {
+        let mut out: Option<T> = None;
+        // See if we have a result we can return
+        let maybe_jh = match self.try_lock() {
+            Ok(v) => v,
+            Err(_) => {
+                // If we are already polling somewhere else, don't hand back a result
+                return Err(());
+            }
+        };
+        let mut run = true;
+        if maybe_jh.is_some() {
+            let mut jh = maybe_jh.unwrap();
+            // See if we finished, if so, return the value of the last execution
+            if let Poll::Ready(r) = poll!(&mut jh) {
+                out = Some(r);
+                // Task finished, unlock with a new task
+            } else {
+                // Still running, don't run again, unlock with the current join handle
+                run = false;
+                self.unlock(Some(jh));
             }
         }
+        // Run if we should do that
+        if run {
+            self.unlock(Some(intf::spawn(future)));
+        }
+        // Return the prior result if we have one
+        Ok((out, run))
     }
 }

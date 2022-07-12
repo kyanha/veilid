@@ -333,6 +333,7 @@ impl ConnectionManager {
 
     // Called by low-level network when any connection-oriented protocol connection appears
     // either from incoming connections.
+    #[cfg_attr(target_os = "wasm32", allow(dead_code))]
     pub(super) async fn on_accepted_protocol_network_connection(
         &self,
         conn: ProtocolNetworkConnection,

@@ -11,10 +11,10 @@ pub fn get_timestamp() -> u64 {
     }
 }
 
-pub fn get_timestamp_string() -> String {
-    let dt = chrono::Utc::now();
-    dt.time().format("%H:%M:%S.3f").to_string()
-}
+// pub fn get_timestamp_string() -> String {
+//     let dt = chrono::Utc::now();
+//     dt.time().format("%H:%M:%S.3f").to_string()
+// }
 
 pub fn random_bytes(dest: &mut [u8]) -> EyreResult<()> {
     let mut rng = rand::thread_rng();
@@ -83,26 +83,26 @@ where
     }
 }
 
-pub fn spawn_with_local_set<Out>(
-    future: impl Future<Output = Out> + Send + 'static,
-) -> MustJoinHandle<Out>
-where
-    Out: Send + 'static,
-{
-    cfg_if! {
-        if #[cfg(feature="rt-async-std")] {
-            spawn(future)
-        } else if #[cfg(feature="rt-tokio")] {
-            MustJoinHandle::new(tokio::task::spawn_blocking(move || {
-                let rt = tokio::runtime::Handle::current();
-                rt.block_on(async {
-                    let local = tokio::task::LocalSet::new();
-                    local.run_until(future).await
-                })
-            }))
-        }
-    }
-}
+// pub fn spawn_with_local_set<Out>(
+//     future: impl Future<Output = Out> + Send + 'static,
+// ) -> MustJoinHandle<Out>
+// where
+//     Out: Send + 'static,
+// {
+//     cfg_if! {
+//         if #[cfg(feature="rt-async-std")] {
+//             spawn(future)
+//         } else if #[cfg(feature="rt-tokio")] {
+//             MustJoinHandle::new(tokio::task::spawn_blocking(move || {
+//                 let rt = tokio::runtime::Handle::current();
+//                 rt.block_on(async {
+//                     let local = tokio::task::LocalSet::new();
+//                     local.run_until(future).await
+//                 })
+//             }))
+//         }
+//     }
+// }
 
 pub fn spawn_detached<Out>(future: impl Future<Output = Out> + Send + 'static)
 where

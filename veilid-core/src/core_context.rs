@@ -5,13 +5,7 @@ use crate::veilid_api::*;
 use crate::veilid_config::*;
 use crate::xx::*;
 
-// cfg_if! {
-//     if #[cfg(target_arch = "wasm32")] {
-//         pub type UpdateCallback = Arc<dyn Fn(VeilidUpdate)>;
-//     } else {
 pub type UpdateCallback = Arc<dyn Fn(VeilidUpdate) + Send + Sync>;
-//     }
-// }
 
 struct ServicesContext {
     pub config: VeilidConfig,

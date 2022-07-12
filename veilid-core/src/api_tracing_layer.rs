@@ -5,18 +5,8 @@ use core::fmt::Write;
 use once_cell::sync::OnceCell;
 use tracing_subscriber::*;
 
-cfg_if! {
-    if #[cfg(target_arch = "wasm32")] {
-        use send_wrapper::*;
-
-        struct ApiLoggerInner {
-            update_callback: SendWrapper<UpdateCallback>,
-        }
-    } else {
-        struct ApiLoggerInner {
-            update_callback: UpdateCallback,
-        }
-    }
+struct ApiLoggerInner {
+    update_callback: UpdateCallback,
 }
 
 #[derive(Clone)]
@@ -28,17 +18,7 @@ static API_LOGGER: OnceCell<ApiTracingLayer> = OnceCell::new();
 
 impl ApiTracingLayer {
     fn new_inner(update_callback: UpdateCallback) -> ApiLoggerInner {
-        cfg_if! {
-            if #[cfg(target_arch = "wasm32")] {
-                ApiLoggerInner {
-                    update_callback: SendWrapper::new(update_callback),
-                }
-            } else {
-                ApiLoggerInner {
-                    update_callback,
-                }
-            }
-        }
+        ApiLoggerInner { update_callback }
     }
 
     #[instrument(level = "debug", skip(update_callback))]

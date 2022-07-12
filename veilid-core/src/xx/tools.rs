@@ -167,7 +167,7 @@ pub fn listen_address_to_socket_addrs(listen_address: &str) -> EyreResult<Vec<So
         cfg_if! {
             if #[cfg(target_arch = "wasm32")] {
                 use core::str::FromStr;
-                vec![SocketAddr::from_str(listen_address).wrap_err("Unable to parse address")?]
+                vec![SocketAddr::from_str(listen_address).map_err(|e| io_error_other!(e)).wrap_err("Unable to parse address")?]
             } else {
                 listen_address
                     .to_socket_addrs()

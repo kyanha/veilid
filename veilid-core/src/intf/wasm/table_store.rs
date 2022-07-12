@@ -13,6 +13,7 @@ struct TableStoreInner {
 pub struct TableStore {
     config: VeilidConfig,
     inner: Arc<Mutex<TableStoreInner>>,
+    async_lock: Arc<AsyncMutex<()>>,
 }
 
 impl TableStore {
@@ -25,14 +26,17 @@ impl TableStore {
         Self {
             config,
             inner: Arc::new(Mutex::new(Self::new_inner())),
+            async_lock: Arc::new(AsyncMutex::new(())),
         }
     }
 
     pub async fn init(&self) -> EyreResult<()> {
+        let _async_guard = self.async_lock.lock().await;
         Ok(())
     }
 
     pub async fn terminate(&self) {
+        let _async_guard = self.async_lock.lock().await;
         assert!(
             self.inner.lock().opened.len() == 0,
             "all open databases should have been closed"
@@ -66,18 +70,21 @@ impl TableStore {
     }
 
     pub async fn open(&self, name: &str, column_count: u32) -> EyreResult<TableDB> {
+        let _async_guard = self.async_lock.lock().await;
         let table_name = self.get_table_name(name)?;
 
-        let mut inner = self.inner.lock();        
-        if let Some(table_db_weak_inner) = inner.opened.get(&table_name) {
-            match TableDB::try_new_from_weak_inner(table_db_weak_inner.clone()) {
-                Some(tdb) => {
-                    return Ok(tdb);
-                }
-                None => {
-                    inner.opened.remove(&table_name);
-                }
-            };
+        {
+            let mut inner = self.inner.lock();        
+            if let Some(table_db_weak_inner) = inner.opened.get(&table_name) {
+                match TableDB::try_new_from_weak_inner(table_db_weak_inner.clone()) {
+                    Some(tdb) => {
+                        return Ok(tdb);
+                    }
+                    None => {
+                        inner.opened.remove(&table_name);
+                    }
+                };
+            }
         }
         let db = Database::open(table_name.clone(), column_count)
             .await
@@ -86,22 +93,28 @@ impl TableStore {
 
         let table_db = TableDB::new(table_name.clone(), self.clone(), db);
 
-        inner.opened.insert(table_name, table_db.weak_inner());
+        {
+            let mut inner = self.inner.lock();
+            inner.opened.insert(table_name, table_db.weak_inner());
+        }
 
         Ok(table_db)
     }
 
     pub async fn delete(&self, name: &str) -> EyreResult<bool> {
+        let _async_guard = self.async_lock.lock().await;
         trace!("TableStore::delete {}", name);
         let table_name = self.get_table_name(name)?;
         
-        let inner = self.inner.lock();
-        if inner.opened.contains_key(&table_name) {
-            trace!(
-                "TableStore::delete {}: Not deleting, still open.",
-                table_name
-            );
-            bail!("Not deleting table that is still opened");
+        {
+            let inner = self.inner.lock();
+            if inner.opened.contains_key(&table_name) {
+                trace!(
+                    "TableStore::delete {}: Not deleting, still open.",
+                    table_name
+                );
+                bail!("Not deleting table that is still opened");
+            }
         }
 
         if utils::is_nodejs() {

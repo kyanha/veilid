@@ -3,16 +3,8 @@ use crate::*;
 use serde::*;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
-cfg_if! {
-    if #[cfg(target_arch = "wasm32")] {
-        pub type ConfigCallbackReturn = Result<Box<dyn core::any::Any>, VeilidAPIError>;
-        pub type ConfigCallback = Arc<dyn Fn(String) -> ConfigCallbackReturn>;
-
-    } else {
-        pub type ConfigCallbackReturn = Result<Box<dyn core::any::Any + Send>, VeilidAPIError>;
-        pub type ConfigCallback = Arc<dyn Fn(String) -> ConfigCallbackReturn + Send + Sync>;
-    }
-}
+pub type ConfigCallbackReturn = Result<Box<dyn core::any::Any + Send>, VeilidAPIError>;
+pub type ConfigCallback = Arc<dyn Fn(String) -> ConfigCallbackReturn + Send + Sync>;
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct VeilidConfigHTTPS {

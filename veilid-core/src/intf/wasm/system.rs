@@ -1,11 +1,11 @@
 use super::utils;
 use crate::xx::*;
 use crate::*;
-use async_executors::{Bindgen, LocalSpawnHandleExt /*, SpawnHandleExt*/};
+use async_executors::{Bindgen, LocalSpawnHandleExt, SpawnHandleExt, Timer};
 use futures_util::future::{select, Either};
 use js_sys::*;
 use wasm_bindgen_futures::*;
-use web_sys::*;
+//use web_sys::*;
 
 #[wasm_bindgen]
 extern "C" {
@@ -26,17 +26,17 @@ pub fn get_timestamp() -> u64 {
     }
 }
 
-pub fn get_timestamp_string() -> String {
-    let date = Date::new_0();
-    let hours = Date::get_utc_hours(&date);
-    let minutes = Date::get_utc_minutes(&date);
-    let seconds = Date::get_utc_seconds(&date);
-    let milliseconds = Date::get_utc_milliseconds(&date);
-    format!(
-        "{:02}:{:02}:{:02}.{}",
-        hours, minutes, seconds, milliseconds
-    )
-}
+// pub fn get_timestamp_string() -> String {
+//     let date = Date::new_0();
+//     let hours = Date::get_utc_hours(&date);
+//     let minutes = Date::get_utc_minutes(&date);
+//     let seconds = Date::get_utc_seconds(&date);
+//     let milliseconds = Date::get_utc_milliseconds(&date);
+//     format!(
+//         "{:02}:{:02}:{:02}.{}",
+//         hours, minutes, seconds, milliseconds
+//     )
+// }
 
 pub fn random_bytes(dest: &mut [u8]) -> EyreResult<()> {
     let len = dest.len();
@@ -72,43 +72,21 @@ pub fn get_random_u64() -> u64 {
 }
 
 pub async fn sleep(millis: u32) {
-    if utils::is_browser() {
-        let wait_millis = if millis > u32::MAX {
-            i32::MAX
-        } else {
-            millis as i32
-        };
-        let promise = Promise::new(&mut |yes, _| {
-            let win = window().unwrap();
-            win.set_timeout_with_callback_and_timeout_and_arguments_0(&yes, wait_millis)
-                .unwrap();
-        });
-
-        JsFuture::from(promise).await.unwrap();
-    } else if utils::is_nodejs() {
-        let promise = Promise::new(&mut |yes, _| {
-            nodejs_global_set_timeout_with_callback_and_timeout_and_arguments_0(&yes, millis)
-                .unwrap();
-        });
-
-        JsFuture::from(promise).await.unwrap();
-    } else {
-        panic!("WASM requires browser or nodejs environment");
-    }
+    Bindgen.sleep(Duration::from_millis(millis.into())).await
 }
 
 pub fn system_boxed<'a, Out>(
-    future: impl Future<Output = Out> + 'a,
+    future: impl Future<Output = Out> + Send + 'a,
 ) -> SystemPinBoxFutureLifetime<'a, Out> {
     Box::pin(future)
 }
 
-pub fn spawn<Out>(future: impl Future<Output = Out> + 'static) -> MustJoinHandle<Out>
+pub fn spawn<Out>(future: impl Future<Output = Out> + Send + 'static) -> MustJoinHandle<Out>
 where
     Out: Send + 'static,
 {
     MustJoinHandle::new(Bindgen
-        .spawn_handle_local(future)
+        .spawn_handle(future)
         .expect("wasm-bindgen-futures spawn should never error out"))
 }
 
@@ -121,16 +99,16 @@ where
         .expect("wasm-bindgen-futures spawn_local should never error out"))
 }
 
-pub fn spawn_with_local_set<Out>(
-    future: impl Future<Output = Out> + 'static,
-) -> MustJoinHandle<Out>
-where
-    Out: Send + 'static,
-{
-    spawn(future)
-}
+// pub fn spawn_with_local_set<Out>(
+//     future: impl Future<Output = Out> + Send + 'static,
+// ) -> MustJoinHandle<Out>
+// where
+//     Out: Send + 'static,
+// {
+//     spawn(future)
+// }
 
-pub fn spawn_detached<Out>(future: impl Future<Output = Out> + 'static)
+pub fn spawn_detached<Out>(future: impl Future<Output = Out> + Send + 'static)
 where
     Out: Send + 'static,
 {
@@ -142,13 +120,13 @@ where
 
 pub fn interval<F, FUT>(freq_ms: u32, callback: F) -> SystemPinBoxFuture<()>
 where
-    F: Fn() -> FUT + 'static,
-    FUT: Future<Output = ()>,
+    F: Fn() -> FUT + Send + Sync + 'static,
+    FUT: Future<Output = ()> + Send,
 {
     let e = Eventual::new();
 
     let ie = e.clone();
-    let jh = spawn_local(Box::pin(async move {
+    let jh = spawn(Box::pin(async move {
         while timeout(freq_ms, ie.instance_clone(())).await.is_err() {
             callback().await;
         }

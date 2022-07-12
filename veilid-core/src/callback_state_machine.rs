@@ -1,21 +1,9 @@
 use crate::xx::*;
 pub use rust_fsm::*;
 
-cfg_if! {
-    if #[cfg(target_arch = "wasm32")] {
-        pub type StateChangeCallback<T> = Arc<
-            dyn Fn(<T as StateMachineImpl>::State, <T as StateMachineImpl>::State)
-                + 'static,
-        >;
-    } else {
-        pub type StateChangeCallback<T> = Arc<
-            dyn Fn(<T as StateMachineImpl>::State, <T as StateMachineImpl>::State)
-                + Send
-                + Sync
-                + 'static,
-        >;
-    }
-}
+pub type StateChangeCallback<T> = Arc<
+    dyn Fn(<T as StateMachineImpl>::State, <T as StateMachineImpl>::State) + Send + Sync + 'static,
+>;
 
 struct CallbackStateMachineInner<T>
 where

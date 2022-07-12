@@ -44,39 +44,39 @@ pub fn is_browser() -> bool {
     res
 }
 
-pub fn is_browser_https() -> bool {
-    static CACHE: AtomicI8 = AtomicI8::new(-1);
-    let cache = CACHE.load(Ordering::Relaxed);
-    if cache != -1 {
-        return cache != 0;
-    }
+// pub fn is_browser_https() -> bool {
+//     static CACHE: AtomicI8 = AtomicI8::new(-1);
+//     let cache = CACHE.load(Ordering::Relaxed);
+//     if cache != -1 {
+//         return cache != 0;
+//     }
 
-    let res = js_sys::eval("window.location.protocol === 'https'")
-        .map(|res| res.is_truthy())
-        .unwrap_or_default();
+//     let res = js_sys::eval("window.location.protocol === 'https'")
+//         .map(|res| res.is_truthy())
+//         .unwrap_or_default();
 
-    CACHE.store(res as i8, Ordering::Relaxed);
+//     CACHE.store(res as i8, Ordering::Relaxed);
 
-    res
-}
+//     res
+// }
 
-pub fn node_require(module: &str) -> JsValue {
-    if !is_nodejs() {
-        return JsValue::UNDEFINED;
-    }
+// pub fn node_require(module: &str) -> JsValue {
+//     if !is_nodejs() {
+//         return JsValue::UNDEFINED;
+//     }
 
-    let mut home = env!("CARGO_MANIFEST_DIR");
-    if home.len() == 0 {
-        home = ".";
-    }
+//     let mut home = env!("CARGO_MANIFEST_DIR");
+//     if home.len() == 0 {
+//         home = ".";
+//     }
 
-    match js_sys::eval(format!("require(\"{}/{}\")", home, module).as_str()) {
-        Ok(v) => v,
-        Err(e) => {
-            panic!("node_require failed: {:?}", e);
-        }
-    }
-}
+//     match js_sys::eval(format!("require(\"{}/{}\")", home, module).as_str()) {
+//         Ok(v) => v,
+//         Err(e) => {
+//             panic!("node_require failed: {:?}", e);
+//         }
+//     }
+// }
 
 #[derive(ThisError, Debug, Clone, Eq, PartialEq)]
 #[error("JsValue error")]

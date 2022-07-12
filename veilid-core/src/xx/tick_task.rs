@@ -3,23 +3,13 @@ use crate::*;
 use core::sync::atomic::{AtomicU64, Ordering};
 use once_cell::sync::OnceCell;
 
-cfg_if! {
-    if #[cfg(target_arch = "wasm32")] {
-        type TickTaskRoutine<E> =
-            dyn Fn(StopToken, u64, u64) -> PinBoxFuture<Result<(), E>> + 'static;
-    } else {
-        type TickTaskRoutine<E> =
-            dyn Fn(StopToken, u64, u64) -> SendPinBoxFuture<Result<(), E>> + Send + Sync + 'static;
-    }
-}
+type TickTaskRoutine<E> =
+    dyn Fn(StopToken, u64, u64) -> SendPinBoxFuture<Result<(), E>> + Send + Sync + 'static;
 
 /// Runs a single-future background processing task, attempting to run it once every 'tick period' microseconds.
 /// If the prior tick is still running, it will allow it to finish, and do another tick when the timer comes around again.
 /// One should attempt to make tasks short-lived things that run in less than the tick period if you want things to happen with regular periodicity.
-pub struct TickTask<
-    #[cfg(target_arch = "wasm32")] E: 'static,
-    #[cfg(not(target_arch = "wasm32"))] E: Send + 'static,
-> {
+pub struct TickTask<E: Send + 'static> {
     last_timestamp_us: AtomicU64,
     tick_period_us: u64,
     routine: OnceCell<Box<TickTaskRoutine<E>>>,
@@ -27,11 +17,7 @@ pub struct TickTask<
     single_future: MustJoinSingleFuture<Result<(), E>>,
 }
 
-impl<
-        #[cfg(target_arch = "wasm32")] E: 'static,
-        #[cfg(not(target_arch = "wasm32"))] E: Send + 'static,
-    > TickTask<E>
-{
+impl<E: Send + 'static> TickTask<E> {
     pub fn new_us(tick_period_us: u64) -> Self {
         Self {
             last_timestamp_us: AtomicU64::new(0),

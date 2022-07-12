@@ -2,9 +2,10 @@ use super::*;
 use futures_util::{SinkExt, StreamExt};
 use std::io;
 use ws_stream_wasm::*;
+use send_wrapper::*;
 
 struct WebsocketNetworkConnectionInner {
-    ws_meta: WsMeta,
+    _ws_meta: WsMeta,
     ws_stream: CloneStream<WsStream>,
 }
 
@@ -29,7 +30,7 @@ impl WebsocketNetworkConnection {
         Self {
             descriptor,
             inner: Arc::new(WebsocketNetworkConnectionInner {
-                ws_meta,
+                _ws_meta: ws_meta,
                 ws_stream: CloneStream::new(ws_stream),
             }),
         }
@@ -59,7 +60,7 @@ impl WebsocketNetworkConnection {
 
     #[instrument(level = "trace", err, skip(self), fields(ret.len))]
     pub async fn recv(&self) -> io::Result<Vec<u8>> {
-        let out = match self.inner.ws_stream.clone().next().await {
+        let out = match SendWrapper::new(self.inner.ws_stream.clone().next()).await {
             Some(WsMessage::Binary(v)) => v,
             Some(x) => {
                 bail_io_error_other!("Unexpected WS message type");
@@ -100,7 +101,8 @@ impl WebsocketProtocolHandler {
             bail_io_error_other!("invalid websocket url scheme");
         }
 
-        let (wsmeta, wsio) = WsMeta::connect(request, None).await.map_err(to_io)?;
+        let fut = spawn_local(WsMeta::connect(request, None));
+        let (wsmeta, wsio) = fut.await.map_err(to_io)?;
 
         // Make our connection descriptor
         Ok(ProtocolNetworkConnection::Ws(

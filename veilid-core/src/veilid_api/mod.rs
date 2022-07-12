@@ -1593,15 +1593,9 @@ pub struct PeerStats {
     pub status: Option<NodeStatus>,    // Last known node status
 }
 
-cfg_if! {
-    if #[cfg(target_arch = "wasm32")] {
-        pub type ValueChangeCallback =
-            Arc<dyn Fn(ValueKey, Vec<u8>) -> SystemPinBoxFuture<()> + 'static>;
-    } else {
-        pub type ValueChangeCallback =
-            Arc<dyn Fn(ValueKey, Vec<u8>) -> SystemPinBoxFuture<()> + Send + Sync + 'static>;
-    }
-}
+pub type ValueChangeCallback =
+    Arc<dyn Fn(ValueKey, Vec<u8>) -> SystemPinBoxFuture<()> + Send + Sync + 'static>;
+
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
