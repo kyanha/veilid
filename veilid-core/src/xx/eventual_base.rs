@@ -1,5 +1,11 @@
 use super::*;
 
+#[derive(ThisError, Debug, Clone, PartialEq, Eq)]
+pub enum EventualError {
+    #[error("Try failed: {0}")]
+    TryFailed(String),
+}
+
 pub struct EventualBaseInner<T> {
     resolved: Option<T>,
     wakers: BTreeMap<usize, task::Waker>,
@@ -92,12 +98,16 @@ impl<T> EventualBaseInner<T> {
         self.resolved_freelist.clear();
     }
 
-    pub(super) fn try_reset(&mut self) -> Result<(), String> {
+    pub(super) fn try_reset(&mut self) -> Result<(), EventualError> {
         if !self.wakers.is_empty() {
-            return Err("Wakers not empty during reset".to_owned());
+            return Err(EventualError::TryFailed(
+                "wakers not empty during reset".to_owned(),
+            ));
         }
         if !self.resolved_wakers.is_empty() {
-            return Err("Resolved wakers not empty during reset".to_owned());
+            return Err(EventualError::TryFailed(
+                "Resolved wakers not empty during reset".to_owned(),
+            ));
         }
         self.reset();
         Ok(())
@@ -199,7 +209,7 @@ pub trait EventualCommon: EventualBase {
         self.base_inner().reset()
     }
 
-    fn try_reset(&self) -> Result<(), String> {
+    fn try_reset(&self) -> Result<(), EventualError> {
         self.base_inner().try_reset()
     }
 }

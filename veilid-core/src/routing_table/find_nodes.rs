@@ -390,7 +390,7 @@ impl RoutingTable {
     }
 
     #[instrument(level = "trace", skip(self), ret, err)]
-    pub fn register_find_node_answer(&self, peers: Vec<PeerInfo>) -> Result<Vec<NodeRef>, String> {
+    pub fn register_find_node_answer(&self, peers: Vec<PeerInfo>) -> EyreResult<Vec<NodeRef>> {
         let node_id = self.node_id();
 
         // register nodes we'd found
@@ -403,24 +403,14 @@ impl RoutingTable {
 
             // register the node if it's new
             let nr = self
-                .register_node_with_signed_node_info(p.node_id.key, p.signed_node_info.clone())
-                .map_err(map_to_string)
-                .map_err(logthru_rtab!(
-                    "couldn't register node {} at {:?}",
-                    p.node_id.key,
-                    &p.signed_node_info
-                ))?;
+                .register_node_with_signed_node_info(p.node_id.key, p.signed_node_info.clone())?;
             out.push(nr);
         }
         Ok(out)
     }
 
     #[instrument(level = "trace", skip(self), ret, err)]
-    pub async fn find_node(
-        &self,
-        node_ref: NodeRef,
-        node_id: DHTKey,
-    ) -> Result<Vec<NodeRef>, String> {
+    pub async fn find_node(&self, node_ref: NodeRef, node_id: DHTKey) -> EyreResult<Vec<NodeRef>> {
         let rpc_processor = self.rpc_processor();
 
         let res = rpc_processor
@@ -431,22 +421,20 @@ impl RoutingTable {
                 None,
                 rpc_processor.make_respond_to_sender(node_ref.clone()),
             )
-            .await
-            .map_err(map_to_string)
-            .map_err(logthru_rtab!())?;
+            .await?;
 
         // register nodes we'd found
         self.register_find_node_answer(res.answer)
     }
 
     #[instrument(level = "trace", skip(self), ret, err)]
-    pub async fn find_self(&self, node_ref: NodeRef) -> Result<Vec<NodeRef>, String> {
+    pub async fn find_self(&self, node_ref: NodeRef) -> EyreResult<Vec<NodeRef>> {
         let node_id = self.node_id();
         self.find_node(node_ref, node_id).await
     }
 
     #[instrument(level = "trace", skip(self), ret, err)]
-    pub async fn find_target(&self, node_ref: NodeRef) -> Result<Vec<NodeRef>, String> {
+    pub async fn find_target(&self, node_ref: NodeRef) -> EyreResult<Vec<NodeRef>> {
         let node_id = node_ref.node_id();
         self.find_node(node_ref, node_id).await
     }
@@ -460,7 +448,7 @@ impl RoutingTable {
         let closest_nodes = match self.find_self(node_ref.clone()).await {
             Err(e) => {
                 log_rtab!(error
-                    "reverse_find_node: find_self failed for {:?}: {}",
+                    "reverse_find_node: find_self failed for {:?}: {:?}",
                     &node_ref, e
                 );
                 return;
@@ -473,7 +461,7 @@ impl RoutingTable {
             for closest_nr in closest_nodes {
                 if let Err(e) = self.find_self(closest_nr.clone()).await {
                     log_rtab!(error
-                        "reverse_find_node: closest node find_self failed for {:?}: {}",
+                        "reverse_find_node: closest node find_self failed for {:?}: {:?}",
                         &closest_nr, e
                     );
                 }

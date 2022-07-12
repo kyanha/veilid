@@ -41,8 +41,8 @@ impl WebsocketNetworkConnection {
     }
 
     // #[instrument(level = "trace", err, skip(self))]
-    // pub async fn close(&self) -> Result<(), String> {
-    //     self.inner.ws_meta.close().await.map_err(map_to_string).map(drop)
+    // pub async fn close(&self) -> io::Result<()> {
+    //     self.inner.ws_meta.close().await.map_err(to_io).map(drop)
     // }
 
     #[instrument(level = "trace", err, skip(self, message), fields(message.len = message.len()))]
@@ -62,7 +62,7 @@ impl WebsocketNetworkConnection {
     pub async fn recv(&self) -> io::Result<Vec<u8>> {
         let out = match SendWrapper::new(self.inner.ws_stream.clone().next()).await {
             Some(WsMessage::Binary(v)) => v,
-            Some(x) => {
+            Some(_) => {
                 bail_io_error_other!("Unexpected WS message type");
             }
             None => {

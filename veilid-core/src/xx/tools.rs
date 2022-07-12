@@ -30,13 +30,11 @@ macro_rules! bail_io_error_other {
     };
 }
 
-pub fn split_port(name: &str) -> Result<(String, Option<u16>), String> {
+pub fn split_port(name: &str) -> EyreResult<(String, Option<u16>)> {
     if let Some(split) = name.rfind(':') {
         let hoststr = &name[0..split];
         let portstr = &name[split + 1..];
-        let port: u16 = portstr
-            .parse::<u16>()
-            .map_err(|e| format!("Invalid port: {}", e))?;
+        let port: u16 = portstr.parse::<u16>().wrap_err("invalid port")?;
 
         Ok((hoststr.to_string(), Some(port)))
     } else {

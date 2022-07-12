@@ -53,7 +53,7 @@ impl DummyNetworkConnection {
     pub fn descriptor(&self) -> ConnectionDescriptor {
         self.descriptor.clone()
     }
-    // pub fn close(&self) -> Result<(), String> {
+    // pub fn close(&self) -> io::Result<()> {
     //     Ok(())
     // }
     pub fn send(&self, _message: Vec<u8>) -> io::Result<()> {

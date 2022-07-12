@@ -33,41 +33,9 @@ use xx::*;
 
 #[allow(unused_macros)]
 #[macro_export]
-macro_rules! apierr_generic {
-    ($x:expr) => {
-        Err(VeilidAPIError::generic($x))
-    };
-}
-
-#[allow(unused_macros)]
-#[macro_export]
-macro_rules! apierr_internal {
-    ($x:expr) => {
-        Err(VeilidAPIError::internal($x))
-    };
-}
-
-#[allow(unused_macros)]
-#[macro_export]
-macro_rules! apierr_parse {
-    ($x:expr, $y:expr) => {
-        Err(VeilidAPIError::parse_error($x, $y))
-    };
-}
-
-#[allow(unused_macros)]
-#[macro_export]
-macro_rules! mapapierr_parse {
-    ($x:expr) => {
-        |e| VeilidAPIError::parse_error($x, e)
-    };
-}
-
-#[allow(unused_macros)]
-#[macro_export]
 macro_rules! apibail_generic {
     ($x:expr) => {
-        return Err(VeilidAPIError::generic($x));
+        return Err(VeilidAPIError::generic($x))
     };
 }
 
@@ -75,7 +43,7 @@ macro_rules! apibail_generic {
 #[macro_export]
 macro_rules! apibail_internal {
     ($x:expr) => {
-        return Err(VeilidAPIError::internal($x));
+        return Err(VeilidAPIError::internal($x))
     };
 }
 
@@ -83,7 +51,7 @@ macro_rules! apibail_internal {
 #[macro_export]
 macro_rules! apibail_parse {
     ($x:expr, $y:expr) => {
-        return Err(VeilidAPIError::parse_error($x, $y));
+        return Err(VeilidAPIError::parse_error($x, $y))
     };
 }
 
@@ -123,6 +91,18 @@ pub enum VeilidAPIError {
 }
 
 impl VeilidAPIError {
+    pub fn not_initialized() -> Self {
+        Self::NotInitialized
+    }
+    pub fn already_initialized() -> Self {
+        Self::AlreadyInitialized
+    }
+    pub fn timeout() -> Self {
+        Self::Timeout
+    }
+    pub fn shutdown() -> Self {
+        Self::Shutdown
+    }
     pub fn node_not_found(node_id: NodeId) -> Self {
         Self::NodeNotFound { node_id }
     }
@@ -170,15 +150,6 @@ impl VeilidAPIError {
             message: msg.to_string(),
         }
     }
-}
-
-macro_rules! parse_error {
-    ($msg:expr, $val:expr) => {
-        VeilidAPIError::ParseError {
-            message: $msg.to_string(),
-            value: $val.to_string(),
-        }
-    };
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -676,7 +647,10 @@ impl FromStr for Address {
         } else if let Ok(addr) = Ipv6Addr::from_str(host) {
             Ok(Address::IPV6(addr))
         } else {
-            Err(parse_error!("Address::from_str failed", host))
+            Err(VeilidAPIError::parse_error(
+                "Address::from_str failed",
+                host,
+            ))
         }
     }
 }
@@ -732,7 +706,7 @@ impl FromStr for SocketAddress {
     type Err = VeilidAPIError;
     fn from_str(s: &str) -> Result<SocketAddress, VeilidAPIError> {
         let sa = SocketAddr::from_str(s)
-            .map_err(|e| parse_error!("Failed to parse SocketAddress", e))?;
+            .map_err(|e| VeilidAPIError::parse_error("Failed to parse SocketAddress", e))?;
         Ok(SocketAddress::from_socket_addr(sa))
     }
 }
@@ -898,9 +872,9 @@ impl fmt::Display for DialInfo {
 impl FromStr for DialInfo {
     type Err = VeilidAPIError;
     fn from_str(s: &str) -> Result<DialInfo, VeilidAPIError> {
-        let (proto, rest) = s
-            .split_once('|')
-            .ok_or_else(|| parse_error!("DialInfo::from_str missing protocol '|' separator", s))?;
+        let (proto, rest) = s.split_once('|').ok_or_else(|| {
+            VeilidAPIError::parse_error("DialInfo::from_str missing protocol '|' separator", s)
+        })?;
         match proto {
             "udp" => {
                 let socket_address = SocketAddress::from_str(rest)?;
@@ -912,10 +886,14 @@ impl FromStr for DialInfo {
             }
             "ws" => {
                 let url = format!("ws://{}", rest);
-                let split_url = SplitUrl::from_str(&url)
-                    .map_err(|e| parse_error!(format!("unable to split WS url: {}", e), url))?;
+                let split_url = SplitUrl::from_str(&url).map_err(|e| {
+                    VeilidAPIError::parse_error(format!("unable to split WS url: {}", e), &url)
+                })?;
                 if split_url.scheme != "ws" || !url.starts_with("ws://") {
-                    return Err(parse_error!("incorrect scheme for WS dialinfo", url));
+                    return Err(VeilidAPIError::parse_error(
+                        "incorrect scheme for WS dialinfo",
+                        url,
+                    ));
                 }
                 let url_port = split_url.port.unwrap_or(80u16);
 
@@ -939,15 +917,22 @@ impl FromStr for DialInfo {
             }
             "wss" => {
                 let url = format!("wss://{}", rest);
-                let split_url = SplitUrl::from_str(&url)
-                    .map_err(|e| parse_error!(format!("unable to split WSS url: {}", e), url))?;
+                let split_url = SplitUrl::from_str(&url).map_err(|e| {
+                    VeilidAPIError::parse_error(format!("unable to split WSS url: {}", e), &url)
+                })?;
                 if split_url.scheme != "wss" || !url.starts_with("wss://") {
-                    return Err(parse_error!("incorrect scheme for WSS dialinfo", url));
+                    return Err(VeilidAPIError::parse_error(
+                        "incorrect scheme for WSS dialinfo",
+                        url,
+                    ));
                 }
                 let url_port = split_url.port.unwrap_or(443u16);
 
                 let (a, rest) = rest.split_once('|').ok_or_else(|| {
-                    parse_error!("DialInfo::from_str missing socket address '|' separator", s)
+                    VeilidAPIError::parse_error(
+                        "DialInfo::from_str missing socket address '|' separator",
+                        s,
+                    )
                 })?;
 
                 let address = Address::from_str(a)?;
@@ -956,7 +941,10 @@ impl FromStr for DialInfo {
                     format!("wss://{}", rest),
                 )
             }
-            _ => Err(parse_error!("DialInfo::from_str has invalid scheme", s)),
+            _ => Err(VeilidAPIError::parse_error(
+                "DialInfo::from_str has invalid scheme",
+                s,
+            )),
         }
     }
 }
@@ -983,23 +971,27 @@ impl DialInfo {
         })
     }
     pub fn try_ws(socket_address: SocketAddress, url: String) -> Result<Self, VeilidAPIError> {
-        let split_url = SplitUrl::from_str(&url)
-            .map_err(|e| parse_error!(format!("unable to split WS url: {}", e), url))?;
+        let split_url = SplitUrl::from_str(&url).map_err(|e| {
+            VeilidAPIError::parse_error(format!("unable to split WS url: {}", e), &url)
+        })?;
         if split_url.scheme != "ws" || !url.starts_with("ws://") {
-            return Err(parse_error!("incorrect scheme for WS dialinfo", url));
+            return Err(VeilidAPIError::parse_error(
+                "incorrect scheme for WS dialinfo",
+                url,
+            ));
         }
         let url_port = split_url.port.unwrap_or(80u16);
         if url_port != socket_address.port() {
-            return Err(parse_error!(
+            return Err(VeilidAPIError::parse_error(
                 "socket address port doesn't match url port",
-                url
+                url,
             ));
         }
         if let SplitUrlHost::IpAddr(a) = split_url.host {
             if socket_address.to_ip_addr() != a {
-                return Err(parse_error!(
+                return Err(VeilidAPIError::parse_error(
                     format!("request address does not match socket address: {}", a),
-                    socket_address
+                    socket_address,
                 ));
             }
         }
@@ -1009,22 +1001,26 @@ impl DialInfo {
         }))
     }
     pub fn try_wss(socket_address: SocketAddress, url: String) -> Result<Self, VeilidAPIError> {
-        let split_url = SplitUrl::from_str(&url)
-            .map_err(|e| parse_error!(format!("unable to split WSS url: {}", e), url))?;
+        let split_url = SplitUrl::from_str(&url).map_err(|e| {
+            VeilidAPIError::parse_error(format!("unable to split WSS url: {}", e), &url)
+        })?;
         if split_url.scheme != "wss" || !url.starts_with("wss://") {
-            return Err(parse_error!("incorrect scheme for WSS dialinfo", url));
+            return Err(VeilidAPIError::parse_error(
+                "incorrect scheme for WSS dialinfo",
+                url,
+            ));
         }
         let url_port = split_url.port.unwrap_or(443u16);
         if url_port != socket_address.port() {
-            return Err(parse_error!(
+            return Err(VeilidAPIError::parse_error(
                 "socket address port doesn't match url port",
-                url
+                url,
             ));
         }
         if !matches!(split_url.host, SplitUrlHost::Hostname(_)) {
-            return Err(parse_error!(
+            return Err(VeilidAPIError::parse_error(
                 "WSS url can not use address format, only hostname format",
-                url
+                url,
             ));
         }
         Ok(Self::WSS(DialInfoWSS {
@@ -1144,7 +1140,10 @@ impl DialInfo {
         let hostname = hostname.as_ref();
 
         if short.len() < 2 {
-            return Err(parse_error!("invalid short url length", short));
+            return Err(VeilidAPIError::parse_error(
+                "invalid short url length",
+                short,
+            ));
         }
         let url = match &short[0..1] {
             "U" => {
@@ -1160,7 +1159,7 @@ impl DialInfo {
                 format!("wss://{}:{}", hostname, &short[1..])
             }
             _ => {
-                return Err(parse_error!("invalid short url type", short));
+                return Err(VeilidAPIError::parse_error("invalid short url type", short));
             }
         };
         Self::try_vec_from_url(url)
@@ -1169,18 +1168,18 @@ impl DialInfo {
     pub fn try_vec_from_url<S: AsRef<str>>(url: S) -> Result<Vec<Self>, VeilidAPIError> {
         let url = url.as_ref();
         let split_url = SplitUrl::from_str(url)
-            .map_err(|e| parse_error!(format!("unable to split url: {}", e), url))?;
+            .map_err(|e| VeilidAPIError::parse_error(format!("unable to split url: {}", e), url))?;
 
         let port = match split_url.scheme.as_str() {
             "udp" | "tcp" => split_url
                 .port
-                .ok_or_else(|| parse_error!("Missing port in udp url", url))?,
+                .ok_or_else(|| VeilidAPIError::parse_error("Missing port in udp url", url))?,
             "ws" => split_url.port.unwrap_or(80u16),
             "wss" => split_url.port.unwrap_or(443u16),
             _ => {
-                return Err(parse_error!(
+                return Err(VeilidAPIError::parse_error(
                     "Invalid dial info url scheme",
-                    split_url.scheme
+                    split_url.scheme,
                 ));
             }
         };
@@ -1197,7 +1196,7 @@ impl DialInfo {
                         SplitUrlHost::Hostname(_) => split_url
                             .host_port(port)
                             .to_socket_addrs()
-                            .map_err(|_| parse_error!("couldn't resolve hostname in url", url))?
+                            .map_err(|_| VeilidAPIError::parse_error("couldn't resolve hostname in url", url))?
                             .collect(),
                         SplitUrlHost::IpAddr(a) => vec![SocketAddr::new(a, port)],
                     }
@@ -1359,9 +1358,9 @@ impl SignedNodeInfo {
         timestamp: u64,
     ) -> Result<Self, VeilidAPIError> {
         let mut node_info_bytes = serde_cbor::to_vec(&node_info)
-            .map_err(mapapierr_parse!("failed to encode node info as cbor"))?;
+            .map_err(|e| VeilidAPIError::parse_error("failed to encode node info as cbor", e))?;
         let mut timestamp_bytes = serde_cbor::to_vec(&timestamp)
-            .map_err(mapapierr_parse!("failed to encode timestamp as cbor"))?;
+            .map_err(|e| VeilidAPIError::parse_error("failed to encode timestamp as cbor", e))?;
 
         node_info_bytes.append(&mut timestamp_bytes);
 
@@ -1381,9 +1380,9 @@ impl SignedNodeInfo {
         let timestamp = intf::get_timestamp();
 
         let mut node_info_bytes = serde_cbor::to_vec(&node_info)
-            .map_err(mapapierr_parse!("failed to encode node info as cbor"))?;
+            .map_err(|e| VeilidAPIError::parse_error("failed to encode node info as cbor", e))?;
         let mut timestamp_bytes = serde_cbor::to_vec(&timestamp)
-            .map_err(mapapierr_parse!("failed to encode timestamp as cbor"))?;
+            .map_err(|e| VeilidAPIError::parse_error("failed to encode timestamp as cbor", e))?;
 
         node_info_bytes.append(&mut timestamp_bytes);
 
@@ -1532,15 +1531,15 @@ impl FromStr for NodeDialInfo {
     type Err = VeilidAPIError;
     fn from_str(s: &str) -> Result<NodeDialInfo, VeilidAPIError> {
         // split out node id from the dial info
-        let (node_id_str, rest) = s
-            .split_once('@')
-            .ok_or_else(|| parse_error!("NodeDialInfo::from_str missing @ node id separator", s))?;
+        let (node_id_str, rest) = s.split_once('@').ok_or_else(|| {
+            VeilidAPIError::parse_error("NodeDialInfo::from_str missing @ node id separator", s)
+        })?;
 
         // parse out node id
         let node_id = NodeId::new(DHTKey::try_decode(node_id_str).map_err(|e| {
-            parse_error!(
+            VeilidAPIError::parse_error(
                 format!("NodeDialInfo::from_str couldn't parse node id: {}", e),
-                s
+                s,
             )
         })?);
         // parse out dial info
@@ -1851,35 +1850,35 @@ impl VeilidAPI {
         if let Some(context) = &inner.context {
             return Ok(context.table_store.clone());
         }
-        Err(VeilidAPIError::NotInitialized)
+        Err(VeilidAPIError::not_initialized())
     }
     pub fn block_store(&self) -> Result<BlockStore, VeilidAPIError> {
         let inner = self.inner.lock();
         if let Some(context) = &inner.context {
             return Ok(context.block_store.clone());
         }
-        Err(VeilidAPIError::NotInitialized)
+        Err(VeilidAPIError::not_initialized())
     }
     pub fn protected_store(&self) -> Result<ProtectedStore, VeilidAPIError> {
         let inner = self.inner.lock();
         if let Some(context) = &inner.context {
             return Ok(context.protected_store.clone());
         }
-        Err(VeilidAPIError::NotInitialized)
+        Err(VeilidAPIError::not_initialized())
     }
     pub fn attachment_manager(&self) -> Result<AttachmentManager, VeilidAPIError> {
         let inner = self.inner.lock();
         if let Some(context) = &inner.context {
             return Ok(context.attachment_manager.clone());
         }
-        Err(VeilidAPIError::NotInitialized)
+        Err(VeilidAPIError::not_initialized())
     }
     pub fn network_manager(&self) -> Result<NetworkManager, VeilidAPIError> {
         let inner = self.inner.lock();
         if let Some(context) = &inner.context {
             return Ok(context.attachment_manager.network_manager());
         }
-        Err(VeilidAPIError::NotInitialized)
+        Err(VeilidAPIError::not_initialized())
     }
 
     // pub fn rpc_processor(&self) -> Result<RPCProcessor, VeilidAPIError> {
@@ -1916,7 +1915,7 @@ impl VeilidAPI {
         attachment_manager
             .request_attach()
             .await
-            .map_err(|e| VeilidAPIError::Internal { message: e })
+            .map_err(|e| VeilidAPIError::internal(e))
     }
 
     // disconnect from the network
@@ -1926,7 +1925,7 @@ impl VeilidAPI {
         attachment_manager
             .request_detach()
             .await
-            .map_err(|e| VeilidAPIError::Internal { message: e })
+            .map_err(|e| VeilidAPIError::internal(e))
     }
 
     ////////////////////////////////////////////////////////////////

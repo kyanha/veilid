@@ -4,7 +4,7 @@ use crate::*;
 use async_executors::{Bindgen, LocalSpawnHandleExt, SpawnHandleExt, Timer};
 use futures_util::future::{select, Either};
 use js_sys::*;
-use wasm_bindgen_futures::*;
+//use wasm_bindgen_futures::*;
 //use web_sys::*;
 
 #[wasm_bindgen]

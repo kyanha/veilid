@@ -93,7 +93,7 @@ impl ProtocolNetworkConnection {
         }
     }
 
-    // pub async fn close(&self) -> Result<(), String> {
+    // pub async fn close(&self) -> io::Result<()> {
     //     match self {
     //         Self::Dummy(d) => d.close(),
     //         Self::RawTcp(t) => t.close().await,

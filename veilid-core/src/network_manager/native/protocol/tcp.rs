@@ -23,21 +23,19 @@ impl RawTcpNetworkConnection {
     }
 
     // #[instrument(level = "trace", err, skip(self))]
-    // pub async fn close(&mut self) -> Result<(), String> {
+    // pub async fn close(&mut self) -> io::Result<()> {
     //     // Make an attempt to flush the stream
-    //     self.stream.clone().close().await.map_err(map_to_string)?;
+    //     self.stream.clone().close().await?;
     //     // Then shut down the write side of the socket to effect a clean close
     //     cfg_if! {
     //         if #[cfg(feature="rt-async-std")] {
     //             self.tcp_stream
     //                 .shutdown(async_std::net::Shutdown::Write)
-    //                 .map_err(map_to_string)
     //         } else if #[cfg(feature="rt-tokio")] {
     //             use tokio::io::AsyncWriteExt;
     //             self.tcp_stream.get_mut()
     //                 .shutdown()
     //                 .await
-    //                 .map_err(map_to_string)
     //         }
     //     }
     // }

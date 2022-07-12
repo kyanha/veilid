@@ -260,7 +260,7 @@ fn config_callback(key: String) -> ConfigCallbackReturn {
         _ => {
             let err = format!("config key '{}' doesn't exist", key);
             debug!("{}", err);
-            apierr_internal!(err)
+            Err(VeilidAPIError::internal(err))
         }
     }
 }

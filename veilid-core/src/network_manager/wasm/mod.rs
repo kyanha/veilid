@@ -10,11 +10,9 @@ pub use protocol::*;
 
 struct NetworkInner {
     network_manager: NetworkManager,
-    stop_network: Eventual,
     network_started: bool,
     network_needs_restart: bool,
     protocol_config: Option<ProtocolConfig>,
-    //join_handle: TryJoin?
 }
 
 #[derive(Clone)]
@@ -27,7 +25,6 @@ impl Network {
     fn new_inner(network_manager: NetworkManager) -> NetworkInner {
         NetworkInner {
             network_manager,
-            stop_network: Eventual::new(),
             network_started: false,
             network_needs_restart: false,
             protocol_config: None, //join_handle: None,
@@ -248,7 +245,7 @@ impl Network {
         f(&[])
     }
 
-    pub async fn check_interface_addresses(&self) -> Result<bool, String> {
+    pub async fn check_interface_addresses(&self) -> EyreResult<bool> {
         Ok(false)
     }
 

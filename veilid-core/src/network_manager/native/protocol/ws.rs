@@ -71,13 +71,13 @@ where
     }
 
     // #[instrument(level = "trace", err, skip(self))]
-    // pub async fn close(&self) -> Result<(), String> {
+    // pub async fn close(&self) -> io::Result<()> {
     //     // Make an attempt to flush the stream
-    //     self.stream.clone().close().await.map_err(map_to_string)?;
+    //     self.stream.clone().close().await.map_err(to_io)?;
     //     // Then forcibly close the socket
     //     self.tcp_stream
     //         .shutdown(Shutdown::Both)
-    //         .map_err(map_to_string)
+    //         .map_err(to_io)
     // }
 
     #[instrument(level = "trace", err, skip(self, message), fields(message.len = message.len()))]

@@ -337,11 +337,11 @@ impl AttachmentManager {
         }
     }
 
-    async fn process_input(&self, input: &AttachmentInput) -> Result<(), String> {
+    async fn process_input(&self, input: &AttachmentInput) -> EyreResult<()> {
         let attachment_machine = self.inner.lock().attachment_machine.clone();
         let output = attachment_machine.consume(input).await;
         match output {
-            Err(e) => Err(format!(
+            Err(e) => Err(eyre!(
                 "invalid input '{:?}' for state machine in state '{:?}': {:?}",
                 input,
                 attachment_machine.state(),
@@ -357,17 +357,17 @@ impl AttachmentManager {
     }
 
     #[instrument(level = "trace", skip(self), err)]
-    pub async fn request_attach(&self) -> Result<(), String> {
+    pub async fn request_attach(&self) -> EyreResult<()> {
         self.process_input(&AttachmentInput::AttachRequested)
             .await
-            .map_err(|e| format!("Attach request failed: {}", e))
+            .map_err(|e| eyre!("Attach request failed: {}", e))
     }
 
     #[instrument(level = "trace", skip(self), err)]
-    pub async fn request_detach(&self) -> Result<(), String> {
+    pub async fn request_detach(&self) -> EyreResult<()> {
         self.process_input(&AttachmentInput::DetachRequested)
             .await
-            .map_err(|e| format!("Detach request failed: {}", e))
+            .map_err(|e| eyre!("Detach request failed: {}", e))
     }
 
     pub fn get_state(&self) -> AttachmentState {

@@ -7,6 +7,14 @@ cfg_if! {
     }
 }
 
+#[derive(ThisError, Debug, Clone, PartialEq, Eq)]
+pub enum BumpPortError {
+    #[error("Unsupported architecture")]
+    Unsupported,
+    #[error("Failure: {0}")]
+    Failed(String),
+}
+
 pub enum BumpPortType {
     UDP,
     TCP,
@@ -38,10 +46,10 @@ pub fn udp_port_available(addr: &SocketAddr) -> bool {
     }
 }
 
-pub fn bump_port(addr: &mut SocketAddr, bpt: BumpPortType) -> Result<bool, String> {
+pub fn bump_port(addr: &mut SocketAddr, bpt: BumpPortType) -> Result<bool, BumpPortError> {
     cfg_if! {
         if #[cfg(target_arch = "wasm32")] {
-            Err("unsupported architecture".to_owned())
+            Err(BumpPortError::Unsupported)
         }
         else
         {
@@ -65,25 +73,25 @@ pub fn bump_port(addr: &mut SocketAddr, bpt: BumpPortType) -> Result<bool, Strin
                 bumped = true;
             }
 
-            Err("no ports remaining".to_owned())
+            Err(BumpPortError::Failure("no ports remaining".to_owned()))
         }
     }
 }
 
-pub fn bump_port_string(addr: &mut String, bpt: BumpPortType) -> Result<bool, String> {
+pub fn bump_port_string(addr: &mut String, bpt: BumpPortType) -> Result<bool, BumpPortError> {
     cfg_if! {
         if #[cfg(target_arch = "wasm32")] {
-            return Err("unsupported architecture".to_owned());
+            return Err(BumpPortError::Unsupported);
         }
         else
         {
             let savec: Vec<SocketAddr> = addr
                 .to_socket_addrs()
-                .map_err(|x| format!("failed to resolve socket address: {}", x))?
+                .map_err(|x| BumpPortError::Failure(format!("failed to resolve socket address: {}", x)))?
                 .collect();
 
             if savec.len() == 0 {
-                return Err("No socket addresses resolved".to_owned());
+                return Err(BumpPortError::Failure("No socket addresses resolved".to_owned()));
             }
             let mut sa = savec.first().unwrap().clone();
 

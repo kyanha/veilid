@@ -195,19 +195,10 @@ impl ClientApiConnection {
         // object mapping from the server which we need for the update backchannel
 
         // Wait until rpc system completion or disconnect was requested
-
-        cfg_if! {
-            if #[cfg(feature="rt-async-std")] {
-                rpc_jh
-                    .await
-                    .map_err(|e| format!("client RPC system error: {}", e))
-            } else if #[cfg(feature="rt-tokio")] {
-                rpc_jh
-                    .await
-                    .map_err(|e| format!("join error: {}", e))?
-                    .map_err(|e| format!("client RPC system error: {}", e))
-            }
-        }
+        let res = rpc_jh.await;
+        #[cfg(feature="rt-tokio")]
+        let res = res.map_err(|e| format!("join error: {}", e))?;
+        res.map_err(|e| format!("client RPC system error: {}", e))  
     }
 
     async fn handle_connection(&mut self) -> Result<(), String> {

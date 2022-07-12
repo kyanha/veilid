@@ -158,7 +158,7 @@ macro_rules! byte_array_type {
                 let res = BASE64URL_NOPAD.decode_mut(input.as_bytes(), &mut bytes);
                 match res {
                     Ok(_) => Ok(Self::new(bytes)),
-                    Err(_) => apierr_generic!("Failed to decode"),
+                    Err(_) => apibail_generic!("Failed to decode"),
                 }
             }
         }
@@ -277,7 +277,7 @@ macro_rules! byte_array_type {
                         out.valid = true;
                         Ok(out)
                     }
-                    Err(err) => apierr_generic!(err),
+                    Err(err) => Err(VeilidAPIError::generic(err)),
                 }
             }
         }
@@ -382,7 +382,8 @@ pub fn sign(
 
     kpb[..DHT_KEY_SECRET_LENGTH].copy_from_slice(&dht_key_secret.bytes);
     kpb[DHT_KEY_SECRET_LENGTH..].copy_from_slice(&dht_key.bytes);
-    let keypair = Keypair::from_bytes(&kpb).map_err(mapapierr_parse!("Keypair is invalid"))?;
+    let keypair = Keypair::from_bytes(&kpb)
+        .map_err(|e| VeilidAPIError::parse_error("Keypair is invalid", e))?;
 
     let mut dig = Blake3Digest512::new();
     dig.update(data);
@@ -402,16 +403,16 @@ pub fn verify(
 ) -> Result<(), VeilidAPIError> {
     assert!(dht_key.valid);
     assert!(signature.valid);
-    let pk =
-        PublicKey::from_bytes(&dht_key.bytes).map_err(mapapierr_parse!("Public key is invalid"))?;
+    let pk = PublicKey::from_bytes(&dht_key.bytes)
+        .map_err(|e| VeilidAPIError::parse_error("Public key is invalid", e))?;
     let sig = Signature::from_bytes(&signature.bytes)
-        .map_err(mapapierr_parse!("Signature is invalid"))?;
+        .map_err(|e| VeilidAPIError::parse_error("Signature is invalid", e))?;
 
     let mut dig = Blake3Digest512::new();
     dig.update(data);
 
     pk.verify_prehashed(dig, None, &sig)
-        .map_err(mapapierr_parse!("Verification failed"))?;
+        .map_err(|e| VeilidAPIError::parse_error("Verification failed", e))?;
     Ok(())
 }
 

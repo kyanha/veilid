@@ -232,13 +232,13 @@ impl Crypto {
         nonce: &Nonce,
         shared_secret: &SharedSecret,
         associated_data: Option<&[u8]>,
-    ) -> Result<(), String> {
+    ) -> Result<(), VeilidAPIError> {
         let key = ch::Key::from(*shared_secret);
         let xnonce = ch::XNonce::from(*nonce);
         let aead = ch::XChaCha20Poly1305::new(&key);
         aead.decrypt_in_place(&xnonce, associated_data.unwrap_or(b""), body)
             .map_err(map_to_string)
-            .map_err(logthru_crypto!())
+            .map_err(VeilidAPIError::generic)
     }
 
     pub fn decrypt_aead(
@@ -246,11 +246,11 @@ impl Crypto {
         nonce: &Nonce,
         shared_secret: &SharedSecret,
         associated_data: Option<&[u8]>,
-    ) -> Result<Vec<u8>, String> {
+    ) -> Result<Vec<u8>, VeilidAPIError> {
         let mut out = body.to_vec();
         Self::decrypt_in_place_aead(&mut out, nonce, shared_secret, associated_data)
             .map_err(map_to_string)
-            .map_err(logthru_crypto!())?;
+            .map_err(VeilidAPIError::generic)?;
         Ok(out)
     }
 
@@ -259,14 +259,14 @@ impl Crypto {
         nonce: &Nonce,
         shared_secret: &SharedSecret,
         associated_data: Option<&[u8]>,
-    ) -> Result<(), String> {
+    ) -> Result<(), VeilidAPIError> {
         let key = ch::Key::from(*shared_secret);
         let xnonce = ch::XNonce::from(*nonce);
         let aead = ch::XChaCha20Poly1305::new(&key);
 
         aead.encrypt_in_place(&xnonce, associated_data.unwrap_or(b""), body)
             .map_err(map_to_string)
-            .map_err(logthru_crypto!())
+            .map_err(VeilidAPIError::generic)
     }
 
     pub fn encrypt_aead(
@@ -274,11 +274,11 @@ impl Crypto {
         nonce: &Nonce,
         shared_secret: &SharedSecret,
         associated_data: Option<&[u8]>,
-    ) -> Result<Vec<u8>, String> {
+    ) -> Result<Vec<u8>, VeilidAPIError> {
         let mut out = body.to_vec();
         Self::encrypt_in_place_aead(&mut out, nonce, shared_secret, associated_data)
             .map_err(map_to_string)
-            .map_err(logthru_crypto!())?;
+            .map_err(VeilidAPIError::generic)?;
         Ok(out)
     }
 
