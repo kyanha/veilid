@@ -1419,7 +1419,7 @@ mod tests {
         assert_eq!(s.logging.file.path, "");
         assert_eq!(s.logging.file.append, true);
         assert_eq!(s.logging.file.level, LogLevel::Info);
-        assert_eq!(s.logging.api.enabled, false);
+        assert_eq!(s.logging.api.enabled, true);
         assert_eq!(s.logging.api.level, LogLevel::Info);
         assert_eq!(s.logging.otlp.enabled, false);
         assert_eq!(s.logging.otlp.level, LogLevel::Trace);
