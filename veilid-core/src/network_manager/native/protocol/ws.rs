@@ -223,12 +223,13 @@ impl WebsocketProtocolHandler {
         Ok(Some(conn))
     }
 
-    async fn connect_internal(
+    #[instrument(level = "trace", err)]
+    pub async fn connect(
         local_address: Option<SocketAddr>,
-        dial_info: DialInfo,
+        dial_info: &DialInfo,
     ) -> io::Result<ProtocolNetworkConnection> {
         // Split dial info up
-        let (tls, scheme) = match &dial_info {
+        let (tls, scheme) = match dial_info {
             DialInfo::WS(_) => (false, "ws"),
             DialInfo::WSS(_) => (true, "wss"),
             _ => panic!("invalid dialinfo for WS/WSS protocol"),
@@ -284,46 +285,6 @@ impl WebsocketProtocolHandler {
                 WebsocketNetworkConnection::new(descriptor, ws_stream),
             ))
         }
-    }
-
-    #[instrument(level = "trace", err)]
-    pub async fn connect(
-        local_address: Option<SocketAddr>,
-        dial_info: DialInfo,
-    ) -> io::Result<ProtocolNetworkConnection> {
-        Self::connect_internal(local_address, dial_info).await
-    }
-
-    #[instrument(level = "trace", err, skip(data), fields(data.len = data.len()))]
-    pub async fn send_unbound_message(dial_info: DialInfo, data: Vec<u8>) -> io::Result<()> {
-        if data.len() > MAX_MESSAGE_SIZE {
-            bail_io_error_other!("sending too large unbound WS message");
-        }
-
-        let protconn = Self::connect_internal(None, dial_info.clone()).await?;
-
-        protconn.send(data).await
-    }
-
-    #[instrument(level = "trace", err, skip(data), fields(data.len = data.len(), ret.len))]
-    pub async fn send_recv_unbound_message(
-        dial_info: DialInfo,
-        data: Vec<u8>,
-        timeout_ms: u32,
-    ) -> io::Result<Vec<u8>> {
-        if data.len() > MAX_MESSAGE_SIZE {
-            bail_io_error_other!("sending too large unbound WS message");
-        }
-
-        let protconn = Self::connect_internal(None, dial_info.clone()).await?;
-
-        protconn.send(data).await?;
-        let out = timeout(timeout_ms, protconn.recv())
-            .await
-            .map_err(|e| e.to_io())??;
-
-        tracing::Span::current().record("ret.len", &out.len());
-        Ok(out)
     }
 }
 

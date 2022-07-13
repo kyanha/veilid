@@ -146,6 +146,13 @@ where
     }
 }
 
+pub fn compatible_unspecified_socket_addr(socket_addr: &SocketAddr) -> SocketAddr {
+    match socket_addr {
+        SocketAddr::V4(_) => SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0),
+        SocketAddr::V6(_) => SocketAddr::new(IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0)), 0),
+    }
+}
+
 pub fn listen_address_to_socket_addrs(listen_address: &str) -> EyreResult<Vec<SocketAddr>> {
     // If no address is specified, but the port is, use ipv4 and ipv6 unspecified
     // If the address is specified, only use the specified port and fail otherwise

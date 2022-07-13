@@ -207,13 +207,7 @@ impl RoutingTable {
 
         let mut unord = FuturesUnordered::new();
         for bootstrap_di in bootstrap_dialinfos {
-            let peer_info = match network_manager.boot_request(bootstrap_di).await {
-                Ok(v) => v,
-                Err(e) => {
-                    error!("BOOT request failed: {}", e);
-                    continue;
-                }
-            };
+            let peer_info = network_manager.boot_request(bootstrap_di).await?;
 
             // Got peer info, let's add it to the routing table
             for pi in peer_info {

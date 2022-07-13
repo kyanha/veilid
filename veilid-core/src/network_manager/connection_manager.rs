@@ -256,7 +256,7 @@ impl ConnectionManager {
 
         // Attempt new connection
         let conn = loop {
-            match ProtocolNetworkConnection::connect(local_addr, dial_info.clone()).await {
+            match ProtocolNetworkConnection::connect(local_addr, &dial_info).await {
                 Ok(v) => break Ok(v),
                 Err(e) => {
                     if retry_count == 0 {

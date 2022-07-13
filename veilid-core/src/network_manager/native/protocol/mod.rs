@@ -21,64 +21,17 @@ pub enum ProtocolNetworkConnection {
 impl ProtocolNetworkConnection {
     pub async fn connect(
         local_address: Option<SocketAddr>,
-        dial_info: DialInfo,
+        dial_info: &DialInfo,
     ) -> io::Result<ProtocolNetworkConnection> {
         match dial_info.protocol_type() {
             ProtocolType::UDP => {
                 panic!("Should not connect to UDP dialinfo");
             }
             ProtocolType::TCP => {
-                tcp::RawTcpProtocolHandler::connect(local_address, dial_info).await
+                tcp::RawTcpProtocolHandler::connect(local_address, dial_info.to_socket_addr()).await
             }
             ProtocolType::WS | ProtocolType::WSS => {
                 ws::WebsocketProtocolHandler::connect(local_address, dial_info).await
-            }
-        }
-    }
-
-    pub async fn send_unbound_message(dial_info: DialInfo, data: Vec<u8>) -> io::Result<()> {
-        match dial_info.protocol_type() {
-            ProtocolType::UDP => {
-                let peer_socket_addr = dial_info.to_socket_addr();
-                udp::RawUdpProtocolHandler::send_unbound_message(peer_socket_addr, data).await
-            }
-            ProtocolType::TCP => {
-                let peer_socket_addr = dial_info.to_socket_addr();
-                tcp::RawTcpProtocolHandler::send_unbound_message(peer_socket_addr, data).await
-            }
-            ProtocolType::WS | ProtocolType::WSS => {
-                ws::WebsocketProtocolHandler::send_unbound_message(dial_info, data).await
-            }
-        }
-    }
-
-    pub async fn send_recv_unbound_message(
-        dial_info: DialInfo,
-        data: Vec<u8>,
-        timeout_ms: u32,
-    ) -> io::Result<Vec<u8>> {
-        match dial_info.protocol_type() {
-            ProtocolType::UDP => {
-                let peer_socket_addr = dial_info.to_socket_addr();
-                udp::RawUdpProtocolHandler::send_recv_unbound_message(
-                    peer_socket_addr,
-                    data,
-                    timeout_ms,
-                )
-                .await
-            }
-            ProtocolType::TCP => {
-                let peer_socket_addr = dial_info.to_socket_addr();
-                tcp::RawTcpProtocolHandler::send_recv_unbound_message(
-                    peer_socket_addr,
-                    data,
-                    timeout_ms,
-                )
-                .await
-            }
-            ProtocolType::WS | ProtocolType::WSS => {
-                ws::WebsocketProtocolHandler::send_recv_unbound_message(dial_info, data, timeout_ms)
-                    .await
             }
         }
     }

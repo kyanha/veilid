@@ -32,6 +32,49 @@ cfg_if! {
 }
 
 //////////////////////////////////////////////////////////////////
+// Non-fallible timeout conversions
+
+pub trait TimeoutOrExt<T> {
+    fn into_timeout_or(self) -> TimeoutOr<T>;
+}
+
+impl<T> TimeoutOrExt<T> for Result<T, TimeoutError> {
+    fn into_timeout_or(self) -> TimeoutOr<T> {
+        self.ok().map(|v| TimeoutOr::<T>::Value(v)).unwrap_or(TimeoutOr::<T>::Timeout)
+    }
+}
+
+pub trait IoTimeoutOrExt<T> {
+    fn into_timeout_or(self) -> io::Result<TimeoutOr<T>>;
+}
+
+impl<T> IoTimeoutOrExt<T> for io::Result<T> {
+    fn into_timeout_or(self) -> io::Result<TimeoutOr<T>> {
+        match self {
+            Ok(v) => Ok(TimeoutOr::<T>::Value(v)),
+            Err(e) if e.kind() == io::ErrorKind::TimedOut => Ok(TimeoutOr::<T>::Timeout),
+            Err(e) => Err(e),
+        }
+    }
+}
+
+pub trait TimeoutOrResultExt<T, E> {
+    fn into_result(self) -> Result<TimeoutOr<T>, E>;
+}
+
+impl<T,E> TimeoutOrResultExt<T, E> for TimeoutOr<Result<T,E>> {
+    fn into_result(self) -> Result<TimeoutOr<T>, E> {
+        match self {
+            TimeoutOr::<Result::<T,E>>::Timeout => Ok(TimeoutOr::<T>::Timeout),
+            TimeoutOr::<Result::<T,E>>::Value(Ok(v)) => Ok(TimeoutOr::<T>::Value(v)),
+            TimeoutOr::<Result::<T,E>>::Value(Err(e)) => Err(e),   
+        }
+    }
+}
+
+
+//////////////////////////////////////////////////////////////////
+// Non-fallible timeout
 
 pub enum TimeoutOr<T> {
     Timeout,

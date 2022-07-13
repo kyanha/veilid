@@ -16,7 +16,7 @@ pub enum ProtocolNetworkConnection {
 impl ProtocolNetworkConnection {
     pub async fn connect(
         local_address: Option<SocketAddr>,
-        dial_info: DialInfo,
+        dial_info: &DialInfo,
     ) -> io::Result<ProtocolNetworkConnection> {
         match dial_info.protocol_type() {
             ProtocolType::UDP => {
@@ -27,42 +27,6 @@ impl ProtocolNetworkConnection {
             }
             ProtocolType::WS | ProtocolType::WSS => {
                 ws::WebsocketProtocolHandler::connect(local_address, dial_info).await
-            }
-        }
-    }
-
-    pub async fn send_unbound_message(
-        dial_info: DialInfo,
-        data: Vec<u8>,
-    ) -> io::Result<()> {
-        match dial_info.protocol_type() {
-            ProtocolType::UDP => {
-                panic!("UDP dial info is not supported on WASM targets");
-            }
-            ProtocolType::TCP => {
-                panic!("TCP dial info is not supported on WASM targets");
-            }
-            ProtocolType::WS | ProtocolType::WSS => {
-                ws::WebsocketProtocolHandler::send_unbound_message(dial_info, data).await
-            }
-        }
-    }
-
-    pub async fn send_recv_unbound_message(
-        dial_info: DialInfo,
-        data: Vec<u8>,
-        timeout_ms: u32,
-    ) -> io::Result<Vec<u8>> {
-        match dial_info.protocol_type() {
-            ProtocolType::UDP => {
-                panic!("UDP dial info is not supported on WASM targets");
-            }
-            ProtocolType::TCP => {
-                panic!("TCP dial info is not supported on WASM targets");
-            }
-            ProtocolType::WS | ProtocolType::WSS => {
-                ws::WebsocketProtocolHandler::send_recv_unbound_message(dial_info, data, timeout_ms)
-                    .await
             }
         }
     }

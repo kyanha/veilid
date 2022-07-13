@@ -85,12 +85,12 @@ impl WebsocketProtocolHandler {
     #[instrument(level = "trace", err)]
     pub async fn connect(
         local_address: Option<SocketAddr>,
-        dial_info: DialInfo,
+        dial_info: &DialInfo,
     ) -> io::Result<ProtocolNetworkConnection> {
         assert!(local_address.is_none());
 
         // Split dial info up
-        let (_tls, scheme) = match &dial_info {
+        let (_tls, scheme) = match dial_info {
             DialInfo::WS(_) => (false, "ws"),
             DialInfo::WSS(_) => (true, "wss"),
             _ => panic!("invalid dialinfo for WS/WSS protocol"),
@@ -105,45 +105,10 @@ impl WebsocketProtocolHandler {
         let (wsmeta, wsio) = fut.await.map_err(to_io)?;
 
         // Make our connection descriptor
-        Ok(ProtocolNetworkConnection::Ws(
-            WebsocketNetworkConnection::new(
-                ConnectionDescriptor::new_no_local(dial_info.to_peer_address()),
-                wsmeta,
-                wsio,
-            ),
+        Ok(WebsocketNetworkConnection::new(
+            ConnectionDescriptor::new_no_local(dial_info.to_peer_address()),
+            wsmeta,
+            wsio,
         ))
-    }
-
-    #[instrument(level = "trace", err, skip(data), fields(data.len = data.len()))]
-    pub async fn send_unbound_message(dial_info: DialInfo, data: Vec<u8>) -> io::Result<()> {
-        if data.len() > MAX_MESSAGE_SIZE {
-            bail_io_error_other!("sending too large unbound WS message");
-        }
-
-        // Make the real connection
-        let conn = Self::connect(None, dial_info).await?;
-
-        conn.send(data).await
-    }
-
-    #[instrument(level = "trace", err, skip(data), fields(data.len = data.len(), ret.len))]
-    pub async fn send_recv_unbound_message(
-        dial_info: DialInfo,
-        data: Vec<u8>,
-        timeout_ms: u32,
-    ) -> io::Result<Vec<u8>> {
-        if data.len() > MAX_MESSAGE_SIZE {
-            bail_io_error_other!("sending too large unbound WS message");
-        }
-
-        let conn = Self::connect(None, dial_info.clone()).await?;
-
-        conn.send(data).await?;
-        let out = timeout(timeout_ms, conn.recv())
-            .await
-            .map_err(|e| e.to_io())??;
-
-        tracing::Span::current().record("ret.len", &out.len());
-        Ok(out)
     }
 }

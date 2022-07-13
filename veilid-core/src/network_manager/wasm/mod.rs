@@ -59,7 +59,7 @@ impl Network {
     ) -> EyreResult<()> {
         let data_len = data.len();
 
-        let res = match dial_info.protocol_type() {
+        match dial_info.protocol_type() {
             ProtocolType::UDP => {
                 bail!("no support for UDP protocol")
             }
@@ -67,17 +67,18 @@ impl Network {
                 bail!("no support for TCP protocol")
             }
             ProtocolType::WS | ProtocolType::WSS => {
-                WebsocketProtocolHandler::send_unbound_message(dial_info.clone(), data)
+                let pnc = WebsocketProtocolHandler::connect(None, &dial_info)
                     .await
-                    .wrap_err("failed to send unbound message")
+                    .wrap_err("connect failure")?;
+                pnc.send(data).await.wrap_err("send failure")?;
             }
         };
-        if res.is_ok() {
-            // Network accounting
-            self.network_manager()
-                .stats_packet_sent(dial_info.to_ip_addr(), data_len as u64);
-        }
-        res
+
+        // Network accounting
+        self.network_manager()
+            .stats_packet_sent(dial_info.to_ip_addr(), data_len as u64);
+        
+        Ok(())
     }
 
     // Send data to a dial info, unbound, using a new connection from a random port
@@ -91,9 +92,9 @@ impl Network {
         dial_info: DialInfo,
         data: Vec<u8>,
         timeout_ms: u32,
-    ) -> EyreResult<Vec<u8>> {
+    ) -> EyreResult<TimeoutOr<Vec<u8>>> {
         let data_len = data.len();
-        let out = match dial_info.protocol_type() {
+        match dial_info.protocol_type() {
             ProtocolType::UDP => {
                 bail!("no support for UDP protocol")
             }
@@ -101,23 +102,47 @@ impl Network {
                 bail!("no support for TCP protocol")
             }
             ProtocolType::WS | ProtocolType::WSS => {
-                WebsocketProtocolHandler::send_recv_unbound_message(
-                    dial_info.clone(),
-                    data,
-                    timeout_ms,
-                )
-                .await?
+                let pnc = match dial_info.protocol_type() {
+                    ProtocolType::UDP => unreachable!(),
+                    ProtocolType::TCP => {
+                        let peer_socket_addr = dial_info.to_socket_addr();
+                        RawTcpProtocolHandler::connect(None, peer_socket_addr)
+                            .await
+                            .wrap_err("connect failure")?
+                    }
+                    ProtocolType::WS | ProtocolType::WSS => {
+                        WebsocketProtocolHandler::connect(None, &dial_info)
+                            .await
+                            .wrap_err("connect failure")?
+                    }
+                };
+
+                pnc.send(data).await.wrap_err("send failure")?;
+                self.network_manager()
+                    .stats_packet_sent(dial_info.to_ip_addr(), data_len as u64);
+
+                let out = timeout(timeout_ms, pnc.recv())
+                    .await
+                    .into_timeout_or()
+                    .into_result()
+                    .wrap_err("recv failure")?;
+
+                tracing::Span::current().record(
+                    "ret.timeout_or",
+                    &match out {
+                        TimeoutOr::<Vec<u8>>::Value(ref v) => format!("Value(len={})", v.len()),
+                        TimeoutOr::<Vec<u8>>::Timeout => "Timeout".to_owned(),
+                    },
+                );
+
+                if let TimeoutOr::Value(out) = &out {
+                    self.network_manager()
+                        .stats_packet_rcvd(dial_info.to_ip_addr(), out.len() as u64);
+                }
+
+                Ok(out)
             }
-        };
-
-        // Network accounting
-        self.network_manager()
-            .stats_packet_sent(dial_info.to_ip_addr(), data_len as u64);
-        self.network_manager()
-            .stats_packet_rcvd(dial_info.to_ip_addr(), out.len() as u64);
-
-        tracing::Span::current().record("ret.len", &out.len());
-        Ok(out)
+        }
     }
 
     #[instrument(level="trace", err, skip(self, data), fields(data.len = data.len()))]
