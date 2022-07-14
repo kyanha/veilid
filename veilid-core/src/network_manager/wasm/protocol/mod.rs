@@ -17,7 +17,7 @@ impl ProtocolNetworkConnection {
     pub async fn connect(
         local_address: Option<SocketAddr>,
         dial_info: &DialInfo,
-    ) -> io::Result<ProtocolNetworkConnection> {
+    ) -> io::Result<NetworkResult<ProtocolNetworkConnection>> {
         match dial_info.protocol_type() {
             ProtocolType::UDP => {
                 panic!("UDP dial info is not supported on WASM targets");
@@ -38,20 +38,20 @@ impl ProtocolNetworkConnection {
         }
     }
 
-    // pub async fn close(&self) -> io::Result<()> {
+    // pub async fn close(&self) -> io::Result<NetworkResult<()>> {
     //     match self {
     //         Self::Dummy(d) => d.close(),
     //         Self::Ws(w) => w.close().await,
     //     }
     // }
-    pub async fn send(&self, message: Vec<u8>) -> io::Result<()> {
+    pub async fn send(&self, message: Vec<u8>) -> io::Result<NetworkResult<()>> {
         match self {
             Self::Dummy(d) => d.send(message),
             Self::Ws(w) => w.send(message).await,
         }
     }
 
-    pub async fn recv(&self) -> io::Result<Vec<u8>> {
+    pub async fn recv(&self) -> io::Result<NetworkResult<Vec<u8>>> {
         match self {
             Self::Dummy(d) => d.recv(),
             Self::Ws(w) => w.recv().await,

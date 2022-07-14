@@ -56,8 +56,12 @@ impl Network {
         &self,
         dial_info: DialInfo,
         data: Vec<u8>,
-    ) -> EyreResult<()> {
+    ) -> EyreResult<NetworkResult<()>> {
         let data_len = data.len();
+        let timeout_ms = {
+            let c = self.config().get();
+            c.network.connection_initial_timeout_ms;
+        };
 
         match dial_info.protocol_type() {
             ProtocolType::UDP => {
@@ -67,7 +71,7 @@ impl Network {
                 bail!("no support for TCP protocol")
             }
             ProtocolType::WS | ProtocolType::WSS => {
-                let pnc = WebsocketProtocolHandler::connect(None, &dial_info)
+                let pnc = WebsocketProtocolHandler::connect(None, &dial_info, timeout_ms)
                     .await
                     .wrap_err("connect failure")?;
                 pnc.send(data).await.wrap_err("send failure")?;
@@ -92,8 +96,13 @@ impl Network {
         dial_info: DialInfo,
         data: Vec<u8>,
         timeout_ms: u32,
-    ) -> EyreResult<TimeoutOr<Vec<u8>>> {
+    ) -> EyreResult<NetworkResult<Vec<u8>>> {
         let data_len = data.len();
+        let connect_timeout_ms = {
+            let c = self.config().get();
+            c.network.connection_initial_timeout_ms;
+        };
+
         match dial_info.protocol_type() {
             ProtocolType::UDP => {
                 bail!("no support for UDP protocol")
@@ -104,14 +113,9 @@ impl Network {
             ProtocolType::WS | ProtocolType::WSS => {
                 let pnc = match dial_info.protocol_type() {
                     ProtocolType::UDP => unreachable!(),
-                    ProtocolType::TCP => {
-                        let peer_socket_addr = dial_info.to_socket_addr();
-                        RawTcpProtocolHandler::connect(None, peer_socket_addr)
-                            .await
-                            .wrap_err("connect failure")?
-                    }
+                    ProtocolType::TCP => unreachable!(),
                     ProtocolType::WS | ProtocolType::WSS => {
-                        WebsocketProtocolHandler::connect(None, &dial_info)
+                        WebsocketProtocolHandler::connect(None, &dial_info, connect_timeout_ms)
                             .await
                             .wrap_err("connect failure")?
                     }
@@ -187,7 +191,7 @@ impl Network {
         &self,
         dial_info: DialInfo,
         data: Vec<u8>,
-    ) -> EyreResult<()> {
+    ) -> EyreResult<NetworkResult<()>> {
         let data_len = data.len();
         if dial_info.protocol_type() == ProtocolType::UDP {
             bail!("no support for UDP protocol");

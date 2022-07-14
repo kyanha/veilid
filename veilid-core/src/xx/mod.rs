@@ -11,7 +11,7 @@ mod log_thru;
 mod must_join_handle;
 mod must_join_single_future;
 mod mutable_future;
-// mod single_future;
+mod network_result;
 mod single_shot_eventual;
 mod split_url;
 mod tick_task;
@@ -69,8 +69,6 @@ cfg_if! {
         pub use async_lock::Mutex as AsyncMutex;
         pub use async_lock::MutexGuard as AsyncMutexGuard;
         pub use no_std_net::{ SocketAddr, SocketAddrV4, SocketAddrV6, ToSocketAddrs, IpAddr, Ipv4Addr, Ipv6Addr };
-        pub type SystemPinBoxFuture<T> = PinBox<dyn Future<Output = T> + Send + 'static>;
-        pub type SystemPinBoxFutureLifetime<'a, T> = PinBox<dyn Future<Output = T> + Send + 'a>;
         pub use async_executors::JoinHandle as LowLevelJoinHandle;
     } else {
         pub use std::string::String;
@@ -108,8 +106,6 @@ cfg_if! {
             }
         }
         pub use std::net::{ SocketAddr, SocketAddrV4, SocketAddrV6, ToSocketAddrs, IpAddr, Ipv4Addr, Ipv6Addr };
-        pub type SystemPinBoxFuture<T> = PinBox<dyn Future<Output = T> + Send + 'static>;
-        pub type SystemPinBoxFutureLifetime<'a, T> = PinBox<dyn Future<Output = T> + Send + 'a>;
     }
 }
 
@@ -125,7 +121,7 @@ pub use ip_extra::*;
 pub use must_join_handle::*;
 pub use must_join_single_future::*;
 pub use mutable_future::*;
-// pub use single_future::*;
+pub use network_result::*;
 pub use single_shot_eventual::*;
 pub use tick_task::*;
 pub use timeout_or::*;

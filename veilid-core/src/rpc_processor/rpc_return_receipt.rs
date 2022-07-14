@@ -3,6 +3,7 @@ use super::*;
 impl RPCProcessor {
     // Sends a unidirectional in-band return receipt
     // Can be sent via all methods including relays and routes
+    #[instrument(level = "trace", skip(self, receipt), ret, err)]
     pub async fn rpc_call_return_receipt<D: AsRef<[u8]>>(
         self,
         dest: Destination,

@@ -214,7 +214,7 @@ impl Network {
                 .inbound_udp_protocol_handlers
                 .contains_key(&addr)
             {
-                let idi_addrs = Self::translate_unspecified_address(&*self.inner.lock(), &addr);
+                let idi_addrs = self.translate_unspecified_address(&addr);
 
                 self.clone().create_udp_inbound_socket(addr).await?;
 

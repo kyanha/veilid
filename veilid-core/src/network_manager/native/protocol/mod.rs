@@ -22,16 +22,22 @@ impl ProtocolNetworkConnection {
     pub async fn connect(
         local_address: Option<SocketAddr>,
         dial_info: &DialInfo,
-    ) -> io::Result<ProtocolNetworkConnection> {
+        timeout_ms: u32,
+    ) -> io::Result<NetworkResult<ProtocolNetworkConnection>> {
         match dial_info.protocol_type() {
             ProtocolType::UDP => {
                 panic!("Should not connect to UDP dialinfo");
             }
             ProtocolType::TCP => {
-                tcp::RawTcpProtocolHandler::connect(local_address, dial_info.to_socket_addr()).await
+                tcp::RawTcpProtocolHandler::connect(
+                    local_address,
+                    dial_info.to_socket_addr(),
+                    timeout_ms,
+                )
+                .await
             }
             ProtocolType::WS | ProtocolType::WSS => {
-                ws::WebsocketProtocolHandler::connect(local_address, dial_info).await
+                ws::WebsocketProtocolHandler::connect(local_address, dial_info, timeout_ms).await
             }
         }
     }
@@ -46,7 +52,7 @@ impl ProtocolNetworkConnection {
         }
     }
 
-    // pub async fn close(&self) -> io::Result<()> {
+    // pub async fn close(&self) -> io::Result<NetworkResult<()>> {
     //     match self {
     //         Self::Dummy(d) => d.close(),
     //         Self::RawTcp(t) => t.close().await,
@@ -56,7 +62,7 @@ impl ProtocolNetworkConnection {
     //     }
     // }
 
-    pub async fn send(&self, message: Vec<u8>) -> io::Result<()> {
+    pub async fn send(&self, message: Vec<u8>) -> io::Result<NetworkResult<()>> {
         match self {
             Self::Dummy(d) => d.send(message),
             Self::RawTcp(t) => t.send(message).await,
@@ -65,7 +71,7 @@ impl ProtocolNetworkConnection {
             Self::Wss(w) => w.send(message).await,
         }
     }
-    pub async fn recv(&self) -> io::Result<Vec<u8>> {
+    pub async fn recv(&self) -> io::Result<NetworkResult<Vec<u8>>> {
         match self {
             Self::Dummy(d) => d.recv(),
             Self::RawTcp(t) => t.recv().await,

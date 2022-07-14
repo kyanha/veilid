@@ -22,7 +22,7 @@ pub trait ReceiptCallback: Send + 'static {
         receipt: Receipt,
         returns_so_far: u32,
         expected_returns: u32,
-    ) -> SystemPinBoxFuture<()>;
+    ) -> SendPinBoxFuture<()>;
 }
 impl<F, T> ReceiptCallback for T
 where
@@ -35,7 +35,7 @@ where
         receipt: Receipt,
         returns_so_far: u32,
         expected_returns: u32,
-    ) -> SystemPinBoxFuture<()> {
+    ) -> SendPinBoxFuture<()> {
         Box::pin(self(event, receipt, returns_so_far, expected_returns))
     }
 }
@@ -189,7 +189,7 @@ impl ReceiptManager {
     fn perform_callback(
         evt: ReceiptEvent,
         record_mut: &mut ReceiptRecord,
-    ) -> Option<SystemPinBoxFuture<()>> {
+    ) -> Option<SendPinBoxFuture<()>> {
         match &mut record_mut.receipt_callback {
             ReceiptRecordCallbackType::Normal(callback) => Some(callback.call(
                 evt,

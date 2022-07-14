@@ -43,7 +43,6 @@ struct NetworkInner {
     tcp_port: u16,
     ws_port: u16,
     wss_port: u16,
-    interfaces: NetworkInterfaces,
     // udp
     bound_first_udp: BTreeMap<u16, Option<(socket2::Socket, socket2::Socket)>>,
     inbound_udp_protocol_handlers: BTreeMap<SocketAddr, RawUdpProtocolHandler>,
@@ -60,8 +59,11 @@ struct NetworkUnlockedInner {
     routing_table: RoutingTable,
     network_manager: NetworkManager,
     connection_manager: ConnectionManager,
+    // Network
+    interfaces: NetworkInterfaces,
     // Background processes
     update_network_class_task: TickTask<EyreReport>,
+    network_interfaces_task: TickTask<EyreReport>,
 }
 
 #[derive(Clone)]
@@ -85,7 +87,6 @@ impl Network {
             tcp_port: 0u16,
             ws_port: 0u16,
             wss_port: 0u16,
-            interfaces: NetworkInterfaces::new(),
             bound_first_udp: BTreeMap::new(),
             inbound_udp_protocol_handlers: BTreeMap::new(),
             outbound_udpv4_protocol_handler: None,
@@ -105,7 +106,9 @@ impl Network {
             network_manager,
             routing_table,
             connection_manager,
+            interfaces: NetworkInterfaces::new(),
             update_network_class_task: TickTask::new(1),
+            network_interfaces_task: TickTask::new(5),
         }
     }
 
@@ -131,6 +134,15 @@ impl Network {
                 .update_network_class_task
                 .set_routine(move |s, l, t| {
                     Box::pin(this2.clone().update_network_class_task_routine(s, l, t))
+                });
+        }
+        // Set network interfaces tick task
+        {
+            let this2 = this.clone();
+            this.unlocked_inner
+                .network_interfaces_task
+                .set_routine(move |s, l, t| {
+                    Box::pin(this2.clone().network_interfaces_task_routine(s, l, t))
                 });
         }
 
@@ -219,11 +231,11 @@ impl Network {
         inner.join_handles.push(jh);
     }
 
-    fn translate_unspecified_address(inner: &NetworkInner, from: &SocketAddr) -> Vec<SocketAddr> {
+    fn translate_unspecified_address(&self, from: &SocketAddr) -> Vec<SocketAddr> {
         if !from.ip().is_unspecified() {
             vec![*from]
         } else {
-            inner
+            self.unlocked_inner
                 .interfaces
                 .best_addresses()
                 .iter()
@@ -259,19 +271,17 @@ impl Network {
     where
         F: FnOnce(&[IpAddr]) -> R,
     {
-        let inner = self.inner.lock();
-        inner.interfaces.with_best_addresses(f)
+        self.unlocked_inner.interfaces.with_best_addresses(f)
     }
 
     // See if our interface addresses have changed, if so we need to punt the network
     // and redo all our addresses. This is overkill, but anything more accurate
     // would require inspection of routing tables that we dont want to bother with
-    pub async fn check_interface_addresses(&self) -> EyreResult<bool> {
-        let mut inner = self.inner.lock();
-        if !inner.interfaces.refresh().await? {
+    async fn check_interface_addresses(&self) -> EyreResult<bool> {
+        if !self.unlocked_inner.interfaces.refresh().await? {
             return Ok(false);
         }
-        inner.network_needs_restart = true;
+        self.inner.lock().network_needs_restart = true;
         Ok(true)
     }
 
@@ -286,8 +296,13 @@ impl Network {
         &self,
         dial_info: DialInfo,
         data: Vec<u8>,
-    ) -> EyreResult<()> {
+    ) -> EyreResult<NetworkResult<()>> {
         let data_len = data.len();
+        let connect_timeout_ms = {
+            let c = self.config.get();
+            c.network.connection_initial_timeout_ms
+        };
+
         match dial_info.protocol_type() {
             ProtocolType::UDP => {
                 let peer_socket_addr = dial_info.to_socket_addr();
@@ -296,19 +311,28 @@ impl Network {
                     .wrap_err("create socket failure")?;
                 h.send_message(data, peer_socket_addr)
                     .await
+                    .map(NetworkResult::Value)
                     .wrap_err("send message failure")?;
             }
             ProtocolType::TCP => {
                 let peer_socket_addr = dial_info.to_socket_addr();
-                let pnc = RawTcpProtocolHandler::connect(None, peer_socket_addr)
-                    .await
-                    .wrap_err("connect failure")?;
+                let pnc = network_result_try!(RawTcpProtocolHandler::connect(
+                    None,
+                    peer_socket_addr,
+                    connect_timeout_ms
+                )
+                .await
+                .wrap_err("connect failure")?);
                 pnc.send(data).await.wrap_err("send failure")?;
             }
             ProtocolType::WS | ProtocolType::WSS => {
-                let pnc = WebsocketProtocolHandler::connect(None, &dial_info)
-                    .await
-                    .wrap_err("connect failure")?;
+                let pnc = network_result_try!(WebsocketProtocolHandler::connect(
+                    None,
+                    &dial_info,
+                    connect_timeout_ms
+                )
+                .await
+                .wrap_err("connect failure")?);
                 pnc.send(data).await.wrap_err("send failure")?;
             }
         }
@@ -316,7 +340,7 @@ impl Network {
         self.network_manager()
             .stats_packet_sent(dial_info.to_ip_addr(), data_len as u64);
 
-        Ok(())
+        Ok(NetworkResult::Value(()))
     }
 
     // Send data to a dial info, unbound, using a new connection from a random port
@@ -324,14 +348,19 @@ impl Network {
     // This creates a short-lived connection in the case of connection-oriented protocols
     // for the purpose of sending this one message.
     // This bypasses the connection table as it is not a 'node to node' connection.
-    #[instrument(level="trace", err, skip(self, data), fields(ret.timeout_or, data.len = data.len()))]
+    #[instrument(level="trace", err, skip(self, data), fields(data.len = data.len()))]
     pub async fn send_recv_data_unbound_to_dial_info(
         &self,
         dial_info: DialInfo,
         data: Vec<u8>,
         timeout_ms: u32,
-    ) -> EyreResult<TimeoutOr<Vec<u8>>> {
+    ) -> EyreResult<NetworkResult<Vec<u8>>> {
         let data_len = data.len();
+        let connect_timeout_ms = {
+            let c = self.config.get();
+            c.network.connection_initial_timeout_ms
+        };
+
         match dial_info.protocol_type() {
             ProtocolType::UDP => {
                 let peer_socket_addr = dial_info.to_socket_addr();
@@ -346,18 +375,11 @@ impl Network {
 
                 // receive single response
                 let mut out = vec![0u8; MAX_MESSAGE_SIZE];
-                let timeout_or_ret = timeout(timeout_ms, h.recv_message(&mut out))
-                    .await
-                    .into_timeout_or()
-                    .into_result()
+                let (recv_len, recv_addr) =
+                    network_result_try!(timeout(timeout_ms, h.recv_message(&mut out))
+                        .await
+                        .into_network_result())
                     .wrap_err("recv_message failure")?;
-                let (recv_len, recv_addr) = match timeout_or_ret {
-                    TimeoutOr::Value(v) => v,
-                    TimeoutOr::Timeout => {
-                        tracing::Span::current().record("ret.timeout_or", &"Timeout".to_owned());
-                        return Ok(TimeoutOr::Timeout);
-                    }
-                };
 
                 let recv_socket_addr = recv_addr.remote_address().to_socket_addr();
                 self.network_manager()
@@ -368,48 +390,37 @@ impl Network {
                     bail!("wrong address");
                 }
                 out.resize(recv_len, 0u8);
-                Ok(TimeoutOr::Value(out))
+                Ok(NetworkResult::Value(out))
             }
             ProtocolType::TCP | ProtocolType::WS | ProtocolType::WSS => {
-                let pnc = match dial_info.protocol_type() {
+                let pnc = network_result_try!(match dial_info.protocol_type() {
                     ProtocolType::UDP => unreachable!(),
                     ProtocolType::TCP => {
                         let peer_socket_addr = dial_info.to_socket_addr();
-                        RawTcpProtocolHandler::connect(None, peer_socket_addr)
+                        RawTcpProtocolHandler::connect(None, peer_socket_addr, connect_timeout_ms)
                             .await
                             .wrap_err("connect failure")?
                     }
                     ProtocolType::WS | ProtocolType::WSS => {
-                        WebsocketProtocolHandler::connect(None, &dial_info)
+                        WebsocketProtocolHandler::connect(None, &dial_info, connect_timeout_ms)
                             .await
                             .wrap_err("connect failure")?
                     }
-                };
+                });
 
                 pnc.send(data).await.wrap_err("send failure")?;
                 self.network_manager()
                     .stats_packet_sent(dial_info.to_ip_addr(), data_len as u64);
 
-                let out = timeout(timeout_ms, pnc.recv())
+                let out = network_result_try!(network_result_try!(timeout(timeout_ms, pnc.recv())
                     .await
-                    .into_timeout_or()
-                    .into_result()
-                    .wrap_err("recv failure")?;
+                    .into_network_result())
+                .wrap_err("recv failure")?);
 
-                tracing::Span::current().record(
-                    "ret.timeout_or",
-                    &match out {
-                        TimeoutOr::<Vec<u8>>::Value(ref v) => format!("Value(len={})", v.len()),
-                        TimeoutOr::<Vec<u8>>::Timeout => "Timeout".to_owned(),
-                    },
-                );
+                self.network_manager()
+                    .stats_packet_rcvd(dial_info.to_ip_addr(), out.len() as u64);
 
-                if let TimeoutOr::Value(out) = &out {
-                    self.network_manager()
-                        .stats_packet_rcvd(dial_info.to_ip_addr(), out.len() as u64);
-                }
-
-                Ok(out)
+                Ok(NetworkResult::Value(out))
             }
         }
     }
@@ -449,21 +460,27 @@ impl Network {
         // Try to send to the exact existing connection if one exists
         if let Some(conn) = self.connection_manager().get_connection(descriptor).await {
             // connection exists, send over it
-            conn.send_async(data)
-                .await
-                .wrap_err("sending data to existing connection")?;
+            match conn.send_async(data).await {
+                ConnectionHandleSendResult::Sent => {
+                    // Network accounting
+                    self.network_manager().stats_packet_sent(
+                        descriptor.remote().to_socket_addr().ip(),
+                        data_len as u64,
+                    );
 
-            // Network accounting
-            self.network_manager()
-                .stats_packet_sent(descriptor.remote().to_socket_addr().ip(), data_len as u64);
-
-            // Data was consumed
-            Ok(None)
-        } else {
-            // Connection or didn't exist
-            // Pass the data back out so we don't own it any more
-            Ok(Some(data))
+                    // Data was consumed
+                    return Ok(None);
+                }
+                ConnectionHandleSendResult::NotSent(data) => {
+                    // Couldn't send
+                    // Pass the data back out so we don't own it any more
+                    return Ok(Some(data));
+                }
+            }
         }
+        // Connection didn't exist
+        // Pass the data back out so we don't own it any more
+        Ok(Some(data))
     }
 
     // Send data directly to a dial info, possibly without knowing which node it is going to
@@ -472,40 +489,42 @@ impl Network {
         &self,
         dial_info: DialInfo,
         data: Vec<u8>,
-    ) -> EyreResult<()> {
+    ) -> EyreResult<NetworkResult<()>> {
         let data_len = data.len();
-        // Handle connectionless protocol
         if dial_info.protocol_type() == ProtocolType::UDP {
+            // Handle connectionless protocol
             let peer_socket_addr = dial_info.to_socket_addr();
-            if let Some(ph) = self.find_best_udp_protocol_handler(&peer_socket_addr, &None) {
-                let res = ph
-                    .send_message(data, peer_socket_addr)
-                    .await
-                    .wrap_err("failed to send data to dial info");
-                if res.is_ok() {
-                    // Network accounting
-                    self.network_manager()
-                        .stats_packet_sent(peer_socket_addr.ip(), data_len as u64);
-                }
-                return res;
+            let ph = match self.find_best_udp_protocol_handler(&peer_socket_addr, &None) {
+                Some(ph) => ph,
+                None => bail!("no appropriate UDP protocol handler for dial_info"),
+            };
+            network_result_try!(ph
+                .send_message(data, peer_socket_addr)
+                .await
+                .into_network_result()
+                .wrap_err("failed to send data to dial info")?);
+        } else {
+            // Handle connection-oriented protocols
+            let local_addr = self.get_preferred_local_address(&dial_info);
+            let conn = network_result_try!(
+                self.connection_manager()
+                    .get_or_create_connection(Some(local_addr), dial_info.clone())
+                    .await?
+            );
+
+            if let ConnectionHandleSendResult::NotSent(_) = conn.send_async(data).await {
+                return Ok(NetworkResult::NoConnection(io::Error::new(
+                    io::ErrorKind::ConnectionReset,
+                    "failed to send",
+                )));
             }
-            bail!("no appropriate UDP protocol handler for dial_info");
         }
 
-        // Handle connection-oriented protocols
-        let local_addr = self.get_preferred_local_address(&dial_info);
-        let conn = self
-            .connection_manager()
-            .get_or_create_connection(Some(local_addr), dial_info.clone())
-            .await?;
+        // Network accounting
+        self.network_manager()
+            .stats_packet_sent(dial_info.to_ip_addr(), data_len as u64);
 
-        let res = conn.send_async(data).await;
-        if res.is_ok() {
-            // Network accounting
-            self.network_manager()
-                .stats_packet_sent(dial_info.to_ip_addr(), data_len as u64);
-        }
-        res
+        Ok(NetworkResult::Value(()))
     }
 
     /////////////////////////////////////////////////////////////////
@@ -517,15 +536,13 @@ impl Network {
     #[instrument(level = "debug", err, skip_all)]
     pub async fn startup(&self) -> EyreResult<()> {
         // initialize interfaces
-        let mut interfaces = NetworkInterfaces::new();
-        interfaces.refresh().await?;
+        self.unlocked_inner.interfaces.refresh().await?;
 
         let protocol_config = {
             let mut inner = self.inner.lock();
 
             // Create stop source
             inner.stop_source = Some(StopSource::new());
-            inner.interfaces = interfaces;
 
             // get protocol config
             let protocol_config = {
@@ -666,6 +683,19 @@ impl Network {
 
     //////////////////////////////////////////
 
+    #[instrument(level = "trace", skip(self), err)]
+    pub async fn network_interfaces_task_routine(
+        self,
+        stop_token: StopToken,
+        _l: u64,
+        _t: u64,
+    ) -> EyreResult<()> {
+        if self.check_interface_addresses().await? {
+            info!("interface addresses changed, restarting network");
+        }
+        Ok(())
+    }
+
     pub async fn tick(&self) -> EyreResult<()> {
         let network_class = self.get_network_class().unwrap_or(NetworkClass::Invalid);
         let routing_table = self.routing_table();
@@ -678,6 +708,12 @@ impl Network {
             if rth.unreliable_entry_count + rth.reliable_entry_count >= 2 {
                 self.unlocked_inner.update_network_class_task.tick().await?;
             }
+        }
+
+        // If we aren't resetting the network already,
+        // check our network interfaces to see if they have changed
+        if !self.needs_restart() {
+            self.unlocked_inner.network_interfaces_task.tick().await?;
         }
 
         Ok(())

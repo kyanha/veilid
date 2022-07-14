@@ -3,6 +3,7 @@ use super::*;
 impl RPCProcessor {
     // Send FindNodeQ RPC request, receive FindNodeA answer
     // Can be sent via all methods including relays and routes
+    #[instrument(level = "trace", skip(self), ret, err)]
     pub async fn rpc_call_find_node(
         self,
         dest: Destination,

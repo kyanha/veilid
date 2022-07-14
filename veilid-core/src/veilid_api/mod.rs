@@ -8,7 +8,7 @@ pub use serialize_helpers::*;
 use crate::*;
 
 pub use crate::xx::{
-    IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6, SystemPinBoxFuture,
+    IpAddr, Ipv4Addr, Ipv6Addr, SendPinBoxFuture, SocketAddr, SocketAddrV4, SocketAddrV6,
     ToSocketAddrs,
 };
 pub use alloc::string::ToString;
@@ -1593,7 +1593,7 @@ pub struct PeerStats {
 }
 
 pub type ValueChangeCallback =
-    Arc<dyn Fn(ValueKey, Vec<u8>) -> SystemPinBoxFuture<()> + Send + Sync + 'static>;
+    Arc<dyn Fn(ValueKey, Vec<u8>) -> SendPinBoxFuture<()> + Send + Sync + 'static>;
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 

@@ -290,22 +290,27 @@ impl NetworkInterface {
     }
 }
 
-#[derive(PartialEq, Eq, Clone)]
-pub struct NetworkInterfaces {
+pub struct NetworkInterfacesInner {
     valid: bool,
     interfaces: BTreeMap<String, NetworkInterface>,
     interface_address_cache: Vec<IpAddr>,
 }
 
+#[derive(Clone)]
+pub struct NetworkInterfaces {
+    inner: Arc<Mutex<NetworkInterfacesInner>>,
+}
+
 impl fmt::Debug for NetworkInterfaces {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let inner = self.inner.lock();
         f.debug_struct("NetworkInterfaces")
-            .field("valid", &self.valid)
-            .field("interfaces", &self.interfaces)
+            .field("valid", &inner.valid)
+            .field("interfaces", &inner.interfaces)
             .finish()?;
         if f.alternate() {
             writeln!(f)?;
-            writeln!(f, "// best_addresses: {:?}", self.best_addresses())?;
+            writeln!(f, "// best_addresses: {:?}", inner.interface_address_cache)?;
         }
         Ok(())
     }
@@ -315,54 +320,78 @@ impl fmt::Debug for NetworkInterfaces {
 impl NetworkInterfaces {
     pub fn new() -> Self {
         Self {
-            valid: false,
-            interfaces: BTreeMap::new(),
-            interface_address_cache: Vec::new(),
+            inner: Arc::new(Mutex::new(NetworkInterfacesInner {
+                valid: false,
+                interfaces: BTreeMap::new(),
+                interface_address_cache: Vec::new(),
+            })),
         }
     }
+
     pub fn is_valid(&self) -> bool {
-        self.valid
+        let inner = self.inner.lock();
+        inner.valid
     }
-    pub fn clear(&mut self) {
-        self.interfaces.clear();
-        self.interface_address_cache.clear();
-        self.valid = false;
+    pub fn clear(&self) {
+        let mut inner = self.inner.lock();
+
+        inner.interfaces.clear();
+        inner.interface_address_cache.clear();
+        inner.valid = false;
     }
     // returns Ok(false) if refresh had no changes, Ok(true) if changes were present
-    pub async fn refresh(&mut self) -> EyreResult<bool> {
-        self.valid = false;
-        let last_interfaces = core::mem::take(&mut self.interfaces);
+    pub async fn refresh(&self) -> EyreResult<bool> {
+        let mut last_interfaces = {
+            let mut last_interfaces = BTreeMap::<String, NetworkInterface>::new();
+            let mut platform_support = PlatformSupport::new()?;
+            platform_support
+                .get_interfaces(&mut last_interfaces)
+                .await?;
+            last_interfaces
+        };
 
-        let mut platform_support = PlatformSupport::new()?;
-        platform_support
-            .get_interfaces(&mut self.interfaces)
-            .await?;
+        let mut inner = self.inner.lock();
+        core::mem::swap(&mut inner.interfaces, &mut last_interfaces);
+        inner.valid = true;
 
-        self.valid = true;
-
-        let changed = last_interfaces != self.interfaces;
+        let changed = last_interfaces != inner.interfaces;
         if changed {
-            self.cache_best_addresses();
+            Self::cache_best_addresses(&mut *inner);
 
-            //trace!("NetworkInterfaces refreshed: {:#?}?", self);
             trace!(
                 "NetworkInterfaces refreshed: {:#?}?",
-                self.interface_address_cache
+                inner.interface_address_cache
             );
         }
         Ok(changed)
     }
-    pub fn len(&self) -> usize {
-        self.interfaces.len()
-    }
-    pub fn iter(&self) -> std::collections::btree_map::Iter<String, NetworkInterface> {
-        self.interfaces.iter()
+    pub fn with_interfaces<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(&BTreeMap<String, NetworkInterface>) -> R,
+    {
+        let inner = self.inner.lock();
+        f(&inner.interfaces)
     }
 
-    fn cache_best_addresses(&mut self) {
+    pub fn best_addresses(&self) -> Vec<IpAddr> {
+        let inner = self.inner.lock();
+        inner.interface_address_cache.clone()
+    }
+
+    pub fn with_best_addresses<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(&[IpAddr]) -> R,
+    {
+        let inner = self.inner.lock();
+        f(&inner.interface_address_cache)
+    }
+
+    /////////////////////////////////////////////
+
+    fn cache_best_addresses(inner: &mut NetworkInterfacesInner) {
         // Reduce interfaces to their best routable ip addresses
         let mut intf_addrs = Vec::new();
-        for intf in self.interfaces.values() {
+        for intf in inner.interfaces.values() {
             if !intf.is_running() || !intf.has_default_route() || intf.is_loopback() {
                 continue;
             }
@@ -378,17 +407,6 @@ impl NetworkInterfaces {
         intf_addrs.sort();
 
         // Now export just the addresses
-        self.interface_address_cache = intf_addrs.iter().map(|x| x.if_addr().ip()).collect()
-    }
-
-    pub fn best_addresses(&self) -> Vec<IpAddr> {
-        self.interface_address_cache.clone()
-    }
-
-    pub fn with_best_addresses<F, R>(&self, f: F) -> R
-    where
-        F: FnOnce(&[IpAddr]) -> R,
-    {
-        f(&self.interface_address_cache)
+        inner.interface_address_cache = intf_addrs.iter().map(|x| x.if_addr().ip()).collect()
     }
 }

@@ -64,7 +64,7 @@ struct CryptoInner {
     node_id: DHTKey,
     node_id_secret: DHTKeySecret,
     dh_cache: DHCache,
-    flush_future: Option<SystemPinBoxFuture<()>>,
+    flush_future: Option<SendPinBoxFuture<()>>,
 }
 
 #[derive(Clone)]

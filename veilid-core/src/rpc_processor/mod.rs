@@ -269,8 +269,8 @@ impl RPCProcessor {
     }
 
     // Search the DHT for a specific node corresponding to a key unless we have that node in our routing table already, and return the node reference
-    // Note: This routine can possible be recursive, hence the SystemPinBoxFuture async form
-    pub fn resolve_node(&self, node_id: DHTKey) -> SystemPinBoxFuture<Result<NodeRef, RPCError>> {
+    // Note: This routine can possible be recursive, hence the SendPinBoxFuture async form
+    pub fn resolve_node(&self, node_id: DHTKey) -> SendPinBoxFuture<Result<NodeRef, RPCError>> {
         let this = self.clone();
         Box::pin(async move {
             let routing_table = this.routing_table();

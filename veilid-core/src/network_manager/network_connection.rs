@@ -16,7 +16,7 @@ cfg_if::cfg_if! {
                 &self,
                 stream: AsyncPeekStream,
                 peer_addr: SocketAddr,
-            ) -> SystemPinBoxFuture<io::Result<Option<ProtocolNetworkConnection>>>;
+            ) -> SendPinBoxFuture<io::Result<Option<ProtocolNetworkConnection>>>;
         }
 
         pub trait ProtocolAcceptHandlerClone {
@@ -56,11 +56,11 @@ impl DummyNetworkConnection {
     // pub fn close(&self) -> io::Result<()> {
     //     Ok(())
     // }
-    pub fn send(&self, _message: Vec<u8>) -> io::Result<()> {
-        Ok(())
+    pub fn send(&self, _message: Vec<u8>) -> io::Result<NetworkResult<()>> {
+        Ok(NetworkResult::Value(()))
     }
-    pub fn recv(&self) -> io::Result<Vec<u8>> {
-        Ok(Vec::new())
+    pub fn recv(&self) -> io::Result<NetworkResult<Vec<u8>>> {
+        Ok(NetworkResult::Value(Vec::new()))
     }
 }
 
@@ -179,26 +179,26 @@ impl NetworkConnection {
         protocol_connection: &ProtocolNetworkConnection,
         stats: Arc<Mutex<NetworkConnectionStats>>,
         message: Vec<u8>,
-    ) -> io::Result<()> {
+    ) -> io::Result<NetworkResult<()>> {
         let ts = intf::get_timestamp();
-        let out = protocol_connection.send(message).await;
-        if out.is_ok() {
-            let mut stats = stats.lock();
-            stats.last_message_sent_time.max_assign(Some(ts));
-        }
-        out
+        let out = network_result_try!(protocol_connection.send(message).await?);
+
+        let mut stats = stats.lock();
+        stats.last_message_sent_time.max_assign(Some(ts));
+
+        Ok(NetworkResult::Value(out))
     }
     async fn recv_internal(
         protocol_connection: &ProtocolNetworkConnection,
         stats: Arc<Mutex<NetworkConnectionStats>>,
-    ) -> io::Result<Vec<u8>> {
+    ) -> io::Result<NetworkResult<Vec<u8>>> {
         let ts = intf::get_timestamp();
-        let out = protocol_connection.recv().await;
-        if out.is_ok() {
-            let mut stats = stats.lock();
-            stats.last_message_recv_time.max_assign(Some(ts));
-        }
-        out
+        let out = network_result_try!(protocol_connection.recv().await?);
+
+        let mut stats = stats.lock();
+        stats.last_message_recv_time.max_assign(Some(ts));
+
+        Ok(NetworkResult::Value(out))
     }
 
     pub fn stats(&self) -> NetworkConnectionStats {
@@ -220,7 +220,7 @@ impl NetworkConnection {
         protocol_connection: ProtocolNetworkConnection,
         connection_inactivity_timeout_ms: u32,
         stats: Arc<Mutex<NetworkConnectionStats>>,
-    ) -> SystemPinBoxFuture<()> {
+    ) -> SendPinBoxFuture<()> {
         Box::pin(async move {
             log_net!(
                 "== Starting process_connection loop for {:?}",
@@ -283,7 +283,7 @@ impl NetworkConnection {
                     let receiver_fut = Self::recv_internal(&protocol_connection, stats.clone())
                         .then(|res| async {
                             match res {
-                                Ok(message) => {
+                                Ok(NetworkResult::Value(message)) => {
                                     // Pass received messages up to the network manager for processing
                                     if let Err(e) = network_manager
                                         .on_recv_envelope(message.as_slice(), descriptor)
@@ -295,9 +295,19 @@ impl NetworkConnection {
                                         RecvLoopAction::Recv
                                     }
                                 }
+                                Ok(NetworkResult::Timeout) => {
+                                    // Connection unable to receive, closed
+                                    log_net!(debug "Timeout");
+                                    RecvLoopAction::Finish
+                                }
+                                Ok(NetworkResult::NoConnection(e)) => {
+                                    // Connection unable to receive, closed
+                                    log_net!(debug "No connection: {}", e);
+                                    RecvLoopAction::Finish
+                                }
                                 Err(e) => {
                                     // Connection unable to receive, closed
-                                    log_net!(debug e);
+                                    log_net!(error e);
                                     RecvLoopAction::Finish
                                 }
                             }

@@ -31,6 +31,11 @@ impl VeilidLogs {
         let mut layers = Vec::new();
         let mut filters = BTreeMap::new();
 
+        // Error layer
+        // XXX: Spantrace capture causes rwlock deadlocks/crashes
+        // XXX:
+        //layers.push(tracing_error::ErrorLayer::default().boxed());
+
         // Terminal logger
         if settingsr.logging.terminal.enabled {
             let filter = veilid_core::VeilidLayerFilter::new(

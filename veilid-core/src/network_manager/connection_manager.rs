@@ -142,7 +142,7 @@ impl ConnectionManager {
         &self,
         inner: &mut ConnectionManagerInner,
         conn: ProtocolNetworkConnection,
-    ) -> EyreResult<ConnectionHandle> {
+    ) -> EyreResult<NetworkResult<ConnectionHandle>> {
         log_net!("on_new_protocol_network_connection: {:?}", conn);
 
         // Wrap with NetworkConnection object to start the connection processing loop
@@ -155,7 +155,7 @@ impl ConnectionManager {
         let handle = conn.get_handle();
         // Add to the connection table
         inner.connection_table.add_connection(conn)?;
-        Ok(handle)
+        Ok(NetworkResult::Value(handle))
     }
 
     // Called when we want to create a new connection or get the current one that already exists
@@ -165,7 +165,7 @@ impl ConnectionManager {
         &self,
         local_addr: Option<SocketAddr>,
         dial_info: DialInfo,
-    ) -> EyreResult<ConnectionHandle> {
+    ) -> EyreResult<NetworkResult<ConnectionHandle>> {
         let killed = {
             let mut inner = self.arc.inner.lock();
             let inner = match &mut *inner {
@@ -202,7 +202,7 @@ impl ConnectionManager {
                     peer_address.green()
                 );
 
-                return Ok(conn);
+                return Ok(NetworkResult::Value(conn));
             }
 
             // Drop any other protocols connections to this remote that have the same local addr
@@ -254,20 +254,33 @@ impl ConnectionManager {
             k.await;
         }
 
+        // Get connection timeout
+        let timeout_ms = {
+            let config = self.network_manager().config();
+            let c = config.get();
+            c.network.connection_initial_timeout_ms
+        };
+
         // Attempt new connection
-        let conn = loop {
-            match ProtocolNetworkConnection::connect(local_addr, &dial_info).await {
-                Ok(v) => break Ok(v),
+        let conn = network_result_try!(loop {
+            let result_net_res =
+                ProtocolNetworkConnection::connect(local_addr, &dial_info, timeout_ms).await;
+            match result_net_res {
+                Ok(net_res) => {
+                    if net_res.is_value() || retry_count == 0 {
+                        break net_res;
+                    }
+                }
                 Err(e) => {
                     if retry_count == 0 {
-                        break Err(e);
+                        return Err(e).wrap_err("failed to connect");
                     }
-                    log_net!(debug "get_or_create_connection retries left: {}", retry_count);
-                    retry_count -= 1;
-                    intf::sleep(500).await;
                 }
-            }
-        }?;
+            };
+            log_net!(debug "get_or_create_connection retries left: {}", retry_count);
+            retry_count -= 1;
+            intf::sleep(500).await;
+        });
 
         // Add to the connection table
         let mut inner = self.arc.inner.lock();

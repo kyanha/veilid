@@ -80,33 +80,45 @@ where
     //         .map_err(to_io)
     // }
 
-    #[instrument(level = "trace", err, skip(self, message), fields(message.len = message.len()))]
-    pub async fn send(&self, message: Vec<u8>) -> io::Result<()> {
+    #[instrument(level = "trace", err, skip(self, message), fields(network_result, message.len = message.len()))]
+    pub async fn send(&self, message: Vec<u8>) -> io::Result<NetworkResult<()>> {
         if message.len() > MAX_MESSAGE_SIZE {
             bail_io_error_other!("received too large WS message");
         }
-        self.stream
+        let out = self
+            .stream
             .clone()
             .send(Message::binary(message))
             .await
             .map_err(to_io)
+            .into_network_result()?;
+        tracing::Span::current().record(
+            "network_result",
+            &match &out {
+                NetworkResult::Timeout => "Timeout".to_owned(),
+                NetworkResult::NoConnection(e) => format!("No connection: {}", e),
+                NetworkResult::Value(()) => "Value(())".to_owned(),
+            },
+        );
+        Ok(out)
     }
 
-    #[instrument(level = "trace", err, skip(self), fields(ret.len))]
-    pub async fn recv(&self) -> io::Result<Vec<u8>> {
+    #[instrument(level = "trace", err, skip(self), fields(network_result, ret.len))]
+    pub async fn recv(&self) -> io::Result<NetworkResult<Vec<u8>>> {
         let out = match self.stream.clone().next().await {
             Some(Ok(Message::Binary(v))) => {
                 if v.len() > MAX_MESSAGE_SIZE {
                     return Err(io::Error::new(
-                        io::ErrorKind::ConnectionReset,
+                        io::ErrorKind::InvalidData,
                         "too large ws message",
                     ));
                 }
-                v
+                NetworkResult::Value(v)
             }
-            Some(Ok(Message::Close(_))) => {
-                return Err(io::Error::new(io::ErrorKind::ConnectionReset, "closeframe"))
-            }
+            Some(Ok(Message::Close(_))) => NetworkResult::NoConnection(io::Error::new(
+                io::ErrorKind::ConnectionReset,
+                "closeframe",
+            )),
             Some(Ok(x)) => {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidData,
@@ -114,15 +126,20 @@ where
                 ));
             }
             Some(Err(e)) => return Err(to_io(e)),
-            None => {
-                return Err(io::Error::new(
-                    io::ErrorKind::ConnectionReset,
-                    "connection ended",
-                ))
-            }
+            None => NetworkResult::NoConnection(io::Error::new(
+                io::ErrorKind::ConnectionReset,
+                "connection ended",
+            )),
         };
 
-        tracing::Span::current().record("ret.len", &out.len());
+        tracing::Span::current().record(
+            "network_result",
+            &match &out {
+                NetworkResult::Timeout => "Timeout".to_owned(),
+                NetworkResult::NoConnection(e) => format!("No connection: {}", e),
+                NetworkResult::Value(v) => format!("Value(len={})", v.len()),
+            },
+        );
         Ok(out)
     }
 }
@@ -227,7 +244,8 @@ impl WebsocketProtocolHandler {
     pub async fn connect(
         local_address: Option<SocketAddr>,
         dial_info: &DialInfo,
-    ) -> io::Result<ProtocolNetworkConnection> {
+        timeout_ms: u32,
+    ) -> io::Result<NetworkResult<ProtocolNetworkConnection>> {
         // Split dial info up
         let (tls, scheme) = match dial_info {
             DialInfo::WS(_) => (false, "ws"),
@@ -253,7 +271,10 @@ impl WebsocketProtocolHandler {
         };
 
         // Non-blocking connect to remote address
-        let tcp_stream = nonblocking_connect(socket, remote_socket_addr).await?;
+        let tcp_stream =
+            network_result_try!(nonblocking_connect(socket, remote_socket_addr, timeout_ms)
+                .await
+                .folded()?);
 
         // See what local address we ended up with
         let actual_local_addr = tcp_stream.local_addr()?;
@@ -274,16 +295,16 @@ impl WebsocketProtocolHandler {
                 .await
                 .map_err(to_io_error_other)?;
 
-            Ok(ProtocolNetworkConnection::Wss(
+            Ok(NetworkResult::Value(ProtocolNetworkConnection::Wss(
                 WebsocketNetworkConnection::new(descriptor, ws_stream),
-            ))
+            )))
         } else {
             let (ws_stream, _response) = client_async(request, tcp_stream)
                 .await
                 .map_err(to_io_error_other)?;
-            Ok(ProtocolNetworkConnection::Ws(
+            Ok(NetworkResult::Value(ProtocolNetworkConnection::Ws(
                 WebsocketNetworkConnection::new(descriptor, ws_stream),
-            ))
+            )))
         }
     }
 }
@@ -293,7 +314,7 @@ impl ProtocolAcceptHandler for WebsocketProtocolHandler {
         &self,
         stream: AsyncPeekStream,
         peer_addr: SocketAddr,
-    ) -> SystemPinBoxFuture<io::Result<Option<ProtocolNetworkConnection>>> {
+    ) -> SendPinBoxFuture<io::Result<Option<ProtocolNetworkConnection>>> {
         Box::pin(self.clone().on_accept_async(stream, peer_addr))
     }
 }

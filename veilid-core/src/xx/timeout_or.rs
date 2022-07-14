@@ -40,7 +40,9 @@ pub trait TimeoutOrExt<T> {
 
 impl<T> TimeoutOrExt<T> for Result<T, TimeoutError> {
     fn into_timeout_or(self) -> TimeoutOr<T> {
-        self.ok().map(|v| TimeoutOr::<T>::Value(v)).unwrap_or(TimeoutOr::<T>::Timeout)
+        self.ok()
+            .map(|v| TimeoutOr::<T>::Value(v))
+            .unwrap_or(TimeoutOr::<T>::Timeout)
     }
 }
 
@@ -62,16 +64,15 @@ pub trait TimeoutOrResultExt<T, E> {
     fn into_result(self) -> Result<TimeoutOr<T>, E>;
 }
 
-impl<T,E> TimeoutOrResultExt<T, E> for TimeoutOr<Result<T,E>> {
+impl<T, E> TimeoutOrResultExt<T, E> for TimeoutOr<Result<T, E>> {
     fn into_result(self) -> Result<TimeoutOr<T>, E> {
         match self {
-            TimeoutOr::<Result::<T,E>>::Timeout => Ok(TimeoutOr::<T>::Timeout),
-            TimeoutOr::<Result::<T,E>>::Value(Ok(v)) => Ok(TimeoutOr::<T>::Value(v)),
-            TimeoutOr::<Result::<T,E>>::Value(Err(e)) => Err(e),   
+            TimeoutOr::<Result<T, E>>::Timeout => Ok(TimeoutOr::<T>::Timeout),
+            TimeoutOr::<Result<T, E>>::Value(Ok(v)) => Ok(TimeoutOr::<T>::Value(v)),
+            TimeoutOr::<Result<T, E>>::Value(Err(e)) => Err(e),
         }
     }
 }
-
 
 //////////////////////////////////////////////////////////////////
 // Non-fallible timeout
@@ -139,3 +140,16 @@ impl<T: Display> Display for TimeoutOr<T> {
     }
 }
 impl<T: Debug + Display> Error for TimeoutOr<T> {}
+
+//////////////////////////////////////////////////////////////////
+// Non-fallible timeoue macros
+
+#[macro_export]
+macro_rules! timeout_or_try {
+    ($r: expr) => {
+        match $r {
+            TimeoutOr::Timeout => return Ok(TimeoutOr::Timeout),
+            TimeoutOr::Value(v) => v,
+        }
+    };
+}

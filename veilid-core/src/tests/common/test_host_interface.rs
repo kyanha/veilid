@@ -463,7 +463,7 @@ cfg_if! {
         pub async fn test_network_interfaces() {
             info!("testing network interfaces");
             let t1 = intf::get_timestamp();
-            let mut interfaces = intf::utils::network_interfaces::NetworkInterfaces::new();
+            let interfaces = intf::utils::network_interfaces::NetworkInterfaces::new();
             let count = 100;
             for x in 0..count {
                 info!("loop {}", x);

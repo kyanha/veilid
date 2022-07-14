@@ -712,9 +712,20 @@ impl NetworkManager {
         // should not be subject to our ability to decode it
 
         // Send receipt directly
-        self.net()
+        match self
+            .net()
             .send_data_unbound_to_dial_info(dial_info, rcpt_data)
-            .await
+            .await?
+        {
+            NetworkResult::Timeout => {
+                log_net!(debug "Timeout sending out of band receipt");
+            }
+            NetworkResult::NoConnection(e) => {
+                log_net!(debug "No connection sending out of band receipt: {}", e);
+            }
+            NetworkResult::Value(()) => {}
+        };
+        Ok(())
     }
 
     // Figure out how to reach a node
@@ -987,7 +998,7 @@ impl NetworkManager {
         &self,
         node_ref: NodeRef,
         data: Vec<u8>,
-    ) -> SystemPinBoxFuture<EyreResult<SendDataKind>> {
+    ) -> SendPinBoxFuture<EyreResult<SendDataKind>> {
         let this = self.clone();
         Box::pin(async move {
             // First try to send data to the last socket we've seen this peer on
@@ -1084,8 +1095,8 @@ impl NetworkManager {
             .send_recv_data_unbound_to_dial_info(dial_info, data, timeout_ms)
             .await?
         {
-            TimeoutOr::Timeout => return Ok(Vec::new()),
-            TimeoutOr::Value(v) => v,
+            NetworkResult::Value(v) => v,
+            _ => return Ok(Vec::new()),
         };
 
         let bootstrap_peerinfo: Vec<PeerInfo> =

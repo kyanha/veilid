@@ -2,6 +2,7 @@ use super::*;
 
 impl RPCProcessor {
     // Can only be sent directly, not via relays or routes
+    #[instrument(level = "trace", skip(self), ret, err)]
     pub async fn rpc_call_validate_dial_info(
         self,
         peer: NodeRef,

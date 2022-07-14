@@ -53,7 +53,7 @@ pub async fn sleep(millis: u32) {
 
 pub fn system_boxed<'a, Out>(
     future: impl Future<Output = Out> + Send + 'a,
-) -> SystemPinBoxFutureLifetime<'a, Out> {
+) -> SendPinBoxFutureLifetime<'a, Out> {
     Box::pin(future)
 }
 
@@ -117,7 +117,7 @@ where
     }
 }
 
-pub fn interval<F, FUT>(freq_ms: u32, callback: F) -> SystemPinBoxFuture<()>
+pub fn interval<F, FUT>(freq_ms: u32, callback: F) -> SendPinBoxFuture<()>
 where
     F: Fn() -> FUT + Send + Sync + 'static,
     FUT: Future<Output = ()> + Send,

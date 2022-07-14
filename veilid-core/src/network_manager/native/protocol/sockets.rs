@@ -166,7 +166,11 @@ pub fn new_bound_first_tcp_socket(local_address: SocketAddr) -> io::Result<Socke
 }
 
 // Non-blocking connect is tricky when you want to start with a prepared socket
-pub async fn nonblocking_connect(socket: Socket, addr: SocketAddr) -> io::Result<TcpStream> {
+pub async fn nonblocking_connect(
+    socket: Socket,
+    addr: SocketAddr,
+    timeout_ms: u32,
+) -> io::Result<TimeoutOr<TcpStream>> {
     // Set for non blocking connect
     socket.set_nonblocking(true)?;
 
@@ -185,9 +189,10 @@ pub async fn nonblocking_connect(socket: Socket, addr: SocketAddr) -> io::Result
     let async_stream = Async::new(std::net::TcpStream::from(socket))?;
 
     // The stream becomes writable when connected
-    intf::timeout(2000, async_stream.writable())
+    intf::timeout(timeout_ms, async_stream.writable())
         .await
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::TimedOut, e))??;
+        .into_timeout_or()
+        .into_result()?;
 
     // Check low level error
     let async_stream = match async_stream.get_ref().take_error()? {
@@ -198,9 +203,9 @@ pub async fn nonblocking_connect(socket: Socket, addr: SocketAddr) -> io::Result
     // Convert back to inner and then return async version
     cfg_if! {
         if #[cfg(feature="rt-async-std")] {
-            Ok(TcpStream::from(async_stream.into_inner()?))
+            Ok(TimeoutOr::Value(TcpStream::from(async_stream.into_inner()?)))
         } else if #[cfg(feature="rt-tokio")] {
-            Ok(TcpStream::from_std(async_stream.into_inner()?)?)
+            Ok(TimeoutOr::Value(TcpStream::from_std(async_stream.into_inner()?)?))
         }
     }
 }

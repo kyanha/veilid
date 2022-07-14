@@ -288,7 +288,7 @@ impl Network {
 
         for ip_addr in ip_addrs {
             let addr = SocketAddr::new(ip_addr, port);
-            let idi_addrs = Self::translate_unspecified_address(&*(self.inner.lock()), &addr);
+            let idi_addrs = self.translate_unspecified_address(&addr);
 
             // see if we've already bound to this already
             // if not, spawn a listener

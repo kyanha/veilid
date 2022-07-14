@@ -3,6 +3,7 @@ use super::*;
 impl RPCProcessor {
     // Send StatusQ RPC request, receive StatusA answer
     // Can be sent via relays, but not via routes
+    #[instrument(level = "trace", skip(self), ret, err)]
     pub async fn rpc_call_status(self, peer: NodeRef) -> Result<Answer<SenderInfo>, RPCError> {
         let node_status = self.network_manager().generate_node_status();
         let status_q = RPCOperationStatusQ { node_status };

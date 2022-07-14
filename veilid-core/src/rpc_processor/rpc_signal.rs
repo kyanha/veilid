@@ -3,6 +3,7 @@ use super::*;
 impl RPCProcessor {
     // Sends a unidirectional signal to a node
     // Can be sent via all methods including relays and routes
+    #[instrument(level = "trace", skip(self), ret, err)]
     pub async fn rpc_call_signal(
         self,
         dest: Destination,

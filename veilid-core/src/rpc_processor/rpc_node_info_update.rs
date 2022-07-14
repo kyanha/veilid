@@ -3,6 +3,7 @@ use super::*;
 impl RPCProcessor {
     // Sends a our node info to another node
     // Can be sent via all methods including relays and routes
+    #[instrument(level = "trace", skip(self), ret, err)]
     pub async fn rpc_call_node_info_update(
         self,
         dest: Destination,
