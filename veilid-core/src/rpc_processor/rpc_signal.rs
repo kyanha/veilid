@@ -9,17 +9,18 @@ impl RPCProcessor {
         dest: Destination,
         safety_route: Option<&SafetyRouteSpec>,
         signal_info: SignalInfo,
-    ) -> Result<(), RPCError> {
+    ) -> Result<NetworkResult<()>, RPCError> {
         //let signed_node_info = self.routing_table().get_own_signed_node_info();
         let signal = RPCOperationSignal { signal_info };
         let statement = RPCStatement::new(RPCStatementDetail::Signal(signal));
 
         // Send the signal request
-        self.statement(dest, statement, safety_route).await?;
+        network_result_try!(self.statement(dest, statement, safety_route).await?);
 
-        Ok(())
+        Ok(NetworkResult::value(()))
     }
 
+    #[instrument(level = "trace", skip(self, msg), fields(msg.operation.op_id), err)]
     pub(crate) async fn process_signal(&self, msg: RPCMessage) -> Result<(), RPCError> {
         // Get the statement
         let signal = match msg.operation.into_kind() {
@@ -32,9 +33,14 @@ impl RPCProcessor {
 
         // Handle it
         let network_manager = self.network_manager();
-        network_manager
-            .handle_signal(signal.signal_info)
+        network_result_value_or_log!(debug network_manager
+            .handle_signal(msg.header.envelope.get_sender_id(), signal.signal_info)
             .await
-            .map_err(RPCError::network)
+            .map_err(RPCError::network)? => {
+                return Ok(());
+            }
+        );
+
+        Ok(())
     }
 }

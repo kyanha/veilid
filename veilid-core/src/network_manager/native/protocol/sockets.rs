@@ -189,10 +189,10 @@ pub async fn nonblocking_connect(
     let async_stream = Async::new(std::net::TcpStream::from(socket))?;
 
     // The stream becomes writable when connected
-    intf::timeout(timeout_ms, async_stream.writable())
+    timeout_or_try!(intf::timeout(timeout_ms, async_stream.writable())
         .await
         .into_timeout_or()
-        .into_result()?;
+        .into_result()?);
 
     // Check low level error
     let async_stream = match async_stream.get_ref().take_error()? {
@@ -203,9 +203,9 @@ pub async fn nonblocking_connect(
     // Convert back to inner and then return async version
     cfg_if! {
         if #[cfg(feature="rt-async-std")] {
-            Ok(TimeoutOr::Value(TcpStream::from(async_stream.into_inner()?)))
+            Ok(TimeoutOr::value(TcpStream::from(async_stream.into_inner()?)))
         } else if #[cfg(feature="rt-tokio")] {
-            Ok(TimeoutOr::Value(TcpStream::from_std(async_stream.into_inner()?)?))
+            Ok(TimeoutOr::value(TcpStream::from_std(async_stream.into_inner()?)?))
         }
     }
 }

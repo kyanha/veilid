@@ -309,10 +309,11 @@ impl Network {
                 let h = RawUdpProtocolHandler::new_unspecified_bound_handler(&peer_socket_addr)
                     .await
                     .wrap_err("create socket failure")?;
-                h.send_message(data, peer_socket_addr)
+                network_result_try!(h
+                    .send_message(data, peer_socket_addr)
                     .await
                     .map(NetworkResult::Value)
-                    .wrap_err("send message failure")?;
+                    .wrap_err("send message failure")?);
             }
             ProtocolType::TCP => {
                 let peer_socket_addr = dial_info.to_socket_addr();
@@ -323,7 +324,7 @@ impl Network {
                 )
                 .await
                 .wrap_err("connect failure")?);
-                pnc.send(data).await.wrap_err("send failure")?;
+                network_result_try!(pnc.send(data).await.wrap_err("send failure")?);
             }
             ProtocolType::WS | ProtocolType::WSS => {
                 let pnc = network_result_try!(WebsocketProtocolHandler::connect(
@@ -333,7 +334,7 @@ impl Network {
                 )
                 .await
                 .wrap_err("connect failure")?);
-                pnc.send(data).await.wrap_err("send failure")?;
+                network_result_try!(pnc.send(data).await.wrap_err("send failure")?);
             }
         }
         // Network accounting
@@ -408,7 +409,7 @@ impl Network {
                     }
                 });
 
-                pnc.send(data).await.wrap_err("send failure")?;
+                network_result_try!(pnc.send(data).await.wrap_err("send failure")?);
                 self.network_manager()
                     .stats_packet_sent(dial_info.to_ip_addr(), data_len as u64);
 

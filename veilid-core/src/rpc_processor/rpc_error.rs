@@ -1,9 +1,8 @@
 use super::*;
 
 #[derive(ThisError, Debug, Clone, PartialOrd, PartialEq, Eq, Ord)]
+#[must_use]
 pub enum RPCError {
-    #[error("[RPCError: Timeout]")]
-    Timeout,
     #[error("[RPCError: Unreachable({0})]")]
     Unreachable(DHTKey),
     #[error("[RPCError: Unimplemented({0})]")]
@@ -19,9 +18,6 @@ pub enum RPCError {
 }
 
 impl RPCError {
-    pub fn timeout() -> Self {
-        Self::Timeout
-    }
     pub fn unreachable(key: DHTKey) -> Self {
         Self::Unreachable(key)
     }

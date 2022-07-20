@@ -576,13 +576,14 @@ impl RoutingTable {
     // Create a node reference, possibly creating a bucket entry
     // the 'update_func' closure is called on the node, and, if created,
     // in a locked fashion as to ensure the bucket entry state is always valid
-    pub fn create_node_ref<F>(&self, node_id: DHTKey, update_func: F) -> EyreResult<NodeRef>
+    pub fn create_node_ref<F>(&self, node_id: DHTKey, update_func: F) -> Option<NodeRef>
     where
         F: FnOnce(&mut BucketEntryInner),
     {
         // Ensure someone isn't trying register this node itself
         if node_id == self.node_id() {
-            bail!("can't register own node");
+            log_rtab!(debug "can't register own node");
+            return None;
         }
 
         // Lock this entire operation
@@ -627,7 +628,7 @@ impl RoutingTable {
             }
         };
 
-        Ok(noderef)
+        Some(noderef)
     }
 
     pub fn lookup_node_ref(&self, node_id: DHTKey) -> Option<NodeRef> {
@@ -645,22 +646,22 @@ impl RoutingTable {
         &self,
         node_id: DHTKey,
         signed_node_info: SignedNodeInfo,
-    ) -> EyreResult<NodeRef> {
+    ) -> Option<NodeRef> {
         // validate signed node info is not something malicious
         if node_id == self.node_id() {
-            bail!("can't register own node id in routing table");
+            log_rtab!(debug "can't register own node id in routing table");
+            return None;
         }
         if let Some(rpi) = &signed_node_info.node_info.relay_peer_info {
             if rpi.node_id.key == node_id {
-                bail!("node can not be its own relay");
+                log_rtab!(debug "node can not be its own relay");
+                return None;
             }
         }
 
-        let nr = self.create_node_ref(node_id, |e| {
+        self.create_node_ref(node_id, |e| {
             e.update_node_info(signed_node_info);
-        })?;
-
-        Ok(nr)
+        })
     }
 
     // Shortcut function to add a node to our routing table if it doesn't exist
@@ -670,13 +671,11 @@ impl RoutingTable {
         node_id: DHTKey,
         descriptor: ConnectionDescriptor,
         timestamp: u64,
-    ) -> EyreResult<NodeRef> {
-        let nr = self.create_node_ref(node_id, |e| {
+    ) -> Option<NodeRef> {
+        self.create_node_ref(node_id, |e| {
             // set the most recent node address for connection finding and udp replies
             e.set_last_connection(descriptor, timestamp);
-        })?;
-
-        Ok(nr)
+        })
     }
 
     // Ticks about once per second

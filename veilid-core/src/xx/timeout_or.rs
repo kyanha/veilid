@@ -77,6 +77,7 @@ impl<T, E> TimeoutOrResultExt<T, E> for TimeoutOr<Result<T, E>> {
 //////////////////////////////////////////////////////////////////
 // Non-fallible timeout
 
+#[must_use]
 pub enum TimeoutOr<T> {
     Timeout,
     Value(T),
@@ -97,11 +98,23 @@ impl<T> TimeoutOr<T> {
     pub fn is_value(&self) -> bool {
         matches!(self, Self::Value(_))
     }
-
-    pub fn ok(self) -> Result<T, TimeoutError> {
+    pub fn map<X, F: Fn(T) -> X>(self, f: F) -> TimeoutOr<X> {
+        match self {
+            Self::Timeout => TimeoutOr::<X>::Timeout,
+            Self::Value(v) => TimeoutOr::<X>::Value(f(v)),
+        }
+    }
+    pub fn into_timeout_error(self) -> Result<T, TimeoutError> {
         match self {
             Self::Timeout => Err(TimeoutError {}),
             Self::Value(v) => Ok(v),
+        }
+    }
+
+    pub fn into_option(self) -> Option<T> {
+        match self {
+            Self::Timeout => None,
+            Self::Value(v) => Some(v),
         }
     }
 }

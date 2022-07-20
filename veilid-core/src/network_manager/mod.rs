@@ -526,30 +526,38 @@ impl NetworkManager {
     }
 
     // Process a received out-of-band receipt
-    #[instrument(level = "trace", skip(self, receipt_data), err)]
+    #[instrument(level = "trace", skip(self, receipt_data), ret)]
     pub async fn handle_out_of_band_receipt<R: AsRef<[u8]>>(
         &self,
         receipt_data: R,
-    ) -> EyreResult<()> {
+    ) -> NetworkResult<()> {
         let receipt_manager = self.receipt_manager();
 
-        let receipt = Receipt::from_signed_data(receipt_data.as_ref())
-            .wrap_err("failed to parse signed out-of-band receipt")?;
+        let receipt = match Receipt::from_signed_data(receipt_data.as_ref()) {
+            Err(e) => {
+                return NetworkResult::invalid_message(e.to_string());
+            }
+            Ok(v) => v,
+        };
 
         receipt_manager.handle_receipt(receipt, None).await
     }
 
     // Process a received in-band receipt
-    #[instrument(level = "trace", skip(self, receipt_data), err)]
+    #[instrument(level = "trace", skip(self, receipt_data), ret)]
     pub async fn handle_in_band_receipt<R: AsRef<[u8]>>(
         &self,
         receipt_data: R,
         inbound_nr: NodeRef,
-    ) -> EyreResult<()> {
+    ) -> NetworkResult<()> {
         let receipt_manager = self.receipt_manager();
 
-        let receipt = Receipt::from_signed_data(receipt_data.as_ref())
-            .wrap_err("failed to parse signed in-band receipt")?;
+        let receipt = match Receipt::from_signed_data(receipt_data.as_ref()) {
+            Err(e) => {
+                return NetworkResult::invalid_message(e.to_string());
+            }
+            Ok(v) => v,
+        };
 
         receipt_manager
             .handle_receipt(receipt, Some(inbound_nr))
@@ -558,32 +566,51 @@ impl NetworkManager {
 
     // Process a received signal
     #[instrument(level = "trace", skip(self), err)]
-    pub async fn handle_signal(&self, signal_info: SignalInfo) -> EyreResult<()> {
+    pub async fn handle_signal(
+        &self,
+        _sender_id: DHTKey,
+        signal_info: SignalInfo,
+    ) -> EyreResult<NetworkResult<()>> {
         match signal_info {
             SignalInfo::ReverseConnect { receipt, peer_info } => {
                 let routing_table = self.routing_table();
                 let rpc = self.rpc_processor();
 
                 // Add the peer info to our routing table
-                let peer_nr = routing_table.register_node_with_signed_node_info(
+                let peer_nr = match routing_table.register_node_with_signed_node_info(
                     peer_info.node_id.key,
                     peer_info.signed_node_info,
-                )?;
+                ) {
+                    None => {
+                        return Ok(NetworkResult::invalid_message(
+                            "unable to register reverse connect peerinfo",
+                        ))
+                    }
+                    Some(nr) => nr,
+                };
 
                 // Make a reverse connection to the peer and send the receipt to it
                 rpc.rpc_call_return_receipt(Destination::Direct(peer_nr), None, receipt)
                     .await
-                    .wrap_err("rpc failure")?;
+                    .wrap_err("rpc failure")
             }
             SignalInfo::HolePunch { receipt, peer_info } => {
                 let routing_table = self.routing_table();
                 let rpc = self.rpc_processor();
 
                 // Add the peer info to our routing table
-                let mut peer_nr = routing_table.register_node_with_signed_node_info(
+                let mut peer_nr = match routing_table.register_node_with_signed_node_info(
                     peer_info.node_id.key,
                     peer_info.signed_node_info,
-                )?;
+                ) {
+                    None => {
+                        return Ok(NetworkResult::invalid_message(
+                            //sender_id,
+                            "unable to register hole punch connect peerinfo",
+                        ));
+                    }
+                    Some(nr) => nr,
+                };
 
                 // Get the udp direct dialinfo for the hole punch
                 peer_nr.filter_protocols(ProtocolSet::only(ProtocolType::UDP));
@@ -599,23 +626,23 @@ impl NetworkManager {
 
                 // Do our half of the hole punch by sending an empty packet
                 // Both sides will do this and then the receipt will get sent over the punched hole
-                self.net()
-                    .send_data_to_dial_info(
-                        hole_punch_dial_info_detail.dial_info.clone(),
-                        Vec::new(),
-                    )
-                    .await?;
+                network_result_try!(
+                    self.net()
+                        .send_data_to_dial_info(
+                            hole_punch_dial_info_detail.dial_info.clone(),
+                            Vec::new(),
+                        )
+                        .await?
+                );
 
                 // XXX: do we need a delay here? or another hole punch packet?
 
                 // Return the receipt using the same dial info send the receipt to it
                 rpc.rpc_call_return_receipt(Destination::Direct(peer_nr), None, receipt)
                     .await
-                    .wrap_err("rpc failure")?;
+                    .wrap_err("rpc failure")
             }
         }
-
-        Ok(())
     }
 
     // Builds an envelope for sending over the network
@@ -652,7 +679,7 @@ impl NetworkManager {
         node_ref: NodeRef,
         envelope_node_id: Option<DHTKey>,
         body: B,
-    ) -> EyreResult<SendDataKind> {
+    ) -> EyreResult<NetworkResult<SendDataKind>> {
         let via_node_id = node_ref.node_id();
         let envelope_node_id = envelope_node_id.unwrap_or(via_node_id);
 
@@ -684,18 +711,17 @@ impl NetworkManager {
         };
 
         // Build the envelope to send
-        let out = self
-            .build_envelope(envelope_node_id, version, body)
-            .map_err(logthru_rpc!(error))?;
+        let out = self.build_envelope(envelope_node_id, version, body)?;
 
         // Send the envelope via whatever means necessary
-        let send_data_kind = self.send_data(node_ref.clone(), out).await?;
+        let send_data_kind = network_result_try!(self.send_data(node_ref.clone(), out).await?);
 
         // If we asked to relay from the start, then this is always indirect
-        if envelope_node_id != via_node_id {
-            return Ok(SendDataKind::GlobalIndirect);
-        }
-        Ok(send_data_kind)
+        Ok(NetworkResult::value(if envelope_node_id != via_node_id {
+            SendDataKind::GlobalIndirect
+        } else {
+            send_data_kind
+        }))
     }
 
     // Called by the RPC handler when we want to issue an direct receipt
@@ -712,19 +738,13 @@ impl NetworkManager {
         // should not be subject to our ability to decode it
 
         // Send receipt directly
-        match self
+        network_result_value_or_log!(debug self
             .net()
             .send_data_unbound_to_dial_info(dial_info, rcpt_data)
-            .await?
-        {
-            NetworkResult::Timeout => {
-                log_net!(debug "Timeout sending out of band receipt");
+            .await? => {
+                return Ok(());
             }
-            NetworkResult::NoConnection(e) => {
-                log_net!(debug "No connection sending out of band receipt: {}", e);
-            }
-            NetworkResult::Value(()) => {}
-        };
+        );
         Ok(())
     }
 
@@ -851,7 +871,7 @@ impl NetworkManager {
         relay_nr: NodeRef,
         target_nr: NodeRef,
         data: Vec<u8>,
-    ) -> EyreResult<()> {
+    ) -> EyreResult<NetworkResult<()>> {
         // Build a return receipt for the signal
         let receipt_timeout =
             ms_to_us(self.config.get().network.reverse_connection_receipt_time_ms);
@@ -862,13 +882,15 @@ impl NetworkManager {
 
         // Issue the signal
         let rpc = self.rpc_processor();
-        rpc.rpc_call_signal(
-            Destination::Relay(relay_nr.clone(), target_nr.node_id()),
-            None,
-            SignalInfo::ReverseConnect { receipt, peer_info },
-        )
-        .await
-        .wrap_err("failed to send signal")?;
+        network_result_try!(rpc
+            .rpc_call_signal(
+                Destination::Relay(relay_nr.clone(), target_nr.node_id()),
+                None,
+                SignalInfo::ReverseConnect { receipt, peer_info },
+            )
+            .await
+            .wrap_err("failed to send signal")?);
+
         // Wait for the return receipt
         let inbound_nr = match eventual_value.await.take_value().unwrap() {
             ReceiptEvent::ReturnedOutOfBand => {
@@ -876,7 +898,8 @@ impl NetworkManager {
             }
             ReceiptEvent::ReturnedInBand { inbound_noderef } => inbound_noderef,
             ReceiptEvent::Expired => {
-                bail!("reverse connect receipt expired from {:?}", target_nr);
+                //bail!("reverse connect receipt expired from {:?}", target_nr);
+                return Ok(NetworkResult::timeout());
             }
             ReceiptEvent::Cancelled => {
                 bail!("reverse connect receipt cancelled from {:?}", target_nr);
@@ -896,8 +919,10 @@ impl NetworkManager {
                 .send_data_to_existing_connection(descriptor, data)
                 .await?
             {
-                None => Ok(()),
-                Some(_) => bail!("unable to send over reverse connection"),
+                None => Ok(NetworkResult::value(())),
+                Some(_) => Ok(NetworkResult::no_connection_other(
+                    "unable to send over reverse connection",
+                )),
             }
         } else {
             bail!("no reverse connection available")
@@ -912,7 +937,7 @@ impl NetworkManager {
         relay_nr: NodeRef,
         target_nr: NodeRef,
         data: Vec<u8>,
-    ) -> EyreResult<()> {
+    ) -> EyreResult<NetworkResult<()>> {
         // Ensure we are filtered down to UDP (the only hole punch protocol supported today)
         assert!(target_nr
             .filter_ref()
@@ -932,19 +957,22 @@ impl NetworkManager {
 
         // Do our half of the hole punch by sending an empty packet
         // Both sides will do this and then the receipt will get sent over the punched hole
-        self.net()
-            .send_data_to_dial_info(hole_punch_did.dial_info, Vec::new())
-            .await?;
+        network_result_try!(
+            self.net()
+                .send_data_to_dial_info(hole_punch_did.dial_info, Vec::new())
+                .await?
+        );
 
         // Issue the signal
         let rpc = self.rpc_processor();
-        rpc.rpc_call_signal(
-            Destination::Relay(relay_nr.clone(), target_nr.node_id()),
-            None,
-            SignalInfo::HolePunch { receipt, peer_info },
-        )
-        .await
-        .wrap_err("failed to send signal")?;
+        network_result_try!(rpc
+            .rpc_call_signal(
+                Destination::Relay(relay_nr.clone(), target_nr.node_id()),
+                None,
+                SignalInfo::HolePunch { receipt, peer_info },
+            )
+            .await
+            .wrap_err("failed to send signal")?);
 
         // Wait for the return receipt
         let inbound_nr = match eventual_value.await.take_value().unwrap() {
@@ -977,8 +1005,10 @@ impl NetworkManager {
                 .send_data_to_existing_connection(descriptor, data)
                 .await?
             {
-                None => Ok(()),
-                Some(_) => bail!("unable to send over hole punch"),
+                None => Ok(NetworkResult::value(())),
+                Some(_) => Ok(NetworkResult::no_connection_other(
+                    "unable to send over hole punch",
+                )),
             }
         } else {
             bail!("no hole punch available")
@@ -998,7 +1028,7 @@ impl NetworkManager {
         &self,
         node_ref: NodeRef,
         data: Vec<u8>,
-    ) -> SendPinBoxFuture<EyreResult<SendDataKind>> {
+    ) -> SendPinBoxFuture<EyreResult<NetworkResult<SendDataKind>>> {
         let this = self.clone();
         Box::pin(async move {
             // First try to send data to the last socket we've seen this peer on
@@ -1010,9 +1040,9 @@ impl NetworkManager {
                 {
                     None => {
                         return Ok(if descriptor.matches_peer_scope(PeerScope::Local) {
-                            SendDataKind::LocalDirect
+                            NetworkResult::value(SendDataKind::LocalDirect)
                         } else {
-                            SendDataKind::GlobalDirect
+                            NetworkResult::value(SendDataKind::GlobalDirect)
                         });
                     }
                     Some(d) => d,
@@ -1021,13 +1051,17 @@ impl NetworkManager {
                 data
             };
 
-            log_net!("send_data via dialinfo to {:?}", node_ref);
             // If we don't have last_connection, try to reach out to the peer via its dial info
-            match this.get_contact_method(node_ref.clone()) {
+            let contact_method = this.get_contact_method(node_ref.clone());
+            log_net!(
+                "send_data via {:?} to dialinfo {:?}",
+                contact_method,
+                node_ref
+            );
+            match contact_method {
                 ContactMethod::OutboundRelay(relay_nr) | ContactMethod::InboundRelay(relay_nr) => {
-                    this.send_data(relay_nr, data)
-                        .await
-                        .map(|_| SendDataKind::GlobalIndirect)
+                    network_result_try!(this.send_data(relay_nr, data).await?);
+                    Ok(NetworkResult::value(SendDataKind::GlobalIndirect))
                 }
                 ContactMethod::Direct(dial_info) => {
                     let send_data_kind = if dial_info.is_local() {
@@ -1035,26 +1069,33 @@ impl NetworkManager {
                     } else {
                         SendDataKind::GlobalDirect
                     };
-                    this.net()
-                        .send_data_to_dial_info(dial_info, data)
-                        .await
-                        .map(|_| send_data_kind)
+                    network_result_try!(this.net().send_data_to_dial_info(dial_info, data).await?);
+                    Ok(NetworkResult::value(send_data_kind))
                 }
-                ContactMethod::SignalReverse(relay_nr, target_node_ref) => this
-                    .do_reverse_connect(relay_nr, target_node_ref, data)
-                    .await
-                    .map(|_| SendDataKind::GlobalDirect),
-                ContactMethod::SignalHolePunch(relay_nr, target_node_ref) => this
-                    .do_hole_punch(relay_nr, target_node_ref, data)
-                    .await
-                    .map(|_| SendDataKind::GlobalDirect),
-                ContactMethod::Unreachable => Err(eyre!("Can't send to this node")),
+                ContactMethod::SignalReverse(relay_nr, target_node_ref) => {
+                    network_result_try!(
+                        this.do_reverse_connect(relay_nr, target_node_ref, data)
+                            .await?
+                    );
+                    Ok(NetworkResult::value(SendDataKind::GlobalDirect))
+                }
+                ContactMethod::SignalHolePunch(relay_nr, target_node_ref) => {
+                    network_result_try!(this.do_hole_punch(relay_nr, target_node_ref, data).await?);
+                    Ok(NetworkResult::value(SendDataKind::GlobalDirect))
+                }
+                ContactMethod::Unreachable => Ok(NetworkResult::no_connection_other(
+                    "Can't send to this node",
+                )),
             }
         })
     }
 
     // Direct bootstrap request handler (separate fallback mechanism from cheaper TXT bootstrap mechanism)
-    async fn handle_boot_request(&self, descriptor: ConnectionDescriptor) -> EyreResult<()> {
+    #[instrument(level = "trace", skip(self), ret, err)]
+    async fn handle_boot_request(
+        &self,
+        descriptor: ConnectionDescriptor,
+    ) -> EyreResult<NetworkResult<()>> {
         let routing_table = self.routing_table();
 
         // Get a bunch of nodes with the various
@@ -1075,9 +1116,11 @@ impl NetworkManager {
         {
             None => {
                 // Bootstrap reply was sent
-                Ok(())
+                Ok(NetworkResult::value(()))
             }
-            Some(_) => Err(eyre!("bootstrap reply could not be sent")),
+            Some(_) => Ok(NetworkResult::no_connection_other(
+                "bootstrap reply could not be sent",
+            )),
         }
     }
 
@@ -1109,12 +1152,20 @@ impl NetworkManager {
     // Called when a packet potentially containing an RPC envelope is received by a low-level
     // network protocol handler. Processes the envelope, authenticates and decrypts the RPC message
     // and passes it to the RPC handler
-    #[instrument(level="trace", err, skip(self, data), fields(data.len = data.len()))]
     async fn on_recv_envelope(
         &self,
         data: &[u8],
         descriptor: ConnectionDescriptor,
     ) -> EyreResult<bool> {
+        let root = span!(
+            parent: None,
+            Level::TRACE,
+            "on_recv_envelope",
+            "data.len" = data.len(),
+            "descriptor" = ?descriptor
+        );
+        let _root_enter = root.enter();
+
         log_net!(
             "envelope of {} bytes received from {:?}",
             data.len(),
@@ -1133,18 +1184,19 @@ impl NetworkManager {
 
         // Ensure we can read the magic number
         if data.len() < 4 {
-            bail!("short packet");
+            log_net!(debug "short packet".green());
+            return Ok(false);
         }
 
         // Is this a direct bootstrap request instead of an envelope?
         if data[0..4] == *BOOT_MAGIC {
-            self.handle_boot_request(descriptor).await?;
+            network_result_value_or_log!(debug self.handle_boot_request(descriptor).await? => {});
             return Ok(true);
         }
 
         // Is this an out-of-band receipt instead of an envelope?
         if data[0..4] == *RECEIPT_MAGIC {
-            self.handle_out_of_band_receipt(data).await?;
+            network_result_value_or_log!(debug self.handle_out_of_band_receipt(data).await => {});
             return Ok(true);
         }
 
@@ -1198,7 +1250,7 @@ impl NetworkManager {
             // This is a costly operation, so only outbound-relay permitted
             // nodes are allowed to do this, for example PWA users
 
-            let relay_nr = if self.check_client_whitelist(sender_id) {
+            let some_relay_nr = if self.check_client_whitelist(sender_id) {
                 // Full relay allowed, do a full resolve_node
                 rpc.resolve_node(recipient_id).await.wrap_err(
                     "failed to resolve recipient node for relay, dropping outbound relayed packet",
@@ -1211,18 +1263,19 @@ impl NetworkManager {
                 // We should, because relays are chosen by nodes that have established connectivity and
                 // should be mutually in each others routing tables. The node needing the relay will be
                 // pinging this node regularly to keep itself in the routing table
-                routing_table.lookup_node_ref(recipient_id).ok_or_else(|| {
-                    eyre!(
-                        "Inbound relay asked for recipient not in routing table: sender_id={:?} recipient={:?}",
-                        sender_id, recipient_id
-                    )
-                })?
+                routing_table.lookup_node_ref(recipient_id)
             };
 
-            // Relay the packet to the desired destination
-            self.send_data(relay_nr, data.to_vec())
-                .await
-                .wrap_err("failed to forward envelope")?;
+            if let Some(relay_nr) = some_relay_nr {
+                // Relay the packet to the desired destination
+                log_net!("relaying {} bytes to {}", data.len(), relay_nr);
+                network_result_value_or_log!(debug self.send_data(relay_nr, data.to_vec())
+                    .await
+                    .wrap_err("failed to forward envelope")? => {
+                        return Ok(false);
+                    }
+                );
+            }
             // Inform caller that we dealt with the envelope, but did not process it locally
             return Ok(false);
         }
@@ -1237,11 +1290,18 @@ impl NetworkManager {
             .wrap_err("failed to decrypt envelope body")?;
 
         // Cache the envelope information in the routing table
-        let source_noderef = routing_table.register_node_with_existing_connection(
+        let source_noderef = match routing_table.register_node_with_existing_connection(
             envelope.get_sender_id(),
             descriptor,
             ts,
-        )?;
+        ) {
+            None => {
+                // If the node couldn't be registered just skip this envelope,
+                // the error will have already been logged
+                return Ok(false);
+            }
+            Some(v) => v,
+        };
         source_noderef.operate_mut(|e| e.set_min_max_version(envelope.get_min_max_version()));
 
         // xxx: deal with spoofing and flooding here?
@@ -1305,13 +1365,14 @@ impl NetworkManager {
                         let mut inner = self.inner.lock();
 
                         // Register new outbound relay
-                        let nr = routing_table.register_node_with_signed_node_info(
+                        if let Some(nr) = routing_table.register_node_with_signed_node_info(
                             outbound_relay_peerinfo.node_id.key,
                             outbound_relay_peerinfo.signed_node_info,
-                        )?;
-                        info!("Outbound relay node selected: {}", nr);
-                        inner.relay_node = Some(nr);
-                        node_info_changed = true;
+                        ) {
+                            info!("Outbound relay node selected: {}", nr);
+                            inner.relay_node = Some(nr);
+                            node_info_changed = true;
+                        }
                     }
                 // Otherwise we must need an inbound relay
                 } else {

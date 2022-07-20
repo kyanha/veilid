@@ -3,8 +3,10 @@ use super::*;
 impl RPCProcessor {
     // xxx do not process latency for routed messages
 
-    pub(crate) async fn process_route(&self, _rpcreader: RPCMessage) -> Result<(), RPCError> {
+    #[instrument(level = "trace", skip(self, msg), fields(msg.operation.op_id), err)]
+    pub(crate) async fn process_route(&self, msg: RPCMessage) -> Result<(), RPCError> {
         // xxx do not process latency for routed messages
+        // tracing::Span::current().record("res", &tracing::field::display(res));
         Err(RPCError::unimplemented("process_route"))
     }
 }

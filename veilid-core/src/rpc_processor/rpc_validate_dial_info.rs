@@ -32,20 +32,24 @@ impl RPCProcessor {
 
         // Send the validate_dial_info request
         // This can only be sent directly, as relays can not validate dial info
-        self.statement(Destination::Direct(peer), statement, None)
-            .await?;
+        network_result_value_or_log!(debug self.statement(Destination::Direct(peer), statement, None)
+            .await? => {
+                return Ok(false);
+            }
+        );
 
         // Wait for receipt
         match eventual_value.await.take_value().unwrap() {
-            ReceiptEvent::ReturnedInBand { inbound_noderef: _ } => Err(RPCError::internal(
-                "validate_dial_info receipt should be returned out-of-band",
-            )),
+            ReceiptEvent::ReturnedInBand { inbound_noderef: _ } => {
+                log_net!(debug "validate_dial_info receipt should be returned out-of-band".green());
+                Ok(false)
+            }
             ReceiptEvent::ReturnedOutOfBand => {
                 log_net!(debug "validate_dial_info receipt returned");
                 Ok(true)
             }
             ReceiptEvent::Expired => {
-                log_net!(debug "validate_dial_info receipt expired");
+                log_net!(debug "validate_dial_info receipt expired".green());
                 Ok(false)
             }
             ReceiptEvent::Cancelled => {
@@ -54,6 +58,7 @@ impl RPCProcessor {
         }
     }
 
+    #[instrument(level = "trace", skip(self, msg), fields(msg.operation.op_id), err)]
     pub(crate) async fn process_validate_dial_info(&self, msg: RPCMessage) -> Result<(), RPCError> {
         // Get the statement
         let RPCOperationValidateDialInfo {
@@ -137,8 +142,11 @@ impl RPCProcessor {
 
                 // Send the validate_dial_info request
                 // This can only be sent directly, as relays can not validate dial info
-                self.statement(Destination::Direct(peer), statement, None)
-                    .await?;
+                network_result_value_or_log!(debug self.statement(Destination::Direct(peer), statement, None)
+                    .await? => {
+                        return Ok(());
+                    }
+                );
             }
             return Ok(());
         };
@@ -150,6 +158,8 @@ impl RPCProcessor {
             .send_out_of_band_receipt(dial_info.clone(), receipt)
             .await
             .map_err(RPCError::network)?;
+
+        //        tracing::Span::current().record("res", &tracing::field::display(res));
 
         Ok(())
     }

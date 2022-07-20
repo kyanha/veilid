@@ -389,8 +389,8 @@ impl RoutingTable {
         best_inbound_relay.map(|(k, e)| NodeRef::new(self.clone(), k, e, None))
     }
 
-    #[instrument(level = "trace", skip(self), ret, err)]
-    pub fn register_find_node_answer(&self, peers: Vec<PeerInfo>) -> EyreResult<Vec<NodeRef>> {
+    #[instrument(level = "trace", skip(self), ret)]
+    pub fn register_find_node_answer(&self, peers: Vec<PeerInfo>) -> Vec<NodeRef> {
         let node_id = self.node_id();
 
         // register nodes we'd found
@@ -401,40 +401,57 @@ impl RoutingTable {
                 continue;
             }
 
+            // node can not be its own relay
+            if let Some(rpi) = &p.signed_node_info.node_info.relay_peer_info {
+                if rpi.node_id == p.node_id {
+                    continue;
+                }
+            }
+
             // register the node if it's new
-            let nr = self
-                .register_node_with_signed_node_info(p.node_id.key, p.signed_node_info.clone())?;
-            out.push(nr);
+            if let Some(nr) =
+                self.register_node_with_signed_node_info(p.node_id.key, p.signed_node_info.clone())
+            {
+                out.push(nr);
+            }
         }
-        Ok(out)
+        out
     }
 
     #[instrument(level = "trace", skip(self), ret, err)]
-    pub async fn find_node(&self, node_ref: NodeRef, node_id: DHTKey) -> EyreResult<Vec<NodeRef>> {
+    pub async fn find_node(
+        &self,
+        node_ref: NodeRef,
+        node_id: DHTKey,
+    ) -> EyreResult<NetworkResult<Vec<NodeRef>>> {
         let rpc_processor = self.rpc_processor();
 
-        let res = rpc_processor
-            .clone()
-            .rpc_call_find_node(
-                Destination::Direct(node_ref.clone()),
-                node_id,
-                None,
-                rpc_processor.make_respond_to_sender(node_ref.clone()),
-            )
-            .await?;
+        let res = network_result_try!(
+            rpc_processor
+                .clone()
+                .rpc_call_find_node(
+                    Destination::Direct(node_ref.clone()),
+                    node_id,
+                    None,
+                    rpc_processor.make_respond_to_sender(node_ref.clone()),
+                )
+                .await?
+        );
 
         // register nodes we'd found
-        self.register_find_node_answer(res.answer)
+        Ok(NetworkResult::value(
+            self.register_find_node_answer(res.answer),
+        ))
     }
 
     #[instrument(level = "trace", skip(self), ret, err)]
-    pub async fn find_self(&self, node_ref: NodeRef) -> EyreResult<Vec<NodeRef>> {
+    pub async fn find_self(&self, node_ref: NodeRef) -> EyreResult<NetworkResult<Vec<NodeRef>>> {
         let node_id = self.node_id();
         self.find_node(node_ref, node_id).await
     }
 
     #[instrument(level = "trace", skip(self), ret, err)]
-    pub async fn find_target(&self, node_ref: NodeRef) -> EyreResult<Vec<NodeRef>> {
+    pub async fn find_target(&self, node_ref: NodeRef) -> EyreResult<NetworkResult<Vec<NodeRef>>> {
         let node_id = node_ref.node_id();
         self.find_node(node_ref, node_id).await
     }
@@ -445,26 +462,35 @@ impl RoutingTable {
         // and then contact those nodes to inform -them- that we exist
 
         // Ask bootstrap server for nodes closest to our own node
-        let closest_nodes = match self.find_self(node_ref.clone()).await {
+        let closest_nodes = network_result_value_or_log!(debug match self.find_self(node_ref.clone()).await {
             Err(e) => {
                 log_rtab!(error
-                    "reverse_find_node: find_self failed for {:?}: {:?}",
+                    "find_self failed for {:?}: {:?}",
                     &node_ref, e
                 );
                 return;
             }
             Ok(v) => v,
-        };
+        } => {
+            return;
+        });
 
         // Ask each node near us to find us as well
         if wide {
             for closest_nr in closest_nodes {
-                if let Err(e) = self.find_self(closest_nr.clone()).await {
-                    log_rtab!(error
-                        "reverse_find_node: closest node find_self failed for {:?}: {:?}",
-                        &closest_nr, e
-                    );
-                }
+                network_result_value_or_log!(debug match self.find_self(closest_nr.clone()).await {
+                    Err(e) => {
+                        log_rtab!(error
+                            "find_self failed for {:?}: {:?}",
+                            &closest_nr, e
+                        );
+                        continue;
+                    }
+                    Ok(v) => v,
+                } => {
+                    // Do nothing with non-values
+                    continue;
+                });
             }
         }
     }

@@ -395,7 +395,7 @@ impl ReceiptManager {
         &self,
         receipt: Receipt,
         inbound_noderef: Option<NodeRef>,
-    ) -> EyreResult<()> {
+    ) -> NetworkResult<()> {
         let receipt_nonce = receipt.get_nonce();
         let extra_data = receipt.get_extra_data();
 
@@ -421,13 +421,13 @@ impl ReceiptManager {
                 Some(ss) => ss.token(),
                 None => {
                     // If we're stopping do nothing here
-                    return Ok(());
+                    return NetworkResult::value(());
                 }
             };
             let record = match inner.records_by_nonce.get(&receipt_nonce) {
                 Some(r) => r.clone(),
                 None => {
-                    bail!("receipt not recorded");
+                    return NetworkResult::invalid_message("receipt not recorded");
                 }
             };
             // Generate the callback future
@@ -457,6 +457,6 @@ impl ReceiptManager {
             let _ = callback_future.timeout_at(stop_token).await;
         }
 
-        Ok(())
+        NetworkResult::value(())
     }
 }

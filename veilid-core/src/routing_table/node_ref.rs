@@ -104,8 +104,6 @@ impl NodeRef {
             // Register relay node and return noderef
             self.routing_table
                 .register_node_with_signed_node_info(t.node_id.key, t.signed_node_info)
-                .map_err(logthru_rtab!(error))
-                .ok()
                 .map(|mut nr| {
                     nr.set_filter(self.filter_ref().cloned());
                     nr

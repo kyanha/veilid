@@ -58,6 +58,7 @@ impl<T, E> NetworkResultResultExt<T, E> for NetworkResult<Result<T, E>> {
         match self {
             NetworkResult::Timeout => Ok(NetworkResult::<T>::Timeout),
             NetworkResult::NoConnection(e) => Ok(NetworkResult::<T>::NoConnection(e)),
+            NetworkResult::InvalidMessage(s) => Ok(NetworkResult::<T>::InvalidMessage(s)),
             NetworkResult::Value(Ok(v)) => Ok(NetworkResult::<T>::Value(v)),
             NetworkResult::Value(Err(e)) => Err(e),
         }
@@ -124,9 +125,11 @@ impl<T> FoldedNetworkResultExt<T> for io::Result<NetworkResult<T>> {
 //////////////////////////////////////////////////////////////////
 // Non-fallible network result
 
+#[must_use]
 pub enum NetworkResult<T> {
     Timeout,
     NoConnection(io::Error),
+    InvalidMessage(String),
     Value(T),
 }
 
@@ -137,6 +140,13 @@ impl<T> NetworkResult<T> {
     pub fn no_connection(e: io::Error) -> Self {
         Self::NoConnection(e)
     }
+    pub fn no_connection_other<S: ToString>(s: S) -> Self {
+        Self::NoConnection(io::Error::new(io::ErrorKind::Other, s.to_string()))
+    }
+    pub fn invalid_message<S: ToString>(s: S) -> Self {
+        Self::InvalidMessage(s.to_string())
+    }
+
     pub fn value(value: T) -> Self {
         Self::Value(value)
     }
@@ -150,11 +160,22 @@ impl<T> NetworkResult<T> {
     pub fn is_value(&self) -> bool {
         matches!(self, Self::Value(_))
     }
-
+    pub fn map<X, F: Fn(T) -> X>(self, f: F) -> NetworkResult<X> {
+        match self {
+            Self::Timeout => NetworkResult::<X>::Timeout,
+            Self::NoConnection(e) => NetworkResult::<X>::NoConnection(e),
+            Self::InvalidMessage(s) => NetworkResult::<X>::InvalidMessage(s),
+            Self::Value(v) => NetworkResult::<X>::Value(f(v)),
+        }
+    }
     pub fn into_result(self) -> Result<T, io::Error> {
         match self {
             Self::Timeout => Err(io::Error::new(io::ErrorKind::TimedOut, "Timed out")),
             Self::NoConnection(e) => Err(e),
+            Self::InvalidMessage(s) => Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("Invalid message: {}", s),
+            )),
             Self::Value(v) => Ok(v),
         }
     }
@@ -174,6 +195,7 @@ impl<T> From<NetworkResult<T>> for Option<T> {
 //         match self {
 //             Self::Timeout => Self::Timeout,
 //             Self::NoConnection(e) => Self::NoConnection(e.clone()),
+//             Self::InvalidResponse(k, s) => Self::InvalidResponse(k, s.clone()),
 //             Self::Value(t) => Self::Value(t.clone()),
 //         }
 //     }
@@ -184,19 +206,23 @@ impl<T: Debug> Debug for NetworkResult<T> {
         match self {
             Self::Timeout => write!(f, "Timeout"),
             Self::NoConnection(e) => f.debug_tuple("NoConnection").field(e).finish(),
+            Self::InvalidMessage(s) => f.debug_tuple("InvalidMessage").field(s).finish(),
             Self::Value(v) => f.debug_tuple("Value").field(v).finish(),
         }
     }
 }
-impl<T: Display> Display for NetworkResult<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+
+impl<T> Display for NetworkResult<T> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            Self::Timeout => write!(f, ""),
-            Self::NoConnection(e) => write!(f, "No connection: {}", e.kind()),
-            Self::Value(v) => write!(f, "{}", v),
+            Self::Timeout => write!(f, "Timeout"),
+            Self::NoConnection(e) => write!(f, "NoConnection({})", e.kind()),
+            Self::InvalidMessage(s) => write!(f, "InvalidMessage({})", s),
+            Self::Value(_) => write!(f, "Value"),
         }
     }
 }
+
 impl<T: Debug + Display> Error for NetworkResult<T> {}
 
 //////////////////////////////////////////////////////////////////
@@ -208,6 +234,45 @@ macro_rules! network_result_try {
         match $r {
             NetworkResult::Timeout => return Ok(NetworkResult::Timeout),
             NetworkResult::NoConnection(e) => return Ok(NetworkResult::NoConnection(e)),
+            NetworkResult::InvalidMessage(s) => return Ok(NetworkResult::InvalidMessage(s)),
+            NetworkResult::Value(v) => v,
+        }
+    };
+    ($r:expr => $f:tt) => {
+        match $r {
+            NetworkResult::Timeout => {
+                $f;
+                return Ok(NetworkResult::Timeout);
+            }
+            NetworkResult::NoConnection(e) => {
+                $f;
+                return Ok(NetworkResult::NoConnection(e));
+            }
+            NetworkResult::InvalidMessage(s) => {
+                $f;
+                return Ok(NetworkResult::InvalidMessage(s));
+            }
+            NetworkResult::Value(v) => v,
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! network_result_value_or_log {
+    ($level: ident $r: expr => $f:tt) => {
+        match $r {
+            NetworkResult::Timeout => {
+                log_net!($level "{} at {}@{}:{}", "Timeout".green(), file!(), line!(), column!());
+                $f
+            }
+            NetworkResult::NoConnection(e) => {
+                log_net!($level "{}({}) at {}@{}:{}", "No connection".green(), e.to_string(), file!(), line!(), column!());
+                $f
+            }
+            NetworkResult::InvalidMessage(s) => {
+                log_net!($level "{}({}) at {}@{}:{}", "No connection".green(), s, file!(), line!(), column!());
+                $f
+            }
             NetworkResult::Value(v) => v,
         }
     };

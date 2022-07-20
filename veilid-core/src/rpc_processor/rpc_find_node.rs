@@ -10,15 +10,19 @@ impl RPCProcessor {
         key: DHTKey,
         safety_route: Option<&SafetyRouteSpec>,
         respond_to: RespondTo,
-    ) -> Result<Answer<Vec<PeerInfo>>, RPCError> {
+    ) -> Result<NetworkResult<Answer<Vec<PeerInfo>>>, RPCError> {
         let find_node_q = RPCOperationFindNodeQ { node_id: key };
         let question = RPCQuestion::new(respond_to, RPCQuestionDetail::FindNodeQ(find_node_q));
 
         // Send the find_node request
-        let waitable_reply = self.question(dest, question, safety_route).await?;
+        let waitable_reply =
+            network_result_try!(self.question(dest, question, safety_route).await?);
 
         // Wait for reply
-        let (msg, latency) = self.wait_for_reply(waitable_reply).await?;
+        let (msg, latency) = match self.wait_for_reply(waitable_reply).await? {
+            TimeoutOr::Timeout => return Ok(NetworkResult::Timeout),
+            TimeoutOr::Value(v) => v,
+        };
 
         // Get the right answer type
         let find_node_a = match msg.operation.into_kind() {
@@ -38,9 +42,13 @@ impl RPCProcessor {
             }
         }
 
-        Ok(Answer::new(latency, find_node_a.peers))
+        Ok(NetworkResult::value(Answer::new(
+            latency,
+            find_node_a.peers,
+        )))
     }
 
+    #[instrument(level = "trace", skip(self, msg), fields(msg.operation.op_id, res), err)]
     pub(crate) async fn process_find_node_q(&self, msg: RPCMessage) -> Result<(), RPCError> {
         // Get the question
         let find_node_q = match msg.operation.kind() {
@@ -74,11 +82,14 @@ impl RPCProcessor {
         };
 
         // Send status answer
-        self.answer(
-            msg,
-            RPCAnswer::new(RPCAnswerDetail::FindNodeA(find_node_a)),
-            None,
-        )
-        .await
+        let res = self
+            .answer(
+                msg,
+                RPCAnswer::new(RPCAnswerDetail::FindNodeA(find_node_a)),
+                None,
+            )
+            .await?;
+        tracing::Span::current().record("res", &tracing::field::display(res));
+        Ok(())
     }
 }

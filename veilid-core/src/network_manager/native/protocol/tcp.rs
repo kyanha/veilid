@@ -51,7 +51,7 @@ impl RawTcpNetworkConnection {
         let len = message.len() as u16;
         let header = [b'V', b'L', len as u8, (len >> 8) as u8];
 
-        stream.write_all(&header).await.into_network_result()?;
+        network_result_try!(stream.write_all(&header).await.into_network_result()?);
         stream.write_all(&message).await.into_network_result()
     }
 
@@ -59,21 +59,14 @@ impl RawTcpNetworkConnection {
     pub async fn send(&self, message: Vec<u8>) -> io::Result<NetworkResult<()>> {
         let mut stream = self.stream.clone();
         let out = Self::send_internal(&mut stream, message).await?;
-        tracing::Span::current().record(
-            "network_result",
-            &match &out {
-                NetworkResult::Timeout => "Timeout".to_owned(),
-                NetworkResult::NoConnection(e) => format!("No connection: {}", e),
-                NetworkResult::Value(()) => "Value(())".to_owned(),
-            },
-        );
+        tracing::Span::current().record("network_result", &tracing::field::display(&out));
         Ok(out)
     }
 
     async fn recv_internal(stream: &mut AsyncPeekStream) -> io::Result<NetworkResult<Vec<u8>>> {
         let mut header = [0u8; 4];
 
-        stream.read_exact(&mut header).await.into_network_result()?;
+        network_result_try!(stream.read_exact(&mut header).await.into_network_result()?);
 
         if header[0] != b'V' || header[1] != b'L' {
             bail_io_error_other!("received invalid TCP frame header");
@@ -84,7 +77,7 @@ impl RawTcpNetworkConnection {
         }
 
         let mut out: Vec<u8> = vec![0u8; len];
-        stream.read_exact(&mut out).await.into_network_result()?;
+        network_result_try!(stream.read_exact(&mut out).await.into_network_result()?);
 
         Ok(NetworkResult::Value(out))
     }
@@ -93,14 +86,7 @@ impl RawTcpNetworkConnection {
     pub async fn recv(&self) -> io::Result<NetworkResult<Vec<u8>>> {
         let mut stream = self.stream.clone();
         let out = Self::recv_internal(&mut stream).await?;
-        tracing::Span::current().record(
-            "network_result",
-            &match &out {
-                NetworkResult::Timeout => "Timeout".to_owned(),
-                NetworkResult::NoConnection(e) => format!("No connection: {}", e),
-                NetworkResult::Value(v) => format!("Value(len={})", v.len()),
-            },
-        );
+        tracing::Span::current().record("network_result", &tracing::field::display(&out));
         Ok(out)
     }
 }

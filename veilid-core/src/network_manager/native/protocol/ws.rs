@@ -92,14 +92,7 @@ where
             .await
             .map_err(to_io)
             .into_network_result()?;
-        tracing::Span::current().record(
-            "network_result",
-            &match &out {
-                NetworkResult::Timeout => "Timeout".to_owned(),
-                NetworkResult::NoConnection(e) => format!("No connection: {}", e),
-                NetworkResult::Value(()) => "Value(())".to_owned(),
-            },
-        );
+        tracing::Span::current().record("network_result", &tracing::field::display(&out));
         Ok(out)
     }
 
@@ -132,14 +125,7 @@ where
             )),
         };
 
-        tracing::Span::current().record(
-            "network_result",
-            &match &out {
-                NetworkResult::Timeout => "Timeout".to_owned(),
-                NetworkResult::NoConnection(e) => format!("No connection: {}", e),
-                NetworkResult::Value(v) => format!("Value(len={})", v.len()),
-            },
-        );
+        tracing::Span::current().record("network_result", &tracing::field::display(&out));
         Ok(out)
     }
 }

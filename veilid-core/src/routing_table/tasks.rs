@@ -213,13 +213,13 @@ impl RoutingTable {
             for pi in peer_info {
                 let k = pi.node_id.key;
                 // Register the node
-                let nr = self.register_node_with_signed_node_info(k, pi.signed_node_info)?;
-
-                // Add this our futures to process in parallel
-                unord.push(
-                    // lets ask bootstrap to find ourselves now
-                    self.reverse_find_node(nr, true),
-                );
+                if let Some(nr) = self.register_node_with_signed_node_info(k, pi.signed_node_info) {
+                    // Add this our futures to process in parallel
+                    unord.push(
+                        // lets ask bootstrap to find ourselves now
+                        self.reverse_find_node(nr, true),
+                    );
+                }
             }
         }
 
@@ -299,7 +299,7 @@ impl RoutingTable {
             log_rtab!("--- bootstrapping {} with {:?}", k.encode(), &v);
 
             // Make invalid signed node info (no signature)
-            let nr = self.register_node_with_signed_node_info(
+            if let Some(nr) = self.register_node_with_signed_node_info(
                 k,
                 SignedNodeInfo::with_no_signature(NodeInfo {
                     network_class: NetworkClass::InboundCapable, // Bootstraps are always inbound capable
@@ -309,27 +309,27 @@ impl RoutingTable {
                     dial_info_detail_list: v.dial_info_details, // Dial info is as specified in the bootstrap list
                     relay_peer_info: None, // Bootstraps never require a relay themselves
                 }),
-            )?;
+            ) {
+                // Add this our futures to process in parallel
+                let this = self.clone();
+                unord.push(async move {
+                    // Need VALID signed peer info, so ask bootstrap to find_node of itself
+                    // which will ensure it has the bootstrap's signed peer info as part of the response
+                    let _ = this.find_target(nr.clone()).await;
 
-            // Add this our futures to process in parallel
-            let this = self.clone();
-            unord.push(async move {
-                // Need VALID signed peer info, so ask bootstrap to find_node of itself
-                // which will ensure it has the bootstrap's signed peer info as part of the response
-                let _ = this.find_target(nr.clone()).await;
-
-                // Ensure we got the signed peer info
-                if !nr.operate(|e| e.has_valid_signed_node_info()) {
-                    log_rtab!(warn
-                        "bootstrap at {:?} did not return valid signed node info",
-                        nr
-                    );
-                    // If this node info is invalid, it will time out after being unpingable
-                } else {
-                    // otherwise this bootstrap is valid, lets ask it to find ourselves now
-                    this.reverse_find_node(nr, true).await
-                }
-            });
+                    // Ensure we got the signed peer info
+                    if !nr.operate(|e| e.has_valid_signed_node_info()) {
+                        log_rtab!(warn
+                            "bootstrap at {:?} did not return valid signed node info",
+                            nr
+                        );
+                        // If this node info is invalid, it will time out after being unpingable
+                    } else {
+                        // otherwise this bootstrap is valid, lets ask it to find ourselves now
+                        this.reverse_find_node(nr, true).await
+                    }
+                });
+            }
         }
 
         // Wait for all bootstrap operations to complete before we complete the singlefuture

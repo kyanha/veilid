@@ -4,22 +4,29 @@ impl RPCProcessor {
     // Send StatusQ RPC request, receive StatusA answer
     // Can be sent via relays, but not via routes
     #[instrument(level = "trace", skip(self), ret, err)]
-    pub async fn rpc_call_status(self, peer: NodeRef) -> Result<Answer<SenderInfo>, RPCError> {
+    pub async fn rpc_call_status(
+        self,
+        peer: NodeRef,
+    ) -> Result<NetworkResult<Answer<SenderInfo>>, RPCError> {
         let node_status = self.network_manager().generate_node_status();
         let status_q = RPCOperationStatusQ { node_status };
         let respond_to = self.make_respond_to_sender(peer.clone());
         let question = RPCQuestion::new(respond_to, RPCQuestionDetail::StatusQ(status_q));
 
         // Send the info request
-        let waitable_reply = self
-            .question(Destination::Direct(peer.clone()), question, None)
-            .await?;
+        let waitable_reply = network_result_try!(
+            self.question(Destination::Direct(peer.clone()), question, None)
+                .await?
+        );
 
         // Note what kind of ping this was and to what peer scope
         let send_data_kind = waitable_reply.send_data_kind;
 
         // Wait for reply
-        let (msg, latency) = self.wait_for_reply(waitable_reply).await?;
+        let (msg, latency) = match self.wait_for_reply(waitable_reply).await? {
+            TimeoutOr::Timeout => return Ok(NetworkResult::Timeout),
+            TimeoutOr::Value(v) => v,
+        };
 
         // Get the right answer type
         let status_a = match msg.operation.into_kind() {
@@ -54,9 +61,13 @@ impl RPCProcessor {
             }
         }
 
-        Ok(Answer::new(latency, status_a.sender_info))
+        Ok(NetworkResult::value(Answer::new(
+            latency,
+            status_a.sender_info,
+        )))
     }
 
+    #[instrument(level = "trace", skip(self, msg), fields(msg.operation.op_id, res), err)]
     pub(crate) async fn process_status_q(&self, msg: RPCMessage) -> Result<(), RPCError> {
         let peer_noderef = msg.header.peer_noderef.clone();
 
@@ -86,11 +97,14 @@ impl RPCProcessor {
         };
 
         // Send status answer
-        self.answer(
-            msg,
-            RPCAnswer::new(RPCAnswerDetail::StatusA(status_a)),
-            None,
-        )
-        .await
+        let res = self
+            .answer(
+                msg,
+                RPCAnswer::new(RPCAnswerDetail::StatusA(status_a)),
+                None,
+            )
+            .await?;
+        tracing::Span::current().record("res", &tracing::field::display(res));
+        Ok(())
     }
 }

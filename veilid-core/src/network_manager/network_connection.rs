@@ -283,7 +283,12 @@ impl NetworkConnection {
                     let receiver_fut = Self::recv_internal(&protocol_connection, stats.clone())
                         .then(|res| async {
                             match res {
-                                Ok(NetworkResult::Value(message)) => {
+                                Ok(v) => {
+                                    
+                                    let message = network_result_value_or_log!(debug v => {
+                                        return RecvLoopAction::Finish;
+                                    });
+
                                     // Pass received messages up to the network manager for processing
                                     if let Err(e) = network_manager
                                         .on_recv_envelope(message.as_slice(), descriptor)
@@ -294,16 +299,6 @@ impl NetworkConnection {
                                     } else {
                                         RecvLoopAction::Recv
                                     }
-                                }
-                                Ok(NetworkResult::Timeout) => {
-                                    // Connection unable to receive, closed
-                                    log_net!(debug "Timeout");
-                                    RecvLoopAction::Finish
-                                }
-                                Ok(NetworkResult::NoConnection(e)) => {
-                                    // Connection unable to receive, closed
-                                    log_net!(debug "No connection: {}", e);
-                                    RecvLoopAction::Finish
                                 }
                                 Err(e) => {
                                     // Connection unable to receive, closed
