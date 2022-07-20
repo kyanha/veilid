@@ -877,8 +877,8 @@ impl RPCProcessor {
         while let Ok(Ok((span_id, msg))) =
             receiver.recv_async().timeout_at(stop_token.clone()).await
         {
-            let rpc_worker_span = span!(parent: span_id, Level::TRACE, "rpc_worker");
-            //rpc_worker_span.follows_from(span_id);
+            let rpc_worker_span = span!(parent: None, Level::TRACE, "rpc_worker");
+            rpc_worker_span.follows_from(span_id);
             let _enter = rpc_worker_span.enter();
 
             let _ = self
