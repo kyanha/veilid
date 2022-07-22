@@ -195,7 +195,7 @@ impl<T> From<NetworkResult<T>> for Option<T> {
 //         match self {
 //             Self::Timeout => Self::Timeout,
 //             Self::NoConnection(e) => Self::NoConnection(e.clone()),
-//             Self::InvalidResponse(k, s) => Self::InvalidResponse(k, s.clone()),
+//             Self::InvalidMessage(s) => Self::InvalidMessage(s.clone()),
 //             Self::Value(t) => Self::Value(t.clone()),
 //         }
 //     }

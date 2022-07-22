@@ -289,7 +289,7 @@ impl NetworkManager {
             ) {
                 // Add this our futures to process in parallel
                 let routing_table = routing_table.clone();
-                unord.push(intf::spawn(async move {
+                unord.push(async move {
                     // Need VALID signed peer info, so ask bootstrap to find_node of itself
                     // which will ensure it has the bootstrap's signed peer info as part of the response
                     let _ = routing_table.find_target(nr.clone()).await;
@@ -305,7 +305,7 @@ impl NetworkManager {
                         // otherwise this bootstrap is valid, lets ask it to find ourselves now
                         routing_table.reverse_find_node(nr, true).await
                     }
-                }));
+                });
             }
         }
 
@@ -333,7 +333,7 @@ impl NetworkManager {
         let node_refs = routing_table.get_nodes_needing_ping(cur_ts, relay_node_id);
         for nr in node_refs {
             let rpc = rpc.clone();
-            unord.push(intf::spawn(async move { rpc.rpc_call_status(nr).await }));
+            unord.push(async move { rpc.rpc_call_status(nr).await });
         }
 
         // Wait for futures to complete
@@ -360,9 +360,7 @@ impl NetworkManager {
         for nr in noderefs {
             log_net!("--- peer minimum search with {:?}", nr);
             let routing_table = routing_table.clone();
-            unord.push(intf::spawn(async move {
-                routing_table.reverse_find_node(nr, false).await
-            }));
+            unord.push(async move { routing_table.reverse_find_node(nr, false).await });
         }
         while let Ok(Some(_)) = unord.next().timeout_at(stop_token.clone()).await {}
 
@@ -373,7 +371,7 @@ impl NetworkManager {
     #[instrument(level = "trace", skip(self), err)]
     pub(super) async fn relay_management_task_routine(
         self,
-        stop_token: StopToken,
+        _stop_token: StopToken,
         _last_ts: u64,
         cur_ts: u64,
     ) -> EyreResult<()> {
@@ -455,7 +453,7 @@ impl NetworkManager {
     #[instrument(level = "trace", skip(self), err)]
     pub(super) async fn rolling_transfers_task_routine(
         self,
-        stop_token: StopToken,
+        _stop_token: StopToken,
         last_ts: u64,
         cur_ts: u64,
     ) -> EyreResult<()> {

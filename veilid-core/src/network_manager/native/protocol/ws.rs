@@ -17,23 +17,15 @@ cfg_if! {
     }
 }
 
-fn to_io(err: async_tungstenite::tungstenite::Error) -> io::Error {
-    let kind = match err {
-        async_tungstenite::tungstenite::Error::ConnectionClosed => io::ErrorKind::ConnectionReset,
-        async_tungstenite::tungstenite::Error::AlreadyClosed => io::ErrorKind::NotConnected,
-        async_tungstenite::tungstenite::Error::Io(x) => {
-            return x;
+fn err_to_network_result<T>(err: async_tungstenite::tungstenite::Error) -> NetworkResult<T> {
+    match err {
+        async_tungstenite::tungstenite::Error::ConnectionClosed
+        | async_tungstenite::tungstenite::Error::AlreadyClosed
+        | async_tungstenite::tungstenite::Error::Io(_) => {
+            NetworkResult::NoConnection(to_io_error_other(err))
         }
-        async_tungstenite::tungstenite::Error::Tls(_) => io::ErrorKind::InvalidData,
-        async_tungstenite::tungstenite::Error::Capacity(_) => io::ErrorKind::Other,
-        async_tungstenite::tungstenite::Error::Protocol(_) => io::ErrorKind::Other,
-        async_tungstenite::tungstenite::Error::SendQueueFull(_) => io::ErrorKind::Other,
-        async_tungstenite::tungstenite::Error::Utf8 => io::ErrorKind::Other,
-        async_tungstenite::tungstenite::Error::Url(_) => io::ErrorKind::Other,
-        async_tungstenite::tungstenite::Error::Http(_) => io::ErrorKind::Other,
-        async_tungstenite::tungstenite::Error::HttpFormat(_) => io::ErrorKind::Other,
-    };
-    io::Error::new(kind, err)
+        _ => NetworkResult::InvalidMessage(err.to_string()),
+    }
 }
 
 pub type WebSocketNetworkConnectionAccepted = WebsocketNetworkConnection<AsyncPeekStream>;
@@ -73,11 +65,11 @@ where
     // #[instrument(level = "trace", err, skip(self))]
     // pub async fn close(&self) -> io::Result<()> {
     //     // Make an attempt to flush the stream
-    //     self.stream.clone().close().await.map_err(to_io)?;
+    //     self.stream.clone().close().await.map_err(to_io_error_other)?;
     //     // Then forcibly close the socket
     //     self.tcp_stream
     //         .shutdown(Shutdown::Both)
-    //         .map_err(to_io)
+    //         .map_err(to_io_error_other)
     // }
 
     #[instrument(level = "trace", err, skip(self, message), fields(network_result, message.len = message.len()))]
@@ -85,13 +77,10 @@ where
         if message.len() > MAX_MESSAGE_SIZE {
             bail_io_error_other!("received too large WS message");
         }
-        let out = self
-            .stream
-            .clone()
-            .send(Message::binary(message))
-            .await
-            .map_err(to_io)
-            .into_network_result()?;
+        let out = match self.stream.clone().send(Message::binary(message)).await {
+            Ok(v) => NetworkResult::value(v),
+            Err(e) => err_to_network_result(e),
+        };
         tracing::Span::current().record("network_result", &tracing::field::display(&out));
         Ok(out)
     }
@@ -112,16 +101,14 @@ where
                 io::ErrorKind::ConnectionReset,
                 "closeframe",
             )),
-            Some(Ok(x)) => {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    format!("Unexpected WS message type: {:?}", x),
-                ));
-            }
-            Some(Err(e)) => return Err(to_io(e)),
+            Some(Ok(x)) => NetworkResult::NoConnection(io::Error::new(
+                io::ErrorKind::ConnectionReset,
+                format!("Unexpected WS message type: {:?}", x),
+            )),
+            Some(Err(e)) => err_to_network_result(e),
             None => NetworkResult::NoConnection(io::Error::new(
                 io::ErrorKind::ConnectionReset,
-                "connection ended",
+                "connection ended normally",
             )),
         };
 
