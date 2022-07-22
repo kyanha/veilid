@@ -183,10 +183,7 @@ change_log_level    - change the log level for a tracing layer
         spawn_detached_local(async move {
             match capi.server_debug(rest.unwrap_or_default()).await {
                 Ok(output) => ui.display_string_dialog("Debug Output", output, callback),
-                Err(e) => {
-                    error!("Server command 'debug' failed: {}", e);
-                    ui.send_callback(callback);
-                }
+                Err(e) => ui.display_string_dialog("Debug Error", e.to_string(), callback),
             }
         });
         Ok(())

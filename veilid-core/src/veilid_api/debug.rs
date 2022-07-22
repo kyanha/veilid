@@ -160,6 +160,36 @@ impl VeilidAPI {
         Ok("Config value set".to_owned())
     }
 
+    async fn debug_restart(&self, args: String) -> Result<String, VeilidAPIError> {
+        let args = args.trim_start();
+        if args.is_empty() {
+            return Err(VeilidAPIError::missing_argument("debug_restart", "arg_0"));
+        }
+        let (arg, _rest) = args.split_once(' ').unwrap_or((args, ""));
+        // let rest = rest.trim_start().to_owned();
+
+        if arg == "network" {
+            // Must be attached
+            if matches!(
+                self.get_state().await?.attachment.state,
+                AttachmentState::Detached
+            ) {
+                apibail_internal!("Must be attached to restart network");
+            }
+
+            let netman = self.network_manager()?;
+            netman.net().restart_network();
+
+            Ok("Network restarted".to_owned())
+        } else {
+            Err(VeilidAPIError::invalid_argument(
+                "debug_restart",
+                "arg_1",
+                arg,
+            ))
+        }
+    }
+
     async fn debug_purge(&self, args: String) -> Result<String, VeilidAPIError> {
         let args: Vec<String> = args.split_whitespace().map(|s| s.to_owned()).collect();
         if !args.is_empty() {
@@ -226,6 +256,7 @@ impl VeilidAPI {
         purge buckets
         attach
         detach
+        restart network
     "#
         .to_owned())
     }
@@ -261,6 +292,8 @@ impl VeilidAPI {
             self.debug_detach(rest).await
         } else if arg == "config" {
             self.debug_config(rest).await
+        } else if arg == "restart" {
+            self.debug_restart(rest).await
         } else {
             Ok(">>> Unknown command\n".to_owned())
         }

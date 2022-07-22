@@ -248,6 +248,13 @@ impl AttachmentManager {
                     break;
                 }
 
+                // see if we need to restart the network
+                if netman.needs_restart() {
+                    info!("Restarting network");
+                    restart = true;
+                    break;
+                }
+
                 self.update_attachment().await;
 
                 // sleep should be at the end in case maintain_peers changes state

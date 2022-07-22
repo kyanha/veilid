@@ -11,26 +11,14 @@ use crate::network_manager::*;
 use crate::rpc_processor::*;
 use crate::xx::*;
 use crate::*;
-use alloc::str::FromStr;
 use bucket::*;
 pub use bucket_entry::*;
 pub use debug::*;
 pub use find_nodes::*;
-use futures_util::stream::{FuturesUnordered, StreamExt};
 pub use node_ref::*;
 pub use stats_accounting::*;
 
 //////////////////////////////////////////////////////////////////////////
-
-pub const BOOTSTRAP_TXT_VERSION: u8 = 0;
-
-#[derive(Clone, Debug)]
-pub struct BootstrapRecord {
-    min_version: u8,
-    max_version: u8,
-    dial_info_details: Vec<DialInfoDetail>,
-}
-pub type BootstrapRecordMap = BTreeMap<DHTKey, BootstrapRecord>;
 
 #[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Ord, Eq)]
 pub enum RoutingDomain {
@@ -70,10 +58,6 @@ pub struct RoutingTableHealth {
 struct RoutingTableUnlockedInner {
     // Background processes
     rolling_transfers_task: TickTask<EyreReport>,
-    bootstrap_task: TickTask<EyreReport>,
-    peer_minimum_refresh_task: TickTask<EyreReport>,
-    ping_validator_task: TickTask<EyreReport>,
-    node_info_update_single_future: MustJoinSingleFuture<()>,
     kick_buckets_task: TickTask<EyreReport>,
 }
 
@@ -100,14 +84,10 @@ impl RoutingTable {
             self_transfer_stats: TransferStatsDownUp::default(),
         }
     }
-    fn new_unlocked_inner(config: VeilidConfig) -> RoutingTableUnlockedInner {
-        let c = config.get();
+    fn new_unlocked_inner(_config: VeilidConfig) -> RoutingTableUnlockedInner {
+        //let c = config.get();
         RoutingTableUnlockedInner {
             rolling_transfers_task: TickTask::new(ROLLING_TRANSFERS_INTERVAL_SECS),
-            bootstrap_task: TickTask::new(1),
-            peer_minimum_refresh_task: TickTask::new_ms(c.network.dht.min_peer_refresh_time_ms),
-            ping_validator_task: TickTask::new(1),
-            node_info_update_single_future: MustJoinSingleFuture::new(),
             kick_buckets_task: TickTask::new(1),
         }
     }
@@ -127,31 +107,7 @@ impl RoutingTable {
                     Box::pin(this2.clone().rolling_transfers_task_routine(s, l, t))
                 });
         }
-        // Set bootstrap tick task
-        {
-            let this2 = this.clone();
-            this.unlocked_inner
-                .bootstrap_task
-                .set_routine(move |s, _l, _t| Box::pin(this2.clone().bootstrap_task_routine(s)));
-        }
-        // Set peer minimum refresh tick task
-        {
-            let this2 = this.clone();
-            this.unlocked_inner
-                .peer_minimum_refresh_task
-                .set_routine(move |s, _l, _t| {
-                    Box::pin(this2.clone().peer_minimum_refresh_task_routine(s))
-                });
-        }
-        // Set ping validator tick task
-        {
-            let this2 = this.clone();
-            this.unlocked_inner
-                .ping_validator_task
-                .set_routine(move |s, l, t| {
-                    Box::pin(this2.clone().ping_validator_task_routine(s, l, t))
-                });
-        }
+
         // Set kick buckets tick task
         {
             let this2 = this.clone();
@@ -402,98 +358,14 @@ impl RoutingTable {
         if let Err(e) = self.unlocked_inner.rolling_transfers_task.stop().await {
             error!("rolling_transfers_task not stopped: {}", e);
         }
-        debug!("stopping bootstrap task");
-        if let Err(e) = self.unlocked_inner.bootstrap_task.stop().await {
-            error!("bootstrap_task not stopped: {}", e);
-        }
-        debug!("stopping peer minimum refresh task");
-        if let Err(e) = self.unlocked_inner.peer_minimum_refresh_task.stop().await {
-            error!("peer_minimum_refresh_task not stopped: {}", e);
-        }
-        debug!("stopping ping_validator task");
-        if let Err(e) = self.unlocked_inner.ping_validator_task.stop().await {
-            error!("ping_validator_task not stopped: {}", e);
-        }
-        debug!("stopping node info update singlefuture");
-        if self
-            .unlocked_inner
-            .node_info_update_single_future
-            .join()
-            .await
-            .is_err()
-        {
-            error!("node_info_update_single_future not stopped");
+        debug!("stopping kick buckets task");
+        if let Err(e) = self.unlocked_inner.kick_buckets_task.stop().await {
+            error!("kick_buckets_task not stopped: {}", e);
         }
 
         *self.inner.write() = Self::new_inner(self.network_manager());
 
         debug!("finished routing table terminate");
-    }
-
-    // Inform routing table entries that our dial info has changed
-    pub async fn send_node_info_updates(&self, all: bool) {
-        let this = self.clone();
-
-        // Run in background only once
-        let _ = self
-            .clone()
-            .unlocked_inner
-            .node_info_update_single_future
-            .single_spawn(async move {
-                // Only update if we actually have a valid network class
-                let netman = this.network_manager();
-                if matches!(
-                    netman.get_network_class().unwrap_or(NetworkClass::Invalid),
-                    NetworkClass::Invalid
-                ) {
-                    trace!(
-                        "not sending node info update because our network class is not yet valid"
-                    );
-                    return;
-                }
-
-                // Get the list of refs to all nodes to update
-                let node_refs = {
-                    let inner = this.inner.read();
-                    let mut node_refs = Vec::<NodeRef>::with_capacity(inner.bucket_entry_count);
-                    let cur_ts = intf::get_timestamp();
-                    Self::with_entries(&*inner, cur_ts, BucketEntryState::Unreliable, |k, v| {
-                        // Only update nodes that haven't seen our node info yet
-                        if all || !v.with(|e| e.has_seen_our_node_info()) {
-                            node_refs.push(NodeRef::new(this.clone(), k, v, None));
-                        }
-                        Option::<()>::None
-                    });
-                    node_refs
-                };
-
-                // Send the updates
-                log_rtab!(debug "Sending node info updates to {} nodes", node_refs.len());
-                let mut unord = FuturesUnordered::new();
-                for nr in node_refs {
-                    let rpc = this.rpc_processor();
-                    unord.push(async move {
-                        // Update the node
-                        if let Err(e) = rpc
-                            .rpc_call_node_info_update(Destination::Direct(nr.clone()), None)
-                            .await
-                        {
-                            // Not fatal, but we should be able to see if this is happening
-                            trace!("failed to send node info update to {:?}: {}", nr, e);
-                            return;
-                        }
-
-                        // Mark the node as updated
-                        nr.set_seen_our_node_info();
-                    });
-                }
-
-                // Wait for futures to complete
-                while unord.next().await.is_some() {}
-
-                log_rtab!(debug "Finished sending node updates");
-            })
-            .await;
     }
 
     // Attempt to empty the routing table
@@ -539,7 +411,12 @@ impl RoutingTable {
             .unwrap()
     }
 
-    fn get_entry_count(inner: &RoutingTableInner, min_state: BucketEntryState) -> usize {
+    pub fn get_entry_count(&self, min_state: BucketEntryState) -> usize {
+        let inner = self.inner.read();
+        Self::get_entry_count_inner(&*inner, min_state)
+    }
+
+    fn get_entry_count_inner(inner: &RoutingTableInner, min_state: BucketEntryState) -> usize {
         let mut count = 0usize;
         let cur_ts = intf::get_timestamp();
         Self::with_entries(inner, cur_ts, min_state, |_, _| {
@@ -565,6 +442,46 @@ impl RoutingTable {
             }
         }
         None
+    }
+
+    pub fn get_nodes_needing_updates(&self, cur_ts: u64, all: bool) -> Vec<NodeRef> {
+        let inner = self.inner.read();
+        let mut node_refs = Vec::<NodeRef>::with_capacity(inner.bucket_entry_count);
+        Self::with_entries(&*inner, cur_ts, BucketEntryState::Unreliable, |k, v| {
+            // Only update nodes that haven't seen our node info yet
+            if all || !v.with(|e| e.has_seen_our_node_info()) {
+                node_refs.push(NodeRef::new(self.clone(), k, v, None));
+            }
+            Option::<()>::None
+        });
+        node_refs
+    }
+
+    pub fn get_nodes_needing_ping(
+        &self,
+        cur_ts: u64,
+        relay_node_id: Option<DHTKey>,
+    ) -> Vec<NodeRef> {
+        let inner = self.inner.read();
+        let mut node_refs = Vec::<NodeRef>::with_capacity(inner.bucket_entry_count);
+        Self::with_entries(&*inner, cur_ts, BucketEntryState::Unreliable, |k, v| {
+            // Only update nodes that haven't seen our node info yet
+            if v.with(|e| e.needs_ping(&k, cur_ts, relay_node_id)) {
+                node_refs.push(NodeRef::new(self.clone(), k, v, None));
+            }
+            Option::<()>::None
+        });
+        node_refs
+    }
+
+    pub fn get_all_nodes(&self, cur_ts: u64) -> Vec<NodeRef> {
+        let inner = self.inner.read();
+        let mut node_refs = Vec::<NodeRef>::with_capacity(inner.bucket_entry_count);
+        Self::with_entries(&*inner, cur_ts, BucketEntryState::Unreliable, |k, v| {
+            node_refs.push(NodeRef::new(self.clone(), k, v, None));
+            Option::<()>::None
+        });
+        node_refs
     }
 
     fn queue_bucket_kick(&self, node_id: DHTKey) {
@@ -612,7 +529,7 @@ impl RoutingTable {
 
                 // Kick the bucket
                 inner.kick_queue.insert(idx);
-                log_rtab!(debug "Routing table now has {} nodes, {} live", cnt, Self::get_entry_count(&mut *inner, BucketEntryState::Unreliable));
+                log_rtab!(debug "Routing table now has {} nodes, {} live", cnt, Self::get_entry_count_inner(&mut *inner, BucketEntryState::Unreliable));
 
                 nr
             }
@@ -683,26 +600,6 @@ impl RoutingTable {
     pub async fn tick(&self) -> EyreResult<()> {
         // Do rolling transfers every ROLLING_TRANSFERS_INTERVAL_SECS secs
         self.unlocked_inner.rolling_transfers_task.tick().await?;
-
-        // If routing table has no live entries, then add the bootstrap nodes to it
-        let live_entry_count =
-            Self::get_entry_count(&*self.inner.read(), BucketEntryState::Unreliable);
-
-        if live_entry_count == 0 {
-            self.unlocked_inner.bootstrap_task.tick().await?;
-        }
-
-        // If we still don't have enough peers, find nodes until we do
-        let min_peer_count = {
-            let c = self.config.get();
-            c.network.dht.min_peer_count as usize
-        };
-        if live_entry_count < min_peer_count {
-            self.unlocked_inner.peer_minimum_refresh_task.tick().await?;
-        }
-
-        // Ping validate some nodes to groom the table
-        self.unlocked_inner.ping_validator_task.tick().await?;
 
         // Kick buckets task
         let kick_bucket_queue_count = { self.inner.read().kick_queue.len() };

@@ -633,6 +633,8 @@ impl Network {
         if network_class.is_some() {
             // Update public dial info
             let routing_table = self.routing_table();
+            let network_manager = self.network_manager();
+
             for ctx in contexts {
                 let inner = ctx.inner.lock();
                 if let Some(pdi) = &inner.detected_public_dial_info {
@@ -650,7 +652,7 @@ impl Network {
             log_net!(debug "network class changed to {:?}", network_class);
 
             // Send updates to everyone
-            routing_table.send_node_info_updates(true).await;
+            network_manager.send_node_info_updates(true).await;
         }
 
         Ok(())

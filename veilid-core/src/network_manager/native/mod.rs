@@ -281,6 +281,7 @@ impl Network {
         if !self.unlocked_inner.interfaces.refresh().await? {
             return Ok(false);
         }
+
         self.inner.lock().network_needs_restart = true;
         Ok(true)
     }
@@ -612,9 +613,6 @@ impl Network {
 
         info!("network started");
         self.inner.lock().network_started = true;
-
-        // Inform routing table entries that our dial info has changed
-        self.routing_table().send_node_info_updates(true).await;
 
         Ok(())
     }
