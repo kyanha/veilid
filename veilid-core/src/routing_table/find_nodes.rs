@@ -126,9 +126,11 @@ impl RoutingTable {
     pub fn get_own_node_info(&self) -> NodeInfo {
         let netman = self.network_manager();
         let relay_node = netman.relay_node();
+        let pc = netman.get_protocol_config();
         NodeInfo {
             network_class: netman.get_network_class().unwrap_or(NetworkClass::Invalid),
-            outbound_protocols: netman.get_protocol_config().unwrap_or_default().outbound,
+            outbound_protocols: pc.outbound,
+            address_types: pc.family_global,
             min_version: MIN_VERSION,
             max_version: MAX_VERSION,
             dial_info_detail_list: self.dial_info_details(RoutingDomain::PublicInternet),

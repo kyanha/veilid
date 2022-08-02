@@ -35,7 +35,7 @@ struct NetworkInner {
     network_started: bool,
     network_needs_restart: bool,
     protocol_config: Option<ProtocolConfig>,
-    static_public_dialinfo: ProtocolSet,
+    static_public_dialinfo: ProtocolTypeSet,
     network_class: Option<NetworkClass>,
     join_handles: Vec<MustJoinHandle<()>>,
     stop_source: Option<StopSource>,
@@ -43,6 +43,9 @@ struct NetworkInner {
     tcp_port: u16,
     ws_port: u16,
     wss_port: u16,
+    enable_ipv4: bool,
+    enable_ipv6_global: bool,
+    enable_ipv6_local: bool,
     // udp
     bound_first_udp: BTreeMap<u16, Option<(socket2::Socket, socket2::Socket)>>,
     inbound_udp_protocol_handlers: BTreeMap<SocketAddr, RawUdpProtocolHandler>,
@@ -79,7 +82,7 @@ impl Network {
             network_started: false,
             network_needs_restart: false,
             protocol_config: None,
-            static_public_dialinfo: ProtocolSet::empty(),
+            static_public_dialinfo: ProtocolTypeSet::empty(),
             network_class: None,
             join_handles: Vec::new(),
             stop_source: None,
@@ -87,6 +90,9 @@ impl Network {
             tcp_port: 0u16,
             ws_port: 0u16,
             wss_port: 0u16,
+            enable_ipv4: true,
+            enable_ipv6_global: true,
+            enable_ipv6_local: true,
             bound_first_udp: BTreeMap::new(),
             inbound_udp_protocol_handlers: BTreeMap::new(),
             outbound_udpv4_protocol_handler: None,
@@ -540,6 +546,24 @@ impl Network {
         // initialize interfaces
         self.unlocked_inner.interfaces.refresh().await?;
 
+        // determine if we have ipv4/ipv6 addresses
+        {
+            let mut inner = self.inner.lock();
+            for addr in self.unlocked_inner.interfaces.best_addresses() {
+                if addr.is_ipv4() {
+                    inner.enable_ipv4 = true;
+                } else if addr.is_ipv6() {
+                    let address = crate::Address::from_ip_addr(addr);
+                    if address.is_global() {
+                        inner.enable_ipv6_global = true;
+                    } else if address.is_local() {
+                        inner.enable_ipv6_local = true;
+                    }
+                }
+            }
+        }
+
+        // Build our protocol config to share it with other nodes
         let protocol_config = {
             let mut inner = self.inner.lock();
 
@@ -549,7 +573,7 @@ impl Network {
             // get protocol config
             let protocol_config = {
                 let c = self.config.get();
-                let mut inbound = ProtocolSet::new();
+                let mut inbound = ProtocolTypeSet::new();
 
                 if c.network.protocol.udp.enabled && c.capabilities.protocol_udp {
                     inbound.insert(ProtocolType::UDP);
@@ -564,7 +588,7 @@ impl Network {
                     inbound.insert(ProtocolType::WSS);
                 }
 
-                let mut outbound = ProtocolSet::new();
+                let mut outbound = ProtocolTypeSet::new();
                 if c.network.protocol.udp.enabled && c.capabilities.protocol_udp {
                     outbound.insert(ProtocolType::UDP);
                 }
@@ -578,7 +602,25 @@ impl Network {
                     outbound.insert(ProtocolType::WSS);
                 }
 
-                ProtocolConfig { inbound, outbound }
+                let mut family_global = AddressTypeSet::new();
+                let mut family_local = AddressTypeSet::new();
+                if inner.enable_ipv4 {
+                    family_global.insert(AddressType::IPV4);
+                    family_local.insert(AddressType::IPV4);
+                }
+                if inner.enable_ipv6_global {
+                    family_global.insert(AddressType::IPV6);
+                }
+                if inner.enable_ipv6_local {
+                    family_local.insert(AddressType::IPV6);
+                }
+
+                ProtocolConfig {
+                    inbound,
+                    outbound,
+                    family_global,
+                    family_local,
+                }
             };
             inner.protocol_config = Some(protocol_config);
             protocol_config

@@ -413,7 +413,7 @@ impl PlatformSupportApple {
         }
 
         // Ask for all the addresses we have
-        let ifaddrs = IfAddrs::new().map_err(map_to_string)?;
+        let ifaddrs = IfAddrs::new().wrap_err("failed to get interface addresses")?;
         for ifaddr in ifaddrs.iter() {
             // Get the interface name
             let ifname = unsafe { CStr::from_ptr(ifaddr.ifa_name) }

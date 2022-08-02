@@ -56,8 +56,10 @@ pub type BootstrapRecordMap = BTreeMap<DHTKey, BootstrapRecord>;
 
 #[derive(Copy, Clone, Debug, Default)]
 pub struct ProtocolConfig {
-    pub outbound: ProtocolSet,
-    pub inbound: ProtocolSet,
+    pub outbound: ProtocolTypeSet,
+    pub inbound: ProtocolTypeSet,
+    pub family_global: AddressTypeSet,
+    pub family_local: AddressTypeSet,
 }
 
 // Things we get when we start up and go away when we shut down
@@ -135,6 +137,11 @@ struct NetworkManagerInner {
     client_whitelist: LruCache<DHTKey, ClientWhitelistEntry>,
     relay_node: Option<NodeRef>,
     public_address_check_cache: LruCache<DHTKey, SocketAddress>,
+    protocol_config: Option<ProtocolConfig>,
+    public_inbound_dial_info_filter: Option<DialInfoFilter>,
+    local_inbound_dial_info_filter: Option<DialInfoFilter>,
+    public_outbound_dial_info_filter: Option<DialInfoFilter>,
+    local_outbound_dial_info_filter: Option<DialInfoFilter>,
 }
 
 struct NetworkManagerUnlockedInner {
@@ -166,6 +173,11 @@ impl NetworkManager {
             client_whitelist: LruCache::new_unbounded(),
             relay_node: None,
             public_address_check_cache: LruCache::new(8),
+            protocol_config: None,
+            public_inbound_dial_info_filter: None,
+            local_inbound_dial_info_filter: None,
+            public_outbound_dial_info_filter: None,
+            local_outbound_dial_info_filter: None,
         }
     }
     fn new_unlocked_inner(config: VeilidConfig) -> NetworkManagerUnlockedInner {
@@ -343,6 +355,41 @@ impl NetworkManager {
             return Err(e);
         }
 
+        // Store copy of protocol config and dial info filters
+        {
+            let mut inner = self.inner.lock();
+            let pc = inner
+                .components
+                .as_ref()
+                .unwrap()
+                .net
+                .get_protocol_config()
+                .unwrap();
+
+            inner.public_inbound_dial_info_filter = Some(
+                DialInfoFilter::global()
+                    .with_protocol_type_set(pc.inbound)
+                    .with_address_type_set(pc.family_global),
+            );
+            inner.local_inbound_dial_info_filter = Some(
+                DialInfoFilter::local()
+                    .with_protocol_type_set(pc.inbound)
+                    .with_address_type_set(pc.family_local),
+            );
+            inner.public_outbound_dial_info_filter = Some(
+                DialInfoFilter::global()
+                    .with_protocol_type_set(pc.outbound)
+                    .with_address_type_set(pc.family_global),
+            );
+            inner.local_outbound_dial_info_filter = Some(
+                DialInfoFilter::local()
+                    .with_protocol_type_set(pc.outbound)
+                    .with_address_type_set(pc.family_local),
+            );
+
+            inner.protocol_config = Some(pc);
+        }
+
         // Inform routing table entries that our dial info has changed
         self.send_node_info_updates(true).await;
 
@@ -405,6 +452,11 @@ impl NetworkManager {
             let mut inner = self.inner.lock();
             inner.components = None;
             inner.relay_node = None;
+            inner.public_inbound_dial_info_filter = None;
+            inner.local_inbound_dial_info_filter = None;
+            inner.public_outbound_dial_info_filter = None;
+            inner.local_outbound_dial_info_filter = None;
+            inner.protocol_config = None;
         }
 
         // send update
@@ -544,11 +596,42 @@ impl NetworkManager {
     }
 
     // Return what protocols we have enabled
-    pub fn get_protocol_config(&self) -> Option<ProtocolConfig> {
-        if let Some(components) = &self.inner.lock().components {
-            components.net.get_protocol_config()
-        } else {
-            None
+    pub fn get_protocol_config(&self) -> ProtocolConfig {
+        let inner = self.inner.lock();
+        inner.protocol_config.as_ref().unwrap().clone()
+    }
+
+    // Return a dial info filter for what we can receive
+    pub fn get_inbound_dial_info_filter(&self, routing_domain: RoutingDomain) -> DialInfoFilter {
+        let inner = self.inner.lock();
+        match routing_domain {
+            RoutingDomain::PublicInternet => inner
+                .public_inbound_dial_info_filter
+                .as_ref()
+                .unwrap()
+                .clone(),
+            RoutingDomain::LocalNetwork => inner
+                .local_inbound_dial_info_filter
+                .as_ref()
+                .unwrap()
+                .clone(),
+        }
+    }
+
+    // Return a dial info filter for what we can send out
+    pub fn get_outbound_dial_info_filter(&self, routing_domain: RoutingDomain) -> DialInfoFilter {
+        let inner = self.inner.lock();
+        match routing_domain {
+            RoutingDomain::PublicInternet => inner
+                .public_outbound_dial_info_filter
+                .as_ref()
+                .unwrap()
+                .clone(),
+            RoutingDomain::LocalNetwork => inner
+                .local_outbound_dial_info_filter
+                .as_ref()
+                .unwrap()
+                .clone(),
         }
     }
 
@@ -692,15 +775,18 @@ impl NetworkManager {
                 };
 
                 // Get the udp direct dialinfo for the hole punch
-                peer_nr.filter_protocols(ProtocolSet::only(ProtocolType::UDP));
+                let outbound_dif = self
+                    .get_outbound_dial_info_filter(RoutingDomain::PublicInternet)
+                    .with_protocol_type(ProtocolType::UDP);
+                peer_nr.set_filter(Some(outbound_dif));
                 let hole_punch_dial_info_detail = peer_nr
                     .first_filtered_dial_info_detail(Some(RoutingDomain::PublicInternet))
                     .ok_or_else(|| eyre!("No hole punch capable dialinfo found for node"))?;
 
                 // Now that we picked a specific dialinfo, further restrict the noderef to the specific address type
-                let mut filter = peer_nr.take_filter().unwrap();
-                filter.peer_scope = PeerScope::Global;
-                filter.address_type = Some(hole_punch_dial_info_detail.dial_info.address_type());
+                let filter = peer_nr.take_filter().unwrap();
+                let filter =
+                    filter.with_address_type(hole_punch_dial_info_detail.dial_info.address_type());
                 peer_nr.set_filter(Some(filter));
 
                 // Do our half of the hole punch by sending an empty packet
@@ -827,26 +913,11 @@ impl NetworkManager {
         Ok(())
     }
 
-    // Figure out how to reach a node
     #[instrument(level = "trace", skip(self), ret)]
-    fn get_contact_method(&self, mut target_node_ref: NodeRef) -> ContactMethod {
-        let routing_table = self.routing_table();
-
-        // Get our network class and protocol config and node id
-        let our_network_class = self.get_network_class().unwrap_or(NetworkClass::Invalid);
-        let our_protocol_config = self.get_protocol_config().unwrap();
-
+    fn get_contact_method_public(&self, target_node_ref: NodeRef) -> ContactMethod {
         // Scope noderef down to protocols we can do outbound
-        if !target_node_ref.filter_protocols(our_protocol_config.outbound) {
-            return ContactMethod::Unreachable;
-        }
-
-        // Get the best matching local direct dial info if we have it
-        let opt_target_local_did =
-            target_node_ref.first_filtered_dial_info_detail(Some(RoutingDomain::LocalNetwork));
-        if let Some(target_local_did) = opt_target_local_did {
-            return ContactMethod::Direct(target_local_did.dial_info);
-        }
+        let public_outbound_dif = self.get_outbound_dial_info_filter(RoutingDomain::PublicInternet);
+        let target_node_ref = target_node_ref.filtered_clone(public_outbound_dif.clone());
 
         // Get the best match internet dial info if we have it
         let opt_target_public_did =
@@ -861,17 +932,25 @@ impl NetworkManager {
             // Get the target's inbound relay, it must have one or it is not reachable
             // Note that .relay() never returns our own node. We can't relay to ourselves.
             if let Some(inbound_relay_nr) = target_node_ref.relay() {
+                // Scope down to protocols we can do outbound
+                let inbound_relay_nr = inbound_relay_nr.filtered_clone(public_outbound_dif.clone());
                 // Can we reach the inbound relay?
                 if inbound_relay_nr
                     .first_filtered_dial_info_detail(Some(RoutingDomain::PublicInternet))
                     .is_some()
                 {
                     // Can we receive anything inbound ever?
+                    let our_network_class =
+                        self.get_network_class().unwrap_or(NetworkClass::Invalid);
                     if matches!(our_network_class, NetworkClass::InboundCapable) {
+                        let routing_table = self.routing_table();
+
+                        ///////// Reverse connection
+
                         // Get the best match dial info for an reverse inbound connection
-                        let reverse_dif = DialInfoFilter::global().with_protocol_set(
-                            target_node_ref.outbound_protocols().unwrap_or_default(),
-                        );
+                        let reverse_dif = self
+                            .get_inbound_dial_info_filter(RoutingDomain::PublicInternet)
+                            .filtered(target_node_ref.node_info_outbound_filter());
                         if let Some(reverse_did) = routing_table.first_filtered_dial_info_detail(
                             Some(RoutingDomain::PublicInternet),
                             &reverse_dif,
@@ -885,35 +964,33 @@ impl NetworkManager {
                             }
                         }
 
-                        // Does we and the target have outbound protocols to hole-punch?
-                        if our_protocol_config.outbound.contains(ProtocolType::UDP)
-                            && target_node_ref
-                                .outbound_protocols()
-                                .unwrap_or_default()
-                                .contains(ProtocolType::UDP)
-                        {
-                            // Do the target and self nodes have a direct udp dialinfo
-                            let udp_dif =
-                                DialInfoFilter::global().with_protocol_type(ProtocolType::UDP);
-                            let mut udp_target_nr = target_node_ref.clone();
-                            udp_target_nr.filter_protocols(ProtocolSet::only(ProtocolType::UDP));
-                            let target_has_udp_dialinfo = target_node_ref
-                                .first_filtered_dial_info_detail(Some(
-                                    RoutingDomain::PublicInternet,
-                                ))
-                                .is_some();
-                            let self_has_udp_dialinfo = routing_table
-                                .first_filtered_dial_info_detail(
-                                    Some(RoutingDomain::PublicInternet),
-                                    &udp_dif,
-                                )
-                                .is_some();
-                            if target_has_udp_dialinfo && self_has_udp_dialinfo {
-                                return ContactMethod::SignalHolePunch(
-                                    inbound_relay_nr,
-                                    udp_target_nr,
-                                );
-                            }
+                        ///////// UDP hole-punch
+
+                        // Does the target have a direct udp dialinfo we can reach?
+                        let udp_target_nr = target_node_ref.filtered_clone(
+                            DialInfoFilter::global().with_protocol_type(ProtocolType::UDP),
+                        );
+                        let target_has_udp_dialinfo = udp_target_nr
+                            .first_filtered_dial_info_detail(Some(RoutingDomain::PublicInternet))
+                            .is_some();
+
+                        // Does the self node have a direct udp dialinfo the target can reach?
+                        let inbound_udp_dif = self
+                            .get_inbound_dial_info_filter(RoutingDomain::PublicInternet)
+                            .filtered(target_node_ref.node_info_outbound_filter())
+                            .filtered(
+                                DialInfoFilter::global().with_protocol_type(ProtocolType::UDP),
+                            );
+                        let self_has_udp_dialinfo = routing_table
+                            .first_filtered_dial_info_detail(
+                                Some(RoutingDomain::PublicInternet),
+                                &inbound_udp_dif,
+                            )
+                            .is_some();
+
+                        // Does the target and ourselves have a udp dialinfo that they can reach?
+                        if target_has_udp_dialinfo && self_has_udp_dialinfo {
+                            return ContactMethod::SignalHolePunch(inbound_relay_nr, udp_target_nr);
                         }
                         // Otherwise we have to inbound relay
                     }
@@ -922,7 +999,7 @@ impl NetworkManager {
                 }
             }
         }
-        // If the other node is not inbound capable at all, it is using a full relay
+        // If the other node is not inbound capable at all, it needs to have an inbound relay
         else if let Some(target_inbound_relay_nr) = target_node_ref.relay() {
             // Can we reach the full relay?
             if target_inbound_relay_nr
@@ -933,10 +1010,48 @@ impl NetworkManager {
             }
         }
 
+        ContactMethod::Unreachable
+    }
+
+    #[instrument(level = "trace", skip(self), ret)]
+    fn get_contact_method_local(&self, target_node_ref: NodeRef) -> ContactMethod {
+        // Scope noderef down to protocols we can do outbound
+        let local_outbound_dif = self.get_outbound_dial_info_filter(RoutingDomain::LocalNetwork);
+        let target_node_ref = target_node_ref.filtered_clone(local_outbound_dif);
+
+        // Get the best matching local direct dial info if we have it
+        // ygjghhtiygiukuymyg
+        if target_node_ref.is_filter_dead() {
+            return ContactMethod::Unreachable;
+        }
+        let opt_target_local_did =
+            target_node_ref.first_filtered_dial_info_detail(Some(RoutingDomain::LocalNetwork));
+        if let Some(target_local_did) = opt_target_local_did {
+            return ContactMethod::Direct(target_local_did.dial_info);
+        }
+        return ContactMethod::Unreachable;
+    }
+
+    // Figure out how to reach a node
+    #[instrument(level = "trace", skip(self), ret)]
+    fn get_contact_method(&self, target_node_ref: NodeRef) -> ContactMethod {
+        // Try local first
+        let out = self.get_contact_method_local(target_node_ref.clone());
+        if !matches!(out, ContactMethod::Unreachable) {
+            return out;
+        }
+
+        // Try public next
+        let out = self.get_contact_method_public(target_node_ref.clone());
+        if !matches!(out, ContactMethod::Unreachable) {
+            return out;
+        }
+
         // If we can't reach the node by other means, try our outbound relay if we have one
         if let Some(relay_node) = self.relay_node() {
             return ContactMethod::OutboundRelay(relay_node);
         }
+
         // Otherwise, we can't reach this node
         debug!("unable to reach node {:?}", target_node_ref);
         ContactMethod::Unreachable
@@ -1020,7 +1135,7 @@ impl NetworkManager {
         // Ensure we are filtered down to UDP (the only hole punch protocol supported today)
         assert!(target_nr
             .filter_ref()
-            .map(|dif| dif.protocol_set == ProtocolSet::only(ProtocolType::UDP))
+            .map(|dif| dif.protocol_set == ProtocolTypeSet::only(ProtocolType::UDP))
             .unwrap_or_default());
 
         // Build a return receipt for the signal
@@ -1118,11 +1233,13 @@ impl NetworkManager {
                     .await?
                 {
                     None => {
-                        return Ok(if descriptor.matches_peer_scope(PeerScope::Local) {
-                            NetworkResult::value(SendDataKind::LocalDirect)
-                        } else {
-                            NetworkResult::value(SendDataKind::GlobalDirect)
-                        });
+                        return Ok(
+                            if descriptor.matches_peer_scope(PeerScopeSet::only(PeerScope::Local)) {
+                                NetworkResult::value(SendDataKind::LocalDirect)
+                            } else {
+                                NetworkResult::value(SendDataKind::GlobalDirect)
+                            },
+                        );
                     }
                     Some(d) => d,
                 }

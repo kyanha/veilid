@@ -207,20 +207,26 @@ struct NodeStatus {
     willValidateDialInfo    @4  :Bool;
 }
 
-struct ProtocolSet {
+struct ProtocolTypeSet {
     udp                     @0  :Bool;
     tcp                     @1  :Bool;
     ws                      @2  :Bool;
     wss                     @3  :Bool;
 }
 
+struct AddressTypeSet {
+    ipv4                    @0  :Bool;
+    ipv6                    @1  :Bool;
+}
+
 struct NodeInfo {
     networkClass            @0  :NetworkClass;          # network class of this node
-    outboundProtocols       @1  :ProtocolSet;           # protocols that can go outbound
-    minVersion              @2  :UInt8;                 # minimum protocol version for rpc
-    maxVersion              @3  :UInt8;                 # maximum protocol version for rpc
-    dialInfoDetailList      @4  :List(DialInfoDetail);  # inbound dial info details for this node
-    relayPeerInfo           @5  :PeerInfo;              # (optional) relay peer info for this node
+    outboundProtocols       @1  :ProtocolTypeSet;           # protocols that can go outbound
+    addressTypes            @2  :AddressTypeSet;        # address types supported
+    minVersion              @3  :UInt8;                 # minimum protocol version for rpc
+    maxVersion              @4  :UInt8;                 # maximum protocol version for rpc
+    dialInfoDetailList      @5  :List(DialInfoDetail);  # inbound dial info details for this node
+    relayPeerInfo           @6  :PeerInfo;              # (optional) relay peer info for this node
 }
 
 struct SignedNodeInfo {

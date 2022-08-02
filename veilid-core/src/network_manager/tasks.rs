@@ -280,7 +280,8 @@ impl NetworkManager {
                 k,
                 SignedNodeInfo::with_no_signature(NodeInfo {
                     network_class: NetworkClass::InboundCapable, // Bootstraps are always inbound capable
-                    outbound_protocols: ProtocolSet::empty(), // Bootstraps do not participate in relaying and will not make outbound requests
+                    outbound_protocols: ProtocolTypeSet::only(ProtocolType::UDP), // Bootstraps do not participate in relaying and will not make outbound requests, but will have UDP enabled
+                    address_types: AddressTypeSet::all(), // Bootstraps are always IPV4 and IPV6 capable
                     min_version: v.min_version, // Minimum protocol version specified in txt record
                     max_version: v.max_version, // Maximum protocol version specified in txt record
                     dial_info_detail_list: v.dial_info_details, // Dial info is as specified in the bootstrap list

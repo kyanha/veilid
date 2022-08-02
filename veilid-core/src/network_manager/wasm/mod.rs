@@ -231,7 +231,11 @@ impl Network {
                 outbound.insert(ProtocolType::WSS);
             }
 
-            ProtocolConfig { inbound, outbound }
+            // XXX: See issue #92
+            let family_global = AddressSet::all();
+            let family_local = AddressSet::all();
+
+            ProtocolConfig { inbound, outbound, family_global, family_local }
         });
 
         self.inner.lock().network_started = true;

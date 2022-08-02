@@ -8,7 +8,10 @@ pub fn encode_node_info(
     builder.set_network_class(encode_network_class(node_info.network_class));
 
     let mut ps_builder = builder.reborrow().init_outbound_protocols();
-    encode_protocol_set(&node_info.outbound_protocols, &mut ps_builder)?;
+    encode_protocol_type_set(&node_info.outbound_protocols, &mut ps_builder)?;
+
+    let mut ats_builder = builder.reborrow().init_address_types();
+    encode_address_type_set(&node_info.address_types, &mut ats_builder)?;
 
     builder.set_min_version(node_info.min_version);
     builder.set_max_version(node_info.max_version);
@@ -47,10 +50,17 @@ pub fn decode_node_info(
             .map_err(RPCError::protocol)?,
     );
 
-    let outbound_protocols = decode_protocol_set(
+    let outbound_protocols = decode_protocol_type_set(
         &reader
             .reborrow()
             .get_outbound_protocols()
+            .map_err(RPCError::protocol)?,
+    )?;
+
+    let address_types = decode_address_type_set(
+        &reader
+            .reborrow()
+            .get_address_types()
             .map_err(RPCError::protocol)?,
     )?;
 
@@ -90,6 +100,7 @@ pub fn decode_node_info(
     Ok(NodeInfo {
         network_class,
         outbound_protocols,
+        address_types,
         min_version,
         max_version,
         dial_info_detail_list,

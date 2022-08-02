@@ -402,7 +402,8 @@ pub struct NodeStatus {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct NodeInfo {
     pub network_class: NetworkClass,
-    pub outbound_protocols: ProtocolSet,
+    pub outbound_protocols: ProtocolTypeSet,
+    pub address_types: AddressTypeSet,
     pub min_version: u8,
     pub max_version: u8,
     pub dial_info_detail_list: Vec<DialInfoDetail>,
@@ -557,14 +558,23 @@ impl ProtocolType {
         )
     }
 }
+pub type ProtocolTypeSet = EnumSet<ProtocolType>;
 
-pub type ProtocolSet = EnumSet<ProtocolType>;
-
-#[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Ord, Eq, Hash, Serialize, Deserialize)]
+#[allow(clippy::derive_hash_xor_eq)]
+#[derive(Debug, PartialOrd, Ord, Hash, Serialize, Deserialize, EnumSetType)]
 pub enum AddressType {
     IPV4,
     IPV6,
 }
+pub type AddressTypeSet = EnumSet<AddressType>;
+
+#[allow(clippy::derive_hash_xor_eq)]
+#[derive(Debug, Ord, PartialOrd, Hash, Serialize, Deserialize, EnumSetType)]
+pub enum PeerScope {
+    Global,
+    Local,
+}
+pub type PeerScopeSet = EnumSet<PeerScope>;
 
 #[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Ord, Eq, Hash, Serialize, Deserialize)]
 pub enum Address {
@@ -583,6 +593,12 @@ impl Address {
         match sa {
             SocketAddr::V4(v4) => Address::IPV4(*v4.ip()),
             SocketAddr::V6(v6) => Address::IPV6(*v6.ip()),
+        }
+    }
+    pub fn from_ip_addr(addr: IpAddr) -> Address {
+        match addr {
+            IpAddr::V4(v4) => Address::IPV4(v4),
+            IpAddr::V6(v6) => Address::IPV6(v6),
         }
     }
     pub fn address_type(&self) -> AddressType {
@@ -715,17 +731,17 @@ impl FromStr for SocketAddress {
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct DialInfoFilter {
-    pub peer_scope: PeerScope,
-    pub protocol_set: ProtocolSet,
-    pub address_type: Option<AddressType>,
+    pub peer_scope_set: PeerScopeSet,
+    pub protocol_set: ProtocolTypeSet,
+    pub address_set: AddressTypeSet,
 }
 
 impl Default for DialInfoFilter {
     fn default() -> Self {
         Self {
-            peer_scope: PeerScope::All,
-            protocol_set: ProtocolSet::all(),
-            address_type: None,
+            peer_scope_set: PeerScopeSet::all(),
+            protocol_set: ProtocolTypeSet::all(),
+            address_set: AddressTypeSet::all(),
         }
     }
 }
@@ -733,55 +749,72 @@ impl Default for DialInfoFilter {
 impl DialInfoFilter {
     pub fn all() -> Self {
         Self {
-            peer_scope: PeerScope::All,
-            protocol_set: ProtocolSet::all(),
-            address_type: None,
+            peer_scope_set: PeerScopeSet::all(),
+            protocol_set: ProtocolTypeSet::all(),
+            address_set: AddressTypeSet::all(),
         }
     }
     pub fn global() -> Self {
         Self {
-            peer_scope: PeerScope::Global,
-            protocol_set: ProtocolSet::all(),
-            address_type: None,
+            peer_scope_set: PeerScopeSet::only(PeerScope::Global),
+            protocol_set: ProtocolTypeSet::all(),
+            address_set: AddressTypeSet::all(),
         }
     }
     pub fn local() -> Self {
         Self {
-            peer_scope: PeerScope::Local,
-            protocol_set: ProtocolSet::all(),
-            address_type: None,
+            peer_scope_set: PeerScopeSet::only(PeerScope::Local),
+            protocol_set: ProtocolTypeSet::all(),
+            address_set: AddressTypeSet::all(),
         }
     }
     pub fn scoped(peer_scope: PeerScope) -> Self {
         Self {
-            peer_scope,
-            protocol_set: ProtocolSet::all(),
-            address_type: None,
+            peer_scope_set: PeerScopeSet::only(peer_scope),
+            protocol_set: ProtocolTypeSet::all(),
+            address_set: AddressTypeSet::all(),
         }
     }
     pub fn with_protocol_type(mut self, protocol_type: ProtocolType) -> Self {
-        self.protocol_set = ProtocolSet::only(protocol_type);
+        self.protocol_set = ProtocolTypeSet::only(protocol_type);
         self
     }
-    pub fn with_protocol_set(mut self, protocol_set: ProtocolSet) -> Self {
+    pub fn with_protocol_type_set(mut self, protocol_set: ProtocolTypeSet) -> Self {
         self.protocol_set = protocol_set;
         self
     }
     pub fn with_address_type(mut self, address_type: AddressType) -> Self {
-        self.address_type = Some(address_type);
+        self.address_set = AddressTypeSet::only(address_type);
         self
+    }
+    pub fn with_address_type_set(mut self, address_set: AddressTypeSet) -> Self {
+        self.address_set = address_set;
+        self
+    }
+    pub fn filtered(mut self, other_dif: DialInfoFilter) -> Self {
+        self.peer_scope_set &= other_dif.peer_scope_set;
+        self.protocol_set &= other_dif.protocol_set;
+        self.address_set &= other_dif.address_set;
+        self
+    }
+    pub fn is_dead(&self) -> bool {
+        self.peer_scope_set.is_empty()
+            || self.protocol_set.is_empty()
+            || self.address_set.is_empty()
     }
 }
 
 impl fmt::Debug for DialInfoFilter {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         let mut out = String::new();
-        out += &format!("{:?}", self.peer_scope);
-        if self.protocol_set != ProtocolSet::all() {
+        if self.peer_scope_set != PeerScopeSet::all() {
+            out += &format!("+{:?}", self.peer_scope_set);
+        }
+        if self.protocol_set != ProtocolTypeSet::all() {
             out += &format!("+{:?}", self.protocol_set);
         }
-        if let Some(at) = self.address_type {
-            out += &format!("+{:?}", at);
+        if self.address_set != AddressTypeSet::all() {
+            out += &format!("+{:?}", self.address_set);
         }
         write!(f, "[{}]", out)
     }
@@ -1107,28 +1140,39 @@ impl DialInfo {
         let port = socket_address.port();
         (address.is_global() || address.is_local()) && port > 0
     }
-    pub fn matches_peer_scope(&self, scope: PeerScope) -> bool {
-        match scope {
-            PeerScope::All => true,
-            PeerScope::Global => self.is_global(),
-            PeerScope::Local => self.is_local(),
+    pub fn peer_scope(&self) -> Option<PeerScope> {
+        let addr = self.socket_address().address();
+        if addr.is_global() {
+            return Some(PeerScope::Global);
+        }
+        if addr.is_local() {
+            return Some(PeerScope::Local);
+        }
+        None
+    }
+    pub fn matches_peer_scope(&self, scope: PeerScopeSet) -> bool {
+        if let Some(ps) = self.peer_scope() {
+            scope.contains(ps)
+        } else {
+            false
         }
     }
+
     pub fn make_filter(&self, scoped: bool) -> DialInfoFilter {
         DialInfoFilter {
-            peer_scope: if scoped {
+            peer_scope_set: if scoped {
                 if self.is_global() {
-                    PeerScope::Global
+                    PeerScopeSet::only(PeerScope::Global)
                 } else if self.is_local() {
-                    PeerScope::Local
+                    PeerScopeSet::only(PeerScope::Local)
                 } else {
-                    PeerScope::All
+                    PeerScopeSet::empty()
                 }
             } else {
-                PeerScope::All
+                PeerScopeSet::all()
             },
-            protocol_set: ProtocolSet::only(self.protocol_type()),
-            address_type: Some(self.address_type()),
+            protocol_set: ProtocolTypeSet::only(self.protocol_type()),
+            address_set: AddressTypeSet::only(self.address_type()),
         }
     }
 
@@ -1313,34 +1357,20 @@ impl DialInfo {
 
 impl MatchesDialInfoFilter for DialInfo {
     fn matches_filter(&self, filter: &DialInfoFilter) -> bool {
-        if !self.matches_peer_scope(filter.peer_scope) {
+        if !self.matches_peer_scope(filter.peer_scope_set) {
             return false;
         }
         if !filter.protocol_set.contains(self.protocol_type()) {
             return false;
         }
-        if let Some(at) = filter.address_type {
-            if self.address_type() != at {
-                return false;
-            }
+        if !filter.address_set.contains(self.address_type()) {
+            return false;
         }
         true
     }
 }
 
 //////////////////////////////////////////////////////////////////////////
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
-pub enum PeerScope {
-    All,
-    Global,
-    Local,
-}
-impl Default for PeerScope {
-    fn default() -> Self {
-        PeerScope::All
-    }
-}
 
 // Signed NodeInfo that can be passed around amongst peers and verifiable
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -1487,27 +1517,35 @@ impl ConnectionDescriptor {
     pub fn address_type(&self) -> AddressType {
         self.remote.address_type()
     }
-    pub fn matches_peer_scope(&self, scope: PeerScope) -> bool {
-        match scope {
-            PeerScope::All => true,
-            PeerScope::Global => self.remote.socket_address.address().is_global(),
-            PeerScope::Local => self.remote.socket_address.address().is_local(),
+    pub fn peer_scope(&self) -> Option<PeerScope> {
+        let addr = self.remote.socket_address.address();
+        if addr.is_global() {
+            return Some(PeerScope::Global);
+        }
+        if addr.is_local() {
+            return Some(PeerScope::Local);
+        }
+        None
+    }
+    pub fn matches_peer_scope(&self, scope: PeerScopeSet) -> bool {
+        if let Some(ps) = self.peer_scope() {
+            scope.contains(ps)
+        } else {
+            false
         }
     }
 }
 
 impl MatchesDialInfoFilter for ConnectionDescriptor {
     fn matches_filter(&self, filter: &DialInfoFilter) -> bool {
-        if !self.matches_peer_scope(filter.peer_scope) {
+        if !self.matches_peer_scope(filter.peer_scope_set) {
             return false;
         }
         if !filter.protocol_set.contains(self.protocol_type()) {
             return false;
         }
-        if let Some(at) = filter.address_type {
-            if self.address_type() != at {
-                return false;
-            }
+        if !filter.address_set.contains(self.address_type()) {
+            return false;
         }
         true
     }

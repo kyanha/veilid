@@ -50,18 +50,40 @@ impl NodeRef {
         self.filter = filter
     }
 
-    // Returns true if some protocols can still pass the filter and false if no protocols remain
-    pub fn filter_protocols(&mut self, protocol_set: ProtocolSet) -> bool {
-        if protocol_set != ProtocolSet::all() {
-            let mut dif = self.filter.clone().unwrap_or_default();
-            dif.protocol_set &= protocol_set;
-            self.filter = Some(dif);
+    pub fn merge_filter(&mut self, filter: DialInfoFilter) {
+        if let Some(self_filter) = self.filter.take() {
+            self.filter = Some(self_filter.filtered(filter));
+        } else {
+            self.filter = Some(filter);
         }
-        self.filter
-            .as_ref()
-            .map(|f| !f.protocol_set.is_empty())
-            .unwrap_or(true)
     }
+
+    pub fn filtered_clone(&self, filter: DialInfoFilter) -> Self {
+        let mut out = self.clone();
+        out.merge_filter(filter);
+        out
+    }
+
+    pub fn is_filter_dead(&self) -> bool {
+        if let Some(filter) = &self.filter {
+            filter.is_dead()
+        } else {
+            false
+        }
+    }
+
+    // Returns true if some protocols can still pass the filter and false if no protocols remain
+    // pub fn filter_protocols(&mut self, protocol_set: ProtocolSet) -> bool {
+    //     if protocol_set != ProtocolSet::all() {
+    //         let mut dif = self.filter.clone().unwrap_or_default();
+    //         dif.protocol_set &= protocol_set;
+    //         self.filter = Some(dif);
+    //     }
+    //     self.filter
+    //         .as_ref()
+    //         .map(|f| !f.protocol_set.is_empty())
+    //         .unwrap_or(true)
+    // }
 
     pub fn operate<T, F>(&self, f: F) -> T
     where
@@ -89,9 +111,23 @@ impl NodeRef {
     pub fn network_class(&self) -> Option<NetworkClass> {
         self.operate(|e| e.node_info().map(|n| n.network_class))
     }
-    pub fn outbound_protocols(&self) -> Option<ProtocolSet> {
+    pub fn outbound_protocols(&self) -> Option<ProtocolTypeSet> {
         self.operate(|e| e.node_info().map(|n| n.outbound_protocols))
     }
+    pub fn address_types(&self) -> Option<AddressTypeSet> {
+        self.operate(|e| e.node_info().map(|n| n.address_types))
+    }
+    pub fn node_info_outbound_filter(&self) -> DialInfoFilter {
+        let mut dif = DialInfoFilter::all();
+        if let Some(outbound_protocols) = self.outbound_protocols() {
+            dif = dif.with_protocol_type_set(outbound_protocols);
+        }
+        if let Some(address_types) = self.address_types() {
+            dif = dif.with_address_type_set(address_types);
+        }
+        dif
+    }
+
     pub fn relay(&self) -> Option<NodeRef> {
         let target_rpi = self.operate(|e| e.node_info().map(|n| n.relay_peer_info))?;
         target_rpi.and_then(|t| {
@@ -116,15 +152,7 @@ impl NodeRef {
     ) -> Option<DialInfoDetail> {
         self.operate(|e| {
             // Prefer local dial info first unless it is filtered out
-            if (routing_domain == None || routing_domain == Some(RoutingDomain::LocalNetwork))
-                && matches!(
-                    self.filter
-                        .as_ref()
-                        .map(|f| f.peer_scope)
-                        .unwrap_or(PeerScope::All),
-                    PeerScope::All | PeerScope::Local
-                )
-            {
+            if routing_domain == None || routing_domain == Some(RoutingDomain::LocalNetwork) {
                 e.local_node_info().and_then(|l| {
                     l.first_filtered_dial_info(|di| {
                         if let Some(filter) = self.filter.as_ref() {
@@ -142,15 +170,7 @@ impl NodeRef {
                 None
             }
             .or_else(|| {
-                if (routing_domain == None || routing_domain == Some(RoutingDomain::PublicInternet))
-                    && matches!(
-                        self.filter
-                            .as_ref()
-                            .map(|f| f.peer_scope)
-                            .unwrap_or(PeerScope::All),
-                        PeerScope::All | PeerScope::Global
-                    )
-                {
+                if routing_domain == None || routing_domain == Some(RoutingDomain::PublicInternet) {
                     e.node_info().and_then(|n| {
                         n.first_filtered_dial_info_detail(|did| {
                             if let Some(filter) = self.filter.as_ref() {
@@ -174,15 +194,7 @@ impl NodeRef {
         let mut out = Vec::new();
         self.operate(|e| {
             // Prefer local dial info first unless it is filtered out
-            if (routing_domain == None || routing_domain == Some(RoutingDomain::LocalNetwork))
-                && matches!(
-                    self.filter
-                        .as_ref()
-                        .map(|f| f.peer_scope)
-                        .unwrap_or(PeerScope::All),
-                    PeerScope::All | PeerScope::Local
-                )
-            {
+            if routing_domain == None || routing_domain == Some(RoutingDomain::LocalNetwork) {
                 if let Some(lni) = e.local_node_info() {
                     for di in lni.all_filtered_dial_info(|di| {
                         if let Some(filter) = self.filter.as_ref() {
@@ -198,15 +210,7 @@ impl NodeRef {
                     }
                 }
             }
-            if (routing_domain == None || routing_domain == Some(RoutingDomain::PublicInternet))
-                && matches!(
-                    self.filter
-                        .as_ref()
-                        .map(|f| f.peer_scope)
-                        .unwrap_or(PeerScope::All),
-                    PeerScope::All | PeerScope::Global
-                )
-            {
+            if routing_domain == None || routing_domain == Some(RoutingDomain::PublicInternet) {
                 if let Some(ni) = e.node_info() {
                     out.append(&mut ni.all_filtered_dial_info_details(|did| {
                         if let Some(filter) = self.filter.as_ref() {
