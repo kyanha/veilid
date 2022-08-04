@@ -316,7 +316,7 @@ impl Network {
                 let h = RawUdpProtocolHandler::new_unspecified_bound_handler(&peer_socket_addr)
                     .await
                     .wrap_err("create socket failure")?;
-                network_result_try!(h
+                let _ = network_result_try!(h
                     .send_message(data, peer_socket_addr)
                     .await
                     .map(NetworkResult::Value)
@@ -375,9 +375,10 @@ impl Network {
                 let h = RawUdpProtocolHandler::new_unspecified_bound_handler(&peer_socket_addr)
                     .await
                     .wrap_err("create socket failure")?;
-                h.send_message(data, peer_socket_addr)
+                network_result_try!(h
+                    .send_message(data, peer_socket_addr)
                     .await
-                    .wrap_err("send message failure")?;
+                    .wrap_err("send message failure")?);
                 self.network_manager()
                     .stats_packet_sent(dial_info.to_ip_addr(), data_len as u64);
 
@@ -449,10 +450,10 @@ impl Network {
                 &peer_socket_addr,
                 &descriptor.local().map(|sa| sa.to_socket_addr()),
             ) {
-                ph.clone()
-                    .send_message(data, peer_socket_addr)
+                network_result_value_or_log!(debug ph.clone()
+                    .send_message(data.clone(), peer_socket_addr)
                     .await
-                    .wrap_err("sending data to existing conection")?;
+                    .wrap_err("sending data to existing conection")? => { return Ok(Some(data)); } );
 
                 // Network accounting
                 self.network_manager()
@@ -506,7 +507,7 @@ impl Network {
                 Some(ph) => ph,
                 None => bail!("no appropriate UDP protocol handler for dial_info"),
             };
-            network_result_try!(ph
+            let _ = network_result_try!(ph
                 .send_message(data, peer_socket_addr)
                 .await
                 .into_network_result()
@@ -532,7 +533,7 @@ impl Network {
         self.network_manager()
             .stats_packet_sent(dial_info.to_ip_addr(), data_len as u64);
 
-        Ok(NetworkResult::Value(()))
+        Ok(NetworkResult::value(()))
     }
 
     /////////////////////////////////////////////////////////////////

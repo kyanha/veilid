@@ -14,21 +14,12 @@ impl RawUdpProtocolHandler {
     #[instrument(level = "trace", err, skip(self, data), fields(data.len = data.len(), ret.len, ret.from))]
     pub async fn recv_message(&self, data: &mut [u8]) -> io::Result<(usize, ConnectionDescriptor)> {
         let (size, remote_addr) = loop {
-            match self.socket.recv_from(data).await {
-                Ok((size, remote_addr)) => {
-                    if size > MAX_MESSAGE_SIZE {
-                        bail_io_error_other!("received too large UDP message");
-                    }
-                    break (size, remote_addr);
-                }
-                Err(e) => {
-                    if e.kind() == io::ErrorKind::ConnectionReset {
-                        // Ignore icmp
-                    } else {
-                        return Err(e);
-                    }
-                }
+            let (size, remote_addr) = network_result_value_or_log!(debug self.socket.recv_from(data).await.into_network_result()? => continue);
+            if size > MAX_MESSAGE_SIZE {
+                log_net!(debug "{}({}) at {}@{}:{}", "Invalid message".green(), "received too large UDP message", file!(), line!(), column!());
+                continue;
             }
+            break (size, remote_addr);
         };
 
         let peer_addr = PeerAddress::new(
@@ -47,17 +38,25 @@ impl RawUdpProtocolHandler {
     }
 
     #[instrument(level = "trace", err, skip(self, data), fields(data.len = data.len(), ret.len, ret.from))]
-    pub async fn send_message(&self, data: Vec<u8>, socket_addr: SocketAddr) -> io::Result<()> {
+    pub async fn send_message(
+        &self,
+        data: Vec<u8>,
+        socket_addr: SocketAddr,
+    ) -> io::Result<NetworkResult<()>> {
         if data.len() > MAX_MESSAGE_SIZE {
             bail_io_error_other!("sending too large UDP message");
         }
 
-        let len = self.socket.send_to(&data, socket_addr).await?;
+        let len = network_result_try!(self
+            .socket
+            .send_to(&data, socket_addr)
+            .await
+            .into_network_result()?);
         if len != data.len() {
             bail_io_error_other!("UDP partial send")
         }
 
-        Ok(())
+        Ok(NetworkResult::value(()))
     }
 
     #[instrument(level = "trace", err)]

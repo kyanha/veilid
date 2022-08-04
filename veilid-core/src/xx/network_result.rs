@@ -38,13 +38,20 @@ impl<T> IoNetworkResultExt<T> for io::Result<T> {
                 _ => Err(e),
             },
             #[cfg(not(feature = "io_error_more"))]
-            Err(e) => match e.kind() {
-                io::ErrorKind::TimedOut => Ok(NetworkResult::Timeout),
-                io::ErrorKind::ConnectionAborted
-                | io::ErrorKind::ConnectionRefused
-                | io::ErrorKind::ConnectionReset => Ok(NetworkResult::NoConnection(e)),
-                _ => Err(e),
-            },
+            Err(e) => {
+                if let Some(os_err) = e.raw_os_error() {
+                    if os_err == libc::EHOSTUNREACH || os_err == libc::ENETUNREACH {
+                        return Ok(NetworkResult::NoConnection(e));
+                    }
+                }
+                match e.kind() {
+                    io::ErrorKind::TimedOut => Ok(NetworkResult::Timeout),
+                    io::ErrorKind::ConnectionAborted
+                    | io::ErrorKind::ConnectionRefused
+                    | io::ErrorKind::ConnectionReset => Ok(NetworkResult::NoConnection(e)),
+                    _ => Err(e),
+                }
+            }
         }
     }
 }
@@ -85,13 +92,20 @@ impl<T> FoldedNetworkResultExt<T> for io::Result<TimeoutOr<T>> {
                 _ => Err(e),
             },
             #[cfg(not(feature = "io_error_more"))]
-            Err(e) => match e.kind() {
-                io::ErrorKind::TimedOut => Ok(NetworkResult::Timeout),
-                io::ErrorKind::ConnectionAborted
-                | io::ErrorKind::ConnectionRefused
-                | io::ErrorKind::ConnectionReset => Ok(NetworkResult::NoConnection(e)),
-                _ => Err(e),
-            },
+            Err(e) => {
+                if let Some(os_err) = e.raw_os_error() {
+                    if os_err == libc::EHOSTUNREACH || os_err == libc::ENETUNREACH {
+                        return Ok(NetworkResult::NoConnection(e));
+                    }
+                }
+                match e.kind() {
+                    io::ErrorKind::TimedOut => Ok(NetworkResult::Timeout),
+                    io::ErrorKind::ConnectionAborted
+                    | io::ErrorKind::ConnectionRefused
+                    | io::ErrorKind::ConnectionReset => Ok(NetworkResult::NoConnection(e)),
+                    _ => Err(e),
+                }
+            }
         }
     }
 }
@@ -111,13 +125,20 @@ impl<T> FoldedNetworkResultExt<T> for io::Result<NetworkResult<T>> {
                 _ => Err(e),
             },
             #[cfg(not(feature = "io_error_more"))]
-            Err(e) => match e.kind() {
-                io::ErrorKind::TimedOut => Ok(NetworkResult::Timeout),
-                io::ErrorKind::ConnectionAborted
-                | io::ErrorKind::ConnectionRefused
-                | io::ErrorKind::ConnectionReset => Ok(NetworkResult::NoConnection(e)),
-                _ => Err(e),
-            },
+            Err(e) => {
+                if let Some(os_err) = e.raw_os_error() {
+                    if os_err == libc::EHOSTUNREACH || os_err == libc::ENETUNREACH {
+                        return Ok(NetworkResult::NoConnection(e));
+                    }
+                }
+                match e.kind() {
+                    io::ErrorKind::TimedOut => Ok(NetworkResult::Timeout),
+                    io::ErrorKind::ConnectionAborted
+                    | io::ErrorKind::ConnectionRefused
+                    | io::ErrorKind::ConnectionReset => Ok(NetworkResult::NoConnection(e)),
+                    _ => Err(e),
+                }
+            }
         }
     }
 }
@@ -270,7 +291,7 @@ macro_rules! network_result_value_or_log {
                 $f
             }
             NetworkResult::InvalidMessage(s) => {
-                log_net!($level "{}({}) at {}@{}:{}", "No connection".green(), s, file!(), line!(), column!());
+                log_net!($level "{}({}) at {}@{}:{}", "Invalid message".green(), s, file!(), line!(), column!());
                 $f
             }
             NetworkResult::Value(v) => v,
