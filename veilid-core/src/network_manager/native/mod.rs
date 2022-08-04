@@ -90,9 +90,9 @@ impl Network {
             tcp_port: 0u16,
             ws_port: 0u16,
             wss_port: 0u16,
-            enable_ipv4: true,
-            enable_ipv6_global: true,
-            enable_ipv6_local: true,
+            enable_ipv4: false,
+            enable_ipv6_global: false,
+            enable_ipv6_local: false,
             bound_first_udp: BTreeMap::new(),
             inbound_udp_protocol_handlers: BTreeMap::new(),
             outbound_udpv4_protocol_handler: None,
@@ -549,14 +549,18 @@ impl Network {
         // determine if we have ipv4/ipv6 addresses
         {
             let mut inner = self.inner.lock();
+            inner.enable_ipv4 = false;
             for addr in self.unlocked_inner.interfaces.best_addresses() {
                 if addr.is_ipv4() {
+                    log_net!(debug "enable address {:?} as ipv4", addr);
                     inner.enable_ipv4 = true;
                 } else if addr.is_ipv6() {
                     let address = crate::Address::from_ip_addr(addr);
                     if address.is_global() {
+                        log_net!(debug "enable address {:?} as ipv6 global", address);
                         inner.enable_ipv6_global = true;
                     } else if address.is_local() {
+                        log_net!(debug "enable address {:?} as ipv6 local", address);
                         inner.enable_ipv6_local = true;
                     }
                 }

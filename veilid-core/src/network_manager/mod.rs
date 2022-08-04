@@ -515,39 +515,48 @@ impl NetworkManager {
     }
 
     pub async fn tick(&self) -> EyreResult<()> {
-        let (routing_table, net, receipt_manager) = {
+        let (routing_table, net, receipt_manager, protocol_config) = {
             let inner = self.inner.lock();
             let components = inner.components.as_ref().unwrap();
+            let protocol_config = inner.protocol_config.as_ref().unwrap();
             (
                 inner.routing_table.as_ref().unwrap().clone(),
                 components.net.clone(),
                 components.receipt_manager.clone(),
+                protocol_config.clone(),
             )
         };
 
         // Run the rolling transfers task
         self.unlocked_inner.rolling_transfers_task.tick().await?;
 
-        // Run the relay management task
-        self.unlocked_inner.relay_management_task.tick().await?;
+        // Process global peer scope ticks
+        // These only make sense when connected to the actual internet and not just the local network
+        // Must have at least one outbound protocol enabled, and one global peer scope address family enabled
+        let global_peer_scope_enabled =
+            !protocol_config.outbound.is_empty() && !protocol_config.family_global.is_empty();
+        if global_peer_scope_enabled {
+            // Run the relay management task
+            self.unlocked_inner.relay_management_task.tick().await?;
 
-        // If routing table has no live entries, then add the bootstrap nodes to it
-        let live_entry_count = routing_table.get_entry_count(BucketEntryState::Unreliable);
-        if live_entry_count == 0 {
-            self.unlocked_inner.bootstrap_task.tick().await?;
+            // If routing table has no live entries, then add the bootstrap nodes to it
+            let live_entry_count = routing_table.get_entry_count(BucketEntryState::Unreliable);
+            if live_entry_count == 0 {
+                self.unlocked_inner.bootstrap_task.tick().await?;
+            }
+
+            // If we still don't have enough peers, find nodes until we do
+            let min_peer_count = {
+                let c = self.config.get();
+                c.network.dht.min_peer_count as usize
+            };
+            if live_entry_count < min_peer_count {
+                self.unlocked_inner.peer_minimum_refresh_task.tick().await?;
+            }
+
+            // Ping validate some nodes to groom the table
+            self.unlocked_inner.ping_validator_task.tick().await?;
         }
-
-        // If we still don't have enough peers, find nodes until we do
-        let min_peer_count = {
-            let c = self.config.get();
-            c.network.dht.min_peer_count as usize
-        };
-        if live_entry_count < min_peer_count {
-            self.unlocked_inner.peer_minimum_refresh_task.tick().await?;
-        }
-
-        // Ping validate some nodes to groom the table
-        self.unlocked_inner.ping_validator_task.tick().await?;
 
         // Run the routing table tick
         routing_table.tick().await?;
