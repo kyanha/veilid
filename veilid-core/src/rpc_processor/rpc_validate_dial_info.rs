@@ -80,54 +80,38 @@ impl RPCProcessor {
             // Use the address type though, to ensure we reach an ipv6 capable node if this is
             // an ipv6 address
             let routing_table = self.routing_table();
-            let filter = DialInfoFilter::global().with_address_type(dial_info.address_type());
             let sender_id = msg.header.envelope.get_sender_id();
             let node_count = {
                 let c = self.config.get();
                 c.network.dht.max_find_node_count as usize
             };
-            let peers = routing_table.find_fast_public_nodes_filtered(node_count, &filter);
+
+            // Filter on nodes that can validate dial info, and can reach a specific dial info
+            let outbound_dial_info_entry_filter =
+                RoutingTable::make_outbound_dial_info_entry_filter(dial_info.clone());
+            let will_validate_dial_info_filter = |e: &BucketEntryInner| {
+                if let Some(status) = &e.peer_stats().status {
+                    status.will_validate_dial_info
+                } else {
+                    true
+                }
+            };
+            let filter = RoutingTable::combine_filters(
+                outbound_dial_info_entry_filter,
+                will_validate_dial_info_filter,
+            );
+
+            // Find nodes matching filter to redirect this to
+            let peers = routing_table.find_fast_public_nodes_filtered(node_count, filter);
             if peers.is_empty() {
                 return Err(RPCError::internal(format!(
-                    "no peers matching filter '{:?}'",
-                    filter
+                    "no peers able to reach dialinfo '{:?}'",
+                    dial_info
                 )));
             }
-            for mut peer in peers {
+            for peer in peers {
                 // Ensure the peer is not the one asking for the validation
                 if peer.node_id() == sender_id {
-                    continue;
-                }
-
-                // Release the filter on the peer because we don't need to send the redirect with the filter
-                // we just wanted to make sure we only selected nodes that were capable of
-                // using the correct protocol for the dial info being validated
-                peer.set_filter(None);
-
-                // Ensure the peer's status is known and that it is capable of
-                // making outbound connections for the dial info we want to verify
-                // and if this peer can validate dial info
-                let can_contact_dial_info = peer.operate(|e: &BucketEntryInner| {
-                    if let Some(ni) = e.node_info() {
-                        ni.outbound_protocols.contains(dial_info.protocol_type())
-                            && ni.can_validate_dial_info()
-                    } else {
-                        false
-                    }
-                });
-                if !can_contact_dial_info {
-                    continue;
-                }
-
-                // See if this peer will validate dial info
-                let will_validate_dial_info = peer.operate(|e: &BucketEntryInner| {
-                    if let Some(status) = &e.peer_stats().status {
-                        status.will_validate_dial_info
-                    } else {
-                        true
-                    }
-                });
-                if !will_validate_dial_info {
                     continue;
                 }
 

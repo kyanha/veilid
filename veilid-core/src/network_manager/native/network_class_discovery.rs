@@ -107,28 +107,50 @@ impl DiscoveryContext {
         address_type: AddressType,
         ignore_node: Option<DHTKey>,
     ) -> Option<(SocketAddress, NodeRef)> {
-        let filter = DialInfoFilter::global()
-            .with_protocol_type(protocol_type)
-            .with_address_type(address_type);
         let node_count = {
             let config = self.routing_table.network_manager().config();
             let c = config.get();
             c.network.dht.max_find_node_count as usize
         };
 
+        // Build an filter that matches our protocol and address type
+        // and excludes relays so we can get an accurate external address
+        let dial_info_filter = DialInfoFilter::global()
+            .with_protocol_type(protocol_type)
+            .with_address_type(address_type);
+        let inbound_dial_info_entry_filter =
+            RoutingTable::make_inbound_dial_info_entry_filter(dial_info_filter.clone());
+        let disallow_relays_filter = move |e: &BucketEntryInner| {
+            if let Some(n) = e.node_info() {
+                n.relay_peer_info.is_none()
+            } else {
+                false
+            }
+        };
+        let filter =
+            RoutingTable::combine_filters(inbound_dial_info_entry_filter, disallow_relays_filter);
+
+        // Find public nodes matching this filter
         let peers = self
             .routing_table
-            .find_fast_public_nodes_filtered(node_count, &filter);
+            .find_fast_public_nodes_filtered(node_count, filter);
         if peers.is_empty() {
-            log_net!("no peers of type '{:?}'", filter);
+            log_net!(
+                "no external address detection peers of type {:?}:{:?}",
+                protocol_type,
+                address_type
+            );
             return None;
         }
-        for peer in peers {
+
+        // For each peer, if it's not our ignore-node, ask them for our public address, filtering on desired dial info
+        for mut peer in peers {
             if let Some(ignore_node) = ignore_node {
                 if peer.node_id() == ignore_node {
                     continue;
                 }
             }
+            peer.set_filter(Some(dial_info_filter.clone()));
             if let Some(sa) = self.request_public_address(peer.clone()).await {
                 return Some((sa, peer));
             }
@@ -249,7 +271,10 @@ impl DiscoveryContext {
         inner.external_1_address = Some(external_1);
         inner.node_1 = Some(node_1);
 
-        log_net!(debug "external_1_dial_info: {:?}\nexternal_1_address: {:?}\nnode_1: {:?}", inner.external_1_dial_info, inner.external_1_address, inner.node_1);
+        info!(
+            "external_1_dial_info: {:?}\nexternal_1_address: {:?}\nnode_1: {:?}",
+            inner.external_1_dial_info, inner.external_1_address, inner.node_1
+        );
 
         true
     }
@@ -338,6 +363,11 @@ impl DiscoveryContext {
             }
             Some(v) => v,
         };
+
+        info!(
+            "external_2_address: {:?}\nnode_2: {:?}",
+            external_2_address, node_2
+        );
 
         // If we have two different external addresses, then this is a symmetric NAT
         if external_2_address != external_1_address {

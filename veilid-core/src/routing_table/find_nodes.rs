@@ -5,15 +5,64 @@ use crate::xx::*;
 use crate::*;
 
 impl RoutingTable {
-    // Retrieve the fastest nodes in the routing table with a particular kind of protocol and address type
-    // Returns noderefs are are scoped to that address type only
-    pub fn find_fast_public_nodes_filtered(
+    // Makes a filter that finds nodes with a matching inbound dialinfo
+    pub fn make_inbound_dial_info_entry_filter(
+        dial_info_filter: DialInfoFilter,
+    ) -> impl FnMut(&BucketEntryInner) -> bool {
+        // does it have matching public dial info?
+        move |e| {
+            e.node_info()
+                .map(|n| {
+                    n.first_filtered_dial_info_detail(|did| did.matches_filter(&dial_info_filter))
+                        .is_some()
+                })
+                .unwrap_or(false)
+        }
+    }
+
+    // Makes a filter that finds nodes capable of dialing a particular outbound dialinfo
+    pub fn make_outbound_dial_info_entry_filter(
+        dial_info: DialInfo,
+    ) -> impl FnMut(&BucketEntryInner) -> bool {
+        // does the node's outbound capabilities match the dialinfo?
+        move |e| {
+            e.node_info()
+                .map(|n| {
+                    let mut dif = DialInfoFilter::all();
+                    dif = dif.with_protocol_type_set(n.outbound_protocols);
+                    dif = dif.with_address_type_set(n.address_types);
+                    dial_info.matches_filter(&dif)
+                })
+                .unwrap_or(false)
+        }
+    }
+
+    // Make a filter that wraps another filter
+    pub fn combine_filters<F, G>(mut f1: F, mut f2: G) -> impl FnMut(&BucketEntryInner) -> bool
+    where
+        F: FnMut(&BucketEntryInner) -> bool,
+        G: FnMut(&BucketEntryInner) -> bool,
+    {
+        move |e| {
+            if !f1(e) {
+                return false;
+            }
+            if !f2(e) {
+                return false;
+            }
+            true
+        }
+    }
+
+    // Retrieve the fastest nodes in the routing table matching an entry filter
+    pub fn find_fast_public_nodes_filtered<F>(
         &self,
         node_count: usize,
-        dial_info_filter: &DialInfoFilter,
-    ) -> Vec<NodeRef> {
-        let dial_info_filter1 = dial_info_filter.clone();
-
+        mut entry_filter: F,
+    ) -> Vec<NodeRef>
+    where
+        F: FnMut(&BucketEntryInner) -> bool,
+    {
         self.find_fastest_nodes(
             // count
             node_count,
@@ -26,25 +75,13 @@ impl RoutingTable {
                         return false;
                     }
 
-                    // does it have matching public dial info?
-                    e.node_info()
-                        .map(|n| {
-                            n.first_filtered_dial_info_detail(|did| {
-                                did.matches_filter(&dial_info_filter1)
-                            })
-                            .is_some()
-                        })
-                        .unwrap_or(false)
+                    // skip nodes that dont match entry filter
+                    entry_filter(e)
                 })
             }),
             // transform
             |k: DHTKey, v: Option<Arc<BucketEntry>>| {
-                NodeRef::new(
-                    self.clone(),
-                    k,
-                    v.unwrap().clone(),
-                    Some(dial_info_filter.clone()),
-                )
+                NodeRef::new(self.clone(), k, v.unwrap().clone(), None)
             },
         )
     }
