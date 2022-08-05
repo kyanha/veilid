@@ -581,7 +581,10 @@ impl RoutingTable {
         }
 
         self.create_node_ref(node_id, |e| {
-            e.update_node_info(signed_node_info);
+            if e.update_node_info(signed_node_info) {
+                // at least someone thought this node was live and its node info changed so lets try to contact it
+                e.touch_last_seen(intf::get_timestamp());
+            }
         })
     }
 
@@ -596,6 +599,9 @@ impl RoutingTable {
         self.create_node_ref(node_id, |e| {
             // set the most recent node address for connection finding and udp replies
             e.set_last_connection(descriptor, timestamp);
+
+            // this node is live because it literally just connected to us
+            e.touch_last_seen(timestamp);
         })
     }
 

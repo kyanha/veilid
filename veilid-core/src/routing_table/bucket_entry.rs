@@ -108,14 +108,15 @@ impl BucketEntryInner {
         move |e1, e2| Self::cmp_fastest_reliable(cur_ts, e1, e2)
     }
 
-    pub fn update_node_info(&mut self, signed_node_info: SignedNodeInfo) {
+    // Retuns true if the node info changed
+    pub fn update_node_info(&mut self, signed_node_info: SignedNodeInfo) -> bool {
         // Don't update with older node info, or something less valid
         if let Some(current_sni) = &self.opt_signed_node_info {
             if current_sni.signature.valid && !signed_node_info.signature.valid {
-                return;
+                return false;
             }
             if signed_node_info.timestamp < current_sni.timestamp {
-                return;
+                return false;
             }
         }
         self.min_max_version = Some((
@@ -123,6 +124,8 @@ impl BucketEntryInner {
             signed_node_info.node_info.max_version,
         ));
         self.opt_signed_node_info = Some(signed_node_info);
+
+        true
     }
     pub fn update_local_node_info(&mut self, local_node_info: LocalNodeInfo) {
         self.opt_local_node_info = Some(local_node_info)

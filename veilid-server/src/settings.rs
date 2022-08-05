@@ -93,7 +93,7 @@ core:
             set_value_timeout:
             set_value_count: 20
             set_value_fanout: 5
-            min_peer_count: 20
+            min_peer_count: 2 # 20
             min_peer_refresh_time_ms: 2000
             validate_dial_info_receipt_time_ms: 2000
         upnp: false

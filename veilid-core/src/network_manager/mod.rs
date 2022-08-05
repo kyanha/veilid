@@ -964,12 +964,17 @@ impl NetworkManager {
                             Some(RoutingDomain::PublicInternet),
                             &reverse_dif,
                         ) {
-                            // Can we receive a direct reverse connection?
-                            if !reverse_did.class.requires_signal() {
-                                return ContactMethod::SignalReverse(
-                                    inbound_relay_nr,
-                                    target_node_ref,
-                                );
+                            // Ensure we aren't on the same public IP address (no hairpin nat)
+                            if reverse_did.dial_info.to_ip_addr()
+                                != target_public_did.dial_info.to_ip_addr()
+                            {
+                                // Can we receive a direct reverse connection?
+                                if !reverse_did.class.requires_signal() {
+                                    return ContactMethod::SignalReverse(
+                                        inbound_relay_nr,
+                                        target_node_ref,
+                                    );
+                                }
                             }
                         }
 
@@ -979,27 +984,33 @@ impl NetworkManager {
                         let udp_target_nr = target_node_ref.filtered_clone(
                             DialInfoFilter::global().with_protocol_type(ProtocolType::UDP),
                         );
-                        let target_has_udp_dialinfo = udp_target_nr
+                        if let Some(target_udp_dialinfo_detail) = udp_target_nr
                             .first_filtered_dial_info_detail(Some(RoutingDomain::PublicInternet))
-                            .is_some();
-
-                        // Does the self node have a direct udp dialinfo the target can reach?
-                        let inbound_udp_dif = self
-                            .get_inbound_dial_info_filter(RoutingDomain::PublicInternet)
-                            .filtered(target_node_ref.node_info_outbound_filter())
-                            .filtered(
-                                DialInfoFilter::global().with_protocol_type(ProtocolType::UDP),
-                            );
-                        let self_has_udp_dialinfo = routing_table
-                            .first_filtered_dial_info_detail(
-                                Some(RoutingDomain::PublicInternet),
-                                &inbound_udp_dif,
-                            )
-                            .is_some();
-
-                        // Does the target and ourselves have a udp dialinfo that they can reach?
-                        if target_has_udp_dialinfo && self_has_udp_dialinfo {
-                            return ContactMethod::SignalHolePunch(inbound_relay_nr, udp_target_nr);
+                        {
+                            // Does the self node have a direct udp dialinfo the target can reach?
+                            let inbound_udp_dif = self
+                                .get_inbound_dial_info_filter(RoutingDomain::PublicInternet)
+                                .filtered(target_node_ref.node_info_outbound_filter())
+                                .filtered(
+                                    DialInfoFilter::global().with_protocol_type(ProtocolType::UDP),
+                                );
+                            if let Some(self_udp_dialinfo_detail) = routing_table
+                                .first_filtered_dial_info_detail(
+                                    Some(RoutingDomain::PublicInternet),
+                                    &inbound_udp_dif,
+                                )
+                            {
+                                // Ensure we aren't on the same public IP address (no hairpin nat)
+                                if target_udp_dialinfo_detail.dial_info.to_ip_addr()
+                                    != self_udp_dialinfo_detail.dial_info.to_ip_addr()
+                                {
+                                    // The target and ourselves have a udp dialinfo that they can reach
+                                    return ContactMethod::SignalHolePunch(
+                                        inbound_relay_nr,
+                                        udp_target_nr,
+                                    );
+                                }
+                            }
                         }
                         // Otherwise we have to inbound relay
                     }
