@@ -550,6 +550,10 @@ impl RoutingTable {
 
     pub fn lookup_node_ref(&self, node_id: DHTKey) -> Option<NodeRef> {
         let inner = self.inner.read();
+        if node_id == self.node_id() {
+            log_rtab!(debug "can't look up own node id in routing table");
+            return None;
+        }
         let idx = Self::find_bucket_index(&*inner, node_id);
         let bucket = &inner.buckets[idx];
         bucket
