@@ -271,7 +271,7 @@ impl DiscoveryContext {
         inner.external_1_address = Some(external_1);
         inner.node_1 = Some(node_1);
 
-        info!(
+        log_net!(debug
             "external_1_dial_info: {:?}\nexternal_1_address: {:?}\nnode_1: {:?}",
             inner.external_1_dial_info, inner.external_1_address, inner.node_1
         );
@@ -364,7 +364,7 @@ impl DiscoveryContext {
             Some(v) => v,
         };
 
-        info!(
+        log_net!(debug
             "external_2_address: {:?}\nnode_2: {:?}",
             external_2_address, node_2
         );
