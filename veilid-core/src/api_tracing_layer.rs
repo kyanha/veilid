@@ -103,13 +103,13 @@ impl<S: Subscriber + for<'a> registry::LookupSpan<'a>> Layer<S> for ApiTracingLa
 
 struct StringRecorder {
     display: String,
-    is_following_args: bool,
+    //is_following_args: bool,
 }
 impl StringRecorder {
     fn new() -> Self {
         StringRecorder {
             display: String::new(),
-            is_following_args: false,
+            //      is_following_args: false,
         }
     }
 }
@@ -123,14 +123,14 @@ impl tracing::field::Visit for StringRecorder {
                 self.display = format!("{:?}", value)
             }
         } else {
-            if self.is_following_args {
-                // following args
-                writeln!(self.display).unwrap();
-            } else {
-                // first arg
-                write!(self.display, " ").unwrap();
-                self.is_following_args = true;
-            }
+            //if self.is_following_args {
+            // following args
+            //    writeln!(self.display).unwrap();
+            //} else {
+            // first arg
+            write!(self.display, " ").unwrap();
+            //self.is_following_args = true;
+            //}
             write!(self.display, "{} = {:?};", field.name(), value).unwrap();
         }
     }

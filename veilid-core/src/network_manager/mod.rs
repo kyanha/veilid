@@ -1097,11 +1097,12 @@ impl NetworkManager {
         // Wait for the return receipt
         let inbound_nr = match eventual_value.await.take_value().unwrap() {
             ReceiptEvent::ReturnedOutOfBand => {
-                bail!("reverse connect receipt should be returned in-band");
+                return Ok(NetworkResult::invalid_message(
+                    "reverse connect receipt should be returned in-band",
+                ));
             }
             ReceiptEvent::ReturnedInBand { inbound_noderef } => inbound_noderef,
             ReceiptEvent::Expired => {
-                //bail!("reverse connect receipt expired from {:?}", target_nr);
                 return Ok(NetworkResult::timeout());
             }
             ReceiptEvent::Cancelled => {
@@ -1180,11 +1181,13 @@ impl NetworkManager {
         // Wait for the return receipt
         let inbound_nr = match eventual_value.await.take_value().unwrap() {
             ReceiptEvent::ReturnedOutOfBand => {
-                bail!("hole punch receipt should be returned in-band");
+                return Ok(NetworkResult::invalid_message(
+                    "hole punch receipt should be returned in-band",
+                ));
             }
             ReceiptEvent::ReturnedInBand { inbound_noderef } => inbound_noderef,
             ReceiptEvent::Expired => {
-                bail!("hole punch receipt expired from {}", target_nr);
+                return Ok(NetworkResult::timeout());
             }
             ReceiptEvent::Cancelled => {
                 bail!("hole punch receipt cancelled from {}", target_nr);

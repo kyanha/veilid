@@ -4,25 +4,25 @@ use futures_util::StreamExt;
 use hashlink::LruCache;
 
 ///////////////////////////////////////////////////////////////////////////////
-#[derive(ThisError, Debug, Clone, Eq, PartialEq)]
+#[derive(ThisError, Debug)]
 pub enum ConnectionTableAddError {
     #[error("Connection already added to table")]
-    AlreadyExists,
+    AlreadyExists(NetworkConnection),
     #[error("Connection address was filtered")]
-    AddressFilter(AddressFilterError),
+    AddressFilter(NetworkConnection, AddressFilterError),
 }
 
 impl ConnectionTableAddError {
-    pub fn already_exists() -> Self {
-        ConnectionTableAddError::AlreadyExists
+    pub fn already_exists(conn: NetworkConnection) -> Self {
+        ConnectionTableAddError::AlreadyExists(conn)
     }
-    pub fn address_filter(err: AddressFilterError) -> Self {
-        ConnectionTableAddError::AddressFilter(err)
+    pub fn address_filter(conn: NetworkConnection, err: AddressFilterError) -> Self {
+        ConnectionTableAddError::AddressFilter(conn, err)
     }
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-#[derive(ThisError, Debug, Clone, Eq, PartialEq)]
+#[derive(ThisError, Debug)]
 pub enum ConnectionTableRemoveError {
     #[error("Connection not in table")]
     NotInTable,
@@ -89,19 +89,23 @@ impl ConnectionTable {
     pub fn add_connection(
         &mut self,
         conn: NetworkConnection,
-    ) -> Result<(), ConnectionTableAddError> {
+    ) -> Result<Option<NetworkConnection>, ConnectionTableAddError> {
         let descriptor = conn.connection_descriptor();
         let ip_addr = descriptor.remote_address().to_ip_addr();
 
         let index = protocol_to_index(descriptor.protocol_type());
         if self.conn_by_descriptor[index].contains_key(&descriptor) {
-            return Err(ConnectionTableAddError::already_exists());
+            return Err(ConnectionTableAddError::already_exists(conn));
         }
 
         // Filter by ip for connection limits
-        self.address_filter
-            .add(ip_addr)
-            .map_err(ConnectionTableAddError::address_filter)?;
+        match self.address_filter.add(ip_addr) {
+            Ok(()) => {}
+            Err(e) => {
+                // send connection to get cleaned up cleanly
+                return Err(ConnectionTableAddError::address_filter(conn, e));
+            }
+        };
 
         // Add the connection to the table
         let res = self.conn_by_descriptor[index].insert(descriptor.clone(), conn);
@@ -109,9 +113,11 @@ impl ConnectionTable {
 
         // if we have reached the maximum number of connections per protocol type
         // then drop the least recently used connection
+        let mut out_conn = None;
         if self.conn_by_descriptor[index].len() > self.max_connections[index] {
-            if let Some((lruk, _)) = self.conn_by_descriptor[index].remove_lru() {
+            if let Some((lruk, lru_conn)) = self.conn_by_descriptor[index].remove_lru() {
                 debug!("connection lru out: {:?}", lruk);
+                out_conn = Some(lru_conn);
                 self.remove_connection_records(lruk);
             }
         }
@@ -124,7 +130,7 @@ impl ConnectionTable {
 
         descriptors.push(descriptor);
 
-        Ok(())
+        Ok(out_conn)
     }
 
     pub fn get_connection(&mut self, descriptor: ConnectionDescriptor) -> Option<ConnectionHandle> {

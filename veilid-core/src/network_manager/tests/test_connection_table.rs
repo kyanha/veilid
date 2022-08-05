@@ -85,8 +85,9 @@ pub async fn test_add_get_remove() {
     assert_eq!(
         table
             .remove_connection(a2)
-            .map(|c| c.connection_descriptor()),
-        Ok(a1)
+            .map(|c| c.connection_descriptor())
+            .unwrap(),
+        a1
     );
     assert_eq!(table.connection_count(), 0);
     assert_err!(table.remove_connection(a2));
@@ -106,20 +107,23 @@ pub async fn test_add_get_remove() {
     assert_eq!(
         table
             .remove_connection(a2)
-            .map(|c| c.connection_descriptor()),
-        Ok(a2)
+            .map(|c| c.connection_descriptor())
+            .unwrap(),
+        a2
     );
     assert_eq!(
         table
             .remove_connection(a3)
-            .map(|c| c.connection_descriptor()),
-        Ok(a3)
+            .map(|c| c.connection_descriptor())
+            .unwrap(),
+        a3
     );
     assert_eq!(
         table
             .remove_connection(a4)
-            .map(|c| c.connection_descriptor()),
-        Ok(a4)
+            .map(|c| c.connection_descriptor())
+            .unwrap(),
+        a4
     );
     assert_eq!(table.connection_count(), 0);
 }

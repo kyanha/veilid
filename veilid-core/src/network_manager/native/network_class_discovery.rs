@@ -496,105 +496,119 @@ impl Network {
         // Do UDPv4+v6 at the same time as everything else
         if protocol_config.inbound.contains(ProtocolType::UDP) {
             // UDPv4
-            unord.push(
-                async {
-                    let udpv4_context = DiscoveryContext::new(self.routing_table(), self.clone());
-                    if let Err(e) = self
-                        .update_ipv4_protocol_dialinfo(&udpv4_context, ProtocolType::UDP)
-                        .await
-                    {
-                        log_net!(debug "Failed UDPv4 dialinfo discovery: {}", e);
-                        return None;
+            if protocol_config.family_global.contains(AddressType::IPV4) {
+                unord.push(
+                    async {
+                        let udpv4_context =
+                            DiscoveryContext::new(self.routing_table(), self.clone());
+                        if let Err(e) = self
+                            .update_ipv4_protocol_dialinfo(&udpv4_context, ProtocolType::UDP)
+                            .await
+                        {
+                            log_net!(debug "Failed UDPv4 dialinfo discovery: {}", e);
+                            return None;
+                        }
+                        Some(vec![udpv4_context])
                     }
-                    Some(vec![udpv4_context])
-                }
-                .boxed(),
-            );
+                    .boxed(),
+                );
+            }
 
             // UDPv6
+            if protocol_config.family_global.contains(AddressType::IPV6) {
+                unord.push(
+                    async {
+                        let udpv6_context =
+                            DiscoveryContext::new(self.routing_table(), self.clone());
+                        if let Err(e) = self
+                            .update_ipv6_protocol_dialinfo(&udpv6_context, ProtocolType::UDP)
+                            .await
+                        {
+                            log_net!(debug "Failed UDPv6 dialinfo discovery: {}", e);
+                            return None;
+                        }
+                        Some(vec![udpv6_context])
+                    }
+                    .boxed(),
+                );
+            }
+        }
+
+        // Do TCPv4 + WSv4 in series because they may use the same connection 5-tuple
+        if protocol_config.family_global.contains(AddressType::IPV4) {
             unord.push(
                 async {
-                    let udpv6_context = DiscoveryContext::new(self.routing_table(), self.clone());
-                    if let Err(e) = self
-                        .update_ipv6_protocol_dialinfo(&udpv6_context, ProtocolType::UDP)
-                        .await
-                    {
-                        log_net!(debug "Failed UDPv6 dialinfo discovery: {}", e);
-                        return None;
+                    // TCPv4
+                    let mut out = Vec::<DiscoveryContext>::new();
+                    if protocol_config.inbound.contains(ProtocolType::TCP) {
+                        let tcpv4_context =
+                            DiscoveryContext::new(self.routing_table(), self.clone());
+                        if let Err(e) = self
+                            .update_ipv4_protocol_dialinfo(&tcpv4_context, ProtocolType::TCP)
+                            .await
+                        {
+                            log_net!(debug "Failed TCPv4 dialinfo discovery: {}", e);
+                            return None;
+                        }
+                        out.push(tcpv4_context);
                     }
-                    Some(vec![udpv6_context])
+
+                    // WSv4
+                    if protocol_config.inbound.contains(ProtocolType::WS) {
+                        let wsv4_context =
+                            DiscoveryContext::new(self.routing_table(), self.clone());
+                        if let Err(e) = self
+                            .update_ipv4_protocol_dialinfo(&wsv4_context, ProtocolType::WS)
+                            .await
+                        {
+                            log_net!(debug "Failed WSv4 dialinfo discovery: {}", e);
+                            return None;
+                        }
+                        out.push(wsv4_context);
+                    }
+                    Some(out)
                 }
                 .boxed(),
             );
         }
 
-        // Do TCPv4 + WSv4 in series because they may use the same connection 5-tuple
-        unord.push(
-            async {
-                // TCPv4
-                let mut out = Vec::<DiscoveryContext>::new();
-                if protocol_config.inbound.contains(ProtocolType::TCP) {
-                    let tcpv4_context = DiscoveryContext::new(self.routing_table(), self.clone());
-                    if let Err(e) = self
-                        .update_ipv4_protocol_dialinfo(&tcpv4_context, ProtocolType::TCP)
-                        .await
-                    {
-                        log_net!(debug "Failed TCPv4 dialinfo discovery: {}", e);
-                        return None;
-                    }
-                    out.push(tcpv4_context);
-                }
-
-                // WSv4
-                if protocol_config.inbound.contains(ProtocolType::WS) {
-                    let wsv4_context = DiscoveryContext::new(self.routing_table(), self.clone());
-                    if let Err(e) = self
-                        .update_ipv4_protocol_dialinfo(&wsv4_context, ProtocolType::WS)
-                        .await
-                    {
-                        log_net!(debug "Failed WSv4 dialinfo discovery: {}", e);
-                        return None;
-                    }
-                    out.push(wsv4_context);
-                }
-                Some(out)
-            }
-            .boxed(),
-        );
-
         // Do TCPv6 + WSv6 in series because they may use the same connection 5-tuple
-        unord.push(
-            async {
-                // TCPv6
-                let mut out = Vec::<DiscoveryContext>::new();
-                if protocol_config.inbound.contains(ProtocolType::TCP) {
-                    let tcpv6_context = DiscoveryContext::new(self.routing_table(), self.clone());
-                    if let Err(e) = self
-                        .update_ipv6_protocol_dialinfo(&tcpv6_context, ProtocolType::TCP)
-                        .await
-                    {
-                        log_net!(debug "Failed TCPv6 dialinfo discovery: {}", e);
-                        return None;
+        if protocol_config.family_global.contains(AddressType::IPV6) {
+            unord.push(
+                async {
+                    // TCPv6
+                    let mut out = Vec::<DiscoveryContext>::new();
+                    if protocol_config.inbound.contains(ProtocolType::TCP) {
+                        let tcpv6_context =
+                            DiscoveryContext::new(self.routing_table(), self.clone());
+                        if let Err(e) = self
+                            .update_ipv6_protocol_dialinfo(&tcpv6_context, ProtocolType::TCP)
+                            .await
+                        {
+                            log_net!(debug "Failed TCPv6 dialinfo discovery: {}", e);
+                            return None;
+                        }
+                        out.push(tcpv6_context);
                     }
-                    out.push(tcpv6_context);
-                }
 
-                // WSv6
-                if protocol_config.inbound.contains(ProtocolType::WS) {
-                    let wsv6_context = DiscoveryContext::new(self.routing_table(), self.clone());
-                    if let Err(e) = self
-                        .update_ipv6_protocol_dialinfo(&wsv6_context, ProtocolType::WS)
-                        .await
-                    {
-                        log_net!(debug "Failed WSv6 dialinfo discovery: {}", e);
-                        return None;
+                    // WSv6
+                    if protocol_config.inbound.contains(ProtocolType::WS) {
+                        let wsv6_context =
+                            DiscoveryContext::new(self.routing_table(), self.clone());
+                        if let Err(e) = self
+                            .update_ipv6_protocol_dialinfo(&wsv6_context, ProtocolType::WS)
+                            .await
+                        {
+                            log_net!(debug "Failed WSv6 dialinfo discovery: {}", e);
+                            return None;
+                        }
+                        out.push(wsv6_context);
                     }
-                    out.push(wsv6_context);
+                    Some(out)
                 }
-                Some(out)
-            }
-            .boxed(),
-        );
+                .boxed(),
+            );
+        }
 
         // Wait for all discovery futures to complete and collect contexts
         let mut contexts = Vec::<DiscoveryContext>::new();

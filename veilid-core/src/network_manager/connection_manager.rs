@@ -10,6 +10,7 @@ use stop_token::future::FutureExt;
 #[derive(Debug)]
 enum ConnectionManagerEvent {
     Accepted(ProtocolNetworkConnection),
+    Dead(NetworkConnection),
     Finished(ConnectionDescriptor),
 }
 
@@ -141,9 +142,9 @@ impl ConnectionManager {
     fn on_new_protocol_network_connection(
         &self,
         inner: &mut ConnectionManagerInner,
-        conn: ProtocolNetworkConnection,
+        prot_conn: ProtocolNetworkConnection,
     ) -> EyreResult<NetworkResult<ConnectionHandle>> {
-        log_net!("on_new_protocol_network_connection: {:?}", conn);
+        log_net!("on_new_protocol_network_connection: {:?}", prot_conn);
 
         // Wrap with NetworkConnection object to start the connection processing loop
         let stop_token = match &inner.stop_source {
@@ -151,10 +152,30 @@ impl ConnectionManager {
             None => bail!("not creating connection because we are stopping"),
         };
 
-        let conn = NetworkConnection::from_protocol(self.clone(), stop_token, conn);
+        let conn = NetworkConnection::from_protocol(self.clone(), stop_token, prot_conn);
         let handle = conn.get_handle();
         // Add to the connection table
-        inner.connection_table.add_connection(conn)?;
+        match inner.connection_table.add_connection(conn) {
+            Ok(None) => {
+                // Connection added
+            }
+            Ok(Some(conn)) => {
+                // Connection added and a different one LRU'd out
+                let _ = inner.sender.send(ConnectionManagerEvent::Dead(conn));
+            }
+            Err(ConnectionTableAddError::AddressFilter(conn, e)) => {
+                // Connection filtered
+                let desc = conn.connection_descriptor();
+                let _ = inner.sender.send(ConnectionManagerEvent::Dead(conn));
+                return Err(eyre!("connection filtered: {:?} ({})", desc, e));
+            }
+            Err(ConnectionTableAddError::AlreadyExists(conn)) => {
+                // Connection already exists
+                let desc = conn.connection_descriptor();
+                let _ = inner.sender.send(ConnectionManagerEvent::Dead(conn));
+                return Err(eyre!("connection already exists: {:?}", desc));
+            }
+        };
         Ok(NetworkResult::Value(handle))
     }
 
@@ -318,6 +339,10 @@ impl ConnectionManager {
                             // If this somehow happens, we're shutting down
                         }
                     };
+                }
+                ConnectionManagerEvent::Dead(mut conn) => {
+                    conn.close();
+                    conn.await;
                 }
                 ConnectionManagerEvent::Finished(desc) => {
                     let conn = {
