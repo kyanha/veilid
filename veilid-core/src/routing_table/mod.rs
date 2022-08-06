@@ -370,17 +370,37 @@ impl RoutingTable {
 
     // Attempt to empty the routing table
     // should only be performed when there are no node_refs (detached)
-    pub fn purge(&self) {
+    pub fn purge_buckets(&self) {
         let mut inner = self.inner.write();
         log_rtab!(
-            "Starting routing table purge. Table currently has {} nodes",
+            "Starting routing table buckets purge. Table currently has {} nodes",
             inner.bucket_entry_count
         );
         for bucket in &mut inner.buckets {
             bucket.kick(0);
         }
         log_rtab!(debug
-             "Routing table purge complete. Routing table now has {} nodes",
+             "Routing table buckets purge complete. Routing table now has {} nodes",
+            inner.bucket_entry_count
+        );
+    }
+
+    // Attempt to remove last_connections from entries
+    pub fn purge_last_connections(&self) {
+        let mut inner = self.inner.write();
+        log_rtab!(
+            "Starting routing table last_connections purge. Table currently has {} nodes",
+            inner.bucket_entry_count
+        );
+        for bucket in &mut inner.buckets {
+            for entry in bucket.entries() {
+                entry.1.with_mut(|e| {
+                    e.clear_last_connection();
+                });
+            }
+        }
+        log_rtab!(debug
+             "Routing table last_connections purge complete. Routing table now has {} nodes",
             inner.bucket_entry_count
         );
     }

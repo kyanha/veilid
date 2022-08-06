@@ -201,8 +201,20 @@ impl VeilidAPI {
                 ) {
                     apibail_internal!("Must be detached to purge");
                 }
-                self.network_manager()?.routing_table().purge();
+                self.network_manager()?.routing_table().purge_buckets();
                 Ok("Buckets purged".to_owned())
+            } else if args[0] == "connections" {
+                // Purge connection table
+                let connection_manager = self.network_manager()?.connection_manager();
+                connection_manager.shutdown().await;
+                connection_manager.startup().await;
+
+                // Eliminate last_connections from routing table entries
+                self.network_manager()?
+                    .routing_table()
+                    .purge_last_connections();
+
+                Ok("Connections purged".to_owned())
             } else {
                 Err(VeilidAPIError::InvalidArgument {
                     context: "debug_purge".to_owned(),
@@ -244,6 +256,59 @@ impl VeilidAPI {
         Ok("Detached".to_owned())
     }
 
+    async fn debug_contact(&self, args: String) -> Result<String, VeilidAPIError> {
+        let args: Vec<String> = args.split_whitespace().map(|s| s.to_owned()).collect();
+
+        let node_id = get_debug_argument_at(&args, 0, "debug_contact", "node_id", get_dht_key)?;
+
+        let network_manager = self.network_manager()?;
+        let routing_table = network_manager.routing_table();
+
+        let nr = match routing_table.lookup_node_ref(node_id) {
+            Some(nr) => nr,
+            None => return Ok("Node id not found in routing table".to_owned()),
+        };
+
+        let cm = network_manager.get_contact_method(nr);
+
+        Ok(format!("{:#?}", cm))
+    }
+
+    async fn debug_ping(&self, args: String) -> Result<String, VeilidAPIError> {
+        let args: Vec<String> = args.split_whitespace().map(|s| s.to_owned()).collect();
+
+        let node_id = get_debug_argument_at(&args, 0, "debug_ping", "node_id", get_dht_key)?;
+
+        let routing_table = self.network_manager()?.routing_table();
+
+        let nr = match routing_table.lookup_node_ref(node_id) {
+            Some(nr) => nr,
+            None => return Ok("Node id not found in routing table".to_owned()),
+        };
+
+        let rpc = self.network_manager()?.rpc_processor();
+
+        // Dump routing table entry
+        let out = match rpc
+            .rpc_call_status(nr)
+            .await
+            .map_err(VeilidAPIError::internal)?
+        {
+            NetworkResult::Value(v) => v,
+            NetworkResult::Timeout => {
+                return Ok("Timeout".to_owned());
+            }
+            NetworkResult::NoConnection(e) => {
+                return Ok(format!("NoConnection({})", e));
+            }
+            NetworkResult::InvalidMessage(e) => {
+                return Ok(format!("InvalidMessage({})", e));
+            }
+        };
+
+        Ok(format!("{:#?}", out))
+    }
+
     pub async fn debug_help(&self, _args: String) -> Result<String, VeilidAPIError> {
         Ok(r#">>> Debug commands:
         help
@@ -253,10 +318,12 @@ impl VeilidAPI {
         entry [node_id]
         nodeinfo
         config [key [new value]]
-        purge buckets
+        purge [buckets|connections]
         attach
         detach
         restart network
+        ping [node_id]
+        contact [node_id]
     "#
         .to_owned())
     }
@@ -282,6 +349,10 @@ impl VeilidAPI {
             self.debug_entries(rest).await
         } else if arg == "entry" {
             self.debug_entry(rest).await
+        } else if arg == "ping" {
+            self.debug_ping(rest).await
+        } else if arg == "contact" {
+            self.debug_contact(rest).await
         } else if arg == "nodeinfo" {
             self.debug_nodeinfo(rest).await
         } else if arg == "purge" {

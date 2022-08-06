@@ -165,7 +165,9 @@ impl BucketEntryInner {
     pub fn set_last_connection(&mut self, last_connection: ConnectionDescriptor, timestamp: u64) {
         self.last_connection = Some((last_connection, timestamp));
     }
-
+    pub fn clear_last_connection(&mut self) {
+        self.last_connection = None;
+    }
     pub fn last_connection(&self) -> Option<(ConnectionDescriptor, u64)> {
         self.last_connection
     }

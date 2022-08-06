@@ -112,7 +112,7 @@ struct ClientWhitelistEntry {
 
 // Mechanism required to contact another node
 #[derive(Clone, Debug)]
-enum ContactMethod {
+pub(crate) enum ContactMethod {
     Unreachable,                       // Node is not reachable by any means
     Direct(DialInfo),                  // Contact the node directly
     SignalReverse(NodeRef, NodeRef),   // Request via signal the node connect back directly
@@ -1054,7 +1054,7 @@ impl NetworkManager {
 
     // Figure out how to reach a node
     #[instrument(level = "trace", skip(self), ret)]
-    fn get_contact_method(&self, target_node_ref: NodeRef) -> ContactMethod {
+    pub(crate) fn get_contact_method(&self, target_node_ref: NodeRef) -> ContactMethod {
         // Try local first
         let out = self.get_contact_method_local(target_node_ref.clone());
         if !matches!(out, ContactMethod::Unreachable) {
