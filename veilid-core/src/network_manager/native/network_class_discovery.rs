@@ -81,15 +81,20 @@ impl DiscoveryContext {
         let res = network_result_value_or_log!(debug match rpc.rpc_call_status(node_ref.clone()).await {
                 Ok(v) => v,
                 Err(e) => {
+                    node_ref.clear_last_connection();
                     log_net!(error
                         "failed to get status answer from {:?}: {}",
                         node_ref, e
                     );
                     return None;
                 }
-            } =>  { return None; }
+            } =>  {
+                node_ref.clear_last_connection();
+                return None;
+            }
         );
 
+        node_ref.clear_last_connection();
         log_net!(
             "request_public_address {:?}: Value({:?})",
             node_ref,
@@ -196,13 +201,16 @@ impl DiscoveryContext {
         node_ref.set_filter(None);
 
         // ask the node to send us a dial info validation receipt
-        rpc.rpc_call_validate_dial_info(node_ref.clone(), dial_info, redirect)
+        let out = rpc
+            .rpc_call_validate_dial_info(node_ref.clone(), dial_info, redirect)
             .await
             .map_err(logthru_net!(
                 "failed to send validate_dial_info to {:?}",
                 node_ref
             ))
-            .unwrap_or(false)
+            .unwrap_or(false);
+        node_ref.clear_last_connection();
+        out
     }
 
     #[instrument(level = "trace", skip(self), ret)]
