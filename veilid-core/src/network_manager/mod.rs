@@ -806,7 +806,7 @@ impl NetworkManager {
 
                 // Do our half of the hole punch by sending an empty packet
                 // Both sides will do this and then the receipt will get sent over the punched hole
-                network_result_try!(
+                let connection_descriptor = network_result_try!(
                     self.net()
                         .send_data_to_dial_info(
                             hole_punch_dial_info_detail.dial_info.clone(),
@@ -816,6 +816,9 @@ impl NetworkManager {
                 );
 
                 // XXX: do we need a delay here? or another hole punch packet?
+
+                // Set the hole punch as our 'last connection' to ensure we return the receipt over the direct hole punch
+                peer_nr.set_last_connection(connection_descriptor, intf::get_timestamp());
 
                 // Return the receipt using the same dial info send the receipt to it
                 rpc.rpc_call_return_receipt(Destination::Direct(peer_nr), None, receipt)
@@ -1178,6 +1181,8 @@ impl NetworkManager {
 
         // Do our half of the hole punch by sending an empty packet
         // Both sides will do this and then the receipt will get sent over the punched hole
+        // Don't bother storing the returned connection descriptor as the 'last connection' because the other side of the hole
+        // punch should come through and create a real 'last connection' for us if this succeeds
         network_result_try!(
             self.net()
                 .send_data_to_dial_info(hole_punch_did.dial_info, Vec::new())
@@ -1294,7 +1299,12 @@ impl NetworkManager {
                     } else {
                         SendDataKind::GlobalDirect
                     };
-                    network_result_try!(this.net().send_data_to_dial_info(dial_info, data).await?);
+                    let connection_descriptor = network_result_try!(
+                        this.net().send_data_to_dial_info(dial_info, data).await?
+                    );
+                    // If we connected to this node directly, save off the last connection so we can use it again
+                    node_ref.set_last_connection(connection_descriptor, intf::get_timestamp());
+
                     Ok(NetworkResult::value(send_data_kind))
                 }
                 ContactMethod::SignalReverse(relay_nr, target_node_ref) => {

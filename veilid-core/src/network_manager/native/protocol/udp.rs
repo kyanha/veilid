@@ -42,7 +42,7 @@ impl RawUdpProtocolHandler {
         &self,
         data: Vec<u8>,
         socket_addr: SocketAddr,
-    ) -> io::Result<NetworkResult<()>> {
+    ) -> io::Result<NetworkResult<ConnectionDescriptor>> {
         if data.len() > MAX_MESSAGE_SIZE {
             bail_io_error_other!("sending too large UDP message");
         }
@@ -56,7 +56,17 @@ impl RawUdpProtocolHandler {
             bail_io_error_other!("UDP partial send")
         }
 
-        Ok(NetworkResult::value(()))
+        let peer_addr = PeerAddress::new(
+            SocketAddress::from_socket_addr(socket_addr),
+            ProtocolType::UDP,
+        );
+        let local_socket_addr = self.socket.local_addr()?;
+        let descriptor = ConnectionDescriptor::new(
+            peer_addr,
+            SocketAddress::from_socket_addr(local_socket_addr),
+        );
+
+        Ok(NetworkResult::value(descriptor))
     }
 
     #[instrument(level = "trace", err)]

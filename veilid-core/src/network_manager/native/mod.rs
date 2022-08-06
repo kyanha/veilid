@@ -493,13 +493,15 @@ impl Network {
     }
 
     // Send data directly to a dial info, possibly without knowing which node it is going to
+    // Returns a descriptor for the connection used to send the data
     #[instrument(level="trace", err, skip(self, data), fields(data.len = data.len()))]
     pub async fn send_data_to_dial_info(
         &self,
         dial_info: DialInfo,
         data: Vec<u8>,
-    ) -> EyreResult<NetworkResult<()>> {
+    ) -> EyreResult<NetworkResult<ConnectionDescriptor>> {
         let data_len = data.len();
+        let connection_descriptor;
         if dial_info.protocol_type() == ProtocolType::UDP {
             // Handle connectionless protocol
             let peer_socket_addr = dial_info.to_socket_addr();
@@ -507,10 +509,9 @@ impl Network {
                 Some(ph) => ph,
                 None => bail!("no appropriate UDP protocol handler for dial_info"),
             };
-            let _ = network_result_try!(ph
+            connection_descriptor = network_result_try!(ph
                 .send_message(data, peer_socket_addr)
                 .await
-                .into_network_result()
                 .wrap_err("failed to send data to dial info")?);
         } else {
             // Handle connection-oriented protocols
@@ -527,13 +528,14 @@ impl Network {
                     "failed to send",
                 )));
             }
+            connection_descriptor = conn.connection_descriptor();
         }
 
         // Network accounting
         self.network_manager()
             .stats_packet_sent(dial_info.to_ip_addr(), data_len as u64);
 
-        Ok(NetworkResult::value(()))
+        Ok(NetworkResult::value(connection_descriptor))
     }
 
     /////////////////////////////////////////////////////////////////

@@ -191,7 +191,7 @@ impl Network {
         &self,
         dial_info: DialInfo,
         data: Vec<u8>,
-    ) -> EyreResult<NetworkResult<()>> {
+    ) -> EyreResult<NetworkResult<ConnectionDescriptor>> {
         let data_len = data.len();
         if dial_info.protocol_type() == ProtocolType::UDP {
             bail!("no support for UDP protocol");
@@ -201,18 +201,25 @@ impl Network {
         }
 
         // Handle connection-oriented protocols
-        let conn = self
-            .connection_manager()
-            .get_or_create_connection(None, dial_info.clone())
-            .await?;
+        let conn = network_result_try!(
+            self.connection_manager()
+                .get_or_create_connection(Some(local_addr), dial_info.clone())
+                .await?
+        );
 
-        let res = conn.send_async(data).await;
-        if res.is_ok() {
-            // Network accounting
-            self.network_manager()
-                .stats_packet_sent(dial_info.to_ip_addr(), data_len as u64);
+        if let ConnectionHandleSendResult::NotSent(_) = conn.send_async(data).await {
+            return Ok(NetworkResult::NoConnection(io::Error::new(
+                io::ErrorKind::ConnectionReset,
+                "failed to send",
+            )));
         }
-        res
+        let connection_descriptor = conn.connection_descriptor();
+        
+        // Network accounting
+        self.network_manager()
+            .stats_packet_sent(dial_info.to_ip_addr(), data_len as u64);
+    
+        Ok(NetworkResult::value(connection_descriptor))
     }
 
     /////////////////////////////////////////////////////////////////
