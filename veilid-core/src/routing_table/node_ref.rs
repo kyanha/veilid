@@ -263,6 +263,10 @@ impl NodeRef {
         Some(last_connection)
     }
 
+    pub fn clear_last_connection(&self) {
+        self.operate_mut(|e| e.clear_last_connection())
+    }
+
     pub fn has_any_dial_info(&self) -> bool {
         self.operate(|e| {
             e.node_info()

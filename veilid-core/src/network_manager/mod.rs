@@ -760,6 +760,9 @@ impl NetworkManager {
                     Some(nr) => nr,
                 };
 
+                // Remove any 'last connection' to this peer to ensure we start a new connection with the reverse connection
+                peer_nr.clear_last_connection();
+
                 // Make a reverse connection to the peer and send the receipt to it
                 rpc.rpc_call_return_receipt(Destination::Direct(peer_nr), None, receipt)
                     .await
@@ -782,6 +785,9 @@ impl NetworkManager {
                     }
                     Some(nr) => nr,
                 };
+
+                // Remove any 'last connection' to this peer to ensure we start a new connection with the hole punch
+                peer_nr.clear_last_connection();
 
                 // Get the udp direct dialinfo for the hole punch
                 let outbound_dif = self
