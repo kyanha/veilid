@@ -84,6 +84,7 @@ Future<VeilidConfig> getDefaultVeilidConfig() async {
       ),
       upnp: true,
       natpmp: true,
+      detectAddressChanges: true,
       enableLocalPeerScope: false,
       restrictedNatRetries: 3,
       tls: VeilidConfigTLS(

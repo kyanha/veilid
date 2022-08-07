@@ -653,13 +653,17 @@ impl Network {
         self.free_bound_first_ports();
 
         // If we have static public dialinfo, upgrade our network class
-        // xxx: force public address detection
-        // {
-        //     let mut inner = self.inner.lock();
-        //     if !inner.static_public_dialinfo.is_empty() {
-        //         inner.network_class = Some(NetworkClass::InboundCapable);
-        //     }
-        // }
+        let detect_address_changes = {
+            let c = self.config.get();
+            c.network.detect_address_changes
+        };
+
+        if !detect_address_changes {
+            let mut inner = self.inner.lock();
+            if !inner.static_public_dialinfo.is_empty() {
+                inner.network_class = Some(NetworkClass::InboundCapable);
+            }
+        }
 
         info!("network started");
         self.inner.lock().network_started = true;
@@ -746,23 +750,30 @@ impl Network {
     }
 
     pub async fn tick(&self) -> EyreResult<()> {
-        let network_class = self.get_network_class().unwrap_or(NetworkClass::Invalid);
-        let routing_table = self.routing_table();
+        let detect_address_changes = {
+            let config = self.network_manager().config();
+            let c = config.get();
+            c.network.detect_address_changes
+        };
 
         // If we need to figure out our network class, tick the task for it
-        if network_class == NetworkClass::Invalid {
-            let rth = routing_table.get_routing_table_health();
+        if detect_address_changes {
+            let network_class = self.get_network_class().unwrap_or(NetworkClass::Invalid);
+            if network_class == NetworkClass::Invalid {
+                let routing_table = self.routing_table();
+                let rth = routing_table.get_routing_table_health();
 
-            // Need at least two entries to do this
-            if rth.unreliable_entry_count + rth.reliable_entry_count >= 2 {
-                self.unlocked_inner.update_network_class_task.tick().await?;
+                // Need at least two entries to do this
+                if rth.unreliable_entry_count + rth.reliable_entry_count >= 2 {
+                    self.unlocked_inner.update_network_class_task.tick().await?;
+                }
             }
-        }
 
-        // If we aren't resetting the network already,
-        // check our network interfaces to see if they have changed
-        if !self.needs_restart() {
-            self.unlocked_inner.network_interfaces_task.tick().await?;
+            // If we aren't resetting the network already,
+            // check our network interfaces to see if they have changed
+            if !self.needs_restart() {
+                self.unlocked_inner.network_interfaces_task.tick().await?;
+            }
         }
 
         Ok(())

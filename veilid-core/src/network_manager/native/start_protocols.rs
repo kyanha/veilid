@@ -253,12 +253,13 @@ impl Network {
     pub(super) async fn start_udp_listeners(&self) -> EyreResult<()> {
         trace!("starting udp listeners");
         let routing_table = self.routing_table();
-        let (listen_address, public_address, enable_local_peer_scope) = {
+        let (listen_address, public_address, enable_local_peer_scope, detect_address_changes) = {
             let c = self.config.get();
             (
                 c.network.protocol.udp.listen_address.clone(),
                 c.network.protocol.udp.public_address.clone(),
                 c.network.enable_local_peer_scope,
+                c.network.detect_address_changes,
             )
         };
 
@@ -289,7 +290,10 @@ impl Network {
         for di in &local_dial_info_list {
             // If the local interface address is global, or we are enabling local peer scope
             // register global dial info if no public address is specified
-            if public_address.is_none() && (di.is_global() || enable_local_peer_scope) {
+            if !detect_address_changes
+                && public_address.is_none()
+                && (di.is_global() || enable_local_peer_scope)
+            {
                 routing_table.register_dial_info(
                     RoutingDomain::PublicInternet,
                     di.clone(),
@@ -318,11 +322,14 @@ impl Network {
                 let pdi = DialInfo::udp_from_socketaddr(pdi_addr);
 
                 // Register the public address
-                routing_table.register_dial_info(
-                    RoutingDomain::PublicInternet,
-                    pdi.clone(),
-                    DialInfoClass::Direct,
-                )?;
+                if !detect_address_changes {
+                    routing_table.register_dial_info(
+                        RoutingDomain::PublicInternet,
+                        pdi.clone(),
+                        DialInfoClass::Direct,
+                    )?;
+                    static_public = true;
+                }
 
                 // See if this public address is also a local interface address we haven't registered yet
                 let is_interface_address = self.with_interface_addresses(|ip_addrs| {
@@ -340,8 +347,6 @@ impl Network {
                         DialInfoClass::Direct,
                     )?;
                 }
-
-                static_public = true;
             }
         }
 
@@ -359,13 +364,14 @@ impl Network {
     pub(super) async fn start_ws_listeners(&self) -> EyreResult<()> {
         trace!("starting ws listeners");
         let routing_table = self.routing_table();
-        let (listen_address, url, path, enable_local_peer_scope) = {
+        let (listen_address, url, path, enable_local_peer_scope, detect_address_changes) = {
             let c = self.config.get();
             (
                 c.network.protocol.ws.listen_address.clone(),
                 c.network.protocol.ws.url.clone(),
                 c.network.protocol.ws.path.clone(),
                 c.network.enable_local_peer_scope,
+                c.network.detect_address_changes,
             )
         };
 
@@ -413,12 +419,14 @@ impl Network {
                 let pdi = DialInfo::try_ws(SocketAddress::from_socket_addr(gsa), url.clone())
                     .wrap_err("try_ws failed")?;
 
-                routing_table.register_dial_info(
-                    RoutingDomain::PublicInternet,
-                    pdi.clone(),
-                    DialInfoClass::Direct,
-                )?;
-                static_public = true;
+                if !detect_address_changes {
+                    routing_table.register_dial_info(
+                        RoutingDomain::PublicInternet,
+                        pdi.clone(),
+                        DialInfoClass::Direct,
+                    )?;
+                    static_public = true;
+                }
 
                 // See if this public address is also a local interface address
                 let is_interface_address = self.with_interface_addresses(|ip_addrs| {
@@ -450,7 +458,10 @@ impl Network {
             let local_url = format!("ws://{}/{}", socket_address, path);
             let local_di = DialInfo::try_ws(socket_address, local_url).wrap_err("try_ws failed")?;
 
-            if url.is_none() && (socket_address.address().is_global() || enable_local_peer_scope) {
+            if !detect_address_changes
+                && url.is_none()
+                && (socket_address.address().is_global() || enable_local_peer_scope)
+            {
                 // Register public dial info
                 routing_table.register_dial_info(
                     RoutingDomain::PublicInternet,
@@ -482,11 +493,12 @@ impl Network {
         trace!("starting wss listeners");
 
         let routing_table = self.routing_table();
-        let (listen_address, url) = {
+        let (listen_address, url, detect_address_changes) = {
             let c = self.config.get();
             (
                 c.network.protocol.wss.listen_address.clone(),
                 c.network.protocol.wss.url.clone(),
+                c.network.detect_address_changes,
             )
         };
 
@@ -539,12 +551,14 @@ impl Network {
                 let pdi = DialInfo::try_wss(SocketAddress::from_socket_addr(gsa), url.clone())
                     .wrap_err("try_wss failed")?;
 
-                routing_table.register_dial_info(
-                    RoutingDomain::PublicInternet,
-                    pdi.clone(),
-                    DialInfoClass::Direct,
-                )?;
-                static_public = true;
+                if !detect_address_changes {
+                    routing_table.register_dial_info(
+                        RoutingDomain::PublicInternet,
+                        pdi.clone(),
+                        DialInfoClass::Direct,
+                    )?;
+                    static_public = true;
+                }
 
                 // See if this public address is also a local interface address
                 let is_interface_address = self.with_interface_addresses(|ip_addrs| {
@@ -583,12 +597,13 @@ impl Network {
         trace!("starting tcp listeners");
 
         let routing_table = self.routing_table();
-        let (listen_address, public_address, enable_local_peer_scope) = {
+        let (listen_address, public_address, enable_local_peer_scope, detect_address_changes) = {
             let c = self.config.get();
             (
                 c.network.protocol.tcp.listen_address.clone(),
                 c.network.protocol.tcp.public_address.clone(),
                 c.network.enable_local_peer_scope,
+                c.network.detect_address_changes,
             )
         };
 
@@ -622,7 +637,10 @@ impl Network {
             let di = DialInfo::tcp(socket_address);
 
             // Register global dial info if no public address is specified
-            if public_address.is_none() && (di.is_global() || enable_local_peer_scope) {
+            if !detect_address_changes
+                && public_address.is_none()
+                && (di.is_global() || enable_local_peer_scope)
+            {
                 routing_table.register_dial_info(
                     RoutingDomain::PublicInternet,
                     di.clone(),
@@ -654,12 +672,14 @@ impl Network {
                 }
                 let pdi = DialInfo::tcp_from_socketaddr(pdi_addr);
 
-                routing_table.register_dial_info(
-                    RoutingDomain::PublicInternet,
-                    pdi.clone(),
-                    DialInfoClass::Direct,
-                )?;
-                static_public = true;
+                if !detect_address_changes {
+                    routing_table.register_dial_info(
+                        RoutingDomain::PublicInternet,
+                        pdi.clone(),
+                        DialInfoClass::Direct,
+                    )?;
+                    static_public = true;
+                }
 
                 // See if this public address is also a local interface address
                 let is_interface_address = self.with_interface_addresses(|ip_addrs| {

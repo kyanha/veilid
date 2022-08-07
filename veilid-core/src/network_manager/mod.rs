@@ -1651,6 +1651,10 @@ impl NetworkManager {
             let routing_table = inner.routing_table.as_ref().unwrap().clone();
             (net, routing_table)
         };
+        let detect_address_changes = {
+            let c = self.config.get();
+            c.network.detect_address_changes
+        };
         let network_class = net.get_network_class().unwrap_or(NetworkClass::Invalid);
 
         // Determine if our external address has likely changed
@@ -1709,15 +1713,22 @@ impl NetworkManager {
             };
 
         if needs_public_address_detection {
-            // Reset the address check cache now so we can start detecting fresh
-            info!("Public address has changed, detecting public dial info");
+            if detect_address_changes {
+                // Reset the address check cache now so we can start detecting fresh
+                info!("Public address has changed, detecting public dial info");
 
-            let mut inner = self.inner.lock();
-            inner.public_address_check_cache.clear();
+                let mut inner = self.inner.lock();
+                inner.public_address_check_cache.clear();
 
-            // Reset the network class and dial info so we can re-detect it
-            routing_table.clear_dial_info_details(RoutingDomain::PublicInternet);
-            net.reset_network_class();
+                // Reset the network class and dial info so we can re-detect it
+                //routing_table.clear_dial_info_details(RoutingDomain::PublicInternet);
+                //net.reset_network_class();
+
+                // Do a full network reset since this doesn't take that long and ensures we get the local network stuff correct too
+                net.restart_network();
+            } else {
+                warn!("Public address may have changed. Restarting the server may be required.");
+            }
         }
     }
 

@@ -439,6 +439,7 @@ impl Network {
                 "Skipping detection for public dialinfo for {:?}:IPV4",
                 protocol_type
             );
+            context.set_detected_network_class(NetworkClass::InboundCapable);
             return Ok(());
         }
 
@@ -511,6 +512,7 @@ impl Network {
                 "Skipping detection for public dialinfo for {:?}:IPV6",
                 protocol_type
             );
+            context.set_detected_network_class(NetworkClass::InboundCapable);
             return Ok(());
         }
         // Start doing ipv6 protocol
