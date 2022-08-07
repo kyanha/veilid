@@ -1710,6 +1710,8 @@ impl NetworkManager {
 
         if needs_public_address_detection {
             // Reset the address check cache now so we can start detecting fresh
+            info!("Public address has changed, detecting public dial info");
+
             let mut inner = self.inner.lock();
             inner.public_address_check_cache.clear();
 

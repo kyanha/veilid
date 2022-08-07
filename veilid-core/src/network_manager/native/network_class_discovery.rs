@@ -1,4 +1,5 @@
 use super::*;
+//use futures_util::stream::FuturesOrdered;
 use futures_util::stream::FuturesUnordered;
 use futures_util::FutureExt;
 use stop_token::future::FutureExt as StopTokenFutureExt;
@@ -367,6 +368,7 @@ impl DiscoveryContext {
         {
             None => {
                 // If we can't get an external address, allow retry
+                log_net!(debug "failed to discover external address 2 for {:?}:{:?}, skipping node {:?}", protocol_type, address_type, node_1.node_id());
                 return Ok(false);
             }
             Some(v) => v,
@@ -425,6 +427,21 @@ impl Network {
             c.network.restricted_nat_retries
         };
 
+        // See if we already have a public dialinfo of this protocol/address type
+        let routing_table = self.routing_table();
+        let dif = DialInfoFilter::global()
+            .with_protocol_type(protocol_type)
+            .with_address_type(AddressType::IPV4);
+        let dids =
+            routing_table.all_filtered_dial_info_details(Some(RoutingDomain::PublicInternet), &dif);
+        if !dids.is_empty() {
+            log_net!(debug
+                "Skipping detection for public dialinfo for {:?}:IPV4",
+                protocol_type
+            );
+            return Ok(());
+        }
+
         // Start doing ipv4 protocol
         context.protocol_begin(protocol_type, AddressType::IPV4);
 
@@ -482,6 +499,20 @@ impl Network {
         context: &DiscoveryContext,
         protocol_type: ProtocolType,
     ) -> EyreResult<()> {
+        // See if we already have a public dialinfo of this protocol/address type
+        let routing_table = self.routing_table();
+        let dif = DialInfoFilter::global()
+            .with_protocol_type(protocol_type)
+            .with_address_type(AddressType::IPV6);
+        let dids =
+            routing_table.all_filtered_dial_info_details(Some(RoutingDomain::PublicInternet), &dif);
+        if !dids.is_empty() {
+            log_net!(debug
+                "Skipping detection for public dialinfo for {:?}:IPV6",
+                protocol_type
+            );
+            return Ok(());
+        }
         // Start doing ipv6 protocol
         context.protocol_begin(protocol_type, AddressType::IPV6);
 
@@ -538,13 +569,14 @@ impl Network {
             false
         };
 
-        let mut unord = FuturesUnordered::new();
+        let mut futures = FuturesUnordered::new();
+        //let mut futures = FuturesOrdered::new();
 
         // Do UDPv4+v6 at the same time as everything else
         if protocol_config.inbound.contains(ProtocolType::UDP) {
             // UDPv4
             if protocol_config.family_global.contains(AddressType::IPV4) {
-                unord.push(
+                futures.push(
                     async {
                         let udpv4_context =
                             DiscoveryContext::new(self.routing_table(), self.clone());
@@ -563,7 +595,7 @@ impl Network {
 
             // UDPv6
             if protocol_config.family_global.contains(AddressType::IPV6) {
-                unord.push(
+                futures.push(
                     async {
                         let udpv6_context =
                             DiscoveryContext::new(self.routing_table(), self.clone());
@@ -584,7 +616,7 @@ impl Network {
         // Do TCPv4 + WSv4 in series because they may use the same connection 5-tuple
         if protocol_config.family_global.contains(AddressType::IPV4) {
             if protocol_config.inbound.contains(ProtocolType::TCP) {
-                unord.push(
+                futures.push(
                     async {
                         // TCPv4
                         let tcpv4_context =
@@ -603,7 +635,7 @@ impl Network {
             }
 
             if protocol_config.inbound.contains(ProtocolType::WS) && !tcp_same_port {
-                unord.push(
+                futures.push(
                     async {
                         // WSv4
                         let wsv4_context =
@@ -625,7 +657,7 @@ impl Network {
         // Do TCPv6 + WSv6 in series because they may use the same connection 5-tuple
         if protocol_config.family_global.contains(AddressType::IPV6) {
             if protocol_config.inbound.contains(ProtocolType::TCP) {
-                unord.push(
+                futures.push(
                     async {
                         // TCPv6
                         let tcpv6_context =
@@ -645,7 +677,7 @@ impl Network {
 
             // WSv6
             if protocol_config.inbound.contains(ProtocolType::WS) && !tcp_same_port {
-                unord.push(
+                futures.push(
                     async {
                         let wsv6_context =
                             DiscoveryContext::new(self.routing_table(), self.clone());
@@ -667,7 +699,7 @@ impl Network {
         let mut contexts = Vec::<DiscoveryContext>::new();
         let mut network_class = Option::<NetworkClass>::None;
         loop {
-            match unord.next().timeout_at(stop_token.clone()).await {
+            match futures.next().timeout_at(stop_token.clone()).await {
                 Ok(Some(ctxvec)) => {
                     if let Some(ctxvec) = ctxvec {
                         for ctx in ctxvec {

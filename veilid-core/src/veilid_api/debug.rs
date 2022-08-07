@@ -21,6 +21,31 @@ fn get_number(text: &str) -> Option<usize> {
 fn get_dht_key(text: &str) -> Option<DHTKey> {
     DHTKey::try_decode(text).ok()
 }
+fn get_protocol_type(text: &str) -> Option<ProtocolType> {
+    let lctext = text.to_ascii_lowercase();
+    if lctext == "udp" {
+        Some(ProtocolType::UDP)
+    } else if lctext == "tcp" {
+        Some(ProtocolType::TCP)
+    } else if lctext == "ws" {
+        Some(ProtocolType::WS)
+    } else if lctext == "wss" {
+        Some(ProtocolType::WSS)
+    } else {
+        None
+    }
+}
+fn get_address_type(text: &str) -> Option<AddressType> {
+    let lctext = text.to_ascii_lowercase();
+    if lctext == "ipv4" {
+        Some(AddressType::IPV4)
+    } else if lctext == "ipv6" {
+        Some(AddressType::IPV6)
+    } else {
+        None
+    }
+}
+
 fn get_debug_argument<T, G: FnOnce(&str) -> Option<T>>(
     value: &str,
     context: &str,
@@ -264,10 +289,31 @@ impl VeilidAPI {
         let network_manager = self.network_manager()?;
         let routing_table = network_manager.routing_table();
 
-        let nr = match routing_table.lookup_node_ref(node_id) {
+        let mut nr = match routing_table.lookup_node_ref(node_id) {
             Some(nr) => nr,
             None => return Ok("Node id not found in routing table".to_owned()),
         };
+
+        if args.len() >= 2 {
+            let pt = get_debug_argument_at(
+                &args,
+                1,
+                "debug_contact",
+                "protocol_type",
+                get_protocol_type,
+            )?;
+            nr.merge_filter(DialInfoFilter::all().with_protocol_type(pt));
+            if args.len() >= 3 {
+                let at = get_debug_argument_at(
+                    &args,
+                    2,
+                    "debug_contact",
+                    "address_type",
+                    get_address_type,
+                )?;
+                nr.merge_filter(DialInfoFilter::all().with_address_type(at));
+            }
+        }
 
         let cm = network_manager.get_contact_method(nr);
 
@@ -280,11 +326,26 @@ impl VeilidAPI {
         let node_id = get_debug_argument_at(&args, 0, "debug_ping", "node_id", get_dht_key)?;
 
         let routing_table = self.network_manager()?.routing_table();
-
-        let nr = match routing_table.lookup_node_ref(node_id) {
+        let mut nr = match routing_table.lookup_node_ref(node_id) {
             Some(nr) => nr,
             None => return Ok("Node id not found in routing table".to_owned()),
         };
+
+        if args.len() >= 2 {
+            let pt =
+                get_debug_argument_at(&args, 1, "debug_ping", "protocol_type", get_protocol_type)?;
+            nr.merge_filter(DialInfoFilter::all().with_protocol_type(pt));
+            if args.len() >= 3 {
+                let at = get_debug_argument_at(
+                    &args,
+                    2,
+                    "debug_ping",
+                    "address_type",
+                    get_address_type,
+                )?;
+                nr.merge_filter(DialInfoFilter::all().with_address_type(at));
+            }
+        }
 
         let rpc = self.network_manager()?.rpc_processor();
 
@@ -315,15 +376,15 @@ impl VeilidAPI {
         buckets [dead|reliable]
         dialinfo
         entries [dead|reliable] [limit]
-        entry [node_id]
+        entry <node_id>
         nodeinfo
         config [key [new value]]
-        purge [buckets|connections]
+        purge <buckets|connections>
         attach
         detach
         restart network
-        ping [node_id]
-        contact [node_id]
+        ping <node_id> [protocol_type [address_type]]
+        contact <node_id> [protocol_type [address_type]]
     "#
         .to_owned())
     }

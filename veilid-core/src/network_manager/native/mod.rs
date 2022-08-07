@@ -653,12 +653,13 @@ impl Network {
         self.free_bound_first_ports();
 
         // If we have static public dialinfo, upgrade our network class
-        {
-            let mut inner = self.inner.lock();
-            if !inner.static_public_dialinfo.is_empty() {
-                inner.network_class = Some(NetworkClass::InboundCapable);
-            }
-        }
+        // xxx: force public address detection
+        // {
+        //     let mut inner = self.inner.lock();
+        //     if !inner.static_public_dialinfo.is_empty() {
+        //         inner.network_class = Some(NetworkClass::InboundCapable);
+        //     }
+        // }
 
         info!("network started");
         self.inner.lock().network_started = true;
