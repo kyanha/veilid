@@ -45,17 +45,29 @@ impl RPCProcessor {
         // Report sender_info IP addresses to network manager
         if let Some(socket_address) = status_a.sender_info.socket_address {
             match send_data_kind {
-                SendDataKind::LocalDirect => {
-                    self.network_manager()
-                        .report_local_socket_address(socket_address, peer)
-                        .await;
+                SendDataKind::Direct(connection_descriptor) => {
+                    match connection_descriptor.peer_scope() {
+                        PeerScope::Global => {
+                            self.network_manager()
+                                .report_global_socket_address(
+                                    socket_address,
+                                    connection_descriptor,
+                                    peer,
+                                )
+                                .await;
+                        }
+                        PeerScope::Local => {
+                            self.network_manager()
+                                .report_local_socket_address(
+                                    socket_address,
+                                    connection_descriptor,
+                                    peer,
+                                )
+                                .await;
+                        }
+                    }
                 }
-                SendDataKind::GlobalDirect => {
-                    self.network_manager()
-                        .report_global_socket_address(socket_address, peer)
-                        .await;
-                }
-                SendDataKind::GlobalIndirect => {
+                SendDataKind::Indirect => {
                     // Do nothing in this case, as the socket address returned here would be for any node other than ours
                 }
             }

@@ -35,11 +35,14 @@ pub enum BucketEntryState {
     Reliable,
 }
 
+#[derive(Debug, Clone, Eq, PartialEq, PartialOrd, Ord, Hash)]
+struct LastConnectionKey(PeerScope, ProtocolType, AddressType);
+
 #[derive(Debug)]
 pub struct BucketEntryInner {
     min_max_version: Option<(u8, u8)>,
     seen_our_node_info: bool,
-    last_connection: Option<(ConnectionDescriptor, u64)>,
+    last_connections: BTreeMap<LastConnectionKey, (ConnectionDescriptor, u64)>,
     opt_signed_node_info: Option<SignedNodeInfo>,
     opt_local_node_info: Option<LocalNodeInfo>,
     peer_stats: PeerStats,
@@ -162,16 +165,45 @@ impl BucketEntryInner {
         })
     }
 
-    pub fn set_last_connection(&mut self, last_connection: ConnectionDescriptor, timestamp: u64) {
-        self.last_connection = Some((last_connection, timestamp));
-    }
-    pub fn clear_last_connection(&mut self) {
-        self.last_connection = None;
-    }
-    pub fn last_connection(&self) -> Option<(ConnectionDescriptor, u64)> {
-        self.last_connection
+    fn descriptor_to_key(last_connection: ConnectionDescriptor) -> LastConnectionKey {
+        LastConnectionKey(
+            last_connection.peer_scope(),
+            last_connection.protocol_type(),
+            last_connection.address_type(),
+        )
     }
 
+    // Stores a connection descriptor in this entry's table of last connections
+    pub fn set_last_connection(&mut self, last_connection: ConnectionDescriptor, timestamp: u64) {
+        let key = Self::descriptor_to_key(last_connection);
+        self.last_connections
+            .insert(key, (last_connection, timestamp));
+    }
+
+    // Clears the table of last connections to ensure we create new ones and drop any existing ones
+    pub fn clear_last_connections(&mut self) {
+        self.last_connections.clear();
+    }
+
+    // Gets the best 'last connection' that matches a set of protocol types and address types
+    pub fn last_connection(
+        &self,
+        dial_info_filter: Option<DialInfoFilter>,
+    ) -> Option<(ConnectionDescriptor, u64)> {
+        // Iterate peer scopes and protocol types and address type in order to ensure we pick the preferred protocols if all else is the same
+        let dif = dial_info_filter.unwrap_or_default();
+        for ps in dif.peer_scope_set {
+            for pt in dif.protocol_type_set {
+                for at in dif.address_type_set {
+                    let key = LastConnectionKey(ps, pt, at);
+                    if let Some(v) = self.last_connections.get(&key) {
+                        return Some(*v);
+                    }
+                }
+            }
+        }
+        None
+    }
     pub fn set_min_max_version(&mut self, min_max_version: (u8, u8)) {
         self.min_max_version = Some(min_max_version);
     }
@@ -429,7 +461,7 @@ impl BucketEntry {
             inner: RwLock::new(BucketEntryInner {
                 min_max_version: None,
                 seen_our_node_info: false,
-                last_connection: None,
+                last_connections: BTreeMap::new(),
                 opt_signed_node_info: None,
                 opt_local_node_info: None,
                 peer_stats: PeerStats {

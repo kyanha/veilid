@@ -383,45 +383,93 @@ impl RoutingTable {
         out
     }
 
+    fn make_relay_node_filter(&self) -> impl Fn(&BucketEntryInner) -> bool {
+        // Get all our outbound protocol/address types
+        let protocol_config = self.network_manager().get_protocol_config();
+        let outbound_dif = self
+            .network_manager()
+            .get_outbound_dial_info_filter(RoutingDomain::PublicInternet);
+
+        move |e: &BucketEntryInner| {
+            // Ensure this node is not on our local network
+            let has_local_dial_info = e
+                .local_node_info()
+                .map(|l| l.has_dial_info())
+                .unwrap_or(false);
+            if has_local_dial_info {
+                return false;
+            }
+
+            // Disqualify nodes that don't have all our outbound protocol types
+            let can_serve_as_relay = e
+                .node_info()
+                .map(|n| {
+                    let dids =
+                        n.all_filtered_dial_info_details(|did| did.matches_filter(&outbound_dif));
+                    for pt in protocol_config.outbound {
+                        for at in protocol_config.family_global {
+                            let mut found = false;
+                            for did in &dids {
+                                if did.dial_info.protocol_type() == pt
+                                    && did.dial_info.address_type() == at
+                                {
+                                    found = true;
+                                    break;
+                                }
+                            }
+                            if !found {
+                                return false;
+                            }
+                        }
+                    }
+                    true
+                })
+                .unwrap_or(false);
+            if !can_serve_as_relay {
+                return false;
+            }
+
+            true
+        }
+    }
+
     #[instrument(level = "trace", skip(self), ret)]
     pub fn find_inbound_relay(&self, cur_ts: u64) -> Option<NodeRef> {
+        // Get relay filter function
+        let relay_node_filter = self.make_relay_node_filter();
+
+        // Go through all entries and find fastest entry that matches filter function
         let inner = self.inner.read();
         let inner = &*inner;
         let mut best_inbound_relay: Option<(DHTKey, Arc<BucketEntry>)> = None;
 
         // Iterate all known nodes for candidates
         Self::with_entries(inner, cur_ts, BucketEntryState::Unreliable, |k, v| {
-            // Ensure this node is not on our local network
-            if v.with(|e| {
-                e.local_node_info()
-                    .map(|l| l.has_dial_info())
-                    .unwrap_or(false)
-            }) {
-                return Option::<()>::None;
-            }
-
-            // Ensure we have the node's status
-            if let Some(node_status) = v.with(|e| e.peer_stats().status.clone()) {
-                // Ensure the node will relay
-                if node_status.will_relay {
-                    // Compare against previous candidate
-                    if let Some(best_inbound_relay) = best_inbound_relay.as_mut() {
-                        // Less is faster
-                        let better = v.with(|e| {
-                            best_inbound_relay.1.with(|best| {
+            let v2 = v.clone();
+            v.with(|e| {
+                // Ensure we have the node's status
+                if let Some(node_status) = e.peer_stats().status.clone() {
+                    // Ensure the node will relay
+                    if node_status.will_relay {
+                        // Compare against previous candidate
+                        if let Some(best_inbound_relay) = best_inbound_relay.as_mut() {
+                            // Less is faster
+                            let better = best_inbound_relay.1.with(|best| {
                                 BucketEntryInner::cmp_fastest_reliable(cur_ts, e, best)
                                     == std::cmp::Ordering::Less
-                            })
-                        });
-                        if better {
-                            *best_inbound_relay = (k, v);
+                            });
+                            // Now apply filter function and see if this node should be included
+                            if better && relay_node_filter(e) {
+                                *best_inbound_relay = (k, v2);
+                            }
+                        } else if relay_node_filter(e) {
+                            // Always store the first candidate
+                            best_inbound_relay = Some((k, v2));
                         }
-                    } else {
-                        // Always store the first candidate
-                        best_inbound_relay = Some((k, v));
                     }
                 }
-            }
+            });
+            // Don't end early, iterate through all entries
             Option::<()>::None
         });
         // Return the best inbound relay noderef

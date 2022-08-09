@@ -395,7 +395,7 @@ impl RoutingTable {
         for bucket in &mut inner.buckets {
             for entry in bucket.entries() {
                 entry.1.with_mut(|e| {
-                    e.clear_last_connection();
+                    e.clear_last_connections();
                 });
             }
         }

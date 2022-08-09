@@ -2,7 +2,8 @@ use super::*;
 
 use crate::dht::*;
 use crate::xx::*;
-use stop_token::future::FutureExt;
+use futures_util::FutureExt;
+use stop_token::future::FutureExt as StopFutureExt;
 
 impl NetworkManager {
     // Bootstrap lookup process
@@ -328,13 +329,28 @@ impl NetworkManager {
         let routing_table = self.routing_table();
 
         let relay_node_id = self.relay_node().map(|nr| nr.node_id());
-
+        let dids = routing_table.all_filtered_dial_info_details(
+            Some(RoutingDomain::PublicInternet),
+            &DialInfoFilter::global(),
+        );
         let mut unord = FuturesUnordered::new();
 
         let node_refs = routing_table.get_nodes_needing_ping(cur_ts, relay_node_id);
         for nr in node_refs {
             let rpc = rpc.clone();
-            unord.push(async move { rpc.rpc_call_status(nr).await });
+            if Some(nr.node_id()) == relay_node_id {
+                // Relay nodes get pinged over all protocols we have inbound dialinfo for
+                // This is so we can preserve the inbound NAT mappings at our router
+                for did in &dids {
+                    let rpc = rpc.clone();
+                    let dif = did.dial_info.make_filter(true);
+                    let nr_filtered = nr.filtered_clone(dif);
+                    unord.push(async move { rpc.rpc_call_status(nr_filtered).await }.boxed());
+                }
+            } else {
+                // Just do a single ping with the best protocol for all the other nodes
+                unord.push(async move { rpc.rpc_call_status(nr).await }.boxed());
+            }
         }
 
         // Wait for futures to complete

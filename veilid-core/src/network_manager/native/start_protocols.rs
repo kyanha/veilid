@@ -383,10 +383,9 @@ impl Network {
         // Save the bound ws port for use later on
         self.inner.lock().ws_port = ws_port;
 
-        trace!(
+        info!(
             "WS: starting listener on port {} at {:?}",
-            ws_port,
-            ip_addrs
+            ws_port, ip_addrs
         );
         let socket_addresses = self
             .start_tcp_listener(
@@ -510,10 +509,9 @@ impl Network {
         // Save the bound wss port for use later on
         self.inner.lock().wss_port = wss_port;
 
-        trace!(
+        info!(
             "WSS: starting listener on port {} at {:?}",
-            wss_port,
-            ip_addrs
+            wss_port, ip_addrs
         );
         let socket_addresses = self
             .start_tcp_listener(
@@ -615,10 +613,9 @@ impl Network {
         // Save the bound tcp port for use later on
         self.inner.lock().tcp_port = tcp_port;
 
-        trace!(
+        info!(
             "TCP: starting listener on port {} at {:?}",
-            tcp_port,
-            ip_addrs
+            tcp_port, ip_addrs
         );
         let socket_addresses = self
             .start_tcp_listener(

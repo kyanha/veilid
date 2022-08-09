@@ -13,24 +13,31 @@ impl RawUdpProtocolHandler {
 
     #[instrument(level = "trace", err, skip(self, data), fields(data.len = data.len(), ret.len, ret.from))]
     pub async fn recv_message(&self, data: &mut [u8]) -> io::Result<(usize, ConnectionDescriptor)> {
-        let (size, remote_addr) = loop {
+        let (size, descriptor) = loop {
             let (size, remote_addr) = network_result_value_or_log!(debug self.socket.recv_from(data).await.into_network_result()? => continue);
             if size > MAX_MESSAGE_SIZE {
                 log_net!(debug "{}({}) at {}@{}:{}", "Invalid message".green(), "received too large UDP message", file!(), line!(), column!());
                 continue;
             }
-            break (size, remote_addr);
-        };
 
-        let peer_addr = PeerAddress::new(
-            SocketAddress::from_socket_addr(remote_addr),
-            ProtocolType::UDP,
-        );
-        let local_socket_addr = self.socket.local_addr()?;
-        let descriptor = ConnectionDescriptor::new(
-            peer_addr,
-            SocketAddress::from_socket_addr(local_socket_addr),
-        );
+            let peer_addr = PeerAddress::new(
+                SocketAddress::from_socket_addr(remote_addr),
+                ProtocolType::UDP,
+            );
+            let local_socket_addr = self.socket.local_addr()?;
+            let descriptor = match ConnectionDescriptor::new(
+                peer_addr,
+                SocketAddress::from_socket_addr(local_socket_addr),
+            ) {
+                Ok(d) => d,
+                Err(_) => {
+                    log_net!(debug "{}({}) at {}@{}:{}: {:?}", "Invalid peer scope".green(), "received message from invalid peer scope", file!(), line!(), column!(), peer_addr);
+                    continue;
+                }
+            };
+
+            break (size, descriptor);
+        };
 
         tracing::Span::current().record("ret.len", &size);
         tracing::Span::current().record("ret.from", &format!("{:?}", descriptor).as_str());
@@ -46,6 +53,17 @@ impl RawUdpProtocolHandler {
         if data.len() > MAX_MESSAGE_SIZE {
             bail_io_error_other!("sending too large UDP message");
         }
+        let peer_addr = PeerAddress::new(
+            SocketAddress::from_socket_addr(socket_addr),
+            ProtocolType::UDP,
+        );
+        let local_socket_addr = self.socket.local_addr()?;
+
+        let descriptor = ConnectionDescriptor::new(
+            peer_addr,
+            SocketAddress::from_socket_addr(local_socket_addr),
+        )
+        .map_err(|e| io::Error::new(io::ErrorKind::AddrNotAvailable, e))?;
 
         let len = network_result_try!(self
             .socket
@@ -55,16 +73,6 @@ impl RawUdpProtocolHandler {
         if len != data.len() {
             bail_io_error_other!("UDP partial send")
         }
-
-        let peer_addr = PeerAddress::new(
-            SocketAddress::from_socket_addr(socket_addr),
-            ProtocolType::UDP,
-        );
-        let local_socket_addr = self.socket.local_addr()?;
-        let descriptor = ConnectionDescriptor::new(
-            peer_addr,
-            SocketAddress::from_socket_addr(local_socket_addr),
-        );
 
         Ok(NetworkResult::value(descriptor))
     }

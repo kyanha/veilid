@@ -106,7 +106,8 @@ impl WebsocketProtocolHandler {
 
         // Make our connection descriptor
         Ok(WebsocketNetworkConnection::new(
-            ConnectionDescriptor::new_no_local(dial_info.to_peer_address()),
+            ConnectionDescriptor::new_no_local(dial_info.to_peer_address())
+                .map_err(|e| io::Error::new(io::ErrorKind::AddrNotAvailable, e))?,
             wsmeta,
             wsio,
         ))

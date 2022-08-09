@@ -80,9 +80,6 @@ impl DiscoveryContext {
     async fn request_public_address(&self, node_ref: NodeRef) -> Option<SocketAddress> {
         let rpc = self.routing_table.rpc_processor();
 
-        // Ensure we ask for a fresh connection
-        node_ref.clear_last_connection();
-
         let res = network_result_value_or_log!(debug match rpc.rpc_call_status(node_ref.clone()).await {
                 Ok(v) => v,
                 Err(e) => {

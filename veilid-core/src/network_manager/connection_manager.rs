@@ -203,12 +203,15 @@ impl ConnectionManager {
             );
 
             let peer_address = dial_info.to_peer_address();
+
+            // Make a connection to the address
+            // reject connections to addresses with an unknown or unsupported peer scope
             let descriptor = match local_addr {
                 Some(la) => {
                     ConnectionDescriptor::new(peer_address, SocketAddress::from_socket_addr(la))
                 }
                 None => ConnectionDescriptor::new_no_local(peer_address),
-            };
+            }?;
 
             // If any connection to this remote exists that has the same protocol, return it
             // Any connection will do, we don't have to match the local address

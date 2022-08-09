@@ -12,7 +12,8 @@ pub async fn test_add_get_remove() {
     let a1 = ConnectionDescriptor::new_no_local(PeerAddress::new(
         SocketAddress::new(Address::IPV4(Ipv4Addr::new(127, 0, 0, 1)), 8080),
         ProtocolType::TCP,
-    ));
+    ))
+    .unwrap();
     let a2 = a1;
     let a3 = ConnectionDescriptor::new(
         PeerAddress::new(
@@ -25,7 +26,8 @@ pub async fn test_add_get_remove() {
             0,
             0,
         ))),
-    );
+    )
+    .unwrap();
     let a4 = ConnectionDescriptor::new(
         PeerAddress::new(
             SocketAddress::new(Address::IPV6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)), 8090),
@@ -37,7 +39,8 @@ pub async fn test_add_get_remove() {
             0,
             0,
         ))),
-    );
+    )
+    .unwrap();
     let a5 = ConnectionDescriptor::new(
         PeerAddress::new(
             SocketAddress::new(Address::IPV6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)), 8090),
@@ -49,7 +52,8 @@ pub async fn test_add_get_remove() {
             0,
             0,
         ))),
-    );
+    )
+    .unwrap();
 
     let c1 = NetworkConnection::dummy(a1);
     let c1h = c1.get_handle();
