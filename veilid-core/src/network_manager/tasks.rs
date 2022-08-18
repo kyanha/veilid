@@ -336,16 +336,34 @@ impl NetworkManager {
         let mut unord = FuturesUnordered::new();
 
         let node_refs = routing_table.get_nodes_needing_ping(cur_ts, relay_node_id);
+        let mut mapped_port_info = routing_table.get_mapped_port_info();
+
         for nr in node_refs {
             let rpc = rpc.clone();
             if Some(nr.node_id()) == relay_node_id {
                 // Relay nodes get pinged over all protocols we have inbound dialinfo for
                 // This is so we can preserve the inbound NAT mappings at our router
                 for did in &dids {
-                    let rpc = rpc.clone();
-                    let dif = did.dial_info.make_filter(true);
-                    let nr_filtered = nr.filtered_clone(dif);
-                    unord.push(async move { rpc.rpc_call_status(nr_filtered).await }.boxed());
+                    // Do we need to do this ping?
+                    let pt = did.dial_info.protocol_type();
+                    let at = did.dial_info.address_type();
+
+                    let needs_ping = if let Some((llpt, port)) =
+                        mapped_port_info.protocol_to_port.get(&(pt, at))
+                    {
+                        mapped_port_info
+                            .low_level_protocol_ports
+                            .remove(&(*llpt, at, *port))
+                    } else {
+                        false
+                    };
+                    if needs_ping {
+                        let rpc = rpc.clone();
+                        let dif = did.dial_info.make_filter(true);
+                        let nr_filtered = nr.filtered_clone(dif);
+                        log_net!("--> Keepalive ping to {:?}", nr_filtered);
+                        unord.push(async move { rpc.rpc_call_status(nr_filtered).await }.boxed());
+                    }
                 }
             } else {
                 // Just do a single ping with the best protocol for all the other nodes

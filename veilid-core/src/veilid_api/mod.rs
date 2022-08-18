@@ -543,6 +543,22 @@ impl LocalNodeInfo {
 #[derive(Debug, PartialOrd, Ord, Hash, Serialize, Deserialize, EnumSetType)]
 // Keep member order appropriate for sorting < preference
 // Must match DialInfo order
+pub enum LowLevelProtocolType {
+    UDP,
+    TCP,
+}
+
+impl LowLevelProtocolType {
+    pub fn is_connection_oriented(&self) -> bool {
+        matches!(self, LowLevelProtocolType::TCP)
+    }
+}
+pub type LowLevelProtocolTypeSet = EnumSet<LowLevelProtocolType>;
+
+#[allow(clippy::derive_hash_xor_eq)]
+#[derive(Debug, PartialOrd, Ord, Hash, Serialize, Deserialize, EnumSetType)]
+// Keep member order appropriate for sorting < preference
+// Must match DialInfo order
 pub enum ProtocolType {
     UDP,
     TCP,
@@ -556,6 +572,12 @@ impl ProtocolType {
             self,
             ProtocolType::TCP | ProtocolType::WS | ProtocolType::WSS
         )
+    }
+    pub fn low_level_protocol_type(&self) -> LowLevelProtocolType {
+        match self {
+            ProtocolType::UDP => LowLevelProtocolType::UDP,
+            ProtocolType::TCP | ProtocolType::WS | ProtocolType::WSS => LowLevelProtocolType::TCP,
+        }
     }
 }
 pub type ProtocolTypeSet = EnumSet<ProtocolType>;

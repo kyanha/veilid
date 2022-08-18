@@ -4,6 +4,14 @@ use crate::dht::*;
 use crate::xx::*;
 use crate::*;
 
+pub type LowLevelProtocolPorts = BTreeSet<(LowLevelProtocolType, AddressType, u16)>;
+pub type ProtocolToPortMapping = BTreeMap<(ProtocolType, AddressType), (LowLevelProtocolType, u16)>;
+#[derive(Clone, Debug)]
+pub struct MappedPortInfo {
+    pub low_level_protocol_ports: LowLevelProtocolPorts,
+    pub protocol_to_port: ProtocolToPortMapping,
+}
+
 impl RoutingTable {
     // Makes a filter that finds nodes with a matching inbound dialinfo
     pub fn make_inbound_dial_info_entry_filter(
@@ -383,12 +391,46 @@ impl RoutingTable {
         out
     }
 
+    // Build a map of protocols to low level ports
+    // This way we can get the set of protocols required to keep our NAT mapping alive for keepalive pings
+    // Only one protocol per low level protocol/port combination is required
+    // For example, if WS/WSS and TCP protocols are on the same low-level TCP port, only TCP keepalives will be required
+    // and we do not need to do WS/WSS keepalive as well. If they are on different ports, then we will need WS/WSS keepalives too.
+    pub fn get_mapped_port_info(&self) -> MappedPortInfo {
+        let mut low_level_protocol_ports =
+            BTreeSet::<(LowLevelProtocolType, AddressType, u16)>::new();
+        let mut protocol_to_port =
+            BTreeMap::<(ProtocolType, AddressType), (LowLevelProtocolType, u16)>::new();
+        let our_dids = self.all_filtered_dial_info_details(
+            Some(RoutingDomain::PublicInternet),
+            &DialInfoFilter::all(),
+        );
+        for did in our_dids {
+            low_level_protocol_ports.insert((
+                did.dial_info.protocol_type().low_level_protocol_type(),
+                did.dial_info.address_type(),
+                did.dial_info.socket_address().port(),
+            ));
+            protocol_to_port.insert(
+                (did.dial_info.protocol_type(), did.dial_info.address_type()),
+                (
+                    did.dial_info.protocol_type().low_level_protocol_type(),
+                    did.dial_info.socket_address().port(),
+                ),
+            );
+        }
+        MappedPortInfo {
+            low_level_protocol_ports,
+            protocol_to_port,
+        }
+    }
+
     fn make_relay_node_filter(&self) -> impl Fn(&BucketEntryInner) -> bool {
         // Get all our outbound protocol/address types
-        let protocol_config = self.network_manager().get_protocol_config();
         let outbound_dif = self
             .network_manager()
             .get_outbound_dial_info_filter(RoutingDomain::PublicInternet);
+        let mapped_port_info = self.get_mapped_port_info();
 
         move |e: &BucketEntryInner| {
             // Ensure this node is not on our local network
@@ -400,29 +442,24 @@ impl RoutingTable {
                 return false;
             }
 
-            // Disqualify nodes that don't have all our outbound protocol types
+            // Disqualify nodes that don't cover all our inbound ports for tcp and udp
+            // as we need to be able to use the relay for keepalives for all nat mappings
+            let mut low_level_protocol_ports = mapped_port_info.low_level_protocol_ports.clone();
+
             let can_serve_as_relay = e
                 .node_info()
                 .map(|n| {
                     let dids =
                         n.all_filtered_dial_info_details(|did| did.matches_filter(&outbound_dif));
-                    for pt in protocol_config.outbound {
-                        for at in protocol_config.family_global {
-                            let mut found = false;
-                            for did in &dids {
-                                if did.dial_info.protocol_type() == pt
-                                    && did.dial_info.address_type() == at
-                                {
-                                    found = true;
-                                    break;
-                                }
-                            }
-                            if !found {
-                                return false;
-                            }
+                    for did in &dids {
+                        let pt = did.dial_info.protocol_type();
+                        let at = did.dial_info.address_type();
+                        if let Some((llpt, port)) = mapped_port_info.protocol_to_port.get(&(pt, at))
+                        {
+                            low_level_protocol_ports.remove(&(*llpt, at, *port));
                         }
                     }
-                    true
+                    low_level_protocol_ports.is_empty()
                 })
                 .unwrap_or(false);
             if !can_serve_as_relay {
