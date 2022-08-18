@@ -93,7 +93,7 @@ core:
             set_value_timeout:
             set_value_count: 20
             set_value_fanout: 5
-            min_peer_count: 2 # 20
+            min_peer_count: 20
             min_peer_refresh_time_ms: 2000
             validate_dial_info_receipt_time_ms: 2000
         upnp: false
@@ -1457,10 +1457,10 @@ mod tests {
 
         assert_eq!(s.core.network.connection_initial_timeout_ms, 2_000u32);
         assert_eq!(s.core.network.connection_inactivity_timeout_ms, 60_000u32);
-        assert_eq!(s.core.network.max_connections_per_ip4, 8u32);
-        assert_eq!(s.core.network.max_connections_per_ip6_prefix, 8u32);
+        assert_eq!(s.core.network.max_connections_per_ip4, 32u32);
+        assert_eq!(s.core.network.max_connections_per_ip6_prefix, 32u32);
         assert_eq!(s.core.network.max_connections_per_ip6_prefix_size, 56u32);
-        assert_eq!(s.core.network.max_connection_frequency_per_min, 8u32);
+        assert_eq!(s.core.network.max_connection_frequency_per_min, 128u32);
         assert_eq!(s.core.network.client_whitelist_timeout_ms, 300_000u32);
         assert_eq!(s.core.network.reverse_connection_receipt_time_ms, 5_000u32);
         assert_eq!(s.core.network.hole_punch_receipt_time_ms, 5_000u32);

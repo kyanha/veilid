@@ -345,9 +345,10 @@ impl NetworkManager {
                 // This is so we can preserve the inbound NAT mappings at our router
                 for did in &dids {
                     // Do we need to do this ping?
+                    // Check if we have already pinged over this low-level-protocol/address-type/port combo
+                    // We want to ensure we do the bare minimum required here
                     let pt = did.dial_info.protocol_type();
                     let at = did.dial_info.address_type();
-
                     let needs_ping = if let Some((llpt, port)) =
                         mapped_port_info.protocol_to_port.get(&(pt, at))
                     {

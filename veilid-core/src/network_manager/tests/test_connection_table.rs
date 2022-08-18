@@ -10,18 +10,18 @@ pub async fn test_add_get_remove() {
     let mut table = ConnectionTable::new(config);
 
     let a1 = ConnectionDescriptor::new_no_local(PeerAddress::new(
-        SocketAddress::new(Address::IPV4(Ipv4Addr::new(127, 0, 0, 1)), 8080),
+        SocketAddress::new(Address::IPV4(Ipv4Addr::new(192, 168, 0, 1)), 8080),
         ProtocolType::TCP,
     ))
     .unwrap();
     let a2 = a1;
     let a3 = ConnectionDescriptor::new(
         PeerAddress::new(
-            SocketAddress::new(Address::IPV6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)), 8090),
+            SocketAddress::new(Address::IPV6(Ipv6Addr::new(191, 0, 0, 0, 0, 0, 0, 1)), 8090),
             ProtocolType::TCP,
         ),
         SocketAddress::from_socket_addr(SocketAddr::V6(SocketAddrV6::new(
-            Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1),
+            Ipv6Addr::new(191, 0, 0, 0, 0, 0, 0, 1),
             8080,
             0,
             0,
@@ -30,11 +30,11 @@ pub async fn test_add_get_remove() {
     .unwrap();
     let a4 = ConnectionDescriptor::new(
         PeerAddress::new(
-            SocketAddress::new(Address::IPV6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)), 8090),
+            SocketAddress::new(Address::IPV6(Ipv6Addr::new(192, 0, 0, 0, 0, 0, 0, 1)), 8090),
             ProtocolType::TCP,
         ),
         SocketAddress::from_socket_addr(SocketAddr::V6(SocketAddrV6::new(
-            Ipv6Addr::new(1, 0, 0, 0, 0, 0, 0, 1),
+            Ipv6Addr::new(192, 0, 0, 0, 0, 0, 0, 1),
             8080,
             0,
             0,
@@ -43,11 +43,11 @@ pub async fn test_add_get_remove() {
     .unwrap();
     let a5 = ConnectionDescriptor::new(
         PeerAddress::new(
-            SocketAddress::new(Address::IPV6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)), 8090),
+            SocketAddress::new(Address::IPV6(Ipv6Addr::new(192, 0, 0, 0, 0, 0, 0, 1)), 8090),
             ProtocolType::WSS,
         ),
         SocketAddress::from_socket_addr(SocketAddr::V6(SocketAddrV6::new(
-            Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1),
+            Ipv6Addr::new(193, 0, 0, 0, 0, 0, 0, 1),
             8080,
             0,
             0,
