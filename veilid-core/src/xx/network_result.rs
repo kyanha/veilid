@@ -39,6 +39,7 @@ impl<T> IoNetworkResultExt<T> for io::Result<T> {
             },
             #[cfg(not(feature = "io_error_more"))]
             Err(e) => {
+                #[cfg(not(target_arch = "wasm32"))]
                 if let Some(os_err) = e.raw_os_error() {
                     if os_err == libc::EHOSTUNREACH || os_err == libc::ENETUNREACH {
                         return Ok(NetworkResult::NoConnection(e));
@@ -93,6 +94,7 @@ impl<T> FoldedNetworkResultExt<T> for io::Result<TimeoutOr<T>> {
             },
             #[cfg(not(feature = "io_error_more"))]
             Err(e) => {
+                #[cfg(not(target_arch = "wasm32"))]
                 if let Some(os_err) = e.raw_os_error() {
                     if os_err == libc::EHOSTUNREACH || os_err == libc::ENETUNREACH {
                         return Ok(NetworkResult::NoConnection(e));
@@ -126,6 +128,7 @@ impl<T> FoldedNetworkResultExt<T> for io::Result<NetworkResult<T>> {
             },
             #[cfg(not(feature = "io_error_more"))]
             Err(e) => {
+                #[cfg(not(target_arch = "wasm32"))]
                 if let Some(os_err) = e.raw_os_error() {
                     if os_err == libc::EHOSTUNREACH || os_err == libc::ENETUNREACH {
                         return Ok(NetworkResult::NoConnection(e));

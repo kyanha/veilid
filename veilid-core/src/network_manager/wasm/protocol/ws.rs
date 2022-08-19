@@ -1,8 +1,8 @@
 use super::*;
 use futures_util::{SinkExt, StreamExt};
+use send_wrapper::*;
 use std::io;
 use ws_stream_wasm::*;
-use send_wrapper::*;
 
 struct WebsocketNetworkConnectionInner {
     _ws_meta: WsMeta,
@@ -45,33 +45,46 @@ impl WebsocketNetworkConnection {
     //     self.inner.ws_meta.close().await.map_err(to_io).map(drop)
     // }
 
-    #[instrument(level = "trace", err, skip(self, message), fields(message.len = message.len()))]
-    pub async fn send(&self, message: Vec<u8>) -> io::Result<()> {
+    #[instrument(level = "trace", err, skip(self, message), fields(network_result, message.len = message.len()))]
+    pub async fn send(&self, message: Vec<u8>) -> io::Result<NetworkResult<()>> {
         if message.len() > MAX_MESSAGE_SIZE {
             bail_io_error_other!("sending too large WS message");
         }
-        self.inner
-            .ws_stream
-            .clone()
-            .send(WsMessage::Binary(message))
-            .await
-            .map_err(to_io)
+        let out = SendWrapper::new(
+            self.inner
+                .ws_stream
+                .clone()
+                .send(WsMessage::Binary(message)),
+        )
+        .await
+        .map_err(to_io)
+        .into_network_result()?;
+
+        tracing::Span::current().record("network_result", &tracing::field::display(&out));
+        Ok(out)
     }
 
-    #[instrument(level = "trace", err, skip(self), fields(ret.len))]
-    pub async fn recv(&self) -> io::Result<Vec<u8>> {
+    #[instrument(level = "trace", err, skip(self), fields(network_result, ret.len))]
+    pub async fn recv(&self) -> io::Result<NetworkResult<Vec<u8>>> {
         let out = match SendWrapper::new(self.inner.ws_stream.clone().next()).await {
-            Some(WsMessage::Binary(v)) => v,
-            Some(_) => {
-                bail_io_error_other!("Unexpected WS message type");
+            Some(WsMessage::Binary(v)) => {
+                if v.len() > MAX_MESSAGE_SIZE {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "too large ws message",
+                    ));
+                }
+                NetworkResult::Value(v)
             }
+            Some(_) => NetworkResult::NoConnection(io::Error::new(
+                io::ErrorKind::ConnectionReset,
+                "Unexpected WS message type",
+            )),
             None => {
                 bail_io_error_other!("WS stream closed");
             }
         };
-        if out.len() > MAX_MESSAGE_SIZE {
-            bail_io_error_other!("sending too large WS message")
-        }
+        tracing::Span::current().record("network_result", &tracing::field::display(&out));
         Ok(out)
     }
 }
@@ -84,13 +97,11 @@ pub struct WebsocketProtocolHandler {}
 impl WebsocketProtocolHandler {
     #[instrument(level = "trace", err)]
     pub async fn connect(
-        local_address: Option<SocketAddr>,
         dial_info: &DialInfo,
-    ) -> io::Result<ProtocolNetworkConnection> {
-        assert!(local_address.is_none());
-
+        timeout_ms: u32,
+    ) -> io::Result<NetworkResult<ProtocolNetworkConnection>> {
         // Split dial info up
-        let (_tls, scheme) = match dial_info {
+        let (tls, scheme) = match dial_info {
             DialInfo::WS(_) => (false, "ws"),
             DialInfo::WSS(_) => (true, "wss"),
             _ => panic!("invalid dialinfo for WS/WSS protocol"),
@@ -101,15 +112,23 @@ impl WebsocketProtocolHandler {
             bail_io_error_other!("invalid websocket url scheme");
         }
 
-        let fut = spawn_local(WsMeta::connect(request, None));
-        let (wsmeta, wsio) = fut.await.map_err(to_io)?;
+        let fut = SendWrapper::new(timeout(timeout_ms, async move {
+            WsMeta::connect(request, None).await.map_err(to_io)
+        }));
+        let (wsmeta, wsio) = network_result_try!(network_result_try!(fut
+            .await
+            .into_network_result())
+        .into_network_result()?);
 
         // Make our connection descriptor
-        Ok(WebsocketNetworkConnection::new(
+
+        let wnc = WebsocketNetworkConnection::new(
             ConnectionDescriptor::new_no_local(dial_info.to_peer_address())
                 .map_err(|e| io::Error::new(io::ErrorKind::AddrNotAvailable, e))?,
             wsmeta,
             wsio,
-        ))
+        );
+
+        Ok(NetworkResult::Value(ProtocolNetworkConnection::Ws(wnc)))
     }
 }

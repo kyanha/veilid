@@ -15,8 +15,9 @@ pub enum ProtocolNetworkConnection {
 
 impl ProtocolNetworkConnection {
     pub async fn connect(
-        local_address: Option<SocketAddr>,
+        _local_address: Option<SocketAddr>,
         dial_info: &DialInfo,
+        timeout_ms: u32,
     ) -> io::Result<NetworkResult<ProtocolNetworkConnection>> {
         match dial_info.protocol_type() {
             ProtocolType::UDP => {
@@ -26,7 +27,7 @@ impl ProtocolNetworkConnection {
                 panic!("TCP dial info is not supported on WASM targets");
             }
             ProtocolType::WS | ProtocolType::WSS => {
-                ws::WebsocketProtocolHandler::connect(local_address, dial_info).await
+                ws::WebsocketProtocolHandler::connect(dial_info, timeout_ms).await
             }
         }
     }
