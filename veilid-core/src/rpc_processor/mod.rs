@@ -576,8 +576,14 @@ impl RPCProcessor {
             .network_manager()
             .send_envelope(node_ref.clone(), Some(node_id), message)
             .await
-            .map_err(RPCError::network)? => {
-                // Make sure to clean up op id waiter in case of error
+            .map_err(|e| {
+                // If we're returning an error, clean up
+                self.cancel_op_id_waiter(op_id);
+                self.routing_table()
+                    .stats_failed_to_send(node_ref.clone(), send_ts, true);
+                RPCError::network(e) })?
+            => {
+                // If we couldn't send we're still cleaning up
                 self.cancel_op_id_waiter(op_id);
                 self.routing_table()
                     .stats_failed_to_send(node_ref, send_ts, true);
@@ -639,7 +645,12 @@ impl RPCProcessor {
             .network_manager()
             .send_envelope(node_ref.clone(), Some(node_id), message)
             .await
-            .map_err(RPCError::network)? => {
+            .map_err(|e| {
+                // If we're returning an error, clean up
+                self.routing_table()
+                    .stats_failed_to_send(node_ref.clone(), send_ts, true);
+                RPCError::network(e) })? => {
+                // If we couldn't send we're still cleaning up
                 self.routing_table()
                     .stats_failed_to_send(node_ref, send_ts, true);
             }
@@ -726,7 +737,12 @@ impl RPCProcessor {
         network_result_try!(self.network_manager()
             .send_envelope(node_ref.clone(), Some(node_id), message)
             .await
-            .map_err(RPCError::network)? => {
+            .map_err(|e| {
+                // If we're returning an error, clean up
+                self.routing_table()
+                    .stats_failed_to_send(node_ref.clone(), send_ts, true);
+                RPCError::network(e) })? => {
+                // If we couldn't send we're still cleaning up
                 self.routing_table()
                     .stats_failed_to_send(node_ref.clone(), send_ts, false);
             }
