@@ -70,6 +70,9 @@ impl RPCProcessor {
                 SendDataKind::Indirect => {
                     // Do nothing in this case, as the socket address returned here would be for any node other than ours
                 }
+                SendDataKind::Existing(_) => {
+                    // Do nothing in this case, as an existing connection could not have a different public address or it would have been reset
+                }
             }
         }
 

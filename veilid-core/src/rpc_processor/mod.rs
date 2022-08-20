@@ -88,6 +88,7 @@ struct RPCMessageEncoded {
     data: RPCMessageData,
 }
 
+#[derive(Debug)]
 pub(crate) struct RPCMessage {
     header: RPCMessageHeader,
     operation: RPCOperation,
@@ -336,7 +337,10 @@ impl RPCProcessor {
             inner
                 .waiting_rpc_table
                 .remove(&op_id)
-                .ok_or_else(RPCError::else_internal("Unmatched operation id"))?
+                .ok_or_else(RPCError::else_internal(format!(
+                    "Unmatched operation id: {:#?}",
+                    msg
+                )))?
         };
         eventual.resolve((Span::current().id(), msg)).await;
         Ok(())
