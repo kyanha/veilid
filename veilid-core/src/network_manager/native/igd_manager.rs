@@ -64,19 +64,25 @@ impl IGDManager {
             AddressType::IPV6 => SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), 0),
         }) {
             Ok(s) => s,
-            Err(_) => return None,
+            Err(e) => {
+                log_net!(debug "failed to bind to unspecified address: {}", e);
+                return None;
+            }
         };
-
+        
         // can be any routable ip address,
         // this is just to make the system routing table calculate the appropriate local ip address
         // using google's dns, but it wont actually send any packets to it
         socket
             .connect(match address_type {
-                AddressType::IPV4 => SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 0),
+                AddressType::IPV4 => SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 80),
                 AddressType::IPV6 => SocketAddr::new(
                     IpAddr::V6(Ipv6Addr::new(0x2001, 0x4860, 0x4860, 0, 0, 0, 0, 0x8888)),
-                    0,
+                    80,
                 ),
+            }).map_err(|e| {
+                log_net!(debug "failed to connect to dummy address: {}", e);
+                e
             })
             .ok()?;
 
@@ -93,7 +99,7 @@ impl IGDManager {
         let ip = match Self::get_routed_local_ip_address(address_type) {
             Some(x) => x,
             None => {
-                log_net!("failed to get local ip address");
+                log_net!(debug "failed to get local ip address: address_type={:?}", address_type);
                 return None;
             }
         };
@@ -127,7 +133,7 @@ impl IGDManager {
                 )) {
                     Ok(v) => v,
                     Err(e) => {
-                        log_net!("couldn't find ipv4 igd: {}", e);
+                        log_net!(debug "couldn't find ipv4 igd: {}", e);
                         return None;
                     }
                 }
@@ -139,7 +145,7 @@ impl IGDManager {
                 )) {
                     Ok(v) => v,
                     Err(e) => {
-                        log_net!("couldn't find ipv6 igd: {}", e);
+                        log_net!(debug "couldn't find ipv6 igd: {}", e);
                         return None;
                     }
                 }
