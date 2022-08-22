@@ -4,8 +4,6 @@ VERSION 0.6
 # Ensure we are using an amd64 platform because some of these targets use cross-platform tooling
 FROM --platform amd64 ubuntu:16.04
 
-# Choose where Rust ends up
-
 # Install build prerequisites
 deps-base:
     RUN apt-get -y update

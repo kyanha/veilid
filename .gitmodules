@@ -28,3 +28,6 @@
 [submodule "external/hashlink"]
 	path = external/hashlink
 	url = ../hashlink.git
+[submodule "external/rust-igd"]
+	path = external/rust-igd
+	url = git@gitlab.hackers.town:veilid/rust-igd.git

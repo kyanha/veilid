@@ -96,7 +96,7 @@ core:
             min_peer_count: 20
             min_peer_refresh_time_ms: 2000
             validate_dial_info_receipt_time_ms: 2000
-        upnp: false
+        upnp: true
         natpmp: false
         detect_address_changes: true
         enable_local_peer_scope: false
@@ -1500,7 +1500,7 @@ mod tests {
             2_000u32
         );
         //
-        assert_eq!(s.core.network.upnp, false);
+        assert_eq!(s.core.network.upnp, true);
         assert_eq!(s.core.network.natpmp, false);
         assert_eq!(s.core.network.detect_address_changes, true);
         assert_eq!(s.core.network.enable_local_peer_scope, false);

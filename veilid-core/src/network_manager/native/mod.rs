@@ -1,3 +1,5 @@
+mod igd_manager;
+mod natpmp_manager;
 mod network_class_discovery;
 mod network_tcp;
 mod network_udp;
@@ -67,6 +69,12 @@ struct NetworkUnlockedInner {
     // Background processes
     update_network_class_task: TickTask<EyreReport>,
     network_interfaces_task: TickTask<EyreReport>,
+    upnp_task: TickTask<EyreReport>,
+    natpmp_task: TickTask<EyreReport>,
+
+    // Managers
+    igd_manager: igd_manager::IGDManager,
+    natpmp_manager: natpmp_manager::NATPMPManager,
 }
 
 #[derive(Clone)]
@@ -108,6 +116,7 @@ impl Network {
         routing_table: RoutingTable,
         connection_manager: ConnectionManager,
     ) -> NetworkUnlockedInner {
+        let config = network_manager.config();
         NetworkUnlockedInner {
             network_manager,
             routing_table,
@@ -115,6 +124,10 @@ impl Network {
             interfaces: NetworkInterfaces::new(),
             update_network_class_task: TickTask::new(1),
             network_interfaces_task: TickTask::new(5),
+            upnp_task: TickTask::new(1),
+            natpmp_task: TickTask::new(1),
+            igd_manager: igd_manager::IGDManager::new(config.clone()),
+            natpmp_manager: natpmp_manager::NATPMPManager::new(config),
         }
     }
 
@@ -150,6 +163,20 @@ impl Network {
                 .set_routine(move |s, l, t| {
                     Box::pin(this2.clone().network_interfaces_task_routine(s, l, t))
                 });
+        }
+        // Set upnp tick task
+        {
+            let this2 = this.clone();
+            this.unlocked_inner
+                .upnp_task
+                .set_routine(move |s, l, t| Box::pin(this2.clone().upnp_task_routine(s, l, t)));
+        }
+        // Set natpmp tick task
+        {
+            let this2 = this.clone();
+            this.unlocked_inner
+                .natpmp_task
+                .set_routine(move |s, l, t| Box::pin(this2.clone().natpmp_task_routine(s, l, t)));
         }
 
         this
@@ -255,6 +282,17 @@ impl Network {
                 })
                 .collect()
         }
+    }
+
+    pub fn get_local_port(&self, protocol_type: ProtocolType) -> u16 {
+        let inner = self.inner.lock();
+        let local_port = match protocol_type {
+            ProtocolType::UDP => inner.udp_port,
+            ProtocolType::TCP => inner.tcp_port,
+            ProtocolType::WS => inner.ws_port,
+            ProtocolType::WSS => inner.wss_port,
+        };
+        local_port
     }
 
     fn get_preferred_local_address(&self, dial_info: &DialInfo) -> SocketAddr {
@@ -749,11 +787,47 @@ impl Network {
         Ok(())
     }
 
+    #[instrument(level = "trace", skip(self), err)]
+    pub async fn upnp_task_routine(
+        self,
+        stop_token: StopToken,
+        _l: u64,
+        _t: u64,
+    ) -> EyreResult<()> {
+        if !self.unlocked_inner.igd_manager.tick().await? {
+            info!("upnp failed, restarting local network");
+            let mut inner = self.inner.lock();
+            inner.network_needs_restart = true;
+        }
+
+        Ok(())
+    }
+
+    #[instrument(level = "trace", skip(self), err)]
+    pub async fn natpmp_task_routine(
+        self,
+        stop_token: StopToken,
+        _l: u64,
+        _t: u64,
+    ) -> EyreResult<()> {
+        if !self.unlocked_inner.natpmp_manager.tick().await? {
+            info!("natpmp failed, restarting local network");
+            let mut inner = self.inner.lock();
+            inner.network_needs_restart = true;
+        }
+
+        Ok(())
+    }
+
     pub async fn tick(&self) -> EyreResult<()> {
-        let detect_address_changes = {
+        let (detect_address_changes, upnp, natpmp) = {
             let config = self.network_manager().config();
             let c = config.get();
-            c.network.detect_address_changes
+            (
+                c.network.detect_address_changes,
+                c.network.upnp,
+                c.network.natpmp,
+            )
         };
 
         // If we need to figure out our network class, tick the task for it
@@ -774,6 +848,16 @@ impl Network {
             if !self.needs_restart() {
                 self.unlocked_inner.network_interfaces_task.tick().await?;
             }
+        }
+
+        // If we need to tick upnp, do it
+        if upnp && !self.needs_restart() {
+            self.unlocked_inner.upnp_task.tick().await?;
+        }
+
+        // If we need to tick natpmp, do it
+        if natpmp && !self.needs_restart() {
+            self.unlocked_inner.natpmp_task.tick().await?;
         }
 
         Ok(())

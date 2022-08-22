@@ -103,6 +103,8 @@ cfg_if! {
                 pub use tokio::sync::Mutex as AsyncMutex;
                 pub use tokio::sync::MutexGuard as AsyncMutexGuard;
                 pub use tokio::task::JoinHandle as LowLevelJoinHandle;
+            } else {
+                #[compile_error("must use an executor")]
             }
         }
         pub use std::net::{ SocketAddr, SocketAddrV4, SocketAddrV6, ToSocketAddrs, IpAddr, Ipv4Addr, Ipv6Addr };

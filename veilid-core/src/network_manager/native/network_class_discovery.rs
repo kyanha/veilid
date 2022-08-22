@@ -3,6 +3,7 @@ use super::*;
 use futures_util::stream::FuturesUnordered;
 use futures_util::FutureExt;
 use stop_token::future::FutureExt as StopTokenFutureExt;
+use tokio::task::spawn_blocking;
 
 struct DetectedPublicDialInfo {
     dial_info: DialInfo,
@@ -213,7 +214,39 @@ impl DiscoveryContext {
 
     #[instrument(level = "trace", skip(self), ret)]
     async fn try_port_mapping(&self) -> Option<DialInfo> {
-        //xxx
+        let (enable_upnp, enable_natpmp) = {
+            let c = self.net.config.get();
+            (c.network.upnp, c.network.natpmp)
+        };
+
+        if enable_upnp {
+            let (pt, llpt, at, external_address_1, local_port) = {
+                let inner = self.inner.lock();
+                let pt = inner.protocol_type.unwrap();
+                let llpt = pt.low_level_protocol_type();
+                let at = inner.address_type.unwrap();
+                let external_address_1 = inner.external_1_address.unwrap();
+                let local_port = self.net.get_local_port(pt);
+                (pt, llpt, at, external_address_1, local_port)
+            };
+
+            if let Some(mapped_external_address) = self
+                .net
+                .unlocked_inner
+                .igd_manager
+                .map_any_port(llpt, at, local_port, Some(external_address_1.to_ip_addr()))
+                .await
+            {
+                // make dial info from the port
+                return Some(
+                    self.make_dial_info(
+                        SocketAddress::from_socket_addr(mapped_external_address),
+                        pt,
+                    ),
+                );
+            }
+        }
+
         None
     }
 

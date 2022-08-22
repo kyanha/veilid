@@ -1642,8 +1642,8 @@ impl NetworkManager {
         connection_descriptor: ConnectionDescriptor, // the connection descriptor used
         reporting_peer: NodeRef,       // the peer's noderef reporting the socket address
     ) {
-        // xxx debug code
-        info!("report_global_socket_address\nsocket_address: {:#?}\nconnection_descriptor: {:#?}\nreporting_peer: {:#?}", socket_address, connection_descriptor, reporting_peer);
+        // debug code
+        //info!("report_global_socket_address\nsocket_address: {:#?}\nconnection_descriptor: {:#?}\nreporting_peer: {:#?}", socket_address, connection_descriptor, reporting_peer);
 
         let key = PublicAddressCheckCacheKey(
             connection_descriptor.protocol_type(),
@@ -1671,80 +1671,78 @@ impl NetworkManager {
         let network_class = net.get_network_class().unwrap_or(NetworkClass::Invalid);
 
         // Determine if our external address has likely changed
-        let needs_public_address_detection = if matches!(
-            network_class,
-            NetworkClass::InboundCapable
-        ) {
-            // Get the dial info filter for this connection so we can check if we have any public dialinfo that may have changed
-            let dial_info_filter = connection_descriptor.make_dial_info_filter();
+        let needs_public_address_detection =
+            if matches!(network_class, NetworkClass::InboundCapable) {
+                // Get the dial info filter for this connection so we can check if we have any public dialinfo that may have changed
+                let dial_info_filter = connection_descriptor.make_dial_info_filter();
 
-            // Get current external ip/port from registered global dialinfo
-            let current_addresses: BTreeSet<SocketAddress> = routing_table
-                .all_filtered_dial_info_details(
-                    Some(RoutingDomain::PublicInternet),
-                    &dial_info_filter,
-                )
-                .iter()
-                .map(|did| did.dial_info.socket_address())
-                .collect();
+                // Get current external ip/port from registered global dialinfo
+                let current_addresses: BTreeSet<SocketAddress> = routing_table
+                    .all_filtered_dial_info_details(
+                        Some(RoutingDomain::PublicInternet),
+                        &dial_info_filter,
+                    )
+                    .iter()
+                    .map(|did| did.dial_info.socket_address())
+                    .collect();
 
-            // If we are inbound capable, but start to see inconsistent socket addresses from multiple reporting peers
-            // then we zap the network class and re-detect it
-            let mut inner = self.inner.lock();
-            let mut inconsistencies = 0;
-            let mut changed = false;
-            // Iteration goes from most recent to least recent node/address pair
-            let pacc = inner
-                .public_address_check_cache
-                .entry(key)
-                .or_insert_with(|| LruCache::new(8));
-            for (_, a) in pacc {
-                if !current_addresses.contains(a) {
-                    inconsistencies += 1;
-                    if inconsistencies >= GLOBAL_ADDRESS_CHANGE_DETECTION_COUNT {
-                        changed = true;
-                        break;
-                    }
-                }
-            }
-
-            // xxx debug code
-            if changed {
-                info!("XXX\npublic_address_check_cache: {:#?}\ncurrent_addresses: {:#?}\ninconsistencies: {}", inner
-                    .public_address_check_cache, current_addresses, inconsistencies);
-            }
-
-            changed
-        } else {
-            // If we are currently outbound only, we don't have any public dial info
-            // but if we are starting to see consistent socket address from multiple reporting peers
-            // then we may be become inbound capable, so zap the network class so we can re-detect it and any public dial info
-
-            let mut inner = self.inner.lock();
-            let mut consistencies = 0;
-            let mut consistent = false;
-            let mut current_address = Option::<SocketAddress>::None;
-            // Iteration goes from most recent to least recent node/address pair
-            let pacc = inner
-                .public_address_check_cache
-                .entry(key)
-                .or_insert_with(|| LruCache::new(8));
-
-            for (_, a) in pacc {
-                if let Some(current_address) = current_address {
-                    if current_address == *a {
-                        consistencies += 1;
-                        if consistencies >= GLOBAL_ADDRESS_CHANGE_DETECTION_COUNT {
-                            consistent = true;
+                // If we are inbound capable, but start to see inconsistent socket addresses from multiple reporting peers
+                // then we zap the network class and re-detect it
+                let mut inner = self.inner.lock();
+                let mut inconsistencies = 0;
+                let mut changed = false;
+                // Iteration goes from most recent to least recent node/address pair
+                let pacc = inner
+                    .public_address_check_cache
+                    .entry(key)
+                    .or_insert_with(|| LruCache::new(8));
+                for (_, a) in pacc {
+                    if !current_addresses.contains(a) {
+                        inconsistencies += 1;
+                        if inconsistencies >= GLOBAL_ADDRESS_CHANGE_DETECTION_COUNT {
+                            changed = true;
                             break;
                         }
                     }
-                } else {
-                    current_address = Some(*a);
                 }
-            }
-            consistent
-        };
+
+                // // debug code
+                // if changed {
+                //     trace!("public_address_check_cache: {:#?}\ncurrent_addresses: {:#?}\ninconsistencies: {}", inner
+                //                 .public_address_check_cache, current_addresses, inconsistencies);
+                // }
+
+                changed
+            } else {
+                // If we are currently outbound only, we don't have any public dial info
+                // but if we are starting to see consistent socket address from multiple reporting peers
+                // then we may be become inbound capable, so zap the network class so we can re-detect it and any public dial info
+
+                let mut inner = self.inner.lock();
+                let mut consistencies = 0;
+                let mut consistent = false;
+                let mut current_address = Option::<SocketAddress>::None;
+                // Iteration goes from most recent to least recent node/address pair
+                let pacc = inner
+                    .public_address_check_cache
+                    .entry(key)
+                    .or_insert_with(|| LruCache::new(8));
+
+                for (_, a) in pacc {
+                    if let Some(current_address) = current_address {
+                        if current_address == *a {
+                            consistencies += 1;
+                            if consistencies >= GLOBAL_ADDRESS_CHANGE_DETECTION_COUNT {
+                                consistent = true;
+                                break;
+                            }
+                        }
+                    } else {
+                        current_address = Some(*a);
+                    }
+                }
+                consistent
+            };
 
         if needs_public_address_detection {
             if detect_address_changes {

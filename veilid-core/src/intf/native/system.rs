@@ -150,6 +150,23 @@ where
     }
 }
 
+pub async fn blocking_wrapper<F, R>(blocking_task: F, err_result: R) -> R
+where
+    F: FnOnce() -> R + Send + 'static,
+    R: Send + 'static,
+{
+    // run blocking stuff in blocking thread
+    cfg_if! {
+        if #[cfg(feature="rt-async-std")] {
+            async_std::task::spawn_blocking(blocking_task).await
+        } else if #[cfg(feature="rt-tokio")] {
+            tokio::task::spawn_blocking(blocking_task).await.unwrap_or(err_result)
+        } else {
+            #[compile_error("must use an executor")]
+        }
+    }
+}
+
 pub fn get_concurrency() -> u32 {
     std::thread::available_parallelism()
         .map(|x| x.get())
