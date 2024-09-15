@@ -15,7 +15,7 @@ VERSION 0.7
 # Ensure we are using an amd64 platform because some of these targets use cross-platform tooling
 FROM ubuntu:18.04
 
-ENV ZIG_VERSION=0.13.0-dev.46+3648d7df1
+ENV ZIG_VERSION=0.13.0
 ENV CMAKE_VERSION_MINOR=3.30
 ENV CMAKE_VERSION_PATCH=3.30.1
 ENV WASM_BINDGEN_CLI_VERSION=0.2.93
@@ -60,7 +60,8 @@ deps-rust:
     # Caching tool
     RUN cargo install cargo-chef
     # Install Linux cross-platform tooling
-    RUN curl -O https://ziglang.org/builds/zig-linux-$(arch)-$ZIG_VERSION.tar.xz
+    RUN echo "ZIP URL is: "https://ziglang.org/download/$ZIG_VERSION/zig-linux-$(arch)-$ZIG_VERSION.tar.xz
+    RUN curl -O https://ziglang.org/download/$ZIG_VERSION/zig-linux-$(arch)-$ZIG_VERSION.tar.xz
     RUN tar -C /usr/local -xJf zig-linux-$(arch)-$ZIG_VERSION.tar.xz
     RUN mv /usr/local/zig-linux-$(arch)-$ZIG_VERSION /usr/local/zig
     RUN cargo install cargo-zigbuild
