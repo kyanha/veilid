@@ -14,8 +14,7 @@ use futures_util::stream::{FuturesUnordered, StreamExt};
 use futures_util::FutureExt;
 use stop_token::future::FutureExt as StopFutureExt;
 
-type PingValidatorFuture =
-    SendPinBoxFuture<Result<NetworkResult<Answer<Option<SenderInfo>>>, RPCError>>;
+type PingValidatorFuture = SendPinBoxFuture<Result<(), RPCError>>;
 
 impl RoutingTable {
     // Ping the relay to keep it alive, over every protocol it is relaying for us
@@ -112,8 +111,10 @@ impl RoutingTable {
 
             futurequeue.push_back(
                 async move {
-                    rpc.rpc_call_status(Destination::direct(relay_nr_filtered))
-                        .await
+                    let _ = rpc
+                        .rpc_call_status(Destination::direct(relay_nr_filtered))
+                        .await?;
+                    Ok(())
                 }
                 .boxed(),
             );
@@ -160,8 +161,10 @@ impl RoutingTable {
 
             futurequeue.push_back(
                 async move {
-                    rpc.rpc_call_status(Destination::direct(watch_nr.default_filtered()))
-                        .await
+                    let _ = rpc
+                        .rpc_call_status(Destination::direct(watch_nr.default_filtered()))
+                        .await?;
+                    Ok(())
                 }
                 .boxed(),
             );
@@ -182,7 +185,7 @@ impl RoutingTable {
         // Get all nodes needing pings in the PublicInternet routing domain
         let node_refs = self.get_nodes_needing_ping(RoutingDomain::PublicInternet, cur_ts);
 
-        // If we have a relay, let's ping for NAT keepalives
+        // If we have a relay, let's ping for NAT keepalives and check for address changes
         self.relay_keepalive_public_internet(cur_ts, futurequeue)
             .await?;
 
@@ -195,7 +198,11 @@ impl RoutingTable {
             let rpc = rpc.clone();
             log_rtab!("--> Validator ping to {:?}", nr);
             futurequeue.push_back(
-                async move { rpc.rpc_call_status(Destination::direct(nr)).await }.boxed(),
+                async move {
+                    let _ = rpc.rpc_call_status(Destination::direct(nr)).await?;
+                    Ok(())
+                }
+                .boxed(),
             );
         }
 
@@ -221,7 +228,11 @@ impl RoutingTable {
 
             // Just do a single ping with the best protocol for all the nodes
             futurequeue.push_back(
-                async move { rpc.rpc_call_status(Destination::direct(nr)).await }.boxed(),
+                async move {
+                    let _ = rpc.rpc_call_status(Destination::direct(nr)).await?;
+                    Ok(())
+                }
+                .boxed(),
             );
         }
 
@@ -264,8 +275,14 @@ impl RoutingTable {
                 .in_current_span()
                 .await
             {
-                Ok(Some(_)) => {
+                Ok(Some(res)) => {
                     // Some ping completed
+                    match res {
+                        Ok(()) => {}
+                        Err(e) => {
+                            log_rtab!(error "Error performing status ping: {}", e);
+                        }
+                    }
                 }
                 Ok(None) => {
                     // We're empty

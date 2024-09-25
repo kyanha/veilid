@@ -5,6 +5,7 @@ mod native;
 #[cfg(target_arch = "wasm32")]
 mod wasm;
 
+mod address_check;
 mod address_filter;
 mod connection_handle;
 mod connection_manager;
@@ -30,6 +31,7 @@ pub(crate) use stats::*;
 pub use types::*;
 
 ////////////////////////////////////////////////////////////////////////////////////////
+use address_check::*;
 use address_filter::*;
 use connection_handle::*;
 use crypto::*;
@@ -54,14 +56,6 @@ pub const IPADDR_TABLE_SIZE: usize = 1024;
 pub const IPADDR_MAX_INACTIVE_DURATION_US: TimestampDuration =
     TimestampDuration::new(300_000_000u64); // 5 minutes
 pub const NODE_CONTACT_METHOD_CACHE_SIZE: usize = 1024;
-pub const PUBLIC_ADDRESS_CHANGE_CONSISTENCY_DETECTION_COUNT: usize = 3; // Number of consistent results in the cache during outbound-only to trigger detection
-pub const PUBLIC_ADDRESS_CHANGE_INCONSISTENCY_DETECTION_COUNT: usize = 7; // Number of inconsistent results in the cache during inbound-capable to trigger detection
-pub const PUBLIC_ADDRESS_CHECK_CACHE_SIZE: usize = 10; // Length of consistent/inconsistent result cache for detection
-pub const PUBLIC_ADDRESS_CHECK_TASK_INTERVAL_SECS: u32 = 60;
-pub const PUBLIC_ADDRESS_INCONSISTENCY_TIMEOUT_US: TimestampDuration =
-    TimestampDuration::new(300_000_000u64); // 5 minutes
-pub const PUBLIC_ADDRESS_INCONSISTENCY_PUNISHMENT_TIMEOUT_US: TimestampDuration =
-    TimestampDuration::new(3_600_000_000_u64); // 60 minutes
 pub const ADDRESS_FILTER_TASK_INTERVAL_SECS: u32 = 60;
 pub const BOOT_MAGIC: &[u8; 4] = b"BOOT";
 
@@ -117,9 +111,6 @@ struct NodeContactMethodCacheKey {
     target_node_ref_sequencing: Sequencing,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Ord, PartialOrd, Hash)]
-struct PublicAddressCheckCacheKey(ProtocolType, AddressType);
-
 enum SendDataToExistingFlowResult {
     Sent(UniqueFlow),
     NotSent(Vec<u8>),
@@ -137,10 +128,7 @@ struct NetworkManagerInner {
     stats: NetworkManagerStats,
     client_allowlist: LruCache<TypedKey, ClientAllowlistEntry>,
     node_contact_method_cache: LruCache<NodeContactMethodCacheKey, NodeContactMethod>,
-    public_internet_address_check_cache:
-        BTreeMap<PublicAddressCheckCacheKey, LruCache<IpAddr, SocketAddress>>,
-    public_internet_address_inconsistencies_table:
-        BTreeMap<PublicAddressCheckCacheKey, HashMap<IpAddr, Timestamp>>,
+    address_check: Option<AddressCheck>,
 }
 
 struct NetworkManagerUnlockedInner {
@@ -158,7 +146,6 @@ struct NetworkManagerUnlockedInner {
     update_callback: RwLock<Option<UpdateCallback>>,
     // Background processes
     rolling_transfers_task: TickTask<EyreReport>,
-    public_internet_address_check_task: TickTask<EyreReport>,
     address_filter_task: TickTask<EyreReport>,
     // Network Key
     network_key: Option<SharedSecret>,
@@ -178,8 +165,7 @@ impl NetworkManager {
             stats: NetworkManagerStats::default(),
             client_allowlist: LruCache::new_unbounded(),
             node_contact_method_cache: LruCache::new(NODE_CONTACT_METHOD_CACHE_SIZE),
-            public_internet_address_check_cache: BTreeMap::new(),
-            public_internet_address_inconsistencies_table: BTreeMap::new(),
+            address_check: None,
         }
     }
     fn new_unlocked_inner(
@@ -204,10 +190,6 @@ impl NetworkManager {
             rolling_transfers_task: TickTask::new(
                 "rolling_transfers_task",
                 ROLLING_TRANSFERS_INTERVAL_SECS,
-            ),
-            public_internet_address_check_task: TickTask::new(
-                "public_address_check_task",
-                PUBLIC_ADDRESS_CHECK_TASK_INTERVAL_SECS,
             ),
             address_filter_task: TickTask::new(
                 "address_filter_task",
@@ -437,6 +419,20 @@ impl NetworkManager {
                 return Ok(StartupDisposition::BindRetry);
             }
         }
+
+        let (detect_address_changes, ip6_prefix_size) = self.with_config(|c| {
+            (
+                c.network.detect_address_changes,
+                c.network.max_connections_per_ip6_prefix_size as usize,
+            )
+        });
+        let address_check_config = AddressCheckConfig {
+            detect_address_changes,
+            ip6_prefix_size,
+        };
+        let address_check = AddressCheck::new(address_check_config, net.clone());
+        self.inner.lock().address_check = Some(address_check);
+
         rpc_processor.startup().await?;
         receipt_manager.startup().await?;
 
@@ -473,6 +469,9 @@ impl NetworkManager {
     async fn shutdown_internal(&self) {
         // Cancel all tasks
         self.cancel_tasks().await;
+
+        // Shutdown address check
+        self.inner.lock().address_check = Option::<AddressCheck>::None;
 
         // Shutdown network components if they started up
         log_net!(debug "shutting down network components");
@@ -1195,5 +1194,49 @@ impl NetworkManager {
 
     pub fn restart_network(&self) {
         self.net().restart_network();
+    }
+
+    // If some other subsystem believes our dial info is no longer valid, this will trigger
+    // a re-check of the dial info and network class
+    pub fn set_needs_dial_info_check(&self, routing_domain: RoutingDomain) {
+        match routing_domain {
+            RoutingDomain::LocalNetwork => {
+                // nothing here yet
+            }
+            RoutingDomain::PublicInternet => {
+                self.net().set_needs_public_dial_info_check(None);
+            }
+        }
+    }
+
+    // Report peer info changes
+    pub fn report_peer_info_change(&self, peer_info: Arc<PeerInfo>) {
+        let mut inner = self.inner.lock();
+        if let Some(address_check) = inner.address_check.as_mut() {
+            address_check.report_peer_info_change(peer_info);
+        }
+    }
+
+    // Determine if our IP address has changed
+    // this means we should recreate our public dial info if it is not static and rediscover it
+    // Wait until we have received confirmation from N different peers
+    pub fn report_socket_address_change(
+        &self,
+        routing_domain: RoutingDomain, // the routing domain this flow is over
+        socket_address: SocketAddress, // the socket address as seen by the remote peer
+        old_socket_address: Option<SocketAddress>, // the socket address previously for this peer
+        flow: Flow,                    // the flow used
+        reporting_peer: NodeRef,       // the peer's noderef reporting the socket address
+    ) {
+        let mut inner = self.inner.lock();
+        if let Some(address_check) = inner.address_check.as_mut() {
+            address_check.report_socket_address_change(
+                routing_domain,
+                socket_address,
+                old_socket_address,
+                flow,
+                reporting_peer,
+            );
+        }
     }
 }

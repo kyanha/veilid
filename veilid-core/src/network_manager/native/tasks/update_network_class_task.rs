@@ -26,87 +26,26 @@ impl Network {
         out
     }
 
-    #[instrument(level = "trace", skip(self), err)]
-    pub async fn update_with_detected_dial_info(&self, ddi: DetectedDialInfo) -> EyreResult<()> {
-        let existing_network_class = self
-            .routing_table()
-            .get_network_class(RoutingDomain::PublicInternet)
-            .unwrap_or_default();
-
+    #[instrument(level = "trace", skip(self, editor), err)]
+    pub async fn update_with_detected_dial_info(
+        &self,
+        editor: &mut RoutingDomainEditorPublicInternet,
+        ddi: DetectedDialInfo,
+    ) -> EyreResult<bool> {
         match ddi {
             DetectedDialInfo::SymmetricNAT => {
                 // If we get any symmetric nat dialinfo, this whole network class is outbound only,
                 // and all dial info should be treated as invalid
-                if !matches!(existing_network_class, NetworkClass::OutboundOnly) {
-                    let mut editor = self.routing_table().edit_public_internet_routing_domain();
-
-                    editor.clear_dial_info_details(None, None);
-                    editor.set_network_class(Some(NetworkClass::OutboundOnly));
-                    editor.commit(true).await;
-                }
+                Ok(true)
             }
             DetectedDialInfo::Detected(did) => {
-                // get existing dial info into table by protocol/address type
-                let mut existing_dial_info =
-                    BTreeMap::<(ProtocolType, AddressType), DialInfoDetail>::new();
-                for did in self.routing_table().all_filtered_dial_info_details(
-                    RoutingDomain::PublicInternet.into(),
-                    &DialInfoFilter::all(),
-                ) {
-                    // Only need to keep one per pt/at pair, since they will all have the same dialinfoclass
-                    existing_dial_info.insert(
-                        (did.dial_info.protocol_type(), did.dial_info.address_type()),
-                        did,
-                    );
-                }
-                // We got a dial info, upgrade everything unless we are fixed to outbound only due to a symmetric nat
-                if !matches!(existing_network_class, NetworkClass::OutboundOnly) {
-                    // Get existing dial info for protocol/address type combination
-                    let pt = did.dial_info.protocol_type();
-                    let at = did.dial_info.address_type();
+                // We got a dialinfo, add it and tag us as inbound capable
+                editor.add_dial_info(did.dial_info.clone(), did.class);
+                editor.set_network_class(Some(NetworkClass::InboundCapable));
 
-                    // See what operations to perform with this dialinfo
-                    let mut clear = false;
-                    let mut add = false;
-
-                    if let Some(edi) = existing_dial_info.get(&(pt, at)) {
-                        // Is the dial info class better than our existing dial info?
-                        // Or is the new dial info the same class, but different? Only change if things are different.
-                        if did.class < edi.class
-                            || (did.class == edi.class && did.dial_info != edi.dial_info)
-                        {
-                            // Better or same dial info class was found, clear existing dialinfo for this pt/at pair
-                            // Only keep one dial info per protocol/address type combination
-                            clear = true;
-                            add = true;
-                        }
-                        // Otherwise, don't upgrade, don't add, this is worse than what we have already
-                    } else {
-                        // No existing dial info of this type accept it, no need to upgrade, but add it
-                        add = true;
-                    }
-
-                    if clear || add {
-                        let mut editor = self.routing_table().edit_public_internet_routing_domain();
-
-                        if clear {
-                            editor.clear_dial_info_details(
-                                Some(did.dial_info.address_type()),
-                                Some(did.dial_info.protocol_type()),
-                            );
-                        }
-
-                        if add {
-                            editor.add_dial_info(did.dial_info.clone(), did.class);
-                        }
-
-                        editor.set_network_class(Some(NetworkClass::InboundCapable));
-                        editor.commit(true).await;
-                    }
-                }
+                Ok(false)
             }
         }
-        Ok(())
     }
 
     #[instrument(level = "trace", skip(self), err)]
@@ -176,25 +115,9 @@ impl Network {
         );
         editor.commit(true).await;
 
-        // Create a callback to clear the network if we need to 'start over'
-        let this = self.clone();
-        let clear_network_callback: ClearNetworkCallback = Arc::new(move || {
-            let this = this.clone();
-            Box::pin(async move {
-                // Ensure we only do this once per network class discovery
-                {
-                    let mut inner = this.inner.lock();
-                    if inner.network_already_cleared {
-                        return;
-                    }
-                    inner.network_already_cleared = true;
-                }
-                let mut editor = this.routing_table().edit_public_internet_routing_domain();
-                editor.clear_dial_info_details(None, None);
-                editor.set_network_class(None);
-                editor.commit(true).await;
-            })
-        });
+        // Start from scratch
+        editor.clear_dial_info_details(None, None);
+        editor.set_network_class(None);
 
         // Process all protocol and address combinations
         let mut unord = FuturesUnordered::new();
@@ -208,13 +131,14 @@ impl Network {
                 *first_pt,
                 *at,
                 *port,
-                clear_network_callback.clone(),
+                //  clear_network_callback.clone(),
             );
             discovery_context.discover(&mut unord).await;
         }
 
         // Wait for all discovery futures to complete and apply discoverycontexts
         let mut all_address_types = AddressTypeSet::new();
+        let mut force_outbound_only = false;
         loop {
             match unord
                 .next()
@@ -224,7 +148,9 @@ impl Network {
             {
                 Ok(Some(Some(dr))) => {
                     // Found some new dial info for this protocol/address combination
-                    self.update_with_detected_dial_info(dr.ddi.clone()).await?;
+                    force_outbound_only |= self
+                        .update_with_detected_dial_info(&mut editor, dr.ddi.clone())
+                        .await?;
 
                     // Add the external address kinds to the set we've seen
                     all_address_types |= dr.external_address_types;
@@ -247,7 +173,9 @@ impl Network {
                                     class: did.class,
                                 });
                                 // Add additional dialinfo
-                                self.update_with_detected_dial_info(additional_ddi).await?;
+                                force_outbound_only |= self
+                                    .update_with_detected_dial_info(&mut editor, additional_ddi)
+                                    .await?;
                             }
                         }
                     }
@@ -267,8 +195,12 @@ impl Network {
         }
 
         // All done
-
         log_net!(debug "Network class discovery finished with address_types {:?}", all_address_types);
+
+        if force_outbound_only {
+            editor.clear_dial_info_details(None, None);
+            editor.set_network_class(Some(NetworkClass::OutboundOnly));
+        }
 
         // Set the address types we've seen
         editor.setup_network(

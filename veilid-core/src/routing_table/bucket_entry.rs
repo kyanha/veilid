@@ -87,13 +87,16 @@ impl From<BucketEntryStateReason> for BucketEntryState {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, PartialOrd, Ord, Hash)]
-pub(crate) struct LastFlowKey(ProtocolType, AddressType);
+#[derive(Debug, Clone, Eq, PartialEq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub(crate) struct LastFlowKey(pub ProtocolType, pub AddressType);
+
+#[derive(Debug, Clone, Eq, PartialEq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub(crate) struct LastSenderInfoKey(pub RoutingDomain, pub ProtocolType, pub AddressType);
 
 /// Bucket entry information specific to the LocalNetwork RoutingDomain
 #[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct BucketEntryPublicInternet {
-    /// The PublicInternet node info
+    /// The PublicInternet node infoe
     signed_node_info: Option<Box<SignedNodeInfo>>,
     /// The last node info timestamp of ours that this entry has seen
     last_seen_our_node_info_ts: Timestamp,
@@ -130,6 +133,9 @@ pub(crate) struct BucketEntryInner {
     /// The last flows used to contact this node, per protocol type
     #[serde(skip)]
     last_flows: BTreeMap<LastFlowKey, (Flow, Timestamp)>,
+    /// Last seen senderinfo per protocol/address type
+    #[serde(skip)]
+    last_sender_info: HashMap<LastSenderInfoKey, SenderInfo>,
     /// The node info for this entry on the publicinternet routing domain
     public_internet: BucketEntryPublicInternet,
     /// The node info for this entry on the localnetwork routing domain
@@ -910,6 +916,19 @@ impl BucketEntryInner {
         self.peer_stats.rpc_stats.failed_to_send += 1;
         self.peer_stats.rpc_stats.first_consecutive_seen_ts = None;
     }
+    pub(super) fn report_sender_info(
+        &mut self,
+        key: LastSenderInfoKey,
+        sender_info: SenderInfo,
+    ) -> Option<SenderInfo> {
+        let last_sender_info = self.last_sender_info.insert(key, sender_info);
+        if last_sender_info != Some(sender_info) {
+            // Return last senderinfo if this new one is different
+            last_sender_info
+        } else {
+            None
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -930,6 +949,7 @@ impl BucketEntry {
             envelope_support: Vec::new(),
             updated_since_last_network_change: false,
             last_flows: BTreeMap::new(),
+            last_sender_info: HashMap::new(),
             local_network: BucketEntryLocalNetwork {
                 last_seen_our_node_info_ts: Timestamp::new(0u64),
                 signed_node_info: None,

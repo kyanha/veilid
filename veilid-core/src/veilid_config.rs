@@ -558,13 +558,6 @@ fn get_default_store_path(store_type: &str) -> String {
             "".to_owned()
         } else {
             use std::path::PathBuf;
-            #[cfg(unix)]
-            {
-                let globalpath = PathBuf::from(format!("/var/db/veilid-server/{}", store_type));
-                if globalpath.exists() {
-                    return globalpath.to_string_lossy().into();
-                }
-            }
             ProjectDirs::from("org", "Veilid", "Veilid")
                 .map(|dirs| dirs.data_local_dir().to_path_buf())
                 .unwrap_or_else(|| PathBuf::from("./"))
@@ -742,6 +735,18 @@ pub struct VeilidConfigInner {
     pub block_store: VeilidConfigBlockStore,
     /// Configuring how Veilid interacts with the low level network
     pub network: VeilidConfigNetwork,
+}
+
+impl VeilidConfigInner {
+    /// Create a new 'VeilidConfigInner' for use with `setup_from_config`
+    /// Pick a program name and do not change it from release to release,
+    /// see `VeilidConfigInner::program_name` for details.
+    pub fn new(program_name: String) -> Self {
+        Self {
+            program_name,
+            ..Default::default()
+        }
+    }
 }
 
 /// The configuration built for each Veilid node during API startup

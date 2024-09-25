@@ -242,10 +242,10 @@ impl RoutingDomainEditorCommonTrait for RoutingDomainEditorPublicInternet {
             .write()
             .publish_peer_info(RoutingDomain::PublicInternet);
 
-        // Clear the routespecstore cache if our PublicInternet dial info has changed
         if changed {
+            // Clear the routespecstore cache if our PublicInternet dial info has changed
             let rss = self.routing_table.route_spec_store();
-            rss.reset();
+            rss.reset_cache();
         }
     }
 

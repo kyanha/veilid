@@ -297,4 +297,18 @@ pub trait NodeRefCommonTrait: NodeRefAccessorsTrait + NodeRefOperateTrait {
             e.failed_to_send(ts, expects_answer);
         })
     }
+    fn report_sender_info(
+        &self,
+        routing_domain: RoutingDomain,
+        protocol_type: ProtocolType,
+        address_type: AddressType,
+        sender_info: SenderInfo,
+    ) -> Option<SenderInfo> {
+        self.operate_mut(|_rti, e| {
+            e.report_sender_info(
+                LastSenderInfoKey(routing_domain, protocol_type, address_type),
+                sender_info,
+            )
+        })
+    }
 }

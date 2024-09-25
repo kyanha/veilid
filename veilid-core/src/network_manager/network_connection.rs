@@ -473,7 +473,7 @@ impl NetworkConnection {
                 format!(" PROTECTED:{}", pnr)
             } else {
                 "".to_owned()
-            }
+            },
         )
     }
 }

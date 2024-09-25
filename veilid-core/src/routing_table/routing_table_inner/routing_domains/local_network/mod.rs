@@ -113,33 +113,41 @@ impl RoutingDomainDetail for LocalNetworkRoutingDomainDetail {
     }
 
     fn publish_peer_info(&self, rti: &RoutingTableInner) -> bool {
-        let pi = self.get_peer_info(rti);
+        let peer_info = {
+            let pi = self.get_peer_info(rti);
 
-        // If the network class is not yet determined, don't publish
-        if pi.signed_node_info().node_info().network_class() == NetworkClass::Invalid {
-            log_rtab!(debug "[LocalNetwork] Not publishing peer info with invalid network class");
-            return false;
-        }
-
-        // If we need a relay and we don't have one, don't publish yet
-        if let Some(_relay_kind) = pi.signed_node_info().node_info().requires_relay() {
-            if pi.signed_node_info().relay_ids().is_empty() {
-                log_rtab!(debug "[LocalNetwork] Not publishing peer info that wants relay until we have a relay");
+            // If the network class is not yet determined, don't publish
+            if pi.signed_node_info().node_info().network_class() == NetworkClass::Invalid {
+                log_rtab!(debug "[LocalNetwork] Not publishing peer info with invalid network class");
                 return false;
             }
-        }
 
-        // Don't publish if the peer info hasnt changed from our previous publication
-        let mut ppi_lock = self.published_peer_info.lock();
-        if let Some(old_peer_info) = &*ppi_lock {
-            if pi.equivalent(old_peer_info) {
-                log_rtab!(debug "[LocalNetwork] Not publishing peer info because it is equivalent");
-                return false;
+            // If we need a relay and we don't have one, don't publish yet
+            if let Some(_relay_kind) = pi.signed_node_info().node_info().requires_relay() {
+                if pi.signed_node_info().relay_ids().is_empty() {
+                    log_rtab!(debug "[LocalNetwork] Not publishing peer info that wants relay until we have a relay");
+                    return false;
+                }
             }
-        }
 
-        log_rtab!(debug "[LocalNetwork] Published new peer info: {:#?}", pi);
-        *ppi_lock = Some(pi);
+            // Don't publish if the peer info hasnt changed from our previous publication
+            let mut ppi_lock = self.published_peer_info.lock();
+            if let Some(old_peer_info) = &*ppi_lock {
+                if pi.equivalent(old_peer_info) {
+                    log_rtab!(debug "[LocalNetwork] Not publishing peer info because it is equivalent");
+                    return false;
+                }
+            }
+
+            log_rtab!(debug "[LocalNetwork] Published new peer info: {:#?}", pi);
+            *ppi_lock = Some(pi.clone());
+
+            pi
+        };
+
+        rti.unlocked_inner
+            .network_manager()
+            .report_peer_info_change(peer_info);
 
         true
     }

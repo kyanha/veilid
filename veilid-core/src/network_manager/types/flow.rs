@@ -47,11 +47,6 @@ impl Flow {
     pub fn address_type(&self) -> AddressType {
         self.remote.address_type()
     }
-    pub fn make_dial_info_filter(&self) -> DialInfoFilter {
-        DialInfoFilter::all()
-            .with_protocol_type(self.protocol_type())
-            .with_address_type(self.address_type())
-    }
 }
 
 impl MatchesDialInfoFilter for Flow {

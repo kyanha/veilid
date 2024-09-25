@@ -1726,15 +1726,15 @@ impl RouteSpecStore {
 
     /// Clear caches when local our local node info changes
     #[instrument(level = "trace", target = "route", skip(self))]
-    pub fn reset(&self) {
-        log_rtab!(debug "flushing route spec store");
+    pub fn reset_cache(&self) {
+        log_rtab!(debug "resetting route cache");
 
         let inner = &mut *self.inner.lock();
 
-        // Clean up local allocated routes
+        // Clean up local allocated routes (does not delete allocated routes, set republication flag)
         inner.content.reset_details();
 
-        // Reset private route cache
+        // Reset private route cache (does not delete imported routes)
         inner.cache.reset_remote_private_routes();
     }
 

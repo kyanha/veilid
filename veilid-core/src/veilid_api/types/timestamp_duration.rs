@@ -12,10 +12,10 @@ impl fmt::Debug for TimestampDuration {
 }
 
 impl TimestampDuration {
-    pub fn new_secs<N: num_traits::Unsigned + num_traits::ToPrimitive>(secs: N) -> Self {
-        TimestampDuration::new(secs.to_u64().unwrap() * 1_000_000u64)
+    pub const fn new_secs(secs: u32) -> Self {
+        TimestampDuration::new(secs as u64 * 1_000_000u64)
     }
-    pub fn new_ms<N: num_traits::Unsigned + num_traits::ToPrimitive>(ms: N) -> Self {
-        TimestampDuration::new(ms.to_u64().unwrap() * 1_000u64)
+    pub const fn new_ms(ms: u64) -> Self {
+        TimestampDuration::new(ms * 1_000u64)
     }
 }

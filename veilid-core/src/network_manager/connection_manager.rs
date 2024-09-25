@@ -4,6 +4,9 @@ use connection_table::*;
 use network_connection::*;
 use stop_token::future::FutureExt;
 
+const PROTECTED_CONNECTION_DROP_SPAN: TimestampDuration = TimestampDuration::new_secs(10);
+const PROTECTED_CONNECTION_DROP_COUNT: usize = 3;
+
 ///////////////////////////////////////////////////////////
 // Connection manager
 
@@ -39,12 +42,19 @@ impl Drop for ConnectionRefScope {
 }
 
 #[derive(Debug)]
+struct ProtectedAddress {
+    node_ref: NodeRef,
+    span_start_ts: Timestamp,
+    drops_in_span: usize,
+}
+
+#[derive(Debug)]
 struct ConnectionManagerInner {
     next_id: NetworkConnectionId,
     sender: flume::Sender<ConnectionManagerEvent>,
     async_processor_jh: Option<MustJoinHandle<()>>,
     stop_source: Option<StopSource>,
-    protected_addresses: HashMap<SocketAddress, NodeRef>,
+    protected_addresses: HashMap<SocketAddress, ProtectedAddress>,
 }
 
 struct ConnectionManagerArc {
@@ -191,7 +201,7 @@ impl ConnectionManager {
         inner
             .protected_addresses
             .get(conn.flow().remote_address())
-            .cloned()
+            .map(|x| x.node_ref.clone())
     }
 
     // Update connection protections if things change, like a node becomes a relay
@@ -205,8 +215,12 @@ impl ConnectionManager {
             return;
         };
 
-        // Get addresses for relays in all routing domains
-        inner.protected_addresses.clear();
+        // Protect addresses for relays in all routing domains
+        let mut dead_addresses = inner
+            .protected_addresses
+            .keys()
+            .cloned()
+            .collect::<HashSet<_>>();
         for routing_domain in RoutingDomainSet::all() {
             let Some(relay_node) = self
                 .network_manager()
@@ -218,12 +232,28 @@ impl ConnectionManager {
             for did in relay_node.dial_info_details() {
                 // SocketAddress are distinct per routing domain, so they should not collide
                 // and two nodes should never have the same SocketAddress
+                let protected_address = did.dial_info.socket_address();
+
+                // Update the protection, note the protected address is not dead
+                dead_addresses.remove(&protected_address);
                 inner
                     .protected_addresses
-                    .insert(did.dial_info.socket_address(), relay_node.unfiltered());
+                    .entry(protected_address)
+                    .and_modify(|pa| pa.node_ref = relay_node.unfiltered())
+                    .or_insert_with(|| ProtectedAddress {
+                        node_ref: relay_node.unfiltered(),
+                        span_start_ts: Timestamp::now(),
+                        drops_in_span: 0usize,
+                    });
             }
         }
 
+        // Remove protected addresses that were not still associated with a protected noderef
+        for dead_address in dead_addresses {
+            inner.protected_addresses.remove(&dead_address);
+        }
+
+        // For all connections, register the protection
         self.arc
             .connection_table
             .with_all_connections_mut(|conn| {
@@ -252,7 +282,7 @@ impl ConnectionManager {
         // Get next connection id to use
         let id = inner.next_id;
         inner.next_id += 1u64;
-        log_net!(
+        log_net!(debug
             "on_new_protocol_network_connection: id={} prot_conn={:?}",
             id,
             prot_conn
@@ -366,7 +396,7 @@ impl ConnectionManager {
         // Async lock on the remote address for atomicity per remote
         let _lock_guard = self.arc.address_lock_table.lock_tag(remote_addr).await;
 
-        log_net!("== get_or_create_connection dial_info={:?}", dial_info);
+        log_net!(debug "== get_or_create_connection dial_info={:?}", dial_info);
 
         // If any connection to this remote exists that has the same protocol, return it
         // Any connection will do, we don't have to match the local address but if we can
@@ -376,7 +406,7 @@ impl ConnectionManager {
             .connection_table
             .get_best_connection_by_remote(best_port, peer_address)
         {
-            log_net!(
+            log_net!(debug
                 "== Returning best existing connection {:?}",
                 best_existing_conn
             );
@@ -561,7 +591,37 @@ impl ConnectionManager {
             // If the connection closed while it was protected, report it on the node the connection was established on
             // In-use connections will already get reported because they will cause a 'question_lost' stat on the remote node
             if let Some(protect_nr) = conn.protected_node_ref() {
-                protect_nr.report_protected_connection_dropped();
+                // Find the protected address and increase our drop count
+                if let Some(inner) = self.arc.inner.lock().as_mut() {
+                    for pa in inner.protected_addresses.values_mut() {
+                        if pa.node_ref.same_entry(&protect_nr) {
+                            // See if we've had more than the threshold number of drops in the last span
+                            let cur_ts = Timestamp::now();
+                            let duration = cur_ts.saturating_sub(pa.span_start_ts);
+                            if duration < PROTECTED_CONNECTION_DROP_SPAN {
+                                pa.drops_in_span += 1;
+                                log_net!(debug "== Protected connection dropped (count={}): {} -> {} for node {}", pa.drops_in_span, conn.connection_id(), conn.debug_print(Timestamp::now()), protect_nr);
+
+                                if pa.drops_in_span >= PROTECTED_CONNECTION_DROP_COUNT {
+                                    // Consider this as a failure to send if we've dropped the connection too many times in a single timespan
+                                    protect_nr.report_protected_connection_dropped();
+
+                                    // Reset the drop counter
+                                    pa.drops_in_span = 0;
+                                    pa.span_start_ts = cur_ts;
+                                }
+                            } else {
+                                // Otherwise, just reset the drop detection span
+                                pa.drops_in_span = 1;
+                                pa.span_start_ts = cur_ts;
+
+                                log_net!(debug "== Protected connection dropped (count={}): {} -> {} for node {}", pa.drops_in_span, conn.connection_id(), conn.debug_print(Timestamp::now()), protect_nr);
+                            }
+
+                            break;
+                        }
+                    }
+                }
             }
             let _ = sender.send_async(ConnectionManagerEvent::Dead(conn)).await;
         }
